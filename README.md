@@ -10,7 +10,7 @@ DGCV was developed using Python 3.12, with dependencies on the SymPy and Pandas 
 ## Features
 - Fully featured symbolic representations of vector fields, differential forms, and tensor fields
 - Intuitive interactions with complex structures from holomorphic coordinate systems: DGCV objects dynamically manage coordinate transformations between real and holomorphic coordinates during computation as necessary, so objects can be represented in and freely switch between either coordinate format at any time. 
-- Dedicated python classes for representing common differential geometric structures including Riemannian metrics, Kahler structures, and finite dimensional algebras
+- Dedicated python classes for representing common differential geometric structures including Riemannian metrics, Kahler structures, and more
 - Custom LaTeX Rendering: Integrated LaTeX support for clean visual representation of mathematical objects.
 
 ## Installation
@@ -37,8 +37,9 @@ DGCV was created and is maintained by [David Sykes](https://github.com/YikesItsS
 ---
 
 ### Future Development
-The current (0.x.x) version of DGCV is a stable scafolding, as it were, upon which a lot more can be built. Many additions for future updates are currently planned. Contributions and feedback from anyone interested are warmly welcomed. Current plans include:
+The current (0.x.x) version of DGCV is a stable scafolding, as it were, upon which a lot more can be built. Many additions for future updates are currently planned. Current plans include:
 - Expanding libraries dedicated to specialized areas of differential geometry including, Symplect/Contact Hamiltonian formalism, CR structures, Riemannian and Kahler, Sasakian, etc.
 - A more comprehensive API for complex variable handling and dynamic coordinate-type conversions. The simple goal is to fully automate handling of complex variable formats, allowing users to work freely with any coordinate type. The current system meets this goal for the for interactions with DGCV's core classes, but it is not fully extended to some ancillary classes.
 
+Contributions and feedback from anyone interested are warmly welcomed.
 Stay tuned for more updates!
