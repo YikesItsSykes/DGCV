@@ -10,7 +10,7 @@ DGCV was developed using Python 3.12, with dependencies on the SymPy and Pandas 
 ## Features
 - Fully featured symbolic representations of vector fields, differential forms, and tensor fields
 - Intuitive interactions with complex structures from holomorphic coordinate systems: DGCV objects dynamically manage coordinate transformations between real and holomorphic coordinates during computation as necessary, so objects can be represented in and freely switch between either coordinate format at any time. 
-- Dedicated python classes for represented common differential geometric structures including Riemannian metrics, Kahler structures, and finite dimensional algebras
+- Dedicated python classes for representing common differential geometric structures including Riemannian metrics, Kahler structures, and finite dimensional algebras
 - Custom LaTeX Rendering: Integrated LaTeX support for clean visual representation of mathematical objects.
 
 ## Installation
@@ -24,20 +24,6 @@ pip install .
 
 For now, this installation process is manual, but in the future, DGCV will be available via PyPI for easier setup.
 
-## Basic Usage
-Here’s a quick look at how you can create and manipulate vector fields and differential forms in DGCV:
-
-```python
-from dgcv.classesAndVariables import VFClass, DFClass
-
-# Create a vector field
-vf = VFClass([1, 2, 3], ['x', 'y', 'z'])
-print(vf)
-
-# Create a differential 2-form
-df = DFClass([1, 'x'], 2, ['x', 'y'])
-print(df)
-```
 
 ## Documentation
 Full documentation is under development. For now, refer to the docstrings within the code for more information on available methods and functionality.
