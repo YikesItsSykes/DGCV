@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 long_description = """
 # DGCV - Differential Geometry with Complex Variables
 
-DGCV integrates basic tools for differential geometry with systematic handling of with complex variabless-related structures.
+DGCV integrates tools for differential geometry with systematic handling of complex variables-related structures.
 
 ## Tutorials
 
