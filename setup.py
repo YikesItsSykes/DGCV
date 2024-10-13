@@ -9,7 +9,7 @@ DGCV integrates tools for differential geometry with systematic handling of comp
 
 To get started, check out the Jupyter Notebook tutorials:
 
-- **[DGCV Introduction](https://github.com/YikesItsSykes/DGCV/blob/main/tutorials/DGCV_introduction.ipynb)**: An introduction to the key concepts and functions.
+- **[DGCV Introduction](https://github.com/YikesItsSykes/DGCV/blob/main/tutorials/DGCV_introduction.ipynb)**: An introduction to the key concepts and setup.
 - **[DGCV in Action](https://github.com/YikesItsSykes/DGCV/blob/main/tutorials/DGCV_in_action.ipynb)**: A quick tour through examples from some of the library's more elaborate functions.
 
 """
