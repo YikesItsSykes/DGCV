@@ -33,11 +33,12 @@ pip install .
 
 Two Jupyter Notebook tutorials are available to help getting started with DGCV:
 
-1. **DGCV Introduction**: A basic introduction to the key concepts and setup.
+1. **DGCV Introduction**: An introduction to the key concepts and setup
    - [View DGCV Introduction Tutorial](tutorials/DGCV_introduction.ipynb)
 
-2. **DGCV in Action**: A quick tour through examples of some of DGCV's more advanced functions
+2. **DGCV in Action**: A quick tour through examples from some of the library's more elaborate functions
    - [View DGCV in Action Tutorial](tutorials/DGCV_in_action.ipynb)
+
 
 ### Running the Tutorials Locally
 
