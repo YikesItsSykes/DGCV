@@ -29,6 +29,27 @@ cd DGCV
 pip install .
 ```
 
+## Tutorials
+
+Two Jupyter Notebook tutorials are available to help getting started with DGCV:
+
+1. **DGCV Introduction**: A basic introduction to the key concepts and setup.
+   - [View DGCV Introduction Tutorial](tutorials/DGCV_introduction.ipynb)
+
+2. **DGCV in Action**: A quick tour through examples of some of DGCV's more advanced functions
+   - [View DGCV in Action Tutorial](tutorials/DGCV_in_action.ipynb)
+
+### Running the Tutorials Locally
+
+If you have cloned this repository, you can run the tutorials locally with Jupyter:
+
+```bash
+git clone https://github.com/YikesItsSykes/DGCV.git
+cd DGCV/tutorials
+jupyter notebook DGCV_introduction.ipynb
+jupyter notebook DGCV_in_action.ipynb
+```
+
 ## Documentation
 Full documentation is under development. For now, refer to the docstrings within the code for more information on available methods and functionality.
 
