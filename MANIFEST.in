@@ -1,0 +1,3 @@
+include assets/fonts/*.ttf
+include assets/fonts/*.css
+recursive-include assets/fonts *.ttf
