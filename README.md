@@ -14,16 +14,20 @@ DGCV was developed using Python 3.12, with dependencies on the SymPy and Pandas 
 - Custom LaTeX Rendering: Integrated LaTeX support for clean visual representation of mathematical objects.
 
 ## Installation
-To install DGCV locally:
+
+You can install DGCV directly from PyPI with pip:
 
 ```bash
-git clone https://github.com/YikesItsSykes/dgcv.git
-cd dgcv
-pip install .
+pip install DGCV
 ```
 
-For now, this installation process is manual, but in the future, DGCV will be available via PyPI for easier setup.
+Alternatively, if you want to install DGCV locally (e.g., for development):
 
+```bash
+git clone https://github.com/YikesItsSykes/DGCV.git
+cd DGCV
+pip install .
+```
 
 ## Documentation
 Full documentation is under development. For now, refer to the docstrings within the code for more information on available methods and functionality.
