@@ -1,3 +1,42 @@
+"""
+DGCV: Differential Geometry with Complex Variables
+
+This module provides tools for creating, manipulating, and decomposing vector fields and 
+differential forms within the DGCV package. It includes methods for Cartan calculus like 
+the exterior derivative and Lie derivative. There are some complex structure specific
+functions as well, e.g., assembling holomorphic vector fields from holomorphic coefficients.
+
+Key Functions:
+
+Object Assembly:
+    - get_VF(): Retrieves coordinate vector fields for the given coordinate variables.
+    - get_DF(): Retrieves coordinate differential forms for the given coordinate variables.
+    - assembleFromHolVFC(): Assembles a holomorphic vector field from holomorphic coefficients.
+    - assembleFromAntiholVFC(): Assembles an antiholomorphic vector field from antiholomorphic 
+    coefficients.
+    - assembleFromCompVFC(): Assembles a complex vector field from both holomorphic and 
+    antiholomorphic coefficients.
+
+Differential Operators:
+    - exteriorDerivative(): Computes the exterior derivative of a differential k-form.
+    - interiorProduct(): Computes the interior product of a vector field with a differential k-form.
+    - LieDerivative(): Computes the Lie derivative of a differential form or vector field with respect to another vector field.
+
+Decompositions and Basis:
+    - decompose(): Decomposes a vector field or differential form as a linear combination of a given basis of vector fields or differential forms.
+    - get_coframe(): Constructs a coframe dual to a given list of vector fields.
+    - annihilator(): Computes the annihilator (namely sub-bundle in TM/T^*M) of a list of differential forms or vector fields.
+
+Author: David Sykes (https://github.com/YikesItsSykes)
+
+Dependencies:
+    - sympy
+
+License:
+    MIT License
+"""
+
+
 ############## dependencies
 import warnings
 from .combinatorics import *
