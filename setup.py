@@ -27,7 +27,7 @@ setup(
     include_package_data=True,
     python_requires='>=3.6',
     install_requires=[
-        'sympy>=1.8',
+        'sympy>=1.9',
         'pandas>=1.0'
     ],
 )
