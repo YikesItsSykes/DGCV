@@ -423,7 +423,7 @@ def interiorProduct(vf, kForm):
     Computes the interior product of a vector field *vf* with a differential k-form *kForm* where k > 0.
 
     The interior product, or contraction, reduces the degree of a differential form by 1 and represents 
-    the action of the vector field on the form. That is, the vector field "taking one for the team"! 
+    the action of the vector field on the form. That is, the vector field is "taking one for the team"! 
 
     Parameters:
     -----------
