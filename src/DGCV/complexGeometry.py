@@ -1,3 +1,28 @@
+"""
+DGCV: Differential Geometry with Complex Variables
+
+This module provides tools uniquely relevant for complex differential geometry within the DGCV package. It includes 
+Dolbeault operators (Del and DelBar) and a class for constructing and analyzing Kähler 
+structures.
+
+Key Functions:
+    - Del(): Applies the holomorphic Dolbeault operator ∂ to a differential form or scalar.
+    - DelBar(): Applies the antiholomorphic Dolbeault operator ∂̅ to a differential form or scalar.
+
+Key Classes:
+    - KahlerStructure: Represents a Kähler structure, with properties and attributes to compute many of their invariants. 
+
+Author: David Sykes (https://github.com/YikesItsSykes)
+
+Dependencies:
+    - sympy
+
+License:
+    MIT License
+"""
+
+
+
 ############## dependencies
 
 from sympy import sympify
@@ -9,6 +34,27 @@ from .RiemannianGeometry import *
 ############## Dolbeault operators
 
 def Del(arg1):
+    """
+    Applies the holomorphic Dolbeault operator ∂ (Del) to a differential form or scalar.
+    
+    The Del operator takes a differential form or scalar and returns the result of applying the 
+    exterior derivative with respect to the holomorphic coordinates.
+    
+    Parameters:
+    -----------
+    arg1 : DFClass or sympy.Expr
+        A differential form (DFClass) with DGCVType='complex', or a scalar (interpreted as a zero-form).
+    
+    Returns:
+    --------
+    DFClass
+        The result of applying the Del operator, which is a differential form.
+    
+    Raises:
+    -------
+    TypeError
+        If the input is not a DFClass or scalar (sympy.Expr), or if the DFClass has DGCVType='standard'.
+    """
     variable_registry = get_variable_registry()
     # Ensure arg1 is a DFClass or convert it into a zero-form
     if not isinstance(arg1, DFClass) and isinstance(arg1, (int,float,sympy.Expr)):
@@ -51,6 +97,27 @@ def Del(arg1):
     return addDF(*[coeffsTo1Forms[j] * basisOfCoeffs[j] for j in range(len(minDataLoc))])
 
 def DelBar(arg1):
+    """
+    Applies the antiholomorphic Dolbeault operator ∂̅ (DelBar) to a differential form or scalar.
+    
+    The DelBar operator takes a differential form or scalar and returns the result of applying the 
+    exterior derivative with respect to the antiholomorphic coordinates.
+    
+    Parameters:
+    -----------
+    arg1 : DFClass or sympy.Expr
+        A differential form (DFClass) with DGCVType='complex', or a scalar (interpreted as a zero-form).
+    
+    Returns:
+    --------
+    DFClass
+        The result of applying the DelBar operator, which is a differential form.
+    
+    Raises:
+    -------
+    TypeError
+        If the input is not a DFClass or scalar (sympy.Expr), or if the DFClass has DGCVType='standard'.
+    """
     variable_registry = get_variable_registry()
     # Ensure arg1 is a DFClass or convert it into a zero-form
     if not isinstance(arg1, DFClass) and isinstance(arg1, (int,float,sympy.Expr)):
@@ -97,6 +164,36 @@ def DelBar(arg1):
 ############## Kahler geometry
 
 class KahlerStructure(Basic):
+    """
+    Represents a Kähler structure, including its metric, , and Bochner tensor.
+    
+    The Kähler structure is defined by a symplectic form (Kähler form) and a coordinate space. The class 
+    provides methods to compute various geometric objects associated with Kähler manifolds, including the 
+    its metric, Holomorphic Riemann and Ricci Curvatures, and the Bochner tensor.
+    
+    Parameters:
+    -----------
+    varSpace : tuple of sympy.Symbol
+        A tuple of variables from DGCV's complex coordinate systems representing the coordinate space of the manifold.
+    kahlerForm : DFClass
+        A Kähler form representing the symplectic structure.
+    
+    Attributes:
+    -----------
+    metric : metricClass
+        The Riemannian metric associated with the Kähler structure.
+    holRiemann : TFClass
+        The (0,4) Riemann curvature tensor with the complex structure operator hooked into it second and fourth positions.
+    holRicci : TFClass
+        The Ricci curvature tensor with the complex structure operator hooked into its second position
+    Bochner : TFClass
+        The Bochner tensor in \( T^{1,0}M \otimes T^{0,1}M \otimes T^{1,0}M \otimes T^{0,1}M \).
+    
+    Raises:
+    -------
+    TypeError
+        If the variable space includes a mixture of real and holomorphic coordinates.
+    """
 
     def __new__(cls, varSpace, kahlerForm):
         # Call Basic.__new__ with only the positional arguments
@@ -156,6 +253,23 @@ class KahlerStructure(Basic):
 
     @staticmethod
     def validate(varSpace): # validates and organizes given varspace
+        """
+        Validates and organizes a given variable space into real, holomorphic, and antiholomorphic components.
+        
+        This method checks the input variable space and categorizes the variables into real, holomorphic, 
+        and antiholomorphic components, based on the relationships between the variables.
+        
+        Parameters:
+        -----------
+        varSpace : tuple of sympy.Symbol
+            A tuple of complex variables representing the coordinate space.
+        
+        Returns:
+        --------
+        list of tuples
+            A list containing the real and imaginary variable spaces, holomorphic variable space, and 
+            antiholomorphic variable space.
+        """
         variable_registry=get_variable_registry()
         CVS=variable_registry['complex_variable_systems']
         if all(var in variable_registry['conversion_dictionaries']['realToSym'] for var in varSpace):
