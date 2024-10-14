@@ -1,3 +1,85 @@
+"""
+DGCV: Differential Geometry with Complex Variables
+
+This module defines the core classes and functions for the DGCV package, handling the creation 
+and manipulation of vector fields, differential forms, tensor fields, algebras, and more. It includes 
+tools for managing relationships between real and complex coordinate systems, object creation function,
+and basic operations for its classes.
+
+Key Classes:
+    - DFClass: Represents differential forms.
+    - VFClass: Represents vector fields.
+    - STFClass: Represents symmetric tensor fields.
+    - TFClass: Represents general tensor fields.
+    - DGCVPolyClass: Hooks DGCV's complex variable handling into SymPy's Poly tools.
+    - FAClass: Represents finite dimensional algebras.
+    - AlgebraElement: Represents individual elements of algebras.
+
+Key Functions:
+
+Object Creation:
+    - createVariables(): Initializes and labels coordinate systems of various types and 
+    registers them within DGCV's Variable Management Framework.
+    - createFiniteAlg(): Initializes and labels finite dimensional algebras and their elements.
+
+Coordinate Conversion:
+    - holToReal(): Converts holomorphic coordinates to their real counterparts.
+    - realToSym(): Converts real coordinates to holomorphic with symbolic conjugate representations.
+    - symToHol(): Converts symbolic conjugate coordinate representations to standard holomorphic coordinates.
+    - holToSym(): Converts holomorphic coordinates to holomorphic with symbolic conjugate representations.
+    - realToHol(): Converts real coordinates to holomorphic coordinates.
+    - symToReal(): Converts symbolic conjugate coordinate representations to real coordinates.
+    - allToReal(): Converts all types of coordinates to real coordinates.
+    - allToHol(): Converts all types of coordinates to holomorphic coordinates.
+    - allToSym(): Converts all types of coordinates to holomorphic with symbolic conjugate representations.
+
+Structural Operations:
+    - complex_struct_op(): Applies the complex structure operator to a vector field.
+    - changeVFBasis(): Changes the coordinates space of a vector field.
+    - changeDFBasis(): Changes the coordinates space of a differential form.
+    - changeTFBasis(): Changes the coordinates space of a tensor field.
+    - changeSTFBasis(): Changes the coordinates space of a symmetric tensor field.
+    - VF_bracket(): Computes the Lie bracket of two vector fields.
+    - exteriorProduct(): Computes the exterior product of differential forms.
+    - tensorProduct(): Computes the tensor product of tensor fields.
+    - scaleDF(): Scales a differential form.
+    - addDF(): Adds two differential forms.
+    - addVF(): Adds two vector fields.
+    - scaleVF(): Scales a vector field.
+    - addSTF(): Adds two symmetric tensor fields.
+    - addTF(): Adds two tensor fields.
+    - scaleTF(): Scales a tensor field.
+
+Coefficients and Decompositions:
+    - VF_coeffs(): Returns the coefficients of a vector field w.r.t. given coordinate vector 
+    fields.
+    - holVF_coeffs(): Returns the holomorphic coefficients of a vector field w.r.t. given 
+    coordinate vector fields.
+    - antiholVF_coeffs(): Returns the antiholomorphic coefficients of a vector field w.r.t. 
+    given coordinate vector fields.
+    - complexVFC(): Returns the holomorphic and antiholomorphic coefficients of a vector 
+    field w.r.t. given coordinate vector fields.
+    - realPartOfVF(): Extracts the real part of a vector field.
+    - killingForm(): Computes the Killing form for a Lie algebra.
+    - adjointRepresentation(): Returns the adjoint representation of a Lie algebra basis.
+
+Variable Management:
+    - listVar(): Lists the "parent names" of objects currently tracked by the DGCV VMF.
+    - clearVar(): Clears the variables from the DGCV registry and deletes them from caller's globals().
+    - DGCV_snapshot(): Takes a snapshot of the current DGCV VMF and reports a summary in a
+    Pandas table.
+
+Author: David Sykes (https://github.com/YikesItsSykes)
+
+Dependencies:
+    - sympy
+    - pandas
+
+License:
+    MIT License
+"""
+
+
 ############## dependencies
 import warnings
 import re
