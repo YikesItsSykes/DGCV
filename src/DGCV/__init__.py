@@ -14,7 +14,7 @@ from .combinatorics import chooseOp, permSign, carProd
 from .complexGeometry import Del, DelBar, KahlerStructure
 from .CRGeometry import tangencyObstruction, weightedHomogeneousVF, findWeightedCRSymmetries, model2Nondegenerate
 from .polynomials import createPolynomial, createBigradPolynomial, monomialWeight, getWeightedTerms
-from .RiemannianGeometry import metricClass, metric_from_matrix
+from .RiemannianGeometry import metricClass, metric_from_matrix, LeviCivitaConnectionClass
 from .vectorFieldsAndDifferentialForms import get_VF, get_DF, assembleFromHolVFC, assembleFromAntiholVFC, assembleFromCompVFC, makeZeroForm, exteriorDerivative, interiorProduct, LieDerivative, decompose, get_coframe, annihilator
 from .coordinateMaps import coordinate_map
 from .DGCV_display import load_fonts, display_DGCV, LaTeX
