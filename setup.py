@@ -11,12 +11,11 @@ To get started, check out the Jupyter Notebook tutorials:
 
 - **[DGCV Introduction](https://github.com/YikesItsSykes/DGCV/blob/main/tutorials/DGCV_introduction.ipynb)**: An introduction to the key concepts and setup.
 - **[DGCV in Action](https://github.com/YikesItsSykes/DGCV/blob/main/tutorials/DGCV_in_action.ipynb)**: A quick tour through examples from some of the library's more elaborate functions.
-
 """
 
 setup(
     name="DGCV",
-    version="0.1.3",
+    version="0.1.4",
     description="Differential Geometry with Complex Variables",
     long_description=long_description,  # This shows up on PyPI
     long_description_content_type='text/markdown',
@@ -25,7 +24,10 @@ setup(
     package_data={
         'DGCV': ['assets/fonts/*.ttf', 'assets/fonts/fonts.css'],  # Include font files
     },
-    include_package_data=True
+    include_package_data=True,
+    python_requires='>=3.6',
+    install_requires=[
+        'sympy>=1.8',
+        'pandas>=1.0'
+    ],
 )
-
-
