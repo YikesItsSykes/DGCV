@@ -11,7 +11,7 @@ DGCV was developed using Python 3.12, with dependencies on the SymPy and Pandas 
 - Fully featured symbolic representations of vector fields, differential forms, and tensor fields
 - Intuitive interactions with complex structures from holomorphic coordinate systems: DGCV objects dynamically manage coordinate transformations between real and holomorphic coordinates during computation as necessary, so objects can be represented in and freely converted between either coordinate format at any time. 
 - Dedicated python classes for representing common differential geometric structures including Riemannian metrics, Kahler structures, and more
-- Custom LaTeX Rendering: Integrated LaTeX support for clean visual representation of mathematical objects.
+- Custom LaTeX Rendering: Integrated LaTeX support for clean visual representation of mathematical objects, great for creating clear Jupyter notebooks for sharing ideas.
 
 ## Installation
 
