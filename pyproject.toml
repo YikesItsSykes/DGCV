@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 requires-python = ">=3.6"
 name = "DGCV"
-version = "0.1.3"
+version = "0.1.4a0"
 description = "Differential Geometry with Complex Variables"
 authors = [{ name = "David Sykes", email = "sykes@ibs.re.kr" }]
 license = { text = "MIT" }
