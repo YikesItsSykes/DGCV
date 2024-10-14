@@ -1,3 +1,33 @@
+"""
+DGCV: Differential Geometry with Complex Variables
+
+This module provides tools for handling Riemannian geometry within the DGCV package. It includes 
+functions and classes for defining and manipulating metrics, Christoffel symbols, curvature tensors, 
+and Levi-Civita connections. The module allows for conversions between real, holomorphic, and symbolic 
+conjugate coordinates, and includes properties for deriving Riemannian invariants like the Ricci tensor, 
+scalar curvature, and Weyl curvature.
+
+Key Classes:
+    - metricClass: Represents a Riemannian metric and provides methods to compute Christoffel symbols, 
+      Riemann curvature, Ricci tensor, scalar curvature, and Weyl curvature.
+    - LeviCivitaConnectionClass: Defines a Levi-Civita connection based on a set of Christoffel symbols 
+      of the second kind.
+    
+Key Functions:
+    - metric_from_matrix(): Creates a metricClass object from a given coordinate space and matrix representation 
+      of the metric.
+
+Author: David Sykes (https://github.com/YikesItsSykes)
+
+Dependencies:
+    - sympy
+
+License:
+    MIT License
+"""
+
+
+
 from sympy import Matrix,ImmutableSparseNDimArray
 from .classesAndVariables import *
 
