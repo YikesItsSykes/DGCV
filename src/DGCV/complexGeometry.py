@@ -280,7 +280,7 @@ class KahlerStructure(Basic):
 
             g = self.metric.SymTensorField
             R = self.metric.RiemannCurvature
-            Ric = self.metric.tracelessRicci
+            Ric = self.metric.RicciTensor
             S = self.metric.scalarCurvature
 
             def entry_rule(j,h,l,k):
