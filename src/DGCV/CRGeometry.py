@@ -1,3 +1,30 @@
+"""
+DGCV: Differential Geometry with Complex Variables
+
+This module provides tools specific to CR (Cauchy-Riemann) geometry within the DGCV package. 
+It includes functions for constructing CR hypersurfaces and  computing symmetries.
+
+Key Functions:
+    - tangencyObstruction(): Computes the tangency obstruction for a holomorphic vector field's 
+      real part to be tangent to a CR hypersurface.
+    - weightedHomogeneousVF(): Creates a general weighted homogeneous vector field in a 
+      specified coordinate space.
+    - findWeightedCRSymmetries(): Attempts to find infinitesimal symmetries of a weighted CR 
+      hypersurface.
+    - model2Nondegenerate(): Builds the defining equation for a 2-nondegenerate model 
+      hypersurface.
+
+Author: David Sykes (https://github.com/YikesItsSykes)
+
+Dependencies:
+    - sympy
+
+License:
+    MIT License
+"""
+
+
+
 ############## dependencies
 from sympy import eye, expand, Matrix, numer, poly_from_expr, solve, Transpose, Symbol
 from functools import reduce
@@ -13,22 +40,30 @@ from ._safeguards import retrieve_passkey
 
 def tangencyObstruction(arg1,arg2,arg3,*args):
     """
-    Computes the Lie derivative of a holomorphic vector field's real part applied to a graph defining a CR hypersurface, then substitutes the defining equation into the result.
-
-    Returns 0 (up to simplification) if and only if the vector field is a symmetry of the hypersurface.
-
-    Arguments must be expressions w.r.t. a complex coordinate system initialized by *complexVarProc*
-
-    Args:
-        arg1: VFClass class instance in the form of a holomorphic vector field (for example, a VF initialized by *assembleFromHolVFC*)
-        arg2: Defining function of CR hypersurface in holomorphic or real variables format (i.e., a real-valued function of the complex parameter space depending on some but not all of the real and imaginaray parts of the complex variables)
-        arg3: The real variable that when set equal to the defining function defines the CR hypersurface.
+    Computes the tangency obstruction for a holomorphic vector field with respect to a CR hypersurface.
+    
+    This function computes the Lie derivative of the real part of a holomorphic vector field applied 
+    to the defining equation of a CR hypersurface and then substitutes the defining equation into the result.
+    The output is zero (up to simplification) if and only if the vector field is a symmetry of the hypersurface.
+    
+    Parameters:
+    -----------
+    arg1 : VFClass
+        A holomorphic vector field in the complex coordinate system, initialized by *assembleFromHolVFC*.
+    arg2 : sympy expression
+        The defining function of the CR hypersurface, expressed in holomorphic or real variables.
+    arg3 : sympy symbol
+        The real variable whose value is set equal to the defining function to define the hypersurface.
     
     Returns:
-        A sympy expression.
+    --------
+    sympy expression
+        The tangency obstruction.
     
     Raises:
-        NA
+    -------
+    TypeError
+        If the first argument is not a VFClass instance with DGCVType='complex'.
     """
     if isinstance(arg1,VFClass):
         if arg1.DGCVType == 'standard':
@@ -41,25 +76,37 @@ def tangencyObstruction(arg1,arg2,arg3,*args):
 
 def weightedHomogeneousVF(arg1,arg2,arg3,arg4,degreeCap=0,_tempVar=None,assumeReal=None):
     """
-    Creates a general weighted homogeneous vector field (i.e., VFClass instance) in the coordinate space of variables in *arg1* of weight *arg2* w.r.t. weights in *arg3*. Variables for the coefficients in the vector field are created with the label *arg4*.
-
-    If variable weights assigned are nonzero then the returned vector field is truly general. Otherwise the returned vector field is the general one with polynomial degree in the zero-weight variables bounded by *degreeCap* which can be set to any integer. If *degreeCap* is not specified then it defaults to zero.
-
-    Args:
-        arg1: a tuple/list of variables initialized by either *varWithVF* or *complexVarProc*
-        arg2: int
-        arg3: list of non-negative integer weights corresponding to the variables in *arg1* (must have the same length as *arg1*). If 0 is among the weights, then then proceedure will only test polynomial vector fields with polynomial degree in the weight zero variables up to the weight specified in *degreeCap*. By default, degreeCap=0, and can be set to any positive integer.
-        arg4: str
-        _tempVar: (optional keyword) internal key
-        assumeReal: (optional keyword) True or False
-        degreeCap: (optional keyword) set this keyword argument equal to any positive integer. If not specified, it defaults to zero.
-
+    Creates a weighted homogeneous vector field in a given coordinate space.
+    
+    This function generates a general weighted homogeneous vector field in the space of variables provided 
+    in *arg1*, with weights specified in *arg3*. The polynomial degree of variables with zero weight can 
+    be bounded by *degreeCap*.
+    
+    Parameters:
+    -----------
+    arg1 : tuple or list
+        A tuple or list of variables, initialized by *varWithVF* or *complexVarProc*.
+    arg2 : int
+        An integer specifying the weight of the vector field.
+    arg3 : list of int
+        A list of non-negative integer weights corresponding to the variables in *arg1*.
+    arg4 : str
+        A string label for the variables in the returned vector field.
+    degreeCap : int, optional
+        Maximum polynomial degree for zero-weight variables (default is 0).
+    _tempVar : any, optional
+        Internal key.
+    assumeReal : bool, optional
+        Whether to assume the variables are real (default is False).
     
     Returns:
-        A vector field (i.e., VFClass instance)
+    --------
+    VFClass
+        A weighted homogeneous vector field.
     
     Raises:
-        NA
+    -------
+    NA
     """
     pListLoc=[]
     for j in range(len(arg3)):
