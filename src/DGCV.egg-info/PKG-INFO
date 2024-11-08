@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: DGCV
+Version: 0.0
+Summary: A package for Differential Geometry with Complex Variables
+Author: David Sykes
+Author-email: sykes@ibs.re.kr
+Requires-Python: >=3.6
+License-File: LICENSE.txt

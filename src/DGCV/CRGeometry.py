@@ -195,7 +195,7 @@ def findWeightedCRSymmetries(arg1,arg2,arg3,arg4,arg5,arg6,degreeCap=0,returnVec
         clearVar(*listVar(temporary_only=True),report=False)
         return VFCLoc,solLoc
 
-def model2Nondegenerate(arg1,arg2,arg3,arg4):
+def model2Nondegenerate(arg1,arg2,arg3,arg4, return_matrices = False):
     """
     Builds the defining equation for a 2-nondegnerate model hypersurface using the general formula from the arXiv preprint arXiv:2404.06525.
 
@@ -218,5 +218,9 @@ def model2Nondegenerate(arg1,arg2,arg3,arg4):
     hFun=(Rational(1,2))*((arg1*(eye(sizeLoc)-(BARSLoc*Transpose(arg1)*arg2*arg1))**(-1))+((eye(sizeLoc)-(arg1*BARSLoc*Transpose(arg1)*arg2))**(-1)*arg1))
     sFun=arg1*((eye(sizeLoc)-(BARSLoc*Transpose(arg1)*arg2*arg1))**(-1))*BARSLoc*Transpose(arg1)
     bsFun=Transpose(arg1)*((eye(sizeLoc)-(arg2*arg1*BARSLoc*Transpose(arg1)))**(-1))*arg2*arg1
-    return simplify((Transpose(zVecLoc)*hFun*bzVecLoc+(Rational(1,2))*(Transpose(zVecLoc)*sFun*zVecLoc+Transpose(bzVecLoc)*bsFun*bzVecLoc))[0])-im(arg4)
+    if return_matrices == True:
+        return simplify((Transpose(zVecLoc)*hFun*bzVecLoc+(Rational(1,2))*(Transpose(zVecLoc)*sFun*zVecLoc+Transpose(bzVecLoc)*bsFun*bzVecLoc))[0])-im(arg4),hFun,sFun
+    else:
+        return simplify((Transpose(zVecLoc)*hFun*bzVecLoc+(Rational(1,2))*(Transpose(zVecLoc)*sFun*zVecLoc+Transpose(bzVecLoc)*bsFun*bzVecLoc))[0])-im(arg4)
+
 

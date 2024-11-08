@@ -3137,7 +3137,6 @@ class FAClass(Basic):
             return label
         return format_algebra_label(self.label)
 
-
     def _repr_latex_(self):
         """
         Provides a LaTeX representation of the FAClass object for Jupyter notebooks.
@@ -3337,7 +3336,6 @@ class AlgebraElement(Basic):
         result = " + ".join(terms).replace("+ -", "- ")
         return result
 
-
     def _repr_latex_(self):
         """
         Provides a LaTeX representation of AlgebraElement for Jupyter notebooks.
@@ -3404,6 +3402,10 @@ class AlgebraElement(Basic):
                 return False
         else:
             return True
+
+    def subs(self,subsData):
+        newCoeffs=[sympify(j).subs(subsData) for j in self.coeffs]
+        return AlgebraElement(self.algebra, newCoeffs, format_sparse = self.is_sparse)
 
     def __add__(self, other):
         if isinstance(other, AlgebraElement):
@@ -3473,7 +3475,6 @@ class AlgebraElement(Basic):
         else:
             raise TypeError(f"Multiplication is only supported for scalars and the AlegebraElement class, not {type(other)}")
 
-           
     def __rmul__(self, other):
         # If other is a scalar, treat it as commutative
         if isinstance(other, (int, float, sympy.Expr)):  # Handles numeric types and SymPy scalars
