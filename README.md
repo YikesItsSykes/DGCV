@@ -21,6 +21,8 @@ You can install DGCV directly from PyPI with pip:
 pip install DGCV
 ```
 
+Note, depending on the operating system, a command like `python3` (for macOS/ Linux) or `py` (for windows) should proceed `pip`.
+
 Alternatively, if you want to install DGCV locally (e.g., for development):
 
 ```bash
