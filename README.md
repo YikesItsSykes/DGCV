@@ -52,7 +52,7 @@ DGCV documentation is hosted at [https://www.realandimaginary.com/dgcv/](https:/
 DGCV is licensed under the MIT License. See the `LICENSE.txt` file for more information.
 
 ## Author
-DGCV was created and is maintained by [David Sykes](https://github.com/YikesItsSykes).
+DGCV was created and is maintained by [David Sykes](https://www.realandimaginary.com).
 
 ---
 
