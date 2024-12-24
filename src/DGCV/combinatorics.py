@@ -1,5 +1,5 @@
 """
-combinatorics.py
+DGCV: Differential Geometry with Complex Variables
 
 This module provides various combinatorial functions used throughout the DGCV package, 
 primarily focusing on efficient computation of Cartesian products, permutations, and 
@@ -24,8 +24,7 @@ Dependencies
 
 Notes
 -----
-This module minimizes dependencies and is critical for handling combinatorics within the DGCV package's 
-computationally intensive operations.
+This module minimizes dependencies and is critical for handling combinatorics within the DGCV package's computationally intensive operations.
 
 """
 

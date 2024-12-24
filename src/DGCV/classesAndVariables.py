@@ -2572,7 +2572,7 @@ class DGCVPolyClass(Basic):
             self._poly_obj_real = Poly(real_expr, *real_varSpace)
         return self._poly_obj_real
 
-    def get_monomials(self, min_degree=0, max_degree=None, format='unformatted'):
+    def get_monomials(self, min_degree=0, max_degree=None, format='unformatted', return_coeffs=False):
         """
         Computes and returns the monomials of the polynomial within the specified degree range,
         using the specified format for the polynomial generators.
@@ -2589,11 +2589,13 @@ class DGCVPolyClass(Basic):
             - 'complex': Use holomorphic and antiholomorphic variables (z, BARz).
             - 'real': Use real variable representations (x, y).
             (default is 'unformatted').
+        return_coeffs : bool, optional
+            If true, only a list of coefficients is returned
 
         Returns
         -------
         list
-            A list of monomials within the specified degree range.
+            A list of monomials within the specified degree range, or just their coefficients if return_coeffs=True is set.
         """
         if format not in ['unformatted', 'complex', 'real']:
             raise ValueError("Invalid format. Choose 'unformatted', 'complex', or 'real'.")
@@ -2615,13 +2617,23 @@ class DGCVPolyClass(Basic):
         coeffs = poly_obj.coeffs()
 
         # Filter monomials by degree
-        filtered_monomials = [
-            Mul(*[gen**exp for gen, exp in zip(poly_obj.gens, monom)]) * coeff
-            for monom, coeff in zip(monoms, coeffs)
-            if min_degree <= sum(monom) <= max_degree
-        ]
+        if return_coeffs == True:
+            filtered_monomials = [
+                coeff
+                for monom, coeff in zip(monoms, coeffs)
+                if min_degree <= sum(monom) <= max_degree
+            ]
+        else:
+            filtered_monomials = [
+                Mul(*[gen**exp for gen, exp in zip(poly_obj.gens, monom)]) * coeff
+                for monom, coeff in zip(monoms, coeffs)
+                if min_degree <= sum(monom) <= max_degree
+            ]
 
         return filtered_monomials
+
+    def get_coeffs(self, min_degree=0, max_degree=None, format='unformatted', return_coeffs=False):
+            return get_monomials(self, min_degree=0, max_degree=max_degree, format=format, return_coeffs=True)
 
     @property
     def holomorphic_part(self):
@@ -2713,10 +2725,13 @@ class DGCVPolyClass(Basic):
 
     # Custom simplify and latex methods
     def simplify_poly(self):
-        return simplify(self.polyExpr)
+        return DGCVPolyClass(simplify(self.polyExpr),self.varSpace,degreeUpperBound=self.degreeUpperBound)
 
     def latex_representation(self):
         return latex(self.polyExpr)
+
+    def _repr_latex_(self):
+        return (self.polyExpr)._repr_latex_()
 
     def _eval_simplify(self, **kwargs):
         return self.simplify_poly()
@@ -2997,7 +3012,7 @@ class DGCVPolyClass(Basic):
     def leading_term(self):
         terms = sorted(self.polyMonomials, key=lambda x: sum(x[1]), reverse=True)
         return terms[0] if terms else None
-    
+     
 # finite dimensional algebra class
 class FAClass(Basic):
     def __new__(cls, structure_data, *args, **kwargs):

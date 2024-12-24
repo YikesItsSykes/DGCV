@@ -1,5 +1,4 @@
 # DGCV: Differential Geometry with Complex Variables
-###### ----by David Sykes----
 
 DGCV is an open-source Python package providing basic tools for differential geometry integrated with systematic organization of structures accompanying complex variables, in short, Differential Geometry with Complex Variables.
 
@@ -23,28 +22,20 @@ pip install DGCV
 
 Note, depending on the operating system, a command like `python3` (for macOS/ Linux) or `py` (for windows) should proceed `pip`.
 
-Alternatively, if you want to install DGCV locally (e.g., for development):
-
-```bash
-git clone https://github.com/YikesItsSykes/DGCV.git
-cd DGCV
-pip install .
-```
-
 ## Tutorials
 
 Two Jupyter Notebook tutorials are available to help getting started with DGCV:
 
 1. **DGCV Introduction**: An introduction to the key concepts and setup
-   - [View DGCV Introduction Tutorial](https://github.com/YikesItsSykes/DGCV/blob/main/tutorials/DGCV_introduction.ipynb)
+   - [View DGCV Introduction Tutorial](https://www.realandimaginary.com/dgcv/tutorials/DGCV_introduction/)
 
 2. **DGCV in Action**: A quick tour through examples from some of the library's more elaborate functions
-   - [View DGCV in Action Tutorial](https://github.com/YikesItsSykes/DGCV/blob/main/tutorials/DGCV_in_action.ipynb)
+   - [View DGCV in Action Tutorial](https://www.realandimaginary.com/dgcv/tutorials/DGCV_in_action/)
 
 
 ### Running the Tutorials Locally
 
-If you have cloned this repository, you can run the tutorials locally with Jupyter:
+If you clone the DGCV github repository, you can run the tutorials locally with Jupyter:
 
 ```bash
 git clone https://github.com/YikesItsSykes/DGCV.git
@@ -52,9 +43,10 @@ cd DGCV/tutorials
 jupyter notebook DGCV_introduction.ipynb
 jupyter notebook DGCV_in_action.ipynb
 ```
+Or download the tutorials individually from the repository [DGCV github repo](https://github.com/YikesItsSykes/DGCV).
 
 ## Documentation
-Full documentation is under development. For now, refer to the docstrings within the code for more information on available methods and functionality.
+DGCV documentation is hosted at [https://www.realandimaginary.com/dgcv/](https://www.realandimaginary.com/dgcv/), with documentation pages for each function in the library and more. Full documentation is under development, so for now, refer to the docstrings within the code for more information on available classes/methods and functions.
 
 ## License
 DGCV is licensed under the MIT License. See the `LICENSE.txt` file for more information.
@@ -65,7 +57,7 @@ DGCV was created and is maintained by [David Sykes](https://github.com/YikesItsS
 ---
 
 ### Future Development
-The current (0.x.x) version of DGCV is a stable scaffolding, as it were, upon which a lot more can be built. Many additions for future updates are planned. Current plans include:
+The current (0.x.x) version of DGCV is foundation on which a lot more can be built. Many additions for future updates are planned, including:
  - Extending complex variable handling and dynamic coordinate-type conversion automations. The simple goal is to fully automate handling of complex variable formats, allowing input to be formatted freely with any coordinate type, with features to fully control coordinate type formatting or let the sytems automate the process. The current API meets this goal for interactions with DGCV's core classes, but it is not fully extended to some ancillary classes. For example, full coordinate conversion features are implemented for differential forms but not yet for general tensor fields.
  - Expanding libraries dedicated to specialized areas of differential geometry including, Symplect/Contact Hamiltonian formalism, CR structures, Riemannian and Kahler, Sasakian, etc.
 
