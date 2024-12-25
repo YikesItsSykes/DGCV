@@ -1,7 +1,7 @@
 
 from .classesAndVariables import allToReal, allToSym, VF_coeffs, addVF, STFClass, DFClass, TFClass
 from .RiemannianGeometry import metricClass
-from .complexGeometry import KahlerStructure
+from .complexStructures import KahlerStructure
 from .vectorFieldsAndDifferentialForms import get_VF, get_DF
 from .config import get_variable_registry
 from sympy import Basic, simplify, re, im

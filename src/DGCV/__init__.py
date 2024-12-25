@@ -11,7 +11,7 @@ _ = get_variable_registry()
 ############# library
 from .classesAndVariables import DFClass, VFClass, STFClass, TFClass, DGCVPolyClass, FAClass, AlgebraElement, createVariables, holToReal, realToSym, symToHol, holToSym, realToHol, symToReal, allToReal, allToHol, allToSym, complex_struct_op, conjugate_DGCV, conj_with_real_coor, re_with_real_coor, im_with_real_coor, conj_with_hol_coor, re_with_hol_coor, im_with_hol_coor, cleanUpConjugation, compressDGCVClass, VF_coeffs, changeVFBasis, addVF, scaleVF, VF_bracket, changeDFBasis, changeTFBasis, changeSTFBasis, scaleDF, addDF, exteriorProduct, addSTF, addTF, scaleTF, tensorProduct, holVF_coeffs, antiholVF_coeffs, complexVFC, conjComplex, realPartOfVF, createFiniteAlg, algebraDataFromVF, algebraDataFromMatRep, killingForm, adjointRepresentation, listVar, clearVar, DGCV_snapshot, variableSummary
 from .combinatorics import chooseOp, permSign, carProd
-from .complexGeometry import Del, DelBar, KahlerStructure
+from .complexStructures import Del, DelBar, KahlerStructure
 from .CRGeometry import tangencyObstruction, weightedHomogeneousVF, findWeightedCRSymmetries, model2Nondegenerate
 from .polynomials import createPolynomial, createBigradPolynomial, monomialWeight, getWeightedTerms
 from .RiemannianGeometry import metricClass, metric_from_matrix, LeviCivitaConnectionClass
