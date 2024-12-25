@@ -1,9 +1,7 @@
 """
 DGCV: Differential Geometry with Complex Variables
 
-This module provides tools uniquely relevant for complex differential geometry within the DGCV package. It includes 
-Dolbeault operators (Del and DelBar) and a class for constructing and analyzing Kähler 
-structures.
+This module provides tools uniquely relevant for complex differential geometry within the DGCV package. It includes Dolbeault operators (Del and DelBar) and a class for constructing and analyzing Kähler structures.
 
 Key Functions:
     - Del(): Applies the holomorphic Dolbeault operator ∂ to a differential form or scalar.
