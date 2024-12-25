@@ -1,12 +1,55 @@
+"""
+DGCV: Polynomial Tools
+
+This module integrates DGCV's complex variable handling features with SymPy's core polynomial functionality. 
+It provides functions for creating and manipulating polynomials with variable coefficients registered 
+in DGCV's Variable Management Framework (VMF). The polynomials created by these functions are compatible 
+with the DGCVPolyClass, which wraps SymPy.Poly objects to support DGCV's framework for managing complex 
+variable systems.
+
+Key Functions:
+
+Polynomial Creation:
+    - createPolynomial(): Constructs a polynomial with specified degree and variables, supporting 
+      homogeneous and weighted homogeneous options.
+    - createBigradPolynomial(): Creates a polynomial that is weighted-homogeneous with respect 
+      to two independent weight systems.
+
+Term and Monomial Handling:
+    - getWeightedTerms(): Extracts terms from a polynomial that satisfy specific weighted homogeneity 
+      conditions.
+    - monomialWeight(): Computes the weight of a monomial with respect to a given weight system.
+
+Usage Notes:
+- All functions in this module register created variables in the VMF for consistency across the DGCV framework. 
+- These functions are designed to work seamlessly with DGCVPolyClass objects but can also operate on standard 
+  SymPy expressions.
+
+Dependencies:
+    - sympy: Core symbolic mathematics library used for polynomial manipulation.
+    - functools: Provides the `reduce` function for processing monomials.
+    - operator: Supplies the `mul` operator for combining monomial components.
+    - warnings: Used for issuing warnings in functions.
+    - DGCV modules:
+        - combinatorics: Handles combinatorial logic for generating polynomial terms.
+        - classesAndVariables: Interfaces with the DGCV framework for variable management.
+        - config: Provides `_cached_caller_globals` for managing global variable states.
+
+Author: David Sykes (https://www.realandimaginary.com/dgcv/)
+
+License:
+    MIT License
+"""
+
 ############## dependencies
 import sympy
-from sympy import prod, ln, exp
+from sympy import prod, ln, exp, expand
 from .combinatorics import *
 from .classesAndVariables import *
 from .config import _cached_caller_globals
 from functools import reduce
 from operator import mul
-
+import warnings
 
 ############## creating polynomials (monomialsOfPoly is in classesAndVariables.py)
 
@@ -170,6 +213,8 @@ def createBigradPolynomial(arg1, arg2, arg3, arg4, arg5, _tempVar=None, returnMo
     else:
         return sum(monomials)
     
+from sympy import simplify, expand, ln, exp, Poly
+import warnings
 
 def monomialWeight(arg1, arg2, arg3):
     """
@@ -192,16 +237,28 @@ def monomialWeight(arg1, arg2, arg3):
     Raises
     ------
     ValueError
-        If the length of *arg2* and *arg3* do not match, or if *arg1* is not a valid monomial.
-    
+        If the length of *arg2* and *arg3* do not match.
+
     Notes
     -----
+    - A warning is issued if the input is not detected as a monomial.
     - The weight is computed by taking the logarithm of the monomial and substituting 
       each variable with an exponential weight as specified in *arg3*.
     """
     if len(arg2) != len(arg3):
         raise ValueError("The number of variables and weights must match.")
     
+    # Expand and simplify the expression
+    arg1 = simplify(expand(arg1))
+
+    # Check if the expression is a monomial
+    try:
+        poly = Poly(arg1, *arg2)
+        if len(poly.terms()) > 1:
+            warnings.warn(f"Input {arg1} is not a monomial (contains multiple terms). Proceeding anyway.")
+    except Exception:
+        warnings.warn(f"Input {arg1} could not be interpreted as a polynomial in {arg2}. Proceeding anyway.")
+
     # Isolate the coefficient by setting all variables to 1
     coeffLoc = simplify(arg1.subs([(var, 1) for var in arg2]))
     
