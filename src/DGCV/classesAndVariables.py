@@ -2633,7 +2633,7 @@ class DGCVPolyClass(Basic):
         return filtered_monomials
 
     def get_coeffs(self, min_degree=0, max_degree=None, format='unformatted', return_coeffs=False):
-            return get_monomials(self, min_degree=0, max_degree=max_degree, format=format, return_coeffs=True)
+            return self.get_monomials(self, min_degree=0, max_degree=max_degree, format=format, return_coeffs=True)
 
     @property
     def holomorphic_part(self):
@@ -3295,7 +3295,6 @@ class FAClass(Basic):
         return det != 0
     
 # algebra element class
-
 class AlgebraElement(Basic):
     def __new__(cls, algebra, coeffs, format_sparse=False):
         # Ensure the algebra is of type FAClass
