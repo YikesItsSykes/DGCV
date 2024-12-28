@@ -1,5 +1,5 @@
 ############## dependencies
-from sympy import Matrix, MutableDenseNDimArray
+from sympy import Matrix, MutableDenseNDimArray, nsimplify
 import warnings
 from .combinatorics import *
 from .DGCore import *
@@ -33,20 +33,80 @@ class FAClass(Basic):
             self.basis_labels = _basis_labels
             self._registered = True
         else:
-            self.label = 'Alg_'+create_key()
+            self.label = 'Alg_' + create_key()  # Assign a random label
             self.basis_labels = None
             self._registered = False
 
         # Other attributes
         self.is_sparse = format_sparse
         self.dimension = len(self.structureData)
-        self.grading = Tuple(*grading) if grading else Tuple(*([0] * self.dimension))
-        self.basis = [AlgebraElement(self, [1 if i == j else 0 for j in range(self.dimension)], format_sparse=format_sparse) for i in range(self.dimension)]
         self._built_from_matrices = process_matrix_rep
+
+        # Process grading
+        import warnings
+
+        def validate_and_adjust_grading_vector(vector):
+            """
+            Validates and adjusts a grading vector to match the algebra's dimension.
+            Ensures components are numeric or symbolic.
+            """
+            # Ensure vector is a list or tuple
+            if not isinstance(vector, (list, tuple)):
+                raise ValueError("Grading vector must be a list or tuple.")
+
+            # Convert vector to list for easier manipulation
+            vector = list(vector)
+
+            # Adjust length to match dimension
+            if len(vector) < self.dimension:
+                warnings.warn(
+                    f"Grading vector is shorter than the dimension ({len(vector)} < {self.dimension}). "
+                    f"Padding with zeros to match the dimension.",
+                    UserWarning
+                )
+                vector += [0] * (self.dimension - len(vector))
+            elif len(vector) > self.dimension:
+                warnings.warn(
+                    f"Grading vector is longer than the dimension ({len(vector)} > {self.dimension}). "
+                    f"Truncating to match the dimension.",
+                    UserWarning
+                )
+                vector = vector[:self.dimension]
+
+            # Validate components
+            for i, component in enumerate(vector):
+                if not isinstance(component, (int, float, sympy.Basic)):
+                    raise ValueError(
+                        f"Invalid component in grading vector at index {i}: {component}. "
+                        f"Expected int, float, or sympy.Expr."
+                    )
+
+            return Tuple(*vector)
+
+        if grading is None:
+            # Default to a single grading vector [0, 0, ..., 0]
+            self.grading = [Tuple(*([0] * self.dimension))]
+        elif isinstance(grading[0], (list, tuple)):
+            # Multiple grading vectors provided
+            self.grading = [validate_and_adjust_grading_vector(vector) for vector in grading]
+        else:
+            # Single grading vector provided
+            self.grading = [validate_and_adjust_grading_vector(grading)]
+
+        # Set the number of grading vectors
+        self._gradingNumber = len(self.grading)
+
+        # Initialize basis
+        self.basis = [AlgebraElement(self, [1 if i == j else 0 for j in range(self.dimension)], format_sparse=format_sparse) for i in range(self.dimension)]
 
         # Caches for check methods
         self._skew_symmetric_cache = None
         self._jacobi_identity_cache = None
+        self._lie_algebra_cache = None
+        self._derived_algebra_cache = None
+        self._center_cache = None
+        self._lower_central_series_cache = None
+        self._derived_series_cache = None
 
     @staticmethod
     def validate_structure_data(data, process_matrix_rep=False):
@@ -108,7 +168,6 @@ class FAClass(Basic):
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
-            import warnings
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
                 "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
@@ -132,7 +191,6 @@ class FAClass(Basic):
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
-            import warnings
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
                 "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
@@ -155,7 +213,6 @@ class FAClass(Basic):
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
-            import warnings
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
                 "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
@@ -182,7 +239,6 @@ class FAClass(Basic):
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
-            import warnings
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
                 "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
@@ -248,7 +304,6 @@ class FAClass(Basic):
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
-            import warnings
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
                 "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
@@ -351,21 +406,61 @@ class FAClass(Basic):
         """
         Checks if the algebra is a Lie algebra.
         Includes a warning for unregistered instances only if verbose=True.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True, prints detailed information about the check.
+
+        Returns
+        -------
+        bool
+            True if the algebra is a Lie algebra, False otherwise.
         """
         if not self._registered and verbose:
             print("Warning: This FAClass instance is unregistered. Use createFiniteAlg to register it.")
 
+        # Check the cache
+        if self._lie_algebra_cache is not None:
+            if verbose:
+                print(f"Cached result: {'Lie algebra' if self._lie_algebra_cache else 'Not a Lie algebra'}.")
+            return self._lie_algebra_cache
+
+        # Perform the checks
         if not self.is_skew_symmetric(verbose=verbose):
+            self._lie_algebra_cache = False
             return False
         if not self.satisfies_jacobi_identity(verbose=verbose):
+            self._lie_algebra_cache = False
             return False
+
+        # If both checks pass, cache the result and return True
+        self._lie_algebra_cache = True
 
         if verbose:
             if self.label is None:
                 print('The algebra is a Lie algebra.')
             else:
                 print(f'{self.label} is a Lie algebra.')
+
         return True
+
+    def _require_lie_algebra(self, method_name):
+        """
+        Ensures that the algebra is a Lie algebra before proceeding.
+
+        Parameters
+        ----------
+        method_name : str
+            The name of the method requiring a Lie algebra.
+
+        Raises
+        ------
+        ValueError
+            If the algebra is not a Lie algebra.
+        """
+        if not self.is_lie_algebra():
+            raise ValueError(f"{method_name} can only be applied to Lie algebras.")
 
     def is_semisimple(self, verbose=False):
         """
@@ -395,7 +490,471 @@ class FAClass(Basic):
                     print(f'{self.label} is not semisimple.')
         
         return det != 0
+
+    def is_subspace_subalgebra(self, elements, return_structure_data=False):
+        """
+        Checks if a set of elements is a subspace subalgebra.
+
+        Parameters
+        ----------
+        elements : list
+            A list of AlgebraElement instances.
+        return_structure_data : bool, optional
+            If True, returns the structure constants for the subalgebra.
+
+        Returns
+        -------
+        dict or bool
+            - If return_structure_data=True, returns a dictionary with keys:
+            - 'linearly_independent': True/False
+            - 'closed_under_product': True/False
+            - 'structure_data': 3D list of structure constants
+            - Otherwise, returns True if the elements form a subspace subalgebra, False otherwise.
+        """
+
+        # Perform linear independence check
+        span_matrix = Matrix.hstack(*[el.coeffs for el in elements])
+        linearly_independent = span_matrix.rank() == len(elements)
+
+        if not linearly_independent:
+            if return_structure_data:
+                return {'linearly_independent': False, 'closed_under_product': False, 'structure_data': None}
+            return False
+
+        # Check closure under product and build structure data
+        dim = len(elements)
+        structure_data = [[[0 for _ in range(dim)] for _ in range(dim)] for _ in range(dim)]
+        closed_under_product = True
+
+        for i, el1 in enumerate(elements):
+            for j, el2 in enumerate(elements):
+                product = el1 * el2
+                solution = span_matrix.solve_least_squares(product.coeffs)
+
+                for k, coeff in enumerate(solution):
+                    # Apply nsimplify to enforce exact representation
+                    coeff_simplified = nsimplify(coeff)
+                    structure_data[i][j][k] = coeff_simplified
+
+        if return_structure_data:
+            return {
+                'linearly_independent': linearly_independent,
+                'closed_under_product': closed_under_product,
+                'structure_data': structure_data
+            }
+
+        return linearly_independent and closed_under_product
+
+    def check_element_weight(self, element):
+        """
+        Determines the weight vector of an AlgebraElement with respect to the grading vectors.
+
+        Parameters
+        ----------
+        element : AlgebraElement
+            The AlgebraElement to analyze.
+
+        Returns
+        -------
+        list
+            A list of weights corresponding to the grading vectors of this FAClass.
+            Each entry is either an integer, sympy.Expr (weight), the string 'AllW' if the element is the zero element, 
+            or 'NoW' if the element is not homogeneous.
+
+        Notes
+        -----
+        - 'AllW' is returned for zero elements, which are compatible with all weights.
+        - 'NoW' is returned for non-homogeneous elements that do not satisfy the grading constraints.
+        """
+        if not isinstance(element, AlgebraElement):
+            raise TypeError("Input must be an instance of AlgebraElement.")
+        
+        if not hasattr(self, 'grading') or self._gradingNumber == 0:
+            raise ValueError("This FAClass instance has no assigned grading vectors.")
+
+        # Detect zero element
+        if all(coeff == 0 for coeff in element.coeffs):
+            return ["AllW"] * self._gradingNumber
+
+        weights = []
+        for g, grading_vector in enumerate(self.grading):
+            # Compute contributions of the element's basis components
+            non_zero_indices = [i for i, coeff in enumerate(element.coeffs) if coeff != 0]
+
+            # Check homogeneity
+            basis_weights = [grading_vector[i] for i in non_zero_indices]
+            if len(set(basis_weights)) == 1:
+                weights.append(basis_weights[0])
+            else:
+                weights.append("NoW")
+
+        return weights
     
+    def check_grading_compatibility(self, verbose=False):
+        """
+        Checks if the algebra's structure constants are compatible with the assigned grading.
+
+        Parameters
+        ----------
+        verbose : bool, optional (default=False)
+            If True, prints detailed information about incompatibilities.
+
+        Returns
+        -------
+        bool
+            True if the algebra is compatible with all assigned grading vectors, False otherwise.
+
+        Notes
+        -----
+        - Zero products (weights labeled as 'AllW') are treated as compatible with all grading vectors.
+        - Non-homogeneous products (weights labeled as 'NoW') are treated as incompatible.
+        """
+        if not self._gradingNumber:
+            raise ValueError("No grading vectors are assigned to this FAClass instance.")
+
+        compatible = True
+        failure_details = []
+
+        for i, el1 in enumerate(self.basis):
+            for j, el2 in enumerate(self.basis):
+                # Compute the product of basis elements
+                product = el1 * el2
+                product_weights = self.check_element_weight(product)
+
+                for g, grading_vector in enumerate(self.grading):
+                    expected_weight = grading_vector[i] + grading_vector[j]
+
+                    if product_weights[g] == "AllW":
+                        continue  # Zero product is compatible with all weights
+
+                    if product_weights[g] == "NoW" or product_weights[g] != expected_weight:
+                        compatible = False
+                        failure_details.append({
+                            'grading_vector_index': g + 1,
+                            'basis_elements': (i + 1, j + 1),
+                            'weights': (grading_vector[i], grading_vector[j]),
+                            'expected_weight': expected_weight,
+                            'actual_weight': product_weights[g]
+                        })
+
+        if verbose and not compatible:
+            print("Grading Compatibility Check Failed:")
+            for failure in failure_details:
+                print(
+                    f"- Grading Vector {failure['grading_vector_index']}: "
+                    f"Basis elements {failure['basis_elements'][0]} and {failure['basis_elements'][1]} "
+                    f"(weights: {failure['weights'][0]}, {failure['weights'][1]}) "
+                    f"produced weight {failure['actual_weight']}, expected {failure['expected_weight']}."
+                )
+
+        return compatible
+
+    def compute_center(self):
+        """
+        Computes the center of the algebra.
+
+        Returns
+        -------
+        list
+            A list of AlgebraElement instances that span the center of the algebra.
+
+        Notes
+        -----
+        - The center is the set of elements `z` such that `z * x = x * z` for all `x` in the algebra.
+        """
+        center_elements = []
+        for el in self.basis:
+            if all((el * other - other * el).is_zero() for other in self.basis):
+                center_elements.append(el)
+        return center_elements
+    
+    def compute_derived_algebra(self):
+        """
+        Computes the derived algebra (commutator subalgebra) for Lie algebras.
+
+        Returns
+        -------
+        FAClass
+            A new FAClass instance representing the derived algebra.
+
+        Raises
+        ------
+        ValueError
+            If the algebra is not a Lie algebra or if the derived algebra cannot be computed.
+
+        Notes
+        -----
+        - This method only applies to Lie algebras.
+        - The derived algebra is generated by all products [x, y] = x * y, where * is the Lie bracket.
+        """
+        self._require_lie_algebra("compute_derived_algebra")
+
+        # Compute commutators only for j < k
+        commutators = []
+        for j, el1 in enumerate(self.basis):
+            for k, el2 in enumerate(self.basis):
+                if j < k:  # Only compute for j < k
+                    commutators.append(el1 * el2)
+
+        # Filter for linearly independent commutators
+        subalgebra_data = self.is_subspace_subalgebra(commutators, return_structure_data=True)
+
+        if not subalgebra_data['linearly_independent']:
+            raise ValueError("Failed to compute the derived algebra: commutators are not linearly independent.")
+        if not subalgebra_data['closed_under_product']:
+            raise ValueError("Failed to compute the derived algebra: commutators are not closed under the product.")
+
+        # Extract independent generators and structure data
+        independent_generators = subalgebra_data.get('independent_elements', commutators)
+        structure_data = subalgebra_data['structure_data']
+
+        # Create the derived algebra
+        return FAClass(
+            structure_data=structure_data,
+            grading=self.grading,
+            format_sparse=self.is_sparse,
+            _label="Derived_Algebra",
+            _basis_labels=[f"c_{i}" for i in range(len(independent_generators))],
+            _calledFromCreator=retrieve_passkey()
+        )
+
+    def filter_independent_elements(self, elements):
+        """
+        Filters a set of elements to retain only linearly independent and unique ones.
+
+        Parameters
+        ----------
+        elements : list of AlgebraElement
+            The set of elements to filter.
+
+        Returns
+        -------
+        list of AlgebraElement
+            A subset of the input elements that are linearly independent and unique.
+        """
+        from sympy import Matrix
+
+        # Remove duplicate elements based on their coefficients
+        unique_elements = []
+        seen_coeffs = set()
+        for el in elements:
+            coeff_tuple = tuple(el.coeffs)  # Convert coeffs to a tuple for hashability
+            if coeff_tuple not in seen_coeffs:
+                seen_coeffs.add(coeff_tuple)
+                unique_elements.append(el)
+
+        # Create a matrix where each column is the coefficients of an element
+        coeff_matrix = Matrix.hstack(*[el.coeffs for el in unique_elements])
+
+        # Get the column space (linearly independent vectors)
+        independent_vectors = coeff_matrix.columnspace()
+
+        # Match independent vectors with original columns
+        independent_indices = []
+        for vec in independent_vectors:
+            for i in range(coeff_matrix.cols):
+                if list(coeff_matrix[:, i]) == list(vec):
+                    independent_indices.append(i)
+                    break
+
+        # Retrieve the corresponding elements
+        independent_elements = [unique_elements[i] for i in independent_indices]
+
+        return independent_elements
+
+    def lower_central_series(self, max_depth=None):
+        """
+        Computes the lower central series of the algebra.
+
+        Parameters
+        ----------
+        max_depth : int, optional
+            Maximum depth to compute the series. Defaults to the dimension of the algebra.
+
+        Returns
+        -------
+        list of lists
+            A list where each entry contains the basis for that level of the lower central series.
+
+        Notes
+        -----
+        - The lower central series is defined as:
+            g_1 = g,
+            g_{k+1} = [g_k, g]
+        """
+        if max_depth is None:
+            max_depth = self.dimension
+
+        series = []
+        current_basis = self.basis
+        previous_length = len(current_basis)
+
+        for _ in range(max_depth):
+            series.append(current_basis)  # Append the current basis level
+
+            # Compute the commutators for the next level
+            lower_central = []
+            for el1 in current_basis:
+                for el2 in self.basis:  # Bracket with the original algebra
+                    commutator = el1 * el2
+                    lower_central.append(commutator)
+
+            # Filter for linear independence
+            independent_generators = self.filter_independent_elements(lower_central)
+
+            # Handle termination conditions
+            if len(independent_generators) == 0:
+                series.append([0 * self.basis[0]])  # Add the zero level
+                break
+            if len(independent_generators) == previous_length:
+                break  # Series has stabilized
+
+            # Update for the next iteration
+            current_basis = independent_generators
+            previous_length = len(independent_generators)
+
+        return series
+
+    def derived_series(self, max_depth=None):
+        """
+        Computes the derived series of the algebra.
+
+        Parameters
+        ----------
+        max_depth : int, optional
+            Maximum depth to compute the series. Defaults to the dimension of the algebra.
+
+        Returns
+        -------
+        list of lists
+            A list where each entry contains the basis for that level of the derived series.
+
+        Notes
+        -----
+        - The derived series is defined as:
+            g^{(1)} = g,
+            g^{(k+1)} = [g^{(k)}, g^{(k)}]
+        """
+        if max_depth is None:
+            max_depth = self.dimension
+
+        series = []
+        current_basis = self.basis
+        previous_length = len(current_basis)
+
+        for _ in range(max_depth):
+            series.append(current_basis)  # Append the current basis level
+
+            # Compute the commutators for the next level
+            derived = []
+            for el1 in current_basis:
+                for el2 in current_basis:  # Bracket with itself
+                    commutator = el1 * el2
+                    derived.append(commutator)
+
+            # Filter for linear independence
+            independent_generators = self.filter_independent_elements(derived)
+
+            # Handle termination conditions
+            if len(independent_generators) == 0:
+                series.append([0 * self.basis[0]])  # Add the zero level
+                break
+            if len(independent_generators) == previous_length:
+                break  # Series has stabilized
+
+            # Update for the next iteration
+            current_basis = independent_generators
+            previous_length = len(independent_generators)
+
+        return series
+
+    def is_nilpotent(self, max_depth=10):
+        """
+        Checks if the algebra is nilpotent.
+
+        Parameters
+        ----------
+        max_depth : int, optional
+            Maximum depth to check for the lower central series.
+
+        Returns
+        -------
+        bool
+            True if the algebra is nilpotent, False otherwise.
+        """
+        series = self.lower_central_series(max_depth=max_depth)
+        return series[-1][0] == 0*self.basis[0]  # Nilpotent if the series terminates at {0}
+    
+    def is_solvable(self, max_depth=10):
+        """
+        Checks if the algebra is solvable.
+
+        Parameters
+        ----------
+        max_depth : int, optional
+            Maximum depth to check for the derived series.
+
+        Returns
+        -------
+        bool
+            True if the algebra is solvable, False otherwise.
+        """
+        series = self.derived_series(max_depth=max_depth)
+        return series[-1][0] == 0*self.basis[0]  # Solvable if the series terminates at {0}
+
+    def get_structure_matrix(self, table_format=True, style=None):
+        """
+        Computes the structure matrix for the algebra.
+
+        Parameters
+        ----------
+        table_format : bool, optional
+            If True (default), returns a pandas DataFrame for a nicely formatted table.
+            If False, returns a raw list of lists.
+        style : str, optional
+            A string key to retrieve a custom pandas style from the style_guide.
+
+        Returns
+        -------
+        list of lists or pandas.DataFrame
+            The structure matrix as a list of lists or a pandas DataFrame
+            depending on the value of `table_format`.
+
+        Notes
+        -----
+        - The (j, k)-entry of the structure matrix is the result of `basis[j] * basis[k]`.
+        - If `basis_labels` is None, defaults to "e1", "e2", ..., "ed".
+        """
+        import pandas as pd
+
+        # Dimension of the algebra
+        dimension = self.dimension
+
+        # Default labels if basis_labels is None
+        basis_labels = self.basis_labels or [f"e{i+1}" for i in range(dimension)]
+
+        # Initialize the structure matrix as a list of lists
+        structure_matrix = [[(self.basis[j] * self.basis[k]) for k in range(dimension)] for j in range(dimension)]
+
+        if table_format:
+            # Create a pandas DataFrame for a nicely formatted table
+            data = {basis_labels[j]: [str(structure_matrix[j][k]) for k in range(dimension)] for j in range(dimension)}
+            df = pd.DataFrame(data, index=basis_labels)
+            df.index.name = "[e_j, e_k]"
+
+            # Retrieve the style from get_style()
+            if style is not None:
+                pandas_style = get_style(style)
+            else:
+                pandas_style = get_style('default')
+
+            # Apply the style to the DataFrame
+            styled_df = df.style.set_caption("Structure Matrix").set_table_styles(pandas_style)
+            return styled_df
+
+        # Return as a list of lists
+        return structure_matrix
+
     # algebra element class
 
 class AlgebraElement(Basic):
@@ -429,7 +988,6 @@ class AlgebraElement(Basic):
         Handles unregistered parent algebra by raising a warning.
         """
         if not self.algebra._registered:
-            import warnings
             warnings.warn(
                 "This AlgebraElement's parent algebra (FAClass) was initialized without an assigned label. "
                 "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
@@ -461,7 +1019,6 @@ class AlgebraElement(Basic):
         Handles unregistered parent algebra by raising a warning.
         """
         if not self.algebra._registered:
-            import warnings
             warnings.warn(
                 "This AlgebraElement's parent algebra (FAClass) was initialized without an assigned label. "
                 "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
@@ -514,7 +1071,6 @@ class AlgebraElement(Basic):
             Handles unregistered parent algebra by raising a warning.
             """
             if not self.algebra._registered:
-                import warnings
                 warnings.warn(
                     "This AlgebraElement's parent algebra (FAClass) was initialized without an assigned label. "
                     "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
@@ -641,6 +1197,27 @@ class AlgebraElement(Basic):
         else:
             raise TypeError(f"Right multiplication is only supported for scalars and the AlegebraElement class, not {type(other)}")
 
+    def check_element_weight(self):
+        """
+        Determines the weight vector of this AlgebraElement with respect to its FAClass' grading vectors.
+
+        Returns
+        -------
+        list
+            A list of weights corresponding to the grading vectors of the parent FAClass.
+            Each entry is either an integer, sympy.Expr (weight), the string 'AllW' if the element is the zero element,
+            or 'NoW' if the element is not homogeneous.
+
+        Notes
+        -----
+        - This method calls the parentt FAClass' check_element_weight method.
+        - 'AllW' is returned for zero elements, which are compaible with all weights.
+        - 'NoW' is returned for non-homogeneous elements that do not satisfy the grading constraints.
+        """
+        if not hasattr(self, 'algebra') or not isinstance(self.algebra, FAClass):
+            raise ValueError("This AlgebraElement is not associated with a valid FAClass.")
+        
+        return self.algebra.check_element_weight(self)
 
 
 
