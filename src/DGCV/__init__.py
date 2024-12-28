@@ -9,15 +9,16 @@ cache_globals()
 _ = get_variable_registry()
 
 ############# library
-from .classesAndVariables import DFClass, VFClass, STFClass, TFClass, DGCVPolyClass, FAClass, AlgebraElement, createVariables, holToReal, realToSym, symToHol, holToSym, realToHol, symToReal, allToReal, allToHol, allToSym, complex_struct_op, conjugate_DGCV, conj_with_real_coor, re_with_real_coor, im_with_real_coor, conj_with_hol_coor, re_with_hol_coor, im_with_hol_coor, cleanUpConjugation, compressDGCVClass, VF_coeffs, changeVFBasis, addVF, scaleVF, VF_bracket, changeDFBasis, changeTFBasis, changeSTFBasis, scaleDF, addDF, exteriorProduct, addSTF, addTF, scaleTF, tensorProduct, holVF_coeffs, antiholVF_coeffs, complexVFC, conjComplex, realPartOfVF, createFiniteAlg, algebraDataFromVF, algebraDataFromMatRep, killingForm, adjointRepresentation, listVar, clearVar, DGCV_snapshot, variableSummary
+from .DGCore import DFClass, VFClass, STFClass, TFClass, DGCVPolyClass, createVariables, holToReal, realToSym, symToHol, holToSym, realToHol, symToReal, allToReal, allToHol, allToSym, complex_struct_op, conjugate_DGCV, conj_with_real_coor, re_with_real_coor, im_with_real_coor, conj_with_hol_coor, re_with_hol_coor, im_with_hol_coor, cleanUpConjugation, compressDGCVClass, VF_coeffs, changeVFBasis, addVF, scaleVF, VF_bracket, changeDFBasis, changeTFBasis, changeSTFBasis, scaleDF, addDF, exteriorProduct, addSTF, addTF, scaleTF, tensorProduct, holVF_coeffs, antiholVF_coeffs, complexVFC, conjComplex, realPartOfVF, listVar, clearVar, DGCV_snapshot, variableSummary
 from .combinatorics import chooseOp, permSign, carProd
 from .complexStructures import Del, DelBar, KahlerStructure
 from .CRGeometry import tangencyObstruction, weightedHomogeneousVF, findWeightedCRSymmetries, model2Nondegenerate
+from .finiteDimAlgebras import FAClass, AlgebraElement, createFiniteAlg, algebraDataFromVF, algebraDataFromMatRep, killingForm, adjointRepresentation
 from .polynomials import createPolynomial, createBigradPolynomial, monomialWeight, getWeightedTerms
 from .RiemannianGeometry import metricClass, metric_from_matrix, LeviCivitaConnectionClass
 from .vectorFieldsAndDifferentialForms import get_VF, get_DF, assembleFromHolVFC, assembleFromAntiholVFC, assembleFromCompVFC, makeZeroForm, exteriorDerivative, interiorProduct, LieDerivative, decompose, get_coframe, annihilator
 from .coordinateMaps import coordinate_map
-from .DGCV_display import load_fonts, display_DGCV, LaTeX
+from ._DGCV_display import load_fonts, display_DGCV, LaTeX
 from .styles import get_DGCV_themes
 from sympy import I, re, im, conjugate, simplify
 

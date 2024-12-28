@@ -26,7 +26,7 @@ License:
 from sympy import sympify
 from .config import get_variable_registry, _cached_caller_globals
 from .vectorFieldsAndDifferentialForms import makeZeroForm
-from .classesAndVariables import *
+from .DGCore import *
 from .RiemannianGeometry import *
 
 ############## Dolbeault operators

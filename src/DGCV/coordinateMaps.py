@@ -1,5 +1,5 @@
 
-from .classesAndVariables import allToReal, allToSym, VF_coeffs, addVF, STFClass, DFClass, TFClass
+from .DGCore import allToReal, allToSym, VF_coeffs, addVF, STFClass, DFClass, TFClass
 from .RiemannianGeometry import metricClass
 from .complexStructures import KahlerStructure
 from .vectorFieldsAndDifferentialForms import get_VF, get_DF

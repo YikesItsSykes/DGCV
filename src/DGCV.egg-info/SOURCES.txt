@@ -8,11 +8,11 @@ src/.DS_Store
 src/DGCV/.DS_Store
 src/DGCV/CRGeometry.py
 src/DGCV/DGCVFormatter.py
-src/DGCV/DGCV_display.py
+src/DGCV/DGCore.py
 src/DGCV/RiemannianGeometry.py
+src/DGCV/_DGCV_display.py
 src/DGCV/__init__.py
 src/DGCV/_safeguards.py
-src/DGCV/classesAndVariables.py
 src/DGCV/combinatorics.py
 src/DGCV/complexStructures.py
 src/DGCV/config.py

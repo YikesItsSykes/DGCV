@@ -45,7 +45,7 @@ License:
 import sympy
 from sympy import prod, ln, exp, expand
 from .combinatorics import *
-from .classesAndVariables import *
+from .DGCore import *
 from .config import _cached_caller_globals
 from functools import reduce
 from operator import mul

@@ -27,7 +27,7 @@ License:
 
 
 from sympy import Matrix,ImmutableSparseNDimArray
-from .classesAndVariables import *
+from .DGCore import *
 
 
 

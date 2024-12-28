@@ -30,7 +30,7 @@ from sympy import eye, expand, Matrix, numer, poly_from_expr, solve, Transpose, 
 from functools import reduce
 from .config import _cached_caller_globals
 from .combinatorics import *
-from .classesAndVariables import *
+from .DGCore import *
 from .vectorFieldsAndDifferentialForms import *
 from .polynomials import *
 from ._safeguards import retrieve_passkey

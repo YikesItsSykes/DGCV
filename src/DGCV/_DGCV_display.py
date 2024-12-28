@@ -1,6 +1,6 @@
 
 """
-display.py
+_display.py
 
 This module provides functions for customizing font display in Jupyter notebooks.
 The `load_fonts()` function loads web fonts and applies them to the notebook
@@ -11,7 +11,8 @@ Functions
 - load_fonts: Injects HTML and CSS to load Google Fonts and apply custom fonts to the notebook.
 """
 import sympy
-from .classesAndVariables import DFClass,VFClass,STFClass,FAClass,DGCVPolyClass,symToHol,symToReal,TFClass,AlgebraElement
+from .DGCore import DFClass,VFClass,STFClass,DGCVPolyClass,symToHol,symToReal,TFClass
+from .finiteDimAlgebras import FAClass, AlgebraElement
 from .RiemannianGeometry import metricClass
 
 from IPython.display import display, HTML, Latex
