@@ -14,7 +14,7 @@ src/DGCV/__init__.py
 src/DGCV/_safeguards.py
 src/DGCV/classesAndVariables.py
 src/DGCV/combinatorics.py
-src/DGCV/complexGeometry.py
+src/DGCV/complexStructures.py
 src/DGCV/config.py
 src/DGCV/coordinateMaps.py
 src/DGCV/finiteDimAlgebras.py

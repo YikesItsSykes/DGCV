@@ -672,37 +672,68 @@ class LeviCivitaConnectionClass(Basic):
         obj = Basic.__new__(cls, varSpace,Christoffel_symbols_of_the_second_kind)
         return obj
 
-    def __init__(self, varSpace, Christoffel_symbols_of_the_second_kind,variable_handling_default='standard'):
-        if not isinstance(Christoffel_symbols_of_the_second_kind,ImmutableSparseNDimArray):
-            raise TypeError('The `LeviCivitaConnection` class initializer expects a symmtric tensor field class (STFClass) object in its first argument.')
-        shapeCheck=Christoffel_symbols_of_the_second_kind.shape
-        if len(shapeCheck)!=3 and len(set(shapeCheck))!=1:
-            raise TypeError('The `LeviCivitaConnection` class initializer was given array data for the `Christoffel_symbols_of_the_second_kind` of invalid shape.')
-        if len(varSpace)!= shapeCheck[0]:
-            TypeError('The `LeviCivitaConnection` class initializer was given array data for the `Christoffel_symbols_of_the_second_kind` of invalid size relative to the provided coordinate space. Number of coordinates must match the Christoffel symbols\' index range.')
-        if variable_handling_default=='complex':
-            if all(var in variable_registry['conversion_dictionaries']['realToSym'] for var in self.varSpace):
-                self._varSpace_type= 'real'
-            elif all(var in variable_registry['conversion_dictionaries']['symToReal'] for var in self.varSpace):
+    from sympy.tensor.array import ImmutableSparseNDimArray
+
+    def __init__(self, varSpace, Christoffel_symbols_of_the_second_kind, variable_handling_default='standard'):
+        # Attempt to convert the input to an ImmutableSparseNDimArray
+        if not isinstance(Christoffel_symbols_of_the_second_kind, ImmutableSparseNDimArray):
+            try:
+                Christoffel_symbols_of_the_second_kind = ImmutableSparseNDimArray(Christoffel_symbols_of_the_second_kind)
+            except Exception as e:
+                raise TypeError(
+                    'The `LeviCivitaConnection` class initializer expects an ImmutableSparseNDimArray '
+                    'or array-like data that can be converted to one. '
+                    f'Failed to convert the input: {e}'
+                )
+
+        # Check the shape of the Christoffel symbols
+        shapeCheck = Christoffel_symbols_of_the_second_kind.shape
+        if len(shapeCheck) != 3 or len(set(shapeCheck)) != 1:
+            raise TypeError(
+                'The `LeviCivitaConnection` class initializer was given array data for the '
+                '`Christoffel_symbols_of_the_second_kind` of invalid shape.'
+            )
+
+        # Check that the coordinate space matches the Christoffel symbols' size
+        if len(varSpace) != shapeCheck[0]:
+            raise TypeError(
+                'The `LeviCivitaConnection` class initializer was given array data for the '
+                '`Christoffel_symbols_of_the_second_kind` of invalid size relative to the provided coordinate space. '
+                'Number of coordinates must match the Christoffel symbols\' index range.'
+            )
+
+        # Handle variable type based on the default handling mode
+        if variable_handling_default == 'complex':
+            if all(var in variable_registry['conversion_dictionaries']['realToSym'] for var in varSpace):
+                self._varSpace_type = 'real'
+            elif all(var in variable_registry['conversion_dictionaries']['symToReal'] for var in varSpace):
                 self._varSpace_type = 'complex'
             else:
-                raise KeyError('To initialize a `LeviCivitaConnectionClass` instance with variable_handling_default=\'complex\', `varSpace` must contain only variables from DGCV\'s complex variables systems, and all variables in `varSpace` must be simulataneously among the real and imaginary types, or simulateneously among the holomorphic and antiholomorphic types. Use `complexVarProc` to easily create DGCV complex variable systems.')
+                raise KeyError(
+                    'To initialize a `LeviCivitaConnectionClass` instance with variable_handling_default=\'complex\', '
+                    '`varSpace` must contain only variables from DGCV\'s complex variables systems, and all variables in '
+                    '`varSpace` must be simultaneously among the real and imaginary types, or simultaneously among the '
+                    'holomorphic and antiholomorphic types. Use `complexVarProc` to easily create DGCV complex variable systems.'
+                )
         else:
-            self._varSpace_type='standard'
+            self._varSpace_type = 'standard'
+
+        # Assign attributes
         self.Christoffel_symbols = Christoffel_symbols_of_the_second_kind
-        self.varSpace=varSpace
+        self.varSpace = varSpace
         
     def __call__(self,vf1,vf2):
         if not all([isinstance(vf1,VFClass), isinstance(vf2,VFClass)]):
             raise TypeError('`LeviCivitaConnectionClass` only operates on pairs of VFClass objects.')
         dimLoc=len(self.varSpace)
         def _coeff(VF1,VF2,l):
-            term1=addVF(*[diff(VF2.coeffs[l],self.varSpace[j])*VF1.coeffs[j] for j in range(dimLoc)])
-            term2=addVF(*[self.Christoffel_symbols[l,j,k]*VF1.coeffs[j]*VF2.coeffs[k] for j in range(dimLoc) for k in range(dimLoc)])
+            term1=sum([diff(VF2.coeffs[l],self.varSpace[j])*VF1.coeffs[j] for j in range(dimLoc)])
+            term2=sum([self.Christoffel_symbols[j,k,l]*VF1.coeffs[j]*VF2.coeffs[k] for j in range(dimLoc) for k in range(dimLoc)])
+            return term1+term2
 
         if self._varSpace_type=='standard':
             vf1=changeVFBasis(vf1,self.varSpace)
-            vf2=changeDFBasis(vf2,self.varSpace)
+            vf2=changeVFBasis(vf2,self.varSpace)
             newCoeffs=[_coeff(vf1,vf2,l) for l in range(dimLoc)]
             return VFClass(self.varSpace,newCoeffs)
         elif self._varSpace_type=='real':
