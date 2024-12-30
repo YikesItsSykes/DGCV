@@ -4,13 +4,15 @@ import string
 from .config import _cached_caller_globals, get_variable_registry
 
 # Generate a dynamic passkey using random
-_passkey = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+_passkey = "".join(random.choices(string.ascii_letters + string.digits, k=16))
 
 # Generate a dynamic public key using random
-public_key = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+public_key = "".join(random.choices(string.ascii_letters + string.digits, k=8))
+
 
 def create_key():
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    return "".join(random.choices(string.ascii_letters + string.digits, k=8))
+
 
 def retrieve_passkey():
     """
@@ -18,11 +20,13 @@ def retrieve_passkey():
     """
     return _passkey
 
+
 def retrieve_public_key():
     """
     Returns the public key for use in function and variable names.
     """
     return public_key
+
 
 def protected_caller_globals():
     """
@@ -36,14 +40,38 @@ def protected_caller_globals():
     """
     return {
         # Built-in functions
-        'print', 'len', 'sum', 'max', 'min', 'str', 'int', 'float', 'list', 
-        'dict', 'set', 'tuple', 'open', 'range', 'enumerate', 'map', 'filter',
-        
+        "print",
+        "len",
+        "sum",
+        "max",
+        "min",
+        "str",
+        "int",
+        "float",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "open",
+        "range",
+        "enumerate",
+        "map",
+        "filter",
         # Common modules and objects
-        'math', 'numpy', 'sympy', 'os', 'sys', 'config', 'inspect', 're',
-        
+        "math",
+        "numpy",
+        "sympy",
+        "os",
+        "sys",
+        "config",
+        "inspect",
+        "re",
         # Special variables
-        '__name__', '__file__', '__doc__', '__builtins__', '__package__'
+        "__name__",
+        "__file__",
+        "__doc__",
+        "__builtins__",
+        "__package__",
     }
 
 
@@ -51,12 +79,12 @@ def validate_label_list(basis_labels):
     """
     Validates a list of basis labels by checking if they are already present in _cached_caller_globals.
     If a label exists and is found in the variable_registry, provides detailed instructions for clearing it.
-    
+
     Parameters
     ----------
     basis_labels : list of str
         The list of basis labels to validate.
-    
+
     Raises
     ------
     ValueError
@@ -74,11 +102,17 @@ def validate_label_list(basis_labels):
             variable_registry = get_variable_registry()
 
             # Check standard, complex, and finite algebra systems
-            for system_type in ['standard_variable_systems', 'complex_variable_systems', 'finite_algebra_systems']:
+            for system_type in [
+                "standard_variable_systems",
+                "complex_variable_systems",
+                "finite_algebra_systems",
+            ]:
                 if system_type in variable_registry:
                     if label in variable_registry[system_type]:
                         # The label is a parent variable
-                        system_name = system_type.replace('_variable_systems', '').replace('_', ' ')
+                        system_name = system_type.replace(
+                            "_variable_systems", ""
+                        ).replace("_", " ")
                         detailed_message += (
                             f"\n`validate_basis_labels` detected '{label}' within the DGCV Variable Management Framework "
                             f"assigned as the label for a {system_name} system.\n"
@@ -86,10 +120,17 @@ def validate_label_list(basis_labels):
                         )
                     else:
                         # Check if the label is a child variable
-                        for parent_label, parent_data in variable_registry[system_type].items():
-                            if 'variable_relatives' in parent_data and label in parent_data['variable_relatives']:
+                        for parent_label, parent_data in variable_registry[
+                            system_type
+                        ].items():
+                            if (
+                                "variable_relatives" in parent_data
+                                and label in parent_data["variable_relatives"]
+                            ):
                                 # The label is a child variable
-                                system_name = system_type.replace('_variable_systems', '').replace('_', ' ')
+                                system_name = system_type.replace(
+                                    "_variable_systems", ""
+                                ).replace("_", " ")
                                 detailed_message += (
                                     f"\n`validate_basis_labels` detected '{label}' within the DGCV Variable Management Framework "
                                     f"associated with the {system_name} system '{parent_label}'.\n"
@@ -103,17 +144,25 @@ def validate_label_list(basis_labels):
             "These labels may be associated with existing objects, and `validate_basis_labels` was not designed to overwrite such objects. "
             "Please clear them from the namespace before using `validate_basis_labels` to reassign the label."
         )
-        
+
         # Combine the warning message with any detailed information about variable registry involvement
         if detailed_message:
             warning_message += detailed_message
-        
+
         # Raise the error with the combined message
         raise ValueError(warning_message)
 
+
 def protect_variable_relatives():
     variable_registry = get_variable_registry()
-    return sum([variable_registry['complex_variable_systems'][k]['family_names'][j] for k in variable_registry['complex_variable_systems'] for j in [2,3]],())
+    return sum(
+        [
+            variable_registry["complex_variable_systems"][k]["family_names"][j]
+            for k in variable_registry["complex_variable_systems"]
+            for j in [2, 3]
+        ],
+        (),
+    )
 
 
 def validate_label(label, remove_guardrails=False):
@@ -132,7 +181,7 @@ def validate_label(label, remove_guardrails=False):
     -------
     str
         The reformatted label.
-    
+
     Raises
     ------
     ValueError
@@ -143,14 +192,21 @@ def validate_label(label, remove_guardrails=False):
     # Check if the label is a protected global, unless guardrails are removed
     if not remove_guardrails:
         if label in protected_caller_globals():
-            raise ValueError(f"DGCV recognizes label '{label}' as a protected global name and recommends not using it as a variable name. Set remove_guardrails=True to force it.")
-        
+            raise ValueError(
+                f"DGCV recognizes label '{label}' as a protected global name and recommends not using it as a variable name. Set remove_guardrails=True to force it."
+            )
+
         # Check if the label is a child of a parent in 'protected_variables' in the variable_registry
         if label in protect_variable_relatives():
             # If protected, search through complex_variable_systems for the parent label
-            if 'complex_variable_systems' in variable_registry:
-                for parent_label, parent_data in variable_registry['complex_variable_systems'].items():
-                    if 'variable_relatives' in parent_data and label in parent_data['variable_relatives']:
+            if "complex_variable_systems" in variable_registry:
+                for parent_label, parent_data in variable_registry[
+                    "complex_variable_systems"
+                ].items():
+                    if (
+                        "variable_relatives" in parent_data
+                        and label in parent_data["variable_relatives"]
+                    ):
                         # Found the parent label associated with the protected variable
                         raise ValueError(
                             f"Label '{label}' is protected within the current DGCV Variable Management Framework, "
@@ -160,13 +216,21 @@ def validate_label(label, remove_guardrails=False):
                             f"Or set remove_guardrails=True in the relevant DGCV object creator to force the use of this label, "
                             f"but note this can limit available features from the VMF."
                         )
-                    
+
         # Check if the label is in 'protected_variables' in the variable_registry
-        if 'protected_variables' in variable_registry and label in variable_registry['protected_variables']:
+        if (
+            "protected_variables" in variable_registry
+            and label in variable_registry["protected_variables"]
+        ):
             # If protected, search through complex_variable_systems for the parent label
-            if 'complex_variable_systems' in variable_registry:
-                for parent_label, parent_data in variable_registry['complex_variable_systems'].items():
-                    if 'family_houses' in parent_data and label in parent_data['family_houses']:
+            if "complex_variable_systems" in variable_registry:
+                for parent_label, parent_data in variable_registry[
+                    "complex_variable_systems"
+                ].items():
+                    if (
+                        "family_houses" in parent_data
+                        and label in parent_data["family_houses"]
+                    ):
                         # Found the parent label associated with the protected variable
                         raise ValueError(
                             f"Label '{label}' is protected within the current DGCV Variable Management Framework, "
@@ -176,11 +240,13 @@ def validate_label(label, remove_guardrails=False):
                             f"Or set remove_guardrails=True in the relevant DGCV object creator to force the use of this label, "
                             f"but note this can limit available features from the VMF."
                         )
-    
+
     # Check if the label starts with "BAR" and reformat if necessary
     if label.startswith("BAR"):
         reformatted_label = "anti_" + label[3:]
-        warnings.warn(f"Label '{label}' starts with 'BAR', which has special meaning in DGCV. It has been automatically reformatted to '{reformatted_label}'.")
+        warnings.warn(
+            f"Label '{label}' starts with 'BAR', which has special meaning in DGCV. It has been automatically reformatted to '{reformatted_label}'."
+        )
     else:
         reformatted_label = label
 

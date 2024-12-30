@@ -15,20 +15,16 @@ To get started, check out the Jupyter Notebook tutorials:
 
 setup(
     name="DGCV",
-    version="0.2.2",
+    version="0.2.3",
     description="Differential Geometry with Complex Variables",
     long_description=long_description,  # This shows up on PyPI
-    long_description_content_type='text/markdown',
+    long_description_content_type="text/markdown",
     package_dir={"": "src"},  # This tells setuptools that packages are under src/
     packages=find_packages(where="src"),
     package_data={
-        'DGCV': ['assets/fonts/*.ttf', 'assets/fonts/fonts.css'],  # Include font files
+        "DGCV": ["assets/fonts/*.ttf", "assets/fonts/fonts.css"],  # Include font files
     },
     include_package_data=True,
-    python_requires='>=3.6',
-    install_requires=[
-        'sympy>=1.9',
-        'pandas>=1.0',
-        'ipython>=7.0'
-    ],
+    python_requires=">=3.6",
+    install_requires=["sympy>=1.9", "pandas>=1.0", "ipython>=7.0"],
 )

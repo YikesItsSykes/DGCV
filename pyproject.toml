@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 requires-python = ">=3.6"
 name = "DGCV"
-version = "0.2.2"
+version = "0.2.3"
 description = "Differential Geometry with Complex Variables"
 authors = [{ name = "David Sykes", email = "david@realandimaginary.com" }]
 license = { text = "MIT" }
@@ -15,3 +15,22 @@ dependencies = [
     "ipython>=7.0"
 ]
 readme = "README.md"
+
+[tool.black]
+line-length = 88
+skip-string-normalization = true
+include = '\.pyi?$'  # Include both Python (.py) and type hint stub (.pyi) files
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+target-version = ["py36"]  # Use Python 3.6+ compatible syntax
