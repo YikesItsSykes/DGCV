@@ -4,7 +4,7 @@ DGCV: Package Initialization
 The DGCV package integrates tools for differential geometry with a framework for conveniently working with complex variables. The `__init__.py` module initializes core components of the package.
 
 Initialization:
-    - Global Cache and Variable Management: Automatically sets up the global cache and variable registry
+    - Global Cache and Variable Management Framework: Automatically sets up the global cache and variable registry
       systems that underly DGCV's Variable Management Framework (VMF). The VMF tracks and caches 
       relationships between variables (of coordinate systems) and related objects, and it is fundamental
       in much of the library's functionalities.
