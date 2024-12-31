@@ -24,15 +24,16 @@ License:
 """
 
 ############## dependencies
-from sympy import eye, expand, Matrix, numer, poly_from_expr, solve, Transpose, Symbol
 from functools import reduce
-from .config import _cached_caller_globals
-from .combinatorics import *
-from .DGCore import *
-from .vectorFieldsAndDifferentialForms import *
-from .polynomials import *
-from ._safeguards import retrieve_passkey
 
+from sympy import Matrix, Symbol, Transpose, expand, eye, numer, poly_from_expr, solve
+
+from ._safeguards import retrieve_passkey
+from .combinatorics import *
+from .config import _cached_caller_globals
+from .DGCore import *
+from .polynomials import *
+from .vectorFieldsAndDifferentialForms import *
 
 ############## CR geometry
 

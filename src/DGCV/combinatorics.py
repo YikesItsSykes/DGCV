@@ -32,7 +32,6 @@ This module minimizes dependencies and is critical for handling combinatorics wi
 
 from sympy import MutableDenseNDimArray
 
-
 ############## general combinatorics
 
 

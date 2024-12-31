@@ -24,7 +24,8 @@ License:
     MIT License
 """
 
-from sympy import Matrix, ImmutableSparseNDimArray
+from sympy import ImmutableSparseNDimArray, Matrix
+
 from .DGCore import *
 
 

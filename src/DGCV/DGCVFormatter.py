@@ -1,5 +1,7 @@
 import re
+
 from pandas import DataFrame, MultiIndex
+
 from .config import get_variable_registry, greek_letters
 from .styles import get_style
 

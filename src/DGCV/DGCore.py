@@ -75,49 +75,40 @@ License:
 """
 
 ############## dependencies
-import warnings
 import re
+import warnings
+
 import sympy
+from pandas import DataFrame, MultiIndex
 from sympy import (
     Add,
     Array,
     Basic,
-    conjugate,
-    diff,
     I,
-    ImmutableDenseNDimArray,
     ImmutableSparseNDimArray,
-    latex,
-    linsolve,
-    Matrix,
     Mul,
     Poly,
-    pretty,
     Rational,
+    conjugate,
+    diff,
+    latex,
+    pretty,
+    simplify,
     symbols,
     sympify,
-    simplify,
-    SparseMatrix,
     total_degree,
-    Tuple,
-    zeros,
 )
 
-from random import randint
-from pandas import DataFrame, MultiIndex
-
-# from IPython.display import HTML
-
-from .config import _cached_caller_globals, get_variable_registry, greek_letters
 from ._safeguards import (
+    protected_caller_globals,
     retrieve_passkey,
     retrieve_public_key,
-    protected_caller_globals,
     validate_label,
-    validate_label_list,
-    create_key,
 )
-from .combinatorics import chooseOp, permSign, carProd_with_weights_without_R, carProd
+from .combinatorics import carProd, carProd_with_weights_without_R, chooseOp, permSign
+
+# from IPython.display import HTML
+from .config import _cached_caller_globals, get_variable_registry, greek_letters
 from .styles import get_style
 
 ############## classes

@@ -11,22 +11,20 @@ Functions
 """
 
 import sympy
+from IPython.display import HTML, Latex, display
+from sympy import Basic, latex
+
 from .DGCore import (
     DFClass,
-    VFClass,
-    STFClass,
     DGCVPolyClass,
+    STFClass,
+    TFClass,
+    VFClass,
     symToHol,
     symToReal,
-    TFClass,
 )
-from .finiteDimAlgebras import FAClass, AlgebraElement
+from .finiteDimAlgebras import AlgebraElement, FAClass
 from .RiemannianGeometry import metricClass
-
-from IPython.display import display, HTML, Latex
-
-
-from sympy import latex, Basic
 
 
 def LaTeX(obj, removeBARs=False):

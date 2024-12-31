@@ -42,14 +42,15 @@ License:
 """
 
 ############## dependencies
-import sympy
-from sympy import prod, ln, exp, expand
-from .combinatorics import *
-from .DGCore import *
-from .config import _cached_caller_globals
+import warnings
 from functools import reduce
 from operator import mul
-import warnings
+
+from sympy import exp, expand, ln, prod
+
+from .combinatorics import *
+from .config import _cached_caller_globals
+from .DGCore import *
 
 ############## creating polynomials (monomialsOfPoly is in classesAndVariables.py)
 
@@ -278,8 +279,7 @@ def createBigradPolynomial(
         return sum(monomials)
 
 
-from sympy import simplify, expand, ln, exp, Poly
-import warnings
+from sympy import Poly, simplify
 
 
 def monomialWeight(arg1, arg2, arg3):

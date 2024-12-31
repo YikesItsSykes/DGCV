@@ -22,10 +22,11 @@ License:
 ############## dependencies
 
 from sympy import sympify
-from .config import get_variable_registry, _cached_caller_globals
-from .vectorFieldsAndDifferentialForms import makeZeroForm
+
+from .config import get_variable_registry
 from .DGCore import *
 from .RiemannianGeometry import *
+from .vectorFieldsAndDifferentialForms import makeZeroForm
 
 ############## Dolbeault operators
 

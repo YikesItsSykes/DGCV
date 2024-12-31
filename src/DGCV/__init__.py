@@ -1,4 +1,4 @@
-from .config import cache_globals, get_variable_registry, configure_warnings
+from .config import cache_globals, configure_warnings, get_variable_registry
 
 ############# Variable Management Framework (VMF) tools
 # Initialize the globals cache when DGCV is imported
@@ -8,108 +8,108 @@ cache_globals()
 _ = get_variable_registry()
 
 ############# library
-from .DGCore import (
-    DFClass,
-    VFClass,
-    STFClass,
-    TFClass,
-    DGCVPolyClass,
-    createVariables,
-    holToReal,
-    realToSym,
-    symToHol,
-    holToSym,
-    realToHol,
-    symToReal,
-    allToReal,
-    allToHol,
-    allToSym,
-    complex_struct_op,
-    conjugate_DGCV,
-    conj_with_real_coor,
-    re_with_real_coor,
-    im_with_real_coor,
-    conj_with_hol_coor,
-    re_with_hol_coor,
-    im_with_hol_coor,
-    cleanUpConjugation,
-    compressDGCVClass,
-    VF_coeffs,
-    changeVFBasis,
-    addVF,
-    scaleVF,
-    VF_bracket,
-    changeDFBasis,
-    changeTFBasis,
-    changeSTFBasis,
-    scaleDF,
-    addDF,
-    exteriorProduct,
-    addSTF,
-    addTF,
-    scaleTF,
-    tensorProduct,
-    holVF_coeffs,
-    antiholVF_coeffs,
-    complexVFC,
-    conjComplex,
-    realPartOfVF,
-    listVar,
-    clearVar,
-    DGCV_snapshot,
-    variableSummary,
-)
-from .combinatorics import chooseOp, permSign, carProd
-from .complexStructures import Del, DelBar, KahlerStructure
-from .CRGeometry import (
-    tangencyObstruction,
-    weightedHomogeneousVF,
-    findWeightedCRSymmetries,
-    model2Nondegenerate,
-)
-from .finiteDimAlgebras import (
-    FAClass,
-    AlgebraElement,
-    createFiniteAlg,
-    algebraDataFromVF,
-    algebraDataFromMatRep,
-    killingForm,
-    adjointRepresentation,
-)
-from .polynomials import (
-    createPolynomial,
-    createBigradPolynomial,
-    monomialWeight,
-    getWeightedTerms,
-)
-from .RiemannianGeometry import (
-    metricClass,
-    metric_from_matrix,
-    LeviCivitaConnectionClass,
-)
-from .vectorFieldsAndDifferentialForms import (
-    get_VF,
-    get_DF,
-    assembleFromHolVFC,
-    assembleFromAntiholVFC,
-    assembleFromCompVFC,
-    makeZeroForm,
-    exteriorDerivative,
-    interiorProduct,
-    LieDerivative,
-    decompose,
-    get_coframe,
-    annihilator,
-)
-from .coordinateMaps import coordinate_map
-from ._DGCV_display import load_fonts, display_DGCV, LaTeX
-from .styles import get_DGCV_themes
-from sympy import I, re, im, conjugate, simplify
+from IPython.display import Latex, display  # Rename IPython's Latex
 
 ############# for printing
-from sympy import latex, Basic  # Rename SymPy's latex
-from IPython.display import Latex, display  # Rename IPython's Latex
+from sympy import Basic, I, conjugate, im, latex, re, simplify  # Rename SymPy's latex
 from sympy.printing.latex import LatexPrinter
+
+from ._DGCV_display import LaTeX, display_DGCV, load_fonts
+from .combinatorics import carProd, chooseOp, permSign
+from .complexStructures import Del, DelBar, KahlerStructure
+from .coordinateMaps import coordinate_map
+from .CRGeometry import (
+    findWeightedCRSymmetries,
+    model2Nondegenerate,
+    tangencyObstruction,
+    weightedHomogeneousVF,
+)
+from .DGCore import (
+    DFClass,
+    DGCV_snapshot,
+    DGCVPolyClass,
+    STFClass,
+    TFClass,
+    VF_bracket,
+    VF_coeffs,
+    VFClass,
+    addDF,
+    addSTF,
+    addTF,
+    addVF,
+    allToHol,
+    allToReal,
+    allToSym,
+    antiholVF_coeffs,
+    changeDFBasis,
+    changeSTFBasis,
+    changeTFBasis,
+    changeVFBasis,
+    cleanUpConjugation,
+    clearVar,
+    complex_struct_op,
+    complexVFC,
+    compressDGCVClass,
+    conj_with_hol_coor,
+    conj_with_real_coor,
+    conjComplex,
+    conjugate_DGCV,
+    createVariables,
+    exteriorProduct,
+    holToReal,
+    holToSym,
+    holVF_coeffs,
+    im_with_hol_coor,
+    im_with_real_coor,
+    listVar,
+    re_with_hol_coor,
+    re_with_real_coor,
+    realPartOfVF,
+    realToHol,
+    realToSym,
+    scaleDF,
+    scaleTF,
+    scaleVF,
+    symToHol,
+    symToReal,
+    tensorProduct,
+    variableSummary,
+)
+from .finiteDimAlgebras import (
+    AlgebraElement,
+    FAClass,
+    adjointRepresentation,
+    algebraDataFromMatRep,
+    algebraDataFromVF,
+    createFiniteAlg,
+    killingForm,
+)
+from .polynomials import (
+    createBigradPolynomial,
+    createPolynomial,
+    getWeightedTerms,
+    monomialWeight,
+)
+from .RiemannianGeometry import (
+    LeviCivitaConnectionClass,
+    metric_from_matrix,
+    metricClass,
+)
+from .styles import get_DGCV_themes
+from .vectorFieldsAndDifferentialForms import (
+    LieDerivative,
+    annihilator,
+    assembleFromAntiholVFC,
+    assembleFromCompVFC,
+    assembleFromHolVFC,
+    decompose,
+    exteriorDerivative,
+    get_coframe,
+    get_DF,
+    get_VF,
+    interiorProduct,
+    makeZeroForm,
+)
 
 ############# warnings formatting
 configure_warnings()

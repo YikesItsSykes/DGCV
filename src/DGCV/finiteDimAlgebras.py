@@ -1,11 +1,12 @@
 ############## dependencies
 import warnings
-from sympy import Matrix, MutableDenseNDimArray, nsimplify
+
+from sympy import Matrix, nsimplify
+
 from .combinatorics import *
+from .config import _cached_caller_globals, get_variable_registry
 from .DGCore import *
 from .vectorFieldsAndDifferentialForms import *
-from .config import _cached_caller_globals, get_variable_registry, greek_letters
-
 
 ############## Algebras
 
@@ -1589,12 +1590,12 @@ def createFiniteAlg(
         dimension = obj.dimension
     elif isinstance(obj, list) and all(isinstance(el, AlgebraElement) for el in obj):
         if verbose:
-            print(f"Creating algebra from list of AlgebraElement instances.")
+            print("Creating algebra from list of AlgebraElement instances.")
         structure_data = extract_structure_from_elements(obj)
         dimension = len(obj)
     else:
         if verbose:
-            print(f"Validating or processing structure data.")
+            print("Validating or processing structure data.")
         structure_data = validate_structure_data(
             obj, process_matrix_rep=process_matrix_rep
         )

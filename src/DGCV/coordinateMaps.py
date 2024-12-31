@@ -1,9 +1,10 @@
-from .DGCore import allToReal, allToSym, VF_coeffs, addVF, STFClass, DFClass, TFClass
-from .RiemannianGeometry import metricClass
+from sympy import Basic, im, re, simplify
+
 from .complexStructures import KahlerStructure
-from .vectorFieldsAndDifferentialForms import get_VF, get_DF
 from .config import get_variable_registry
-from sympy import Basic, simplify, re, im
+from .DGCore import DFClass, STFClass, TFClass, VF_coeffs, addVF, allToReal, allToSym
+from .RiemannianGeometry import metricClass
+from .vectorFieldsAndDifferentialForms import get_DF, get_VF
 
 
 class coordinate_map(Basic):

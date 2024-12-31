@@ -38,43 +38,38 @@ License:
 
 ############## dependencies
 import warnings
-from .combinatorics import *
-from ._DGCV_display import LaTeX
-from .config import get_variable_registry, _cached_caller_globals
-from .DGCore import (
-    DFClass,
-    VFClass,
-    symToReal,
-    allToSym,
-    addVF,
-    addDF,
-    allToReal,
-    VF_bracket,
-    minimalVFDataDict,
-    variableProcedure,
-    _remove_complex_handling,
-    clearVar,
-    listVar,
-    compressDGCVClass,
-    conj_with_hol_coor,
-    changeDFBasis,
-    _format_complex_coordinates,
-)
-from ._safeguards import create_key, retrieve_passkey
+
 import sympy
 from sympy import (
-    Basic,
-    im,
     denom,
-    Rational,
-    re,
-    I,
     diff,
-    prod,
     linsolve,
-    sympify,
+    prod,
     simplify,
     solve,
+    sympify,
+)
+
+from ._safeguards import create_key, retrieve_passkey
+from .combinatorics import *
+from .config import _cached_caller_globals, get_variable_registry
+from .DGCore import (
+    DFClass,
+    VF_bracket,
+    VFClass,
+    _format_complex_coordinates,
+    _remove_complex_handling,
+    addDF,
+    addVF,
+    allToReal,
+    allToSym,
+    changeDFBasis,
+    clearVar,
+    compressDGCVClass,
+    conj_with_hol_coor,
+    listVar,
+    minimalVFDataDict,
+    variableProcedure,
 )
 
 

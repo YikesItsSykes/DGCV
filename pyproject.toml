@@ -9,17 +9,21 @@ version = "0.2.4"
 description = "Differential Geometry with Complex Variables"
 authors = [{ name = "David Sykes", email = "david@realandimaginary.com" }]
 license = { text = "MIT" }
-dependencies = [
-    "sympy>=1.9",
-    "pandas>=1.0",
-    "ipython>=7.0"
-]
+dependencies = ["sympy>=1.9", "pandas>=1.0", "ipython>=7.0"]
 readme = "README.md"
 
-[tool.black]
-line-length = 88
-skip-string-normalization = true
-include = '\.pyi?$'  # Include both Python (.py) and type hint stub (.pyi) files
+[tool.ruff]
+line-length = 88 # Match Black's default line length
+select = [
+  "F",
+  "E",
+  "W",
+  "I",
+  "BLK",
+] # Include Black-compatible formatting and common linting rules
+extend-select = [
+  "Q",
+] # Optional: Enable additional rules, like double-quote normalization
 exclude = '''
 /(
     \.git
@@ -33,4 +37,4 @@ exclude = '''
   | dist
 )/
 '''
-target-version = ["py36"]  # Use Python 3.6+ compatible syntax
+fix = true # Ensure Ruff automatically applies fixes
