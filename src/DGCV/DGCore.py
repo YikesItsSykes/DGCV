@@ -7774,6 +7774,8 @@ def clearVar(*labels, report=True):
         One or more string labels representing variable systems (either
         standard or complex). These labels will be removed along with all
         associated components.
+    report : bool (optional)
+        Set True to report about any variable systems cleared from the VMF
 
     Functionality
     -------------

@@ -10,8 +10,43 @@ _passkey = "".join(random.choices(string.ascii_letters + string.digits, k=16))
 public_key = "".join(random.choices(string.ascii_letters + string.digits, k=8))
 
 
-def create_key():
-    return "".join(random.choices(string.ascii_letters + string.digits, k=8))
+import random
+import string
+
+
+def create_key(prefix=None, avoid_caller_globals=False):
+    """
+    Generates a unique alphanumeric key with an optional prefix.
+
+    Parameters
+    ----------
+    prefix : str, optional
+        A string to prepend to the generated key. Defaults to an empty string if not provided.
+    avoid_caller_globals : bool, optional
+        If True, ensures the key does not conflict with existing keys in the caller's global namespace.
+
+    Returns
+    -------
+    str
+        An alphanumeric key.
+    """
+    if prefix is None:
+        prefix = ""
+    if not isinstance(prefix, str):
+        prefix = ""
+
+    # Get the caller's globals if avoid_caller_globals is True
+    caller_globals = {}
+    if avoid_caller_globals:
+        caller_globals = _cached_caller_globals
+
+    # Generate a new key
+    while True:
+        key = prefix + "".join(
+            random.choices(string.ascii_letters + string.digits, k=8)
+        )
+        if not avoid_caller_globals or key not in caller_globals:
+            return key
 
 
 def retrieve_passkey():

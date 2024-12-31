@@ -481,6 +481,28 @@ class FAClass(Basic):
             return False, fail_list
         return True, None
 
+    def _warn_associativity_assumption(self, method_name):
+        """
+        Issues a warning that the method assumes the algebra is associative.
+
+        Parameters
+        ----------
+        method_name : str
+            The name of the method assuming associativity.
+
+        Notes
+        -----
+        - This helper method is intended for internal use.
+        - Use it in methods where associativity is assumed but not explicitly verified.
+        """
+        import warnings
+
+        warnings.warn(
+            f"{method_name} assumes the algebra is associative. "
+            "Ensure the algebra satisfies the associativity condition, or unexpected results may occur.",
+            UserWarning,
+        )
+
     def is_lie_algebra(self, verbose=False):
         """
         Checks if the algebra is a Lie algebra.
@@ -749,24 +771,76 @@ class FAClass(Basic):
 
         return compatible
 
-    def compute_center(self):
+    def compute_center(self, for_associative_alg=False):
         """
-        Computes the center of the algebra.
+        Computes the center of the algebra as a subspace.
+
+        Parameters
+        ----------
+        for_associative_alg : bool, optional
+            If True, computes the center for an associative algebra. Defaults to False (assumes Lie algebra).
 
         Returns
         -------
         list
             A list of AlgebraElement instances that span the center of the algebra.
 
+        Raises
+        ------
+        ValueError
+            If `for_associative_alg` is False and the algebra is not a Lie algebra.
+
         Notes
         -----
-        - The center is the set of elements `z` such that `z * x = x * z` for all `x` in the algebra.
+        - For Lie algebras, the center is the set of elements `z` such that `z * x = 0` for all `x` in the algebra.
+        - For associative algebras, the center is the set of elements `z` such that `z * x = x * z` for all `x` in the algebra.
         """
-        center_elements = []
-        for el in self.basis:
-            if all((el * other - other * el).is_zero() for other in self.basis):
-                center_elements.append(el)
-        return center_elements
+        from sympy import solve
+
+        if not for_associative_alg and not self.is_lie_algebra():
+            raise ValueError(
+                "This algebra is not a Lie algebra. To compute the center for an associative algebra, set for_associative_alg=True."
+            )
+
+        temp_label = create_key(prefix="center_var")
+        variableProcedure(temp_label, self.dimension, _tempVar=retrieve_passkey())
+        temp_vars = _cached_caller_globals[temp_label]
+
+        el = sum(
+            (temp_vars[i] * self.basis[i] for i in range(self.dimension)),
+            self.basis[0] * 0,
+        )
+
+        if for_associative_alg:
+            eqns = sum(
+                [list((el * other - other * el).coeffs) for other in self.basis], []
+            )
+        else:
+            eqns = sum([list((el * other).coeffs) for other in self.basis], [])
+
+        solutions = solve(eqns, temp_vars, dict=True)
+        if not solutions:
+            warnings.warn(
+                'Using sympy.solve returned no solutions, indicating that this computation of the center failed, as solutions do exist.'
+            )
+            return []
+
+        el_sol = el.subs(solutions[0])
+
+        free_variables = tuple(set.union(*[set(j.free_symbols) for j in el_sol.coeffs]))
+        print(solutions[0])
+        print(free_variables)
+
+        return_list = []
+        for var in free_variables:
+            basis_element = el_sol.subs({var: 1}).subs(
+                [(other_var, 0) for other_var in free_variables if other_var != var]
+            )
+            return_list.append(basis_element)
+
+        clearVar(*listVar(temporary_only=True), report=False)
+
+        return return_list
 
     def compute_derived_algebra(self):
         """
