@@ -13,28 +13,9 @@ dependencies = ["sympy>=1.9", "pandas>=1.0", "ipython>=7.0"]
 readme = "README.md"
 
 [tool.ruff]
-line-length = 88 # Match Black's default line length
-select = [
-  "F",
-  "E",
-  "W",
-  "I",
-  "BLK",
-] # Include Black-compatible formatting and common linting rules
-extend-select = [
-  "Q",
-] # Optional: Enable additional rules, like double-quote normalization
-exclude = '''
-/(
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-)/
-'''
-fix = true # Ensure Ruff automatically applies fixes
+line-length = 88
+extend-exclude = ["_build", "buck-out", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I"]
+extend-select = ["Q"]         # Enforce double-quote normalization
