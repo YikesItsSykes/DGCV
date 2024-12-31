@@ -1,6 +1,6 @@
 ############## dependencies
-from sympy import Matrix, MutableDenseNDimArray, nsimplify
 import warnings
+from sympy import Matrix, MutableDenseNDimArray, nsimplify
 from .combinatorics import *
 from .DGCore import *
 from .vectorFieldsAndDifferentialForms import *
