@@ -57,33 +57,47 @@ class FAClass(Basic):
         # Process grading
         import warnings
 
-        def validate_and_adjust_grading_vector(vector):
+        def validate_and_adjust_grading_vector(vector, dimension):
             """
             Validates and adjusts a grading vector to match the algebra's dimension.
             Ensures components are numeric or symbolic.
-            """
-            # Ensure vector is a list or tuple
-            if not isinstance(vector, (list, tuple)):
-                raise ValueError("Grading vector must be a list or tuple.")
 
-            # Convert vector to list for easier manipulation
+            Parameters
+            ----------
+            vector : list, tuple, or sympy.Tuple
+                The grading vector to validate and adjust.
+            dimension : int
+                The dimension of the algebra.
+
+            Returns
+            -------
+            sympy.Tuple
+                The validated and adjusted grading vector.
+            """
+            # Ensure vector is a list, tuple, or SymPy Tuple
+            if not isinstance(vector, (list, tuple, Tuple)):
+                raise ValueError(
+                    "Grading vector must be a list, tuple, or SymPy Tuple."
+                )
+
+            # Convert to list for uniform handling
             vector = list(vector)
 
             # Adjust length to match dimension
-            if len(vector) < self.dimension:
+            if len(vector) < dimension:
                 warnings.warn(
-                    f"Grading vector is shorter than the dimension ({len(vector)} < {self.dimension}). "
+                    f"Grading vector is shorter than the dimension ({len(vector)} < {dimension}). "
                     f"Padding with zeros to match the dimension.",
                     UserWarning,
                 )
-                vector += [0] * (self.dimension - len(vector))
-            elif len(vector) > self.dimension:
+                vector += [0] * (dimension - len(vector))
+            elif len(vector) > dimension:
                 warnings.warn(
-                    f"Grading vector is longer than the dimension ({len(vector)} > {self.dimension}). "
+                    f"Grading vector is longer than the dimension ({len(vector)} > {dimension}). "
                     f"Truncating to match the dimension.",
                     UserWarning,
                 )
-                vector = vector[: self.dimension]
+                vector = vector[:dimension]
 
             # Validate components
             for i, component in enumerate(vector):
@@ -95,17 +109,25 @@ class FAClass(Basic):
 
             return Tuple(*vector)
 
+        # Process grading
         if grading is None:
             # Default to a single grading vector [0, 0, ..., 0]
             self.grading = [Tuple(*([0] * self.dimension))]
-        elif isinstance(grading[0], (list, tuple)):
-            # Multiple grading vectors provided
-            self.grading = [
-                validate_and_adjust_grading_vector(vector) for vector in grading
-            ]
         else:
-            # Single grading vector provided
-            self.grading = [validate_and_adjust_grading_vector(grading)]
+            # Handle single or multiple grading vectors
+            if isinstance(grading, (list, tuple)) and all(
+                isinstance(g, (list, tuple, Tuple)) for g in grading
+            ):
+                # Multiple grading vectors provided
+                self.grading = [
+                    validate_and_adjust_grading_vector(vector, self.dimension)
+                    for vector in grading
+                ]
+            else:
+                # Single grading vector provided
+                self.grading = [
+                    validate_and_adjust_grading_vector(grading, self.dimension)
+                ]
 
         # Set the number of grading vectors
         self._gradingNumber = len(self.grading)
@@ -1053,9 +1075,8 @@ class FAClass(Basic):
         # Return as a list of lists
         return structure_matrix
 
-    # algebra element class
 
-
+# algebra element class
 class AlgebraElement(Basic):
     def __new__(cls, algebra, coeffs, format_sparse=False):
         # Ensure the algebra is of type FAClass
@@ -1371,52 +1392,35 @@ def createFiniteAlg(
     grading=None,
     format_sparse=False,
     process_matrix_rep=False,
+    verbose=False,
 ):
     """
     Registers an algebra object and its basis elements in the caller's global namespace,
-    and adds them to variable_registry for tracking in the Variable Management Framework.
+    and adds them to the variable_registry for tracking in the Variable Management Framework.
 
     Parameters
     ----------
-    obj : FAClass or structure data
-        The algebra object (an instance of FAClass) or the structure data used to create one.
+    obj : FAClass, structure data, or list of AlgebraElement
+        The algebra object (an instance of FAClass), the structure data used to create one,
+        or a list of AlgebraElement instances with the same parent algebra.
     label : str
         The label used to reference the algebra object in the global namespace.
     basis_labels : list, optional
-        A list of custom labels for the basis elements of the algebra. If not provided, default labels will be generated.
-    grading : list, optional
-        A list specifying the grading of the algebra.
+        A list of custom labels for the basis elements of the algebra.
+        If not provided, default labels will be generated.
+    grading : list of lists or list, optional
+        A list specifying the grading(s) of the algebra.
     format_sparse : bool, optional
         Whether to use sparse arrays when creating the FAClass object.
     process_matrix_rep : bool, optional
         Whether to compute and store the matrix representation of the algebra.
+    verbose : bool, optional
+        If True, provides detailed feedback during the creation process.
     """
 
     def validate_structure_data(data, process_matrix_rep=False):
         """
         Validates the structure data and converts it to a list of lists of lists.
-
-        Parameters
-        ----------
-        data : list or array-like
-            The structure data to be validated. Can be:
-            - A 3D list of structure constants (list of lists of lists)
-            - A list of VFClass objects
-            - A list of square matrices
-
-        process_matrix_rep : bool, optional
-            If True, the function will interpret the data as a list of square matrices
-            and pass them to algebraDataFromMatRep to compute the structure data.
-
-        Returns
-        -------
-        list
-            The validated structure data as a list of lists of lists.
-
-        Raises
-        ------
-        ValueError
-            If the structure data is invalid or cannot be processed into a valid 3D list.
         """
         # Case 1: If process_matrix_rep is True, handle matrix representation
         if process_matrix_rep:
@@ -1437,10 +1441,9 @@ def createFiniteAlg(
 
         # Case 3: Validate and return the data as a list of lists of lists
         try:
-            # Ensure the data is a 3D list-like structure
             if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
                 if len(data) == len(data[0]) == len(data[0][0]):
-                    return data  # Return as a validated 3D list
+                    return data
                 else:
                     raise ValueError("Structure data must have 3D shape (x, x, x).")
             else:
@@ -1448,90 +1451,152 @@ def createFiniteAlg(
         except Exception as e:
             raise ValueError(f"Invalid structure data format: {type(data)} - {e}")
 
-    # validate_label
-    label = validate_label(label)
+    def extract_structure_from_elements(elements):
+        """
+        Computes structure constants and validates linear independence from a list of AlgebraElement.
 
-    clearVar(label, report=False)
+        Parameters
+        ----------
+        elements : list of AlgebraElement
+            A list of AlgebraElement instances.
+
+        Returns
+        -------
+        structure_data : list of lists of lists
+            The structure constants for the subalgebra spanned by the elements.
+
+        Raises
+        ------
+        ValueError
+            If the elements are not linearly independent or not closed under the algebra product.
+        """
+        if not elements or not all(isinstance(el, AlgebraElement) for el in elements):
+            raise ValueError(
+                "Invalid input: All elements must be instances of AlgebraElement."
+            )
+
+        # Ensure all elements have the same parent algebra
+        parent_algebra = elements[0].algebra
+        if not all(el.algebra == parent_algebra for el in elements):
+            raise ValueError(
+                "All AlgebraElement instances must share the same parent algebra."
+            )
+
+        try:
+            # Use the parent algebra's is_subspace_subalgebra method
+            result = parent_algebra.is_subspace_subalgebra(
+                elements, return_structure_data=True
+            )
+        except ValueError as e:
+            raise ValueError(
+                "Error during subalgebra validation. "
+                "The input list of AlgebraElement instances must be linearly independent and closed under the algebra product. "
+                f"Original error: {e}"
+            ) from e
+
+        if not result["linearly_independent"]:
+            raise ValueError(
+                "The input elements are not linearly independent. "
+                "Please ensure the list of AlgebraElement instances forms a linearly independent set."
+            )
+
+        if not result["closed_under_product"]:
+            raise ValueError(
+                "The input elements are not closed under the algebra product. "
+                "Please ensure the list of AlgebraElement instances forms a subalgebra."
+            )
+
+        # Return structure data
+        return result["structure_data"]
 
     # Validate or create the FAClass object
     if isinstance(obj, FAClass):
-        # Create or validate basis labels
-        if basis_labels is None:
-            basis_labels = [
-                validate_label(f"{label}_{i+1}") for i in range(obj.dimension)
-            ]
-        validate_label_list(basis_labels)
-        passkey = retrieve_passkey()  # Get the passkey for secure initialization
-        algebra_obj = FAClass(
-            structure_data=obj.structureData,
-            grading=grading,
-            format_sparse=format_sparse,
-            process_matrix_rep=process_matrix_rep,
-            _label=label,
-            _basis_labels=basis_labels,
-            _calledFromCreator=passkey,  # Pass the secure key
-        )
+        if verbose:
+            print(f"Using existing FAClass instance: {label}")
+        structure_data = obj.structureData
+        dimension = obj.dimension
+    elif isinstance(obj, list) and all(isinstance(el, AlgebraElement) for el in obj):
+        if verbose:
+            print(f"Creating algebra from list of AlgebraElement instances.")
+        structure_data = extract_structure_from_elements(obj)
+        dimension = len(obj)
     else:
+        if verbose:
+            print(f"Validating or processing structure data.")
         structure_data = validate_structure_data(
             obj, process_matrix_rep=process_matrix_rep
         )
-        # Create or validate basis labels
-        if basis_labels is None:
-            basis_labels = [
-                validate_label(f"{label}_{i+1}") for i in range(len(structure_data))
-            ]
-        validate_label_list(basis_labels)
-        passkey = retrieve_passkey()  # Get the passkey for secure initialization
-        algebra_obj = FAClass(
-            structure_data=structure_data,
-            grading=grading,
-            format_sparse=format_sparse,
-            process_matrix_rep=process_matrix_rep,
-            _label=label,
-            _basis_labels=basis_labels,
-            _calledFromCreator=passkey,  # Pass the secure key
-        )
+        dimension = len(structure_data)
+
+    # Create or validate basis labels
+    if basis_labels is None:
+        basis_labels = [validate_label(f"{label}_{i+1}") for i in range(dimension)]
+    validate_label_list(basis_labels)
+
+    # Process grading
+    if grading is None:
+        grading = [Tuple(*([0] * dimension))]  # Default grading: all zeros
+    elif isinstance(grading, (list, tuple)) and all(
+        isinstance(w, (int, sympy.Expr)) for w in grading
+    ):
+        # Single grading vector
+        if len(grading) != dimension:
+            raise ValueError(
+                f"Grading vector length ({len(grading)}) must match the algebra dimension ({dimension})."
+            )
+        grading = [Tuple(*grading)]  # Wrap single vector in a list
+    elif isinstance(grading, list) and all(
+        isinstance(vec, (list, tuple)) for vec in grading
+    ):
+        # List of grading vectors
+        for vec in grading:
+            if len(vec) != dimension:
+                raise ValueError(
+                    f"Grading vector length ({len(vec)}) must match the algebra dimension ({dimension})."
+                )
+        grading = [Tuple(*vec) for vec in grading]  # Convert each vector to Tuple
+    else:
+        raise ValueError("Grading must be a single vector or a list of vectors.")
+
+    # Create the FAClass object
+    passkey = retrieve_passkey()
+    algebra_obj = FAClass(
+        structure_data=structure_data,
+        grading=grading,
+        format_sparse=format_sparse,
+        process_matrix_rep=process_matrix_rep,
+        _label=label,
+        _basis_labels=basis_labels,
+        _calledFromCreator=passkey,
+    )
 
     # Ensure that the algebra object and its basis are fully initialized
     assert (
         algebra_obj.basis is not None
     ), "Algebra object basis elements must be initialized."
 
-    # Register the algebra object in _cached_caller_globals
+    # Register in _cached_caller_globals
     _cached_caller_globals.update({label: algebra_obj})
-
-    # Register the basis elements in _cached_caller_globals
     _cached_caller_globals.update(zip(basis_labels, algebra_obj.basis))
 
-    # Define family names and values (basis labels and their corresponding objects)
-    family_names = tuple(basis_labels)
-    family_values = tuple([_cached_caller_globals[j] for j in basis_labels])
-
-    # Define family relatives (mapping basis elements to their properties)
-    family_relatives = {
-        a: {
-            "coefficients": _cached_caller_globals[a].coeffs,  # Coefficients
-            "grading": grading[i] if grading else None,  # Grading, if applicable
-            "index": i,  # Index in the algebra
-            "is_sparse": format_sparse,  # Whether it's sparse
-            "algebra_label": label,  # Reference to the parent algebra
-        }
-        for i, a in enumerate(basis_labels)
-    }
-
+    # Register in the variable registry
     variable_registry = get_variable_registry()
     variable_registry["finite_algebra_systems"][label] = {
         "family_type": "algebra",
-        "family_names": family_names,
-        "family_values": family_values,
-        "family_relatives": family_relatives,
-        "dimension": algebra_obj.dimension,
+        "family_names": tuple(basis_labels),
+        "family_values": tuple(algebra_obj.basis),
+        "dimension": dimension,
         "grading": grading,
         "basis_labels": basis_labels,
-        "structure_data": algebra_obj.structureData,
+        "structure_data": structure_data,
     }
 
-    # Optionally return the algebra object
+    if verbose:
+        print(f"Algebra '{label}' registered successfully.")
+        print(
+            f"Dimension: {dimension}, Grading: {grading}, Basis Labels: {basis_labels}"
+        )
+
     return algebra_obj
 
 

@@ -7932,14 +7932,16 @@ def clearVar(*labels, report=True):
 
         # Handle finite algebra systems
         elif label in variable_registry["finite_algebra_systems"]:
-            family_relatives = variable_registry["finite_algebra_systems"][label].get(
-                "family_relatives", {}
+            family_names = variable_registry["finite_algebra_systems"][label].get(
+                "family_names", {}
             )
 
-            # Remove all related family relatives from _cached_caller_globals
-            for relative_label in family_relatives:
-                if relative_label in _cached_caller_globals:
-                    del _cached_caller_globals[relative_label]
+            # Remove all related family names from _cached_caller_globals
+            for family_member in family_names:
+                if family_member in _cached_caller_globals:
+                    del _cached_caller_globals[family_member]
+            if label in _cached_caller_globals:
+                del _cached_caller_globals[label]
 
             # Now delete the parent label from finite_algebra_systems
             del variable_registry["finite_algebra_systems"][label]
