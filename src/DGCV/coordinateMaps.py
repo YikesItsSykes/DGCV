@@ -2,7 +2,7 @@ from sympy import Basic, im, re, simplify
 
 from .complexStructures import KahlerStructure
 from .config import get_variable_registry
-from .DGCore import DFClass, STFClass, TFClass, VF_coeffs, addVF, allToReal, allToSym
+from .DGCVCore import DFClass, STFClass, TFClass, VF_coeffs, addVF, allToReal, allToSym
 from .RiemannianGeometry import metricClass
 from .vectorFieldsAndDifferentialForms import get_DF, get_VF
 
@@ -31,7 +31,7 @@ class coordinate_map(Basic):
 
         self.domain = tuple(coordinates1)
         self.range = tuple(coordinates2)
-        if holomorphic == True:
+        if holomorphic:
 
             def get_real_parts(varList):
                 reals = []
@@ -77,7 +77,7 @@ class coordinate_map(Basic):
 
     @property
     def JacobianMatrix(self):
-        if self._JacobianMatrix == None:
+        if self._JacobianMatrix:
             self._JacobianMatrix = [
                 [simplify(j(k)) for j in self.domain_frame]
                 for k in self.coordinate_formulas
@@ -243,6 +243,7 @@ class coordinate_map(Basic):
                             for t in generate_indices(shape[1:])
                         ]
 
+                dim = len(self.domain)
                 shape = (dim,) * 3
                 sparse_data = {
                     indices: entry_rule(indices) for indices in generate_indices(shape)

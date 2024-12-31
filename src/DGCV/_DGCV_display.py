@@ -14,7 +14,7 @@ import sympy
 from IPython.display import HTML, Latex, display
 from sympy import Basic, latex
 
-from .DGCore import (
+from .DGCVCore import (
     DFClass,
     DGCVPolyClass,
     STFClass,
@@ -33,9 +33,9 @@ def LaTeX(obj, removeBARs=False):
     Applies sympy.latex() to the input object, with special handling for lists and tuples.
 
     For lists, the elements are LaTeX-processed, stripped of surrounding $ or $$ symbols if present,
-    and wrapped in \left[ ... \right].
+    and wrapped in \\left[ ... \right].
 
-    For tuples, the elements are LaTeX-processed similarly but wrapped in \left( ... \right).
+    For tuples, the elements are LaTeX-processed similarly but wrapped in \\left( ... \right).
 
     Parameters
     ----------
@@ -49,7 +49,7 @@ def LaTeX(obj, removeBARs=False):
     """
 
     def filter(term):
-        if removeBARs == True:
+        if removeBARs:
             return latex(term)
         if isinstance(term, (DFClass, VFClass, STFClass, DGCVPolyClass, TFClass)):
             if term._varSpace_type == "real":
@@ -130,7 +130,7 @@ class _alglabeldisplayclass(Basic):
 
     @staticmethod
     def format_algebra_label(label):
-        """Wrap the algebra label in \mathfrak{} if all characters are lowercase, and subscript any numeric suffix."""
+        r"""Wrap the algebra label in \mathfrak{} if all characters are lowercase, and subscript any numeric suffix."""
         if label[-1].isdigit():
             # Split into text and number parts for subscript formatting
             label_text = "".join(filter(str.isalpha, label))
@@ -144,7 +144,7 @@ class _alglabeldisplayclass(Basic):
 
     @staticmethod
     def format_ae(ae):
-        if ae != None:
+        if ae is not None:
             terms = []
             for coeff, basis_label in zip(ae.coeffs, ae.algebra.basis_labels):
                 if coeff == 0:
@@ -175,7 +175,7 @@ class _alglabeldisplayclass(Basic):
             return rf"{result}"
 
     def _repr_latex_(self):
-        if self.ae == None:
+        if self.ae:
             return _alglabeldisplayclass.format_algebra_label(self.label)
         else:
             return _alglabeldisplayclass.format_ae(self.ae)

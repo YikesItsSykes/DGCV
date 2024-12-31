@@ -1,22 +1,12 @@
-from .config import cache_globals, configure_warnings, get_variable_registry
-
-############# Variable Management Framework (VMF) tools
-# Initialize the globals cache when DGCV is imported
-cache_globals()
-
-# Initialize variable_registry when DGCV is imported
-_ = get_variable_registry()
-
-############# library
-from IPython.display import Latex, display  # Rename IPython's Latex
-
-############# for printing
-from sympy import Basic, I, conjugate, im, latex, re, simplify  # Rename SymPy's latex
+# Imports
+from IPython.display import Latex
+from sympy import I, conjugate, im, latex, re, simplify
 from sympy.printing.latex import LatexPrinter
 
 from ._DGCV_display import LaTeX, display_DGCV, load_fonts
 from .combinatorics import carProd, chooseOp, permSign
 from .complexStructures import Del, DelBar, KahlerStructure
+from .config import cache_globals, configure_warnings, get_variable_registry
 from .coordinateMaps import coordinate_map
 from .CRGeometry import (
     findWeightedCRSymmetries,
@@ -24,7 +14,7 @@ from .CRGeometry import (
     tangencyObstruction,
     weightedHomogeneousVF,
 )
-from .DGCore import (
+from .DGCVCore import (
     DFClass,
     DGCV_snapshot,
     DGCVPolyClass,
@@ -111,46 +101,166 @@ from .vectorFieldsAndDifferentialForms import (
     makeZeroForm,
 )
 
-############# warnings formatting
+# Initialize global caches and variable registry
+cache_globals()
+_ = get_variable_registry()
+
+# Configure warnings
 configure_warnings()
 
+# Default functions/classes
+__all__ = [
+    ############ Re-exported from SymPy ############
+    "I",                    # Imaginary unit
+    "conjugate",            # Complex conjugation
+    "im",                   # Imaginary part
+    "re",                   # Real part
+    "simplify",             # Simplifies expressions
+    ################################################
 
-############# DGCV-specific SymPy LatexPrinter for VFClass and DFClass
+    ############ DGCV default functions/classes ####
+    # From config
+    "cache_globals",        # Initialize global caches
+    "configure_warnings",   # Configure DGCV warnings
+    "get_variable_registry",# Get the DGCV variable registry
+
+    # From _DGCV_display
+    "LaTeX",                # Custom LaTeX renderer
+    "load_fonts",           # Load custom fonts for LaTeX output
+    "display_DGCV",         # Augments IPython.display.display
+                            # with support for DGCV object like
+                            # custom latex rendering
+
+    # From combinatorics
+    "carProd",              # Cartesian product
+    "chooseOp",             # Choose operation
+    "permSign",             # Permutation sign
+
+    # From complexStructures
+    "Del",                  # Holomorphic derivative operator
+    "DelBar",               # Anti-holomorphic derivative operator
+    "KahlerStructure",      # Represents a Kähler structure
+
+    # From coordinateMaps
+    "coordinate_map",       # Transforms coordinates systems
+
+    # From CRGeometry
+    "findWeightedCRSymmetries", # Find weighted CR symmetries
+    "model2Nondegenerate",  # Produces a 2-nond. model structure
+    "tangencyObstruction",  # Obstruction for VF to be tangent to submanifold
+    "weightedHomogeneousVF",# Produce general weighted homogeneous vector fields
+
+    # From DGCVCore
+    "DFClass",              # Differential form class
+    "DGCVPolyClass",        # DGCV polynomial class
+    "DGCV_snapshot",        # Summarize initialized DGCV objects
+    "STFClass",             # Symmetric tensor field class
+    "TFClass",              # Tensor field class
+    "VFClass",              # Vector field class
+    "VF_bracket",           # Lie bracket of vector fields
+    "VF_coeffs",            # Coefficients of vector fields
+    "addDF",                # Add differential forms
+    "addSTF",               # Add symmetric tensor fields
+    "addTF",                # Add tensor fields
+    "addVF",                # Add vector fields
+    "allToHol",             # Convert DGCV expressions to holomorphic
+                            # coordinate format
+    "allToReal",            # Convert all fields to real
+                            # coordinate format
+    "allToSym",             # Convert all fields to symbolic
+                            # conjugate coordinate format
+    "antiholVF_coeffs",     # Anti-holomorphic coefficients of vector field
+    "changeDFBasis",        # Change basis for differential forms
+    "changeSTFBasis",       # Change basis for symmetric tensor fields
+    "changeTFBasis",        # Change basis for tensor fields
+    "changeVFBasis",        # Change basis for vector fields
+    "cleanUpConjugation",   # Cleanup conjugation operations
+    "clearVar",             # Clear DGCV objects from globals()
+    "complexVFC",           # Complex coordingate vector field coefficients
+    "complex_struct_op",    # Complex structure operator
+    "compressDGCVClass",    # 
+    "conjComplex",          # Conjugate complex variables
+    "conj_with_hol_coor",   # Conjugate with holomorphic coordinate formatting
+    "conj_with_real_coor",  # Conjugate with real coordinate formatting
+    "conjugate_DGCV",       # Conjugate DGCV objects
+    "createVariables",      # Initialize variables in DGCV's VMF
+    "exteriorProduct",      # Compute exterior product
+    "holToReal",            # Convert holomorphic to real format
+    "holToSym",             # Convert holomorphic to symbolic conjugates format
+    "holVF_coeffs",         # Holomorphic coefficients of vector field
+    "im_with_hol_coor",     # Imaginary part with holomorphic coordinate format
+    "im_with_real_coor",    # Imaginary part with real coordinate format
+    "listVar",              # List objects from the DGCV VMF
+    "realPartOfVF",         # Real part of vector fields
+    "realToHol",            # Convert real to holomorphic fomrat
+    "realToSym",            # Convert real to symbolic conjugates format
+    "re_with_hol_coor",     # Real part with holomorphic coordinate format
+    "re_with_real_coor",    # Real part with real coordinate format
+    "scaleDF",              # Scale differential forms
+    "scaleTF",              # Scale tensor fields
+    "scaleVF",              # Scale vector fields
+    "symToHol",             # Convert symbolic conjugates to holomorphic format
+    "symToReal",            # Convert symbolic conjugates to real format
+    "tensorProduct",        # Compute tensor product
+    "variableSummary",      # Depricated - use DGCV_snapshot instead
+
+    # From finiteDimAlgebras
+    "AlgebraElement",       # Algebra element class
+    "FAClass",              # Finite dimensional algebra class
+    "adjointRepresentation",# Adjoint representation of algebra
+    "algebraDataFromMatRep",# Algebra data from matrix representation
+    "algebraDataFromVF",    # Algebra data from vector fields
+    "createFiniteAlg",      # Create a finite dimensional algebra
+    "killingForm",          # Compute the Killing form
+
+    # From polynomials
+    "createBigradPolynomial",# Create bigraded polynomial
+    "createPolynomial",     # Create polynomial
+    "getWeightedTerms",     # Get weighted terms of a polynomial
+    "monomialWeight",       # Compute monomial weights
+
+    # From RiemannianGeometry
+    "LeviCivitaConnectionClass", # Levi-Civita connection class
+    "metric_from_matrix",   # Create metric from matrix
+    "metricClass",          # Metric class
+
+    # From styles
+    "get_DGCV_themes",      # Get DGCV themes for various output styles
+
+    # From vectorFieldsAndDifferentialForms
+    "LieDerivative",        # Compute Lie derivative
+    "annihilator",          # Compute annihilator
+    "assembleFromAntiholVFC",# Assemble VF from anti-holomorphic VF coefficients
+    "assembleFromCompVFC",  # Assemble VF from complex VF coefficients
+    "assembleFromHolVFC",   # Assemble VF from holomorphic VF coefficients
+    "decompose",            # Decompose objects into linear combinations
+    "exteriorDerivative",   # Compute exterior derivative
+    "get_coframe",          # Get coframe from frame
+    "get_DF",               # Get differential form from label in VMF
+    "get_VF",               # Get vector field from label in VMF
+    "interiorProduct",      # Compute interior product
+    "makeZeroForm",         # Create zero-form from scalar
+]
+
+# DGCV-specific SymPy LatexPrinter for VFClass and DFClass
 class DGCVLatexPrinter(LatexPrinter):
     def _print_VFClass(self, expr):
-        return expr._repr_latex_()  # Keep the surrounding $
+        return expr._repr_latex_()
 
     def _print_DFClass(self, expr):
-        return expr._repr_latex_()  # Keep the surrounding $
+        return expr._repr_latex_()
 
 
 def DGCV_collection_latex_printer(obj):
     if isinstance(obj, (tuple, list)):
-        latex_elements = []
-        for element in obj:
-            if isinstance(element, VFClass):
-                latex_elements.append(
-                    Latex(element._repr_latex_())
-                )  # Use Latex for Jupyter rendering
-            elif isinstance(element, DFClass):
-                latex_elements.append(Latex(element._repr_latex_()))
-            elif isinstance(element, FAClass):
-                latex_elements.append(Latex(element._repr_latex_()))
-            elif isinstance(element, AlgebraElement):
-                latex_elements.append(Latex(element._repr_latex_()))
-            elif isinstance(element, DGCVPolyClass):
-                latex_elements.append(Latex(element._repr_latex_()))
-            else:
-                latex_elements.append(Latex(latex(element)))
-
-        # Return a tuple of individually rendered LaTeX objects
-        return tuple(latex_elements)
+        return tuple(
+            Latex(element._repr_latex_() if hasattr(element, "_repr_latex_") else latex(element))
+            for element in obj
+        )
     return None
 
 
-############# DGCV latex_printer function that uses DGCVLatexPrinter and accepts keyword arguments
 def DGCV_latex_printer(obj, **kwargs):
-    # If the object is a DGCV class, use its custom LaTeX method
     if isinstance(
         obj,
         (
@@ -165,28 +275,16 @@ def DGCV_latex_printer(obj, **kwargs):
         ),
     ):
         latex_str = obj._repr_latex_()
-        # Remove surrounding $ signs
-        if latex_str.startswith("$") and latex_str.endswith("$"):
-            latex_str = latex_str[1:-1]
-        if latex_str.startswith("$") and latex_str.endswith("$"):
-            latex_str = latex_str[1:-1]
-        return latex_str
-    # If the object is a list or tuple, process each element separately
+        return latex_str.strip("$")
     elif isinstance(obj, (list, tuple)):
-        latex_elements = [
-            DGCV_latex_printer(elem) for elem in obj
-        ]  # Recursively process each element
-        # Join with commas and enclose with \left( ... \right) for proper LaTeX wrapping
+        latex_elements = [DGCV_latex_printer(elem) for elem in obj]
         return r"\left( " + r" , ".join(latex_elements) + r" \right)"
-    # Otherwise, use SymPy's default LaTeX printer
     return latex(obj, **kwargs)
 
 
 def DGCV_init_printing(*args, **kwargs):
-    """Initialize DGCV's custom printing and load fonts."""
-    load_fonts()  # Load custom fonts
+    load_fonts()
     from sympy import init_printing
 
-    # Register the DGCV printer with SymPy's init_printing system
-    kwargs["latex_printer"] = DGCV_latex_printer  # Use DGCV custom LaTeX printer
-    init_printing(*args, **kwargs)  # Call SymPy's init_printing
+    kwargs["latex_printer"] = DGCV_latex_printer
+    init_printing(*args, **kwargs)

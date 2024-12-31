@@ -11,9 +11,6 @@ _passkey = "".join(random.choices(string.ascii_letters + string.digits, k=16))
 public_key = "".join(random.choices(string.ascii_letters + string.digits, k=8))
 
 
-import random
-import string
-
 
 def create_key(prefix=None, avoid_caller_globals=False):
     """

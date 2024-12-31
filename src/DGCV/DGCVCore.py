@@ -105,7 +105,7 @@ from ._safeguards import (
     retrieve_public_key,
     validate_label,
 )
-from .combinatorics import carProd, carProd_with_weights_without_R, chooseOp, permSign
+from .combinatorics import carProd, carProd_with_weights_without_R, permSign
 
 # from IPython.display import HTML
 from .config import _cached_caller_globals, get_variable_registry, greek_letters
@@ -313,7 +313,7 @@ class DFClass(Basic):
     def realVarSpace(self):
         if self.DGCVType == "standard":
             return self._realVarSpace
-        if self._realVarSpace == None or self._imVarSpace == None:
+        if self._realVarSpace is None or self._imVarSpace is None:
             self.coeff_dicts
             return self._realVarSpace + self._imVarSpace
         return self._realVarSpace + self._imVarSpace
@@ -322,7 +322,7 @@ class DFClass(Basic):
     def holVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace
-        if self._holVarSpace == None:
+        if self._holVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace
         return self._holVarSpace
@@ -331,7 +331,7 @@ class DFClass(Basic):
     def antiholVarSpace(self):
         if self.DGCVType == "standard":
             return self._antiholVarSpace
-        if self._antiholVarSpace == None:
+        if self._antiholVarSpace is None:
             self.coeff_dicts
             return self._antiholVarSpace
         return self._antiholVarSpace
@@ -340,7 +340,7 @@ class DFClass(Basic):
     def compVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace + self._antiholVarSpace
-        if self._holVarSpace == None or self._antiholVarSpace == None:
+        if self._holVarSpace is None or self._antiholVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace + self._antiholVarSpace
         return self._holVarSpace + self._antiholVarSpace
@@ -350,7 +350,7 @@ class DFClass(Basic):
         self,
     ):  # Retrieves coeffs in different variable formats and updates *VarSpace and _coeff_dicts caches if needed
         if self.DGCVType == "standard" or all(
-            j != None
+            j is not None
             for j in [
                 self._realVarSpace,
                 self._holVarSpace,
@@ -362,7 +362,7 @@ class DFClass(Basic):
             return self._coeff_dicts
         variable_registry = get_variable_registry()
         CVS = variable_registry["complex_variable_systems"]
-        if self._coeff_dicts == None:
+        if self._coeff_dicts is None:
             exhaust1 = list(self.varSpace)
             populate = {
                 "compCoeffDataDict": dict(),
@@ -664,7 +664,7 @@ class DFClass(Basic):
         DFClass
             A simplified DFClass object.
         """
-        if self.simplifyKW["simplify_rule"] == None:
+        if self.simplifyKW["simplify_rule"] is None:
             # Simplify each element in the coeffs list
             simplified_coeffs = {
                 a: simplify(b, **kwargs) for a, b in self.DFClassDataDict.items()
@@ -1181,7 +1181,7 @@ class VFClass(Basic):
     def realVarSpace(self):
         if self.DGCVType == "standard":
             return self._realVarSpace
-        if self._realVarSpace == None or self._imVarSpace == None:
+        if self._realVarSpace is None or self._imVarSpace is None:
             self.coeff_dicts
             return self._realVarSpace + self._imVarSpace
         return self._realVarSpace + self._imVarSpace
@@ -1190,7 +1190,7 @@ class VFClass(Basic):
     def holVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace
-        if self._holVarSpace == None:
+        if self._holVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace
         return self._holVarSpace
@@ -1199,7 +1199,7 @@ class VFClass(Basic):
     def antiholVarSpace(self):
         if self.DGCVType == "standard":
             return self._antiholVarSpace
-        if self._antiholVarSpace == None:
+        if self._antiholVarSpace is None:
             self.coeff_dicts
             return self._antiholVarSpace
         return self._antiholVarSpace
@@ -1208,7 +1208,7 @@ class VFClass(Basic):
     def compVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace + self._antiholVarSpace
-        if self._holVarSpace == None or self._antiholVarSpace == None:
+        if self._holVarSpace is None or self._antiholVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace + self._antiholVarSpace
         return self._holVarSpace + self._antiholVarSpace
@@ -1221,7 +1221,7 @@ class VFClass(Basic):
             return self._coeff_dicts
         variable_registry = get_variable_registry()
         CVS = variable_registry["complex_variable_systems"]
-        if self._coeff_dicts == None:
+        if self._coeff_dicts is None:
             exhaust = dict(zip(self.varSpace, self.coeffs))
             populate = {
                 "holCoeffs": {},
@@ -1817,7 +1817,7 @@ class STFClass(Basic):
     def realVarSpace(self):
         if self.DGCVType == "standard":
             return self._realVarSpace
-        if self._realVarSpace == None or self._imVarSpace == None:
+        if self._realVarSpace is None or self._imVarSpace is None:
             self.coeff_dicts
             return self._realVarSpace + self._imVarSpace
         return self._realVarSpace + self._imVarSpace
@@ -1826,7 +1826,7 @@ class STFClass(Basic):
     def holVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace
-        if self._holVarSpace == None:
+        if self._holVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace
         return self._holVarSpace
@@ -1835,7 +1835,7 @@ class STFClass(Basic):
     def antiholVarSpace(self):
         if self.DGCVType == "standard":
             return self._antiholVarSpace
-        if self._antiholVarSpace == None:
+        if self._antiholVarSpace is None:
             self.coeff_dicts
             return self._antiholVarSpace
         return self._antiholVarSpace
@@ -1844,7 +1844,7 @@ class STFClass(Basic):
     def compVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace + self._antiholVarSpace
-        if self._holVarSpace == None or self._antiholVarSpace == None:
+        if self._holVarSpace is None or self._antiholVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace + self._antiholVarSpace
         return self._holVarSpace + self._antiholVarSpace
@@ -1854,7 +1854,7 @@ class STFClass(Basic):
         self,
     ):  # Retrieves coeffs in different variable formats and updates *VarSpace and _coeff_dicts caches if needed
         if self.DGCVType == "standard" or all(
-            j != None
+            j is not None
             for j in [
                 self._realVarSpace,
                 self._holVarSpace,
@@ -1866,7 +1866,7 @@ class STFClass(Basic):
             return self._coeff_dicts
         variable_registry = get_variable_registry()
         CVS = variable_registry["complex_variable_systems"]
-        if self._coeff_dicts == None:
+        if self._coeff_dicts is None:
             exhaust1 = list(self.varSpace)
             populate = {
                 "compCoeffDataDict": dict(),
@@ -2092,8 +2092,8 @@ class STFClass(Basic):
 
     @property
     def coeffArray(self):
-        if self._STFClassDataDictFull == None:
-            if self._coeffArray == None:
+        if self._STFClassDataDictFull is None:
+            if self._coeffArray is None:
 
                 def entry_rule(indexTuple):
                     sortedTuple = tuple(sorted(indexTuple))
@@ -2119,7 +2119,7 @@ class STFClass(Basic):
                 }
                 self._coeffArray = ImmutableSparseNDimArray(sparse_data, shape)
         else:
-            if self._coeffArray == None:
+            if self._coeffArray is None:
                 self._coeffArray = ImmutableSparseNDimArray(
                     self._STFClassDataDictFull, shape
                 )
@@ -2129,7 +2129,7 @@ class STFClass(Basic):
 
     @property
     def STFClassDataDictFull(self):
-        if self._STFClassDataDictFull == None:
+        if self._STFClassDataDictFull is None:
 
             def entry_rule(indexTuple):
                 sortedTuple = tuple(sorted(indexTuple))
@@ -2234,7 +2234,7 @@ class STFClass(Basic):
         DFClass
             A simplified DFClass object.
         """
-        if self.simplifyKW["simplify_rule"] == None:
+        if self.simplifyKW["simplify_rule"] is None:
             # Simplify each element in the coeffs list
             simplified_coeffs = {
                 a: simplify(b, **kwargs) for a, b in self.STFClassDataDict.items()
@@ -2607,7 +2607,7 @@ class TFClass(Basic):
             self.kFormBasisGenerators = [
                 [oneFormsLabelsLoc[k] for k in j[0]] for j in self.TFClassDataMinimal
             ]
-            if self.simplifyKW["preferred_basis_element"] == None:
+            if self.simplifyKW["preferred_basis_element"] is None:
                 if self.degree > 0:
                     self._prefered_basis_element = self.kFormBasisGenerators[0]
                 else:
@@ -2633,7 +2633,7 @@ class TFClass(Basic):
     def realVarSpace(self):
         if self.DGCVType == "standard":
             return self._realVarSpace
-        if self._realVarSpace == None or self._imVarSpace == None:
+        if self._realVarSpace is None or self._imVarSpace is None:
             self.coeff_dicts
             return self._realVarSpace + self._imVarSpace
         return self._realVarSpace + self._imVarSpace
@@ -2642,7 +2642,7 @@ class TFClass(Basic):
     def holVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace
-        if self._holVarSpace == None:
+        if self._holVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace
         return self._holVarSpace
@@ -2651,7 +2651,7 @@ class TFClass(Basic):
     def antiholVarSpace(self):
         if self.DGCVType == "standard":
             return self._antiholVarSpace
-        if self._antiholVarSpace == None:
+        if self._antiholVarSpace is None:
             self.coeff_dicts
             return self._antiholVarSpace
         return self._antiholVarSpace
@@ -2660,7 +2660,7 @@ class TFClass(Basic):
     def compVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace + self._antiholVarSpace
-        if self._holVarSpace == None or self._antiholVarSpace == None:
+        if self._holVarSpace is None or self._antiholVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace + self._antiholVarSpace
         return self._holVarSpace + self._antiholVarSpace
@@ -2670,7 +2670,7 @@ class TFClass(Basic):
         self,
     ):  # Retrieves coeffs in different variable formats and updates *VarSpace and _coeff_dicts caches if needed
         if self.DGCVType == "standard" or all(
-            j != None
+            j is not None
             for j in [
                 self._realVarSpace,
                 self._holVarSpace,
@@ -2682,7 +2682,7 @@ class TFClass(Basic):
             return self._coeff_dicts
         variable_registry = get_variable_registry()
         CVS = variable_registry["complex_variable_systems"]
-        if self._coeff_dicts == None:
+        if self._coeff_dicts is None:
             exhaust1 = list(self.varSpace)
             populate = {
                 "compCoeffDataDict": dict(),
@@ -2908,7 +2908,7 @@ class TFClass(Basic):
 
     @property
     def coeffArray(self):
-        if self._coeffArray == None:
+        if self._coeffArray is None:
             shape = (len(self.varSpace),) * self.degree
             data = {
                 a: b for a, b in self.TFClassDataDict.items()
@@ -2994,7 +2994,7 @@ class TFClass(Basic):
         TFClass
             A simplified TFClass object.
         """
-        if self.simplifyKW["simplify_rule"] == None:
+        if self.simplifyKW["simplify_rule"] is None:
             # Simplify each element in the coeffs list
             simplified_coeffs = {
                 a: simplify(b, **kwargs) for a, b in self.TFClassDataDict.items()
@@ -3493,7 +3493,7 @@ class DGCVPolyClass(Basic):
         coeffs = poly_obj.coeffs()
 
         # Filter monomials by degree
-        if return_coeffs == True:
+        if return_coeffs:
             filtered_monomials = [
                 coeff
                 for monom, coeff in zip(monoms, coeffs)
@@ -4086,9 +4086,9 @@ def createVariables(
     Use `DGCV_snapshot()` for a clear summary of the variables created and tracked within the DGCV VMF.
 
     """
-    if multiindex_shape != None:
+    if multiindex_shape is not None:
         if (
-            any(j != None for j in [real_label, imaginary_label, withVF, complex])
+            any(j is not None for j in [real_label, imaginary_label, withVF, complex])
             or default_var_format == "complex"
         ):
             warnings.warn(
@@ -4105,51 +4105,51 @@ def createVariables(
         )
     if (
         isinstance(real_label, int)
-        and imaginary_label == None
-        and number_of_variables == None
+        and imaginary_label is None
+        and number_of_variables is None
     ):
         number_of_variables = real_label
         real_label = None
-    if real_label != None and not isinstance(real_label, str):
+    if real_label is not None and not isinstance(real_label, str):
         raise TypeError(
             "A non-string value cannot be assigned to the `real_label` keyword of `createVariables`"
         )
-    if real_label != None and not isinstance(imaginary_label, str):
+    if real_label is not None and not isinstance(imaginary_label, str):
         raise TypeError(
             "A non-string value cannot be assigned to the `imaginary_label` keyword of `createVariables`"
         )
-    if complex == True and withVF == False:
+    if complex and not withVF:
         warnings.warn(
             "`createVariables` was called with `complex=True` and `withVF=False`. The latter keyword was disregarded because DGCV automatically initializes associated differential objects whenever complex variable systems are created."
         )
-    if complex == True and assumeReal == True:
+    if complex and assumeReal:
         warnings.warn(
             "`createVariables` was called with `complex=True` and `assumeReal=True`. The latter keyword was disregarded because DGCV has fixed variable assumptions for elements in its complex variable systems."
         )
-    if complex == False and any([real_label != None, imaginary_label != None]):
+    if not complex and any([real_label is not None, imaginary_label is not None]):
         warnings.warn(
             "`createVariables` recieved `complex=False` and recieved values for the `real_label` or `imaginary_label` keywords. Honoring `complex=False`, only a standard variable system was created, and latter labels were disregarded. Set `complex=True` if a complex variable system is needed instead."
         )
         real_label = None
         imaginary_label = None
-    elif complex == True and all([real_label == None, imaginary_label == None]):
+    elif complex and all([real_label is None, imaginary_label is None]):
         real_label = variable_label + "REAL" + retrieve_public_key()
         imaginary_label = variable_label + "IM" + retrieve_public_key()
         warnings.warn(
             "`createVariables` recieved `complex=True` did not recieve value assignements for `imaginary_label` or `real_label`, so intentionally obscure labels were created for both the real and imaginary variables in the created complex variable system. To have nicer labling while using `complex=True`, provide a preferred string label for the `real_label` and `imaginary_label` keywords."
         )
-    elif any([real_label != None, imaginary_label != None]):
-        if complex != True and complex != None:
+    elif any([real_label is not None, imaginary_label is not None]):
+        if not complex and complex is not None:
             warnings.warn(
                 "The keyword 'complex' was set to a non-Bool value. Since a string value was also assigned to either `real_label` or `imaginary_label`, `createVariables` proceeded under the assumption that it should create a complex variable system. If a standard variable system was prefered then set `complex=False` instead."
             )
         complex = True
-        if real_label == None:
+        if real_label is None:
             real_label = variable_label + "REAL" + retrieve_public_key()
             warnings.warn(
                 "`createVariables` recieved a value assigned to `imaginary_label` but not `real_label`, so an intentionally obscure label was created for the real variables in the created complex variable system. To have nice nicer labling, provide a preferred string label to `real_label` instead."
             )
-        if imaginary_label == None:
+        if imaginary_label is None:
             imaginary_label = variable_label + "IM" + retrieve_public_key()
             warnings.warn(
                 "`createVariables` recieved a value assigned to `real_label` but not `imaginary_label`, so an intentionally obscure label was created for the imaginary variables in the created complex variable system. To have nice nicer labling, provide a preferred string label to `imaginary_label` instead."
@@ -4168,7 +4168,7 @@ def createVariables(
     if isinstance(imaginary_label, str):
         imaginary_label = reformat_string(imaginary_label)
 
-    if complex == True:
+    if complex:
         complexVarProc(
             variable_label,
             real_label,
@@ -4179,7 +4179,7 @@ def createVariables(
             remove_guardrails=remove_guardrails,
         )
         return
-    elif withVF == True:
+    elif withVF:
         varWithVF(
             variable_label,
             number_of_variables=number_of_variables,
@@ -4359,7 +4359,7 @@ def variableProcedure(
                 }
 
         # Handle lone variable
-        elif number_of_variables == None:
+        elif number_of_variables is None:
             symbol = symbols(labelLoc, real=assumeReal)
             _cached_caller_globals[labelLoc] = symbol
 
@@ -4545,7 +4545,7 @@ def varWithVF(
             clearVar(labelLoc, report=False)
 
         # Handle lone variable case
-        if number_of_variables == None:
+        if number_of_variables is None:
             symbol = symbols(labelLoc, real=assumeReal)
             _cached_caller_globals[labelLoc] = symbol
 
@@ -4700,7 +4700,7 @@ def complexVarProc(
     This function integrates tightly with the internal variable_registry structure, ensuring that all complex variable systems are properly tracked and accessible for subsequent operations (such as vector fields and differential forms).
     """
     if default_var_format != "real" and default_var_format != "complex":
-        if default_var_format != None:
+        if default_var_format is not None:
             warnings.warn(
                 "`default_var_format` was set to an unsuported value, so it was reset to the default 'complex'."
             )
@@ -4792,11 +4792,11 @@ def complexVarProc(
             # Add real and imaginary part variables to protected_variables
             variable_registry["protected_variables"].update({labelLoc2, labelLoc3})
 
-            # Define the complex family of variables
-            complex_family = (labelLoc1, labelLocBAR, labelLoc2, labelLoc3)
+            # # Define the complex family of variables
+            # complex_family = (labelLoc1, labelLocBAR, labelLoc2, labelLoc3)
 
             # Handle the lone variable system case (no args provided)
-            if number_of_variables == None:
+            if number_of_variables is None:
                 # Create the variables
                 variableProcedure(
                     labelLoc1,
@@ -5318,11 +5318,11 @@ def _complexVarProc_default_to_hol(
         # Add real and imaginary part variables to protected_variables
         variable_registry["protected_variables"].update({labelLoc2, labelLoc3})
 
-        # Define the complex family of variables
-        complex_family = (labelLoc1, labelLocBAR, labelLoc2, labelLoc3)
+        # # Define the complex family of variables
+        # complex_family = (labelLoc1, labelLocBAR, labelLoc2, labelLoc3)
 
         # Handle the lone variable system case (no args provided)
-        if number_of_variables == None:
+        if number_of_variables is None:
             # Create the variables
             variableProcedure(
                 labelLoc1,
@@ -5771,7 +5771,7 @@ def _format_complex_coordinates(
                         for j in foundVars:
                             if j in exaustList:
                                 exaustList.remove(j)
-    except:
+    except KeyError:
         if pass_error_report == retrieve_passkey():
             return "At least one element in the given variable list is not registered as part of a complex variable system in the DGCV variable management framework."
     return tuple(newList1 + newList2)
@@ -5782,7 +5782,7 @@ def _format_complex_coordinates(
 
 def _VFDF_conversion(obj, default_var_format=None, _converter=None):
     def converter(expr, _conv):
-        if _conv == None:
+        if _conv is None:
             return expr
         return _conv(expr)
 
@@ -5791,7 +5791,7 @@ def _VFDF_conversion(obj, default_var_format=None, _converter=None):
             if obj.DGCVType == "standard":
                 return VFClass(
                     obj.varSpace,
-                    [converter(j, _converter) for j in coeffs],
+                    [converter(j, _converter) for j in obj.coeffs],
                     DGCVType=obj.DGCVType,
                     simplifyKW=obj.simplifyKW,
                 )
@@ -6726,57 +6726,10 @@ def contravariantVFTensorCoeffs(varSpace, *vector_fields):
     # Compute the tensor product for the remaining vector fields
     for jj in range(1, len(term_counts)):
         product_coeffs = [
-            (k[0] + l[0], k[1] * l[1]) for k in product_coeffs for l in coeff_values[jj]
+            (k[0] + ll[0], k[1] * ll[1]) for k in product_coeffs for ll in coeff_values[jj]
         ]
 
     return product_coeffs
-
-
-def DF_coeffs_slow(arg1, arg2, doNotSimplify=False):
-    """
-    Evaluates the differential form (i.e., DFClass instance) *arg1* on coordinate vector fields corresponding to each variable in *arg2*, and returns the result as a list. The returned array represents the multilinear operator associated with the differential form *arg1*.
-
-    Args:
-        arg1: a DFClass class instance
-        arg2: a list or tuple containing variables initialized with either *varWithVF* or *complexVarProc*.
-        doNotSimplify: (optional keyword) True or False
-
-    Returns:
-        k-dimensional array of sympy expressions.
-
-    Raises:
-        NA
-    """
-    if arg1.__class__.__name__ == "DFClass":
-        formDegreeLoc = arg1.degree
-        if formDegreeLoc > 0:
-            arrayLoc = MutableDenseNDimArray.zeros(
-                *[len(arg2) for j in range(formDegreeLoc)]
-            )
-            indexListLoc = [list(j) for j in chooseOp(range(len(arg2)), formDegreeLoc)]
-            indexListFilteredLoc = [
-                list(j)
-                for j in chooseOp(
-                    range(len(arg2)), formDegreeLoc, withoutReplacement=True
-                )
-            ]
-            VFListLoc = ["D_" + str(j) for j in arg2]
-            for j in indexListLoc:
-                arrayLoc[j] = (
-                    arg1(*[eval(VFListLoc[k], _cached_caller_globals) for k in j])
-                    if j in indexListFilteredLoc
-                    else 0
-                )
-            if doNotSimplify == True:
-                return arrayLoc
-            else:
-                return simplify(arrayLoc)
-        else:
-            return arg1.coeffs
-    else:
-        raise Exception(
-            "DF_coeffs expected first positional argument to be a DFClass instance."
-        )
 
 
 def changeDFBasis(arg1, arg2):
@@ -8218,15 +8171,12 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
 
     # Process complex variables
     for var_name in complex_vars:
-        family_type = variable_registry["complex_variable_systems"][var_name].get(
-            "family_type", "single"
-        )
+        # family_type = variable_registry["complex_variable_systems"][var_name].get(
+        #     "family_type", "single"
+        # )
         family_names = variable_registry["complex_variable_systems"][var_name][
             "family_names"
         ]
-        initial_index = variable_registry["complex_variable_systems"][var_name].get(
-            "initial_index", 1
-        )
 
         tuple_len = tupleProcLoc(var_name, "complex")
         start_index = retrieveStart(var_name, "complex")
@@ -8301,15 +8251,12 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
 
     # Process standard variables
     for var_name in standard_vars:
-        family_type = variable_registry["standard_variable_systems"][var_name].get(
-            "family_type", "single"
-        )
+        # family_type = variable_registry["standard_variable_systems"][var_name].get(
+        #     "family_type", "single"
+        # )
         family_names = variable_registry["standard_variable_systems"][var_name][
             "family_names"
         ]
-        initial_index = variable_registry["standard_variable_systems"][var_name].get(
-            "initial_index", 1
-        )
 
         tuple_len = tupleProcLoc(var_name, "standard")
         start_index = retrieveStart(var_name, "standard")
@@ -8349,7 +8296,6 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
     for var_name in finite_algebra_vars:
         system_data = variable_registry["finite_algebra_systems"][var_name]
         algebra_family_names = system_data.get("family_names", [])
-        initial_index = system_data.get("initial_index", 1)
 
         # Format algebra label and basis (existing logic for parent label)
         if use_latex:

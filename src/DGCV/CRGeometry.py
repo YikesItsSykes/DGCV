@@ -26,14 +26,39 @@ License:
 ############## dependencies
 from functools import reduce
 
-from sympy import Matrix, Symbol, Transpose, expand, eye, numer, poly_from_expr, solve
+from sympy import (
+    I,
+    Matrix,
+    Rational,
+    Symbol,
+    Transpose,
+    conjugate,
+    expand,
+    eye,
+    im,
+    numer,
+    poly_from_expr,
+    simplify,
+    solve,
+)
 
 from ._safeguards import retrieve_passkey
-from .combinatorics import *
 from .config import _cached_caller_globals
-from .DGCore import *
-from .polynomials import *
-from .vectorFieldsAndDifferentialForms import *
+from .DGCVCore import (
+    VFClass,
+    addVF,
+    allToReal,
+    clearVar,
+    holToReal,
+    holVF_coeffs,
+    listVar,
+    realPartOfVF,
+    scaleVF,
+    symToReal,
+    variableProcedure,
+)
+from .polynomials import createPolynomial
+from .vectorFieldsAndDifferentialForms import assembleFromHolVFC
 
 ############## CR geometry
 
@@ -214,12 +239,12 @@ def findWeightedCRSymmetries(
     varLoc1.difference_update(varLoc)
     varComp.difference_update(varLoc1)
     variableProcedure(arg6, len(varLoc), assumeReal=True)
-    if applyNumer == True:
+    if applyNumer:
         if varLoc1 == set():
             varLoc1 = set(arg2)
         coefListLoc = poly_from_expr(expand(numer(tOLoc)), *varLoc1)[0].coeffs()
         solLoc = solve(coefListLoc, varLoc)
-    elif simplifyingFactor == None:
+    elif simplifyingFactor is None:
         if varLoc1 == set():
             varLoc1 = set(arg2)
         coefListLoc = poly_from_expr(expand(tOLoc), *varLoc1)[0].coeffs()
@@ -234,7 +259,7 @@ def findWeightedCRSymmetries(
     if solLoc == []:
         clearVar(*listVar(temporary_only=True), report=False)
         return "no solution"
-    elif type(solLoc) == dict:
+    elif type(solLoc) is dict:
         VFCLoc = [j.subs(solLoc) for j in holVF_coeffs(VFLoc, arg2)]
         subVar = sum(VFCLoc).atoms(Symbol)
         subVar.difference_update(set(arg2))
@@ -244,12 +269,12 @@ def findWeightedCRSymmetries(
             for j in VFCLoc
         ]
         clearVar(*listVar(temporary_only=True), report=False)
-        if returnVectorFieldBasis == True:
+        if returnVectorFieldBasis:
             VFListLoc = []
             for j in eval(arg6, _cached_caller_globals):
                 VFCLocTemp = [
                     k.subs(j, 1).subs(
-                        [(l, 0) for l in eval(arg6, _cached_caller_globals)]
+                        [(ll, 0) for ll in eval(arg6, _cached_caller_globals)]
                     )
                     for k in VFCLoc
                 ]
@@ -307,7 +332,7 @@ def model2Nondegenerate(arg1, arg2, arg3, arg4, return_matrices=False):
         * arg2
         * arg1
     )
-    if return_matrices == True:
+    if return_matrices:
         return (
             simplify(
                 (

@@ -42,15 +42,15 @@ License:
 """
 
 ############## dependencies
+import functools
+import operator
 import warnings
-from functools import reduce
-from operator import mul
 
-from sympy import exp, expand, ln, prod
+import sympy as sp
 
-from .combinatorics import *
+from .combinatorics import chooseOp
 from .config import _cached_caller_globals
-from .DGCore import *
+from .DGCVCore import DGCVPolyClass, clearVar, variableProcedure
 
 ############## creating polynomials (monomialsOfPoly is in classesAndVariables.py)
 
@@ -182,8 +182,8 @@ def createPolynomial(
     monomials = []
     for idx in range(len(indicesLoc)):
         coeff = eval(arg1, _cached_caller_globals)[idx]
-        monomial = reduce(
-            mul, [var**exp for var, exp in zip(var_symbols, indicesLoc[idx])]
+        monomial = functools.reduce(
+            operator.mul, [var**exp for var, exp in zip(var_symbols, indicesLoc[idx])]
         )
         monomials.append(coeff * monomial)
 
@@ -269,7 +269,7 @@ def createBigradPolynomial(
     # Build the polynomial by summing monomials
     monomials = [
         eval(arg1, _cached_caller_globals)[k]
-        * reduce(mul, [var**exp for var, exp in zip(arg3, indicesLoc[k])])
+        * functools.reduce(operator.mul, [var**exp for var, exp in zip(arg3, indicesLoc[k])])
         for k in range(len(indicesLoc))
     ]
 
@@ -277,9 +277,6 @@ def createBigradPolynomial(
         return monomials
     else:
         return sum(monomials)
-
-
-from sympy import Poly, simplify
 
 
 def monomialWeight(arg1, arg2, arg3):
@@ -315,11 +312,11 @@ def monomialWeight(arg1, arg2, arg3):
         raise ValueError("The number of variables and weights must match.")
 
     # Expand and simplify the expression
-    arg1 = simplify(expand(arg1))
+    arg1 = sp.simplify(sp.expand(arg1))
 
     # Check if the expression is a monomial
     try:
-        poly = Poly(arg1, *arg2)
+        poly = sp.Poly(arg1, *arg2)
         if len(poly.terms()) > 1:
             warnings.warn(
                 f"Input {arg1} is not a monomial (contains multiple terms). Proceeding anyway."
@@ -330,11 +327,11 @@ def monomialWeight(arg1, arg2, arg3):
         )
 
     # Isolate the coefficient by setting all variables to 1
-    coeffLoc = simplify(arg1.subs([(var, 1) for var in arg2]))
+    coeffLoc = sp.simplify(arg1.subs([(var, 1) for var in arg2]))
 
     # Compute the logarithmic weight of the monomial
-    return simplify(
-        ln(arg1 / coeffLoc).subs([(arg2[i], exp(arg3[i])) for i in range(len(arg2))])
+    return sp.simplify(
+        sp.ln(arg1 / coeffLoc).subs([(arg2[i], sp.exp(arg3[i])) for i in range(len(arg2))])
     )
 
 
@@ -384,7 +381,7 @@ def getWeightedTerms(arg1, arg2, arg3):
 
     # Reconstruct the monomials
     monomials = [
-        coeffsLoc[k] * prod([varLoc[j] ** monLoc[k][j] for j in range(len(varLoc))])
+        coeffsLoc[k] * sp.prod([varLoc[j] ** monLoc[k][j] for j in range(len(varLoc))])
         for k in range(len(monLoc))
     ]
 
@@ -396,7 +393,7 @@ def getWeightedTerms(arg1, arg2, arg3):
         admissibleIndex = [
             j
             for j in admissibleIndex
-            if sum([monLoc[j][l] * arg3[k][l] for l in range(len(varLoc))]) == arg2[k]
+            if sum([monLoc[j][L] * arg3[k][L] for L in range(len(varLoc))]) == arg2[k]
         ]
 
     # Return the filtered terms as a new DGCVPolyClass object

@@ -39,21 +39,12 @@ License:
 ############## dependencies
 import warnings
 
-import sympy
-from sympy import (
-    denom,
-    diff,
-    linsolve,
-    prod,
-    simplify,
-    solve,
-    sympify,
-)
+import sympy as sp
 
 from ._safeguards import create_key, retrieve_passkey
-from .combinatorics import *
+from .combinatorics import chooseOp
 from .config import _cached_caller_globals, get_variable_registry
-from .DGCore import (
+from .DGCVCore import (
     DFClass,
     VF_bracket,
     VFClass,
@@ -91,7 +82,7 @@ def get_VF(*coordinates):
                 else:
                     the_house = parentC[parent]["family_values"]
             if j in the_house:
-                if parents[parent]["differential_system"] == True:
+                if parents[parent]["differential_system"]:
                     VFList += [parents[parent]["variable_relatives"][varStr]["VFClass"]]
                 else:
                     raise TypeError(
@@ -117,7 +108,7 @@ def get_DF(*coordinates):
                 else:
                     the_house = parentC[parent]["family_values"]
             if j in the_house:
-                if parents[parent]["differential_system"] == True:
+                if parents[parent]["differential_system"]:
                     DFList += [parents[parent]["variable_relatives"][varStr]["DFClass"]]
                 else:
                     raise TypeError(
@@ -324,7 +315,7 @@ def makeZeroForm(arg1, varSpace=None, DGCVType=None, default_var_format=None):
     if varSpace is None:
         if isinstance(arg1, (int, float)):
             varLoc = tuple()
-        elif isinstance(arg1, sympy.Expr):
+        elif isinstance(arg1, sp.Expr):
             if DGCVType == "complex":
                 if default_var_format == "real":
                     varLoc = tuple(
@@ -422,7 +413,7 @@ def exteriorDerivative(arg1, forceComplexType=None):
     I*d_y+d_x
     """
     # Ensure arg1 is a DFClass or convert it into a zero-form
-    if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sympy.Expr)):
+    if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sp.Expr)):
         arg1 = makeZeroForm(arg1, DGCVType="complex" if forceComplexType else None)
     elif arg1.DGCVType == "complex":
         forceComplexType = True
@@ -431,7 +422,7 @@ def exteriorDerivative(arg1, forceComplexType=None):
         typeSet = arg1._varSpace_type
     else:
         raise TypeError(
-            "`exteriorDerivative` can only operator of DFClass or scalars like sympy.Expr"
+            "`exteriorDerivative` can only operator of DFClass or scalars like sp.Expr"
         )
 
     # Helper function to compute the exterior derivative of a zero-form
@@ -439,17 +430,17 @@ def exteriorDerivative(arg1, forceComplexType=None):
         if arg1.DGCVType == "complex" or forceComplexType:
             if typeSet == "real":
                 sparseDataLoc = {
-                    (j,): diff(allToReal(arg1.coeffsInKFormBasis[0]), arg1.varSpace[j])
+                    (j,): sp.diff(allToReal(arg1.coeffsInKFormBasis[0]), arg1.varSpace[j])
                     for j in range(len(arg1.varSpace))
                 }
             else:
                 sparseDataLoc = {
-                    (j,): diff(allToSym(arg1.coeffsInKFormBasis[0]), arg1.varSpace[j])
+                    (j,): sp.diff(allToSym(arg1.coeffsInKFormBasis[0]), arg1.varSpace[j])
                     for j in range(len(arg1.varSpace))
                 }
         else:
             sparseDataLoc = {
-                (j,): diff(arg1.coeffsInKFormBasis[0], arg1.varSpace[j])
+                (j,): sp.diff(arg1.coeffsInKFormBasis[0], arg1.varSpace[j])
                 for j in range(len(arg1.varSpace))
             }
 
@@ -567,7 +558,7 @@ def interiorProductOf2Form(vf, twoForm):
 
 
 def interiorProduct(vf, kForm):
-    """
+    r"""
     Computes the interior product of a vector field *vf* with a differential k-form *kForm* where k > 0.
 
     The interior product, or contraction, reduces the degree of a differential form by 1 and represents
@@ -637,7 +628,7 @@ def interiorProduct(vf, kForm):
 
 
 def LieDerivative(vf, arg):
-    """
+    r"""
     The Lie derivative, because sometimes differential forms need a little nudge in the right direction.
 
     Computes the Lie derivative with respect to the vector field (i.e., VFClass instance) *vf* of either another vector field
@@ -674,7 +665,7 @@ def LieDerivative(vf, arg):
     >>> print(latex(LieDerivative(vf, omega)))
     $d x \wedge d y \wedge d v$
     """
-    if isinstance(vf, VFClass) and isinstance(arg, (int, float, sympy.Expr)):
+    if isinstance(vf, VFClass) and isinstance(arg, (int, float, sp.Expr)):
         return vf(arg)
     # Check for valid argument types
     if [vf.__class__.__name__, arg.__class__.__name__] not in [
@@ -695,9 +686,9 @@ def LieDerivative(vf, arg):
 
             # Helper function to operate on each factor of a k-form
             def operateOnKFactor(formList, k):
-                firstFactor = prod(formList[0:k])
+                firstFactor = sp.prod(formList[0:k])
                 secondFactor = LieDerivativeOf1Form(vf, formList[k])
-                thirdFactor = prod(formList[k + 1 :])
+                thirdFactor = sp.prod(formList[k + 1 :])
                 return firstFactor * secondFactor * thirdFactor
 
             # Compute the Lie derivative
@@ -710,7 +701,7 @@ def LieDerivative(vf, arg):
             )
             coeffDerivatives = addDF(
                 *[
-                    vf(coeffList[j]) * prod(oneFormList[j])
+                    vf(coeffList[j]) * sp.prod(oneFormList[j])
                     for j in range(len(coeffList))
                 ]
             )
@@ -867,7 +858,7 @@ def decompose(
             return []
         eqns = [j[1] for j in (compressDGCVClass(obj - solObj)).DFClassDataMinimal]
 
-    sol = linsolve(eqns, tempVars)
+    sol = sp.linsolve(eqns, tempVars)
     if len(list(sol)) == 0:
         printStr = f"`decompose` rolled back its algorithm because `linsolve` failed to solve the equations {eqns} w.r.t. the variables {tempVars}"
         clearVar(*listVar(temporary_only=True), report=False)
@@ -877,7 +868,7 @@ def decompose(
             raise Exception(printStr)
     solDict = dict(zip(tempVars, list(sol)[0]))
     freeVar = [t for t in tempVars if t == solDict[t]]
-    if return_parameters == True and len(freeVar) > 0:
+    if return_parameters and len(freeVar) > 0:
         if isinstance(new_parameters_label, str):
             newLabel = new_parameters_label
             variableProcedure(newLabel, len(freeVar))
@@ -888,7 +879,7 @@ def decompose(
                 f"The provided object list to decompose w.r.t. is not linearly independent, so variables with intintionally obscure labels where created to parameteraze the solution space. To have the new variable's be assigned a particular label instead, use `new_parameters_label=True`.\n The new labels are: {list(_cached_caller_globals[newLabel])} \n Use that list to substitute the obscure labels for nicer ones as needed."
             )
         subDict = dict(zip(freeVar, _cached_caller_globals[newLabel]))
-        return_list = [sympify(j).subs(subDict) for j in list(sol)[0]]
+        return_list = [sp.sympify(j).subs(subDict) for j in list(sol)[0]]
         clearVar(*listVar(temporary_only=True), report=False)
         return return_list, basis
     else:
@@ -898,7 +889,7 @@ def decompose(
             )
         subsList = [(t, 0) for t in freeVar]
         clearVar(*listVar(temporary_only=True), report=False)
-        return [sympify(j).subs(subsList) for j in list(sol)[0]], basis
+        return [sp.sympify(j).subs(subsList) for j in list(sol)[0]], basis
 
 
 def get_coframe(VFList):
@@ -994,7 +985,7 @@ def get_coframe(VFList):
         keyStr = str(key)
         for var in parentsDict:
             if keyStr in parentsDict[var]["variable_relatives"]:
-                if parentsDict[var]["variable_relatives"][keyStr]["DFClass"] == None:
+                if parentsDict[var]["variable_relatives"][keyStr]["DFClass"] is None:
                     raise TypeError(
                         "One of the provided vector fields was defined over coordinates including at least one variable that was initialized without a corresponding coordinate vector field registered in the DGCV variable management framework. Suggestion: use DGCV variable creation functions to initialize variables. Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables that the vector fields are defined w.r.t."
                     )
@@ -1036,10 +1027,10 @@ def get_coframe(VFList):
         ]
         eqns = eqns + newEqns
 
-    sol = linsolve(eqns, tempVars)
+    sol = sp.linsolve(eqns, tempVars)
     if len(list(sol)) == 0:
         warnings.warn("linsolve failed. Trying solve.")
-        sol = solve(eqns, tempVars, dict=True)
+        sol = sp.solve(eqns, tempVars, dict=True)
         if len(sol) == 0:
             printStr = f"`coframe` rolled back its algorithm because `linsolve` and `solve` failed to solve the equations {eqns} w.r.t. the variables {tempVars}"
             clearVar(*listVar(temporary_only=True), report=False)
@@ -1158,7 +1149,7 @@ def annihilator(
         raise TypeError(
             "`annihilator` needs the provided coordinate space (i.e., second argument) to be a list/tuple/set containing distinct variables. Tip: Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables with corresponding coordinate VF and DF."
         )
-    if control_distribution == None:
+    if control_distribution is None:
         control_distribution = []
     elif not isinstance(control_distribution, (list, tuple, set)):
         raise TypeError(
@@ -1234,7 +1225,7 @@ def annihilator(
                     if keyStr in parentsDict[var]["variable_relatives"]:
                         if (
                             parentsDict[var]["variable_relatives"][keyStr]["DFClass"]
-                            == None
+                            is None
                         ):
                             raise TypeError(
                                 "One of the provided vector fields was defined over coordinates including at least one variable that was initialized without a corresponding coordinate vector field registered in the DGCV variable management framework. Suggestion: use DGCV variable creation functions to initialize variables. Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables that the vector fields are defined w.r.t."
@@ -1276,7 +1267,7 @@ def annihilator(
         solDF = addDF(*[tempVars[k] * dfBasis[k] for k in range(len(dfBasis))])
         eqns = [solDF(objList[k]) for k in range(dimLoc)]
 
-        sol = linsolve(eqns, tempVars)
+        sol = sp.linsolve(eqns, tempVars)
 
         if len(list(sol)) == 0:
             printStr = f"`annihilator` rolled back its algorithm because `linsolve` failed to solve the equations {eqns} w.r.t. the variables {tempVars}"
@@ -1304,9 +1295,9 @@ def annihilator(
                 data = df.DFClassDataDict
                 denoms = []
                 for j in data:
-                    denoms += [denom(data[j])]
-                scale = simplify(sum(denoms))
-                return simplify(scale * df)
+                    denoms += [sp.denom(data[j])]
+                scale = sp.simplify(sum(denoms))
+                return sp.simplify(scale * df)
 
             return [rescaleCD(df) for df in solDFs]
 
@@ -1350,7 +1341,7 @@ def annihilator(
                     if keyStr in parentsDict[var]["variable_relatives"]:
                         if (
                             parentsDict[var]["variable_relatives"][keyStr]["VFClass"]
-                            == None
+                            is None
                         ):
                             raise TypeError(
                                 "One of the provided differential forms was defined over coordinates including at least one variable that was initialized without a corresponding coordinate 1-form registered in the DGCV variable management framework. Suggestion: use DGCV variable creation functions to initialize variables. Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables that the differential forms are defined w.r.t."
@@ -1392,13 +1383,13 @@ def annihilator(
         solVF = addVF(*[tempVars[k] * vfBasis[k] for k in range(len(vfBasis))])
         eqns = sum(
             [
-                [l[1] for l in interiorProduct(solVF, objList[k]).DFClassDataMinimal]
+                [L[1] for L in interiorProduct(solVF, objList[k]).DFClassDataMinimal]
                 for k in range(dimLoc)
             ],
             [],
         )
 
-        sol = linsolve(eqns, tempVars)
+        sol = sp.linsolve(eqns, tempVars)
 
         if len(list(sol)) == 0:
             printStr = f"`annihilator` rolled back its algorithm because `linsolve` failed to solve the equations {eqns} w.r.t. the variables {tempVars}"
@@ -1423,9 +1414,9 @@ def annihilator(
 
             def rescaleCD(vf):
                 data = vf.coeffs
-                denoms = [denom(j) for j in data]
-                scale = simplify(sum(denoms))
-                return simplify(scale * vf)
+                denoms = [sp.denom(j) for j in data]
+                scale = sp.simplify(sum(denoms))
+                return sp.simplify(scale * vf)
 
             return [rescaleCD(vf) for vf in solVFs]
 
@@ -1497,7 +1488,7 @@ def annihilator(
 #             # Iterate over the inner dictionary (2-form indices and their coefficients)
 #             for key, val in two_form_dict.items():
 #                 # Apply sympy's substitution method
-#                 substituted_val = sympify(val).subs(*args, **kwargs)
+#                 substituted_val = sp.sympify(val).subs(*args, **kwargs)
 #                 substituted_inner_dict[key] = substituted_val
 
 #             # Store the substituted inner dictionary in the outer dictionary

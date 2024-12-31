@@ -47,9 +47,9 @@ def collect_variable_data(variable_registry, use_latex):
 # Function to process complex and standard variables
 def process_variable(var_name, system_type, variable_registry, data, index, use_latex):
     # Common logic for both standard and complex variable systems
-    family_type = variable_registry[f"{system_type}_variable_systems"][var_name].get(
-        "family_type", "single"
-    )
+    # family_type = variable_registry[f"{system_type}_variable_systems"][var_name].get(
+    #     "family_type", "single"
+    # )
     family_names = variable_registry[f"{system_type}_variable_systems"][var_name][
         "family_names"
     ]

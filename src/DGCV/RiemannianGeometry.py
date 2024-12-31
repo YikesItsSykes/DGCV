@@ -10,7 +10,7 @@ Key Classes:
       Riemann curvature, Ricci curvature, scalar curvature, and Weyl curvature.
     - LeviCivitaConnectionClass: Defines a Levi-Civita connection based on a set of Christoffel symbols 
       of the second kind.
-    
+
 Key Functions:
     - metric_from_matrix(): Creates a metricClass object from a given coordinate space and matrix representation 
       of the metric.
@@ -23,18 +23,31 @@ Dependencies:
 License:
     MIT License
 """
+import warnings
 
+import sympy as sp
 from sympy import ImmutableSparseNDimArray, Matrix
 
-from .DGCore import *
+from ._safeguards import get_variable_registry
+from .combinatorics import carProd_with_weights_without_R, permSign
+from .config import greek_letters
+from .DGCVCore import (
+    STFClass,
+    TFClass,
+    VFClass,
+    allToHol,
+    allToReal,
+    allToSym,
+    changeVFBasis,
+)
 
 
 # Reimannian cetric class
-class metricClass(Basic):
+class metricClass(sp.Basic):
 
     def __new__(cls, STF):
-        # Call Basic.__new__ with only the positional arguments
-        obj = Basic.__new__(cls, STF)
+        # Call sp.Basic.__new__ with only the positional arguments
+        obj = sp.Basic.__new__(cls, STF)
         return obj
 
     def __init__(self, STF):
@@ -82,7 +95,7 @@ class metricClass(Basic):
     def realVarSpace(self):
         if self.DGCVType == "standard":
             return self._realVarSpace
-        if self._realVarSpace == None or self._imVarSpace == None:
+        if self._realVarSpace is None or self._imVarSpace is None:
             self.coeff_dicts
             return self._realVarSpace + self._imVarSpace
         return self._realVarSpace + self._imVarSpace
@@ -91,7 +104,7 @@ class metricClass(Basic):
     def holVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace
-        if self._holVarSpace == None:
+        if self._holVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace
         return self._holVarSpace
@@ -100,7 +113,7 @@ class metricClass(Basic):
     def antiholVarSpace(self):
         if self.DGCVType == "standard":
             return self._antiholVarSpace
-        if self._antiholVarSpace == None:
+        if self._antiholVarSpace is None:
             self.coeff_dicts
             return self._antiholVarSpace
         return self._antiholVarSpace
@@ -109,7 +122,7 @@ class metricClass(Basic):
     def compVarSpace(self):
         if self.DGCVType == "standard":
             return self._holVarSpace + self._antiholVarSpace
-        if self._holVarSpace == None or self._antiholVarSpace == None:
+        if self._holVarSpace is None or self._antiholVarSpace is None:
             self.coeff_dicts
             return self._holVarSpace + self._antiholVarSpace
         return self._holVarSpace + self._antiholVarSpace
@@ -119,7 +132,7 @@ class metricClass(Basic):
         self,
     ):  # Retrieves coeffs in different variable formats and updates *VarSpace and _coeff_dicts caches if needed
         if self.DGCVType == "standard" or all(
-            j != None
+            j is not None
             for j in [
                 self._realVarSpace,
                 self._holVarSpace,
@@ -131,7 +144,7 @@ class metricClass(Basic):
             return self._coeff_dicts
         variable_registry = get_variable_registry()
         CVS = variable_registry["complex_variable_systems"]
-        if self._coeff_dicts == None:
+        if self._coeff_dicts is None:
             exhaust1 = list(self.varSpace)
             populate = {
                 "compCoeffDataDict": dict(),
@@ -280,11 +293,11 @@ class metricClass(Basic):
                 def decorateWithWeights(index, target="symb"):
                     if target == "symb":
                         if 2 * index < len(self.varSpace):
-                            holScale = Rational(1, 2)  # d_z coeff of d_x
-                            antiholScale = Rational(1, 2)  # d_BARz coeff of d_x
+                            holScale = sp.Rational(1, 2)  # d_z coeff of d_x
+                            antiholScale = sp.Rational(1, 2)  # d_BARz coeff of d_x
                         else:
-                            holScale = -I / 2  # d_z coeff of d_y
-                            antiholScale = I / 2  # d_BARz coeff of d_y
+                            holScale = -sp.I / 2  # d_z coeff of d_y
+                            antiholScale = sp.I / 2  # d_BARz coeff of d_y
                         return [
                             [populate["preProcessMinDataToHol"][index][0], holScale],
                             [
@@ -295,10 +308,10 @@ class metricClass(Basic):
                     else:  # converting from hol to real
                         if 2 * index < len(self.varSpace):
                             realScale = 1  # d_x coeff in d_z
-                            imScale = I  # d_y coeff in d_z
+                            imScale = sp.I  # d_y coeff in d_z
                         else:
                             realScale = 1  # d_x coeff of d_BARz
-                            imScale = -I  # d_y coeff of d_BARz
+                            imScale = -sp.I  # d_y coeff of d_BARz
                         return [
                             [populate["preProcessMinDataToReal"][index][0], realScale],
                             [populate["preProcessMinDataToReal"][index][1], imScale],
@@ -383,7 +396,7 @@ class metricClass(Basic):
 
     @property
     def matrixRep(self):
-        if self._matrixRep == None:
+        if self._matrixRep is None:
             self._matrixRep = Matrix(self.SymTensorField.coeffArray)
             return self._matrixRep
         else:
@@ -391,7 +404,7 @@ class metricClass(Basic):
 
     @property
     def matrixRepInv(self):
-        if self._matrixRepInv == None:
+        if self._matrixRepInv is None:
             self._matrixRepInv = self.matrixRep.inv()
             return self._matrixRepInv
         else:
@@ -399,24 +412,24 @@ class metricClass(Basic):
 
     @property
     def matrixRep_real(self):
-        if self._matrixRep_real == None:
-            self._matrixRep_real = simplify(self.matrixRep.applyfunc(allToReal))
+        if self._matrixRep_real is None:
+            self._matrixRep_real = sp.simplify(self.matrixRep.applyfunc(allToReal))
             return self._matrixRep_real
         else:
             return self._matrixRep_real
 
     @property
     def matrixRep_hol(self):
-        if self._matrixRep_hol == None:
-            self._matrixRep_hol = simplify(self.matrixRep.applyfunc(allToHol))
+        if self._matrixRep_hol is None:
+            self._matrixRep_hol = sp.simplify(self.matrixRep.applyfunc(allToHol))
             return self._matrixRep_hol
         else:
             return self._matrixRep_hol
 
     @property
     def matrixRep_sym(self):
-        if self._matrixRep_sym == None:
-            self._matrixRep_sym = simplify(self.matrixRep.applyfunc(allToSym))
+        if self._matrixRep_sym is None:
+            self._matrixRep_sym = sp.simplify(self.matrixRep.applyfunc(allToSym))
             return self._matrixRep_sym
         else:
             return self._matrixRep_sym
@@ -426,22 +439,22 @@ class metricClass(Basic):
         """
         the last index is the raised one...
         """
-        if self._CFSK == None:
+        if self._CFSK is None:
             mat = self.matrixRep
             matInv = self.matrixRepInv
             vs = self.varSpace
             dim = len(vs)
 
             def entry_rule(indexTuple):
-                return simplify(
+                return sp.simplify(
                     sum(
                         [
-                            Rational(1, 2)
+                            sp.Rational(1, 2)
                             * matInv[indexTuple[2], j]
                             * (
-                                diff(mat[j, indexTuple[1]], vs[indexTuple[0]])
-                                + diff(mat[indexTuple[0], j], vs[indexTuple[1]])
-                                - diff(mat[indexTuple[0], indexTuple[1]], vs[j])
+                                sp.diff(mat[j, indexTuple[1]], vs[indexTuple[0]])
+                                + sp.diff(mat[indexTuple[0], j], vs[indexTuple[1]])
+                                - sp.diff(mat[indexTuple[0], indexTuple[1]], vs[j])
                             )
                             for j in range(dim)
                         ]
@@ -468,16 +481,16 @@ class metricClass(Basic):
 
     @property
     def Christoffel_symbols_of_the_first_kind(self):
-        if self._CFFK == None:
+        if self._CFFK is None:
             mat = self.matrixRep
             vs = self.varSpace
             dim = len(vs)
 
             def entry_rule(indexTuple):
-                return Rational(1, 2) * (
-                    diff(mat[indexTuple[2], indexTuple[0]], vs[indexTuple[1]])
-                    + diff(mat[indexTuple[2], indexTuple[1]], vs[indexTuple[0]])
-                    - diff(mat[indexTuple[0], indexTuple[1]], vs[indexTuple[2]])
+                return sp.Rational(1, 2) * (
+                    sp.diff(mat[indexTuple[2], indexTuple[0]], vs[indexTuple[1]])
+                    + sp.diff(mat[indexTuple[2], indexTuple[1]], vs[indexTuple[0]])
+                    - sp.diff(mat[indexTuple[0], indexTuple[1]], vs[indexTuple[2]])
                 )
 
             def generate_indices(shape):
@@ -504,7 +517,7 @@ class metricClass(Basic):
         """ "
         This is the (1,3)-tensor version of the Riemann tensor. The last index is the raised one...
         """
-        if self._RCT13 == None:
+        if self._RCT13 is None:
             Gamma = self.Christoffel_symbols_of_the_second_kind
             vs = self.varSpace
             dim = len(vs)
@@ -512,18 +525,18 @@ class metricClass(Basic):
             def entry_rule(indexTuple):
                 # term1=diff(Gamma[indexTuple[2],indexTuple[0],indexTuple[3]],vs[indexTuple[1]])-diff(Gamma[indexTuple[1],indexTuple[0],indexTuple[3]],vs[indexTuple[2]])
                 # term2=sum([Gamma[indexTuple[2],indexTuple[0],p]*Gamma[indexTuple[1],p,indexTuple[3]]-Gamma[indexTuple[1],indexTuple[0],p]*Gamma[indexTuple[2],p,indexTuple[3]] for p in range(dim)])
-                # return simplify(term1-term2)
+                # return sp.simplify(term1-term2)
                 r = indexTuple[0]
                 j = indexTuple[1]
                 k = indexTuple[2]
                 i = indexTuple[3]
                 term = (
-                    diff(Gamma[j, r, i], vs[k])
-                    - diff(Gamma[k, r, i], vs[j])
+                    sp.diff(Gamma[j, r, i], vs[k])
+                    - sp.diff(Gamma[k, r, i], vs[j])
                     + sum([Gamma[k, s, i] * Gamma[j, r, s] for s in range(len(vs))])
                     - sum([Gamma[j, s, i] * Gamma[k, r, s] for s in range(len(vs))])
                 )
-                return simplify(term)
+                return sp.simplify(term)
 
             def generate_indices(shape):
                 """Recursively generates all index tuples for an arbitrary dimensional array."""
@@ -548,13 +561,13 @@ class metricClass(Basic):
         """
         This is the (0,4)-tensor version of the Riemann tensor. The last index is the raised one...
         """
-        if self._RCT04 == None:
+        if self._RCT04 is None:
             mat = self.matrixRep
             RCT = self.RiemannCurvature_1_3_type
             dim = len(self.varSpace)
 
             def entry_rule(indexTuple):
-                return simplify(
+                return sp.simplify(
                     -sum(
                         [
                             mat[indexTuple[0], p]
@@ -585,13 +598,13 @@ class metricClass(Basic):
     @property
     def RicciTensor(self):
 
-        if self._Ricci == None:
+        if self._Ricci is None:
             mat = self.matrixRepInv
             RCT = self.RiemannCurvature.coeffArray
             dim = len(self.varSpace)
 
             def entry_rule(indexTuple):
-                return simplify(
+                return sp.simplify(
                     sum(
                         [
                             mat[p, q] * RCT[indexTuple[0], p, indexTuple[1], q]
@@ -628,11 +641,11 @@ class metricClass(Basic):
     @property
     def scalarCurvature(self):
 
-        if self._SCT == None:
+        if self._SCT is None:
             mat = self.matrixRepInv
             RCT = self.RicciTensor.coeffArray
             dim = len(self.varSpace)
-            self._SCT = simplify(
+            self._SCT = sp.simplify(
                 sum([mat[p, q] * RCT[p, q] for p in range(dim) for q in range(dim)])
             )
         return self._SCT
@@ -640,11 +653,11 @@ class metricClass(Basic):
     @property
     def tracelessRicci(self):
 
-        if self._tracelessRicci == None:
+        if self._tracelessRicci is None:
             Ric = self.RicciTensor
             SC = self.scalarCurvature
             self._tracelessRicci = (
-                Ric - Rational(1, len(self.varSpace)) * SC * self.SymTensorField
+                Ric - sp.Rational(1, len(self.varSpace)) * SC * self.SymTensorField
             )
         return self._Ricci
 
@@ -653,7 +666,7 @@ class metricClass(Basic):
         """
         The Weyl curvature tensor.
         """
-        if self._Weyl == None:
+        if self._Weyl is None:
             g = self.matrixRep
             RCT = self.RiemannCurvature.coeffArray
             R = self.scalarCurvature
@@ -664,19 +677,19 @@ class metricClass(Basic):
                 if dim < 3:
                     return 0
                 else:
-                    term1 = RCT[iT[0], iT[1], iT[2], iT[3]] - Rational(
+                    term1 = RCT[iT[0], iT[1], iT[2], iT[3]] - sp.Rational(
                         1, (dim - 1) * (dim)
                     ) * R * (
                         g[iT[0], iT[2]] * g[iT[1], iT[3]]
                         - g[iT[0], iT[3]] * g[iT[1], iT[2]]
                     )
-                    term2 = Rational(1, dim - 2) * (
+                    term2 = sp.Rational(1, dim - 2) * (
                         TR[iT[0], iT[2]] * g[iT[1], iT[3]]
                         - TR[iT[1], iT[2]] * g[iT[0], iT[3]]
                         + TR[iT[1], iT[3]] * g[iT[0], iT[2]]
                         - TR[iT[0], iT[3]] * g[iT[1], iT[2]]
                     )
-                    return simplify(term1 - term2)
+                    return sp.simplify(term1 - term2)
 
             def generate_indices(shape):
                 """Recursively generates all index tuples for an arbitrary dimensional array."""
@@ -699,14 +712,14 @@ class metricClass(Basic):
     @property
     def Einstein_tensor(self):
 
-        if self._tracelessRicci == None:
+        if self._tracelessRicci is None:
             Ric = self.RicciTensor
             SC = self.scalarCurvature
-            self._tracelessRicci = Ric - Rational(1, 2) * SC * self.SymTensorField
+            self._tracelessRicci = Ric - sp.Rational(1, 2) * SC * self.SymTensorField
         return self._Ricci
 
     def sectionalCurvature(self, vf1, vf2):
-        RCT = self.RiemannCurvature
+        # RCT = self.RiemannCurvature
         value = self.RiemannCurvature(vf1, vf2, vf1, vf2) / (
             self.SymTensorField(vf1, vf1) * self.SymTensorField(vf2, vf2)
             - (self.SymTensorField(vf1, vf2)) ** 2
@@ -789,15 +802,15 @@ class metricClass(Basic):
         DFClass
             A simplified DFClass object.
         """
-        if self.simplifyKW["simplify_rule"] == None:
+        if self.simplifyKW["simplify_rule"] is None:
             # Simplify each element in the coeffs list
             simplified_coeffs = {
-                a: simplify(b, **kwargs) for a, b in self.MetricDataDict.items()
+                a: sp.simplify(b, **kwargs) for a, b in self.MetricDataDict.items()
             }
         elif self.simplifyKW["simplify_rule"] == "holomorphic":
             # Simplify each element in the coeffs list
             simplified_coeffs = {
-                a: simplify(
+                a: sp.simplify(
                     allToHol(b, skipVar=self.simplifyKW["simplify_ignore_list"]),
                     **kwargs,
                 )
@@ -806,7 +819,7 @@ class metricClass(Basic):
         elif self.simplifyKW["simplify_rule"] == "real":
             # Simplify each element in the coeffs list
             simplified_coeffs = {
-                a: simplify(
+                a: sp.simplify(
                     allToReal(b, skipVar=self.simplifyKW["simplify_ignore_list"]),
                     **kwargs,
                 )
@@ -815,7 +828,7 @@ class metricClass(Basic):
         elif self.simplifyKW["simplify_rule"] == "symbolic_conjugate":
             # Simplify each element in the coeffs list
             simplified_coeffs = {
-                a: simplify(
+                a: sp.simplify(
                     allToSym(b, skipVar=self.simplifyKW["simplify_ignore_list"]),
                     **kwargs,
                 )
@@ -826,7 +839,7 @@ class metricClass(Basic):
                 "_eval_simplify recieved an unsupported STFClass.simplifyKW['simplify_rule']. It is recommend to only set the simplifyKW['simplify_rule'] attribute to None, 'holomorphic', 'real',  or 'symbolic_conjugate'."
             )
             simplified_coeffs = {
-                a: simplify(b, **kwargs) for a, b in self.MetricDataDict.items()
+                a: sp.simplify(b, **kwargs) for a, b in self.MetricDataDict.items()
             }
 
         # Return a new instance of DFClass with simplified coeffs
@@ -874,7 +887,7 @@ class metricClass(Basic):
             var_str = var_str[3:]
 
             # Regular expression to match label part and trailing number part
-            match = re.match(
+            match = sp.re.match(
                 r"([a-zA-Z_]+)(\d*)$", var_str
             )  # Match label followed by optional digits
 
@@ -890,13 +903,13 @@ class metricClass(Basic):
 
                 # Return LaTeX formatted string
                 return (
-                    f"\overline{{{label_part}_{{{number_part}}}}}"
+                    rf"\overline{{{label_part}_{{{number_part}}}}}"
                     if number_part
                     else label_part
                 )
         else:
             # Return LaTeX for non-BAR variables
-            return latex(var)
+            return sp.latex(var)
 
     def _repr_latex_(self):
         if self.degree == 0:
@@ -928,13 +941,13 @@ class metricClass(Basic):
             return ""
         elif coeff == -1:
             return "-"
-        elif sympify(coeff).is_Atom or len(coeff.as_ordered_terms()) == 1:
-            return latex(coeff)
+        elif sp.sympify(coeff).is_Atom or len(coeff.as_ordered_terms()) == 1:
+            return sp.latex(coeff)
         else:
-            return f"\\left({latex(coeff)}\\right)"
+            return f"\\left({sp.latex(coeff)}\\right)"
 
 
-class LeviCivitaConnectionClass(Basic):
+class LeviCivitaConnectionClass(sp.Basic):
 
     def __new__(
         cls,
@@ -942,8 +955,8 @@ class LeviCivitaConnectionClass(Basic):
         Christoffel_symbols_of_the_second_kind,
         variable_handling_default="standard",
     ):
-        # Call Basic.__new__ with only the positional arguments
-        obj = Basic.__new__(cls, varSpace, Christoffel_symbols_of_the_second_kind)
+        # Call sp.Basic.__new__ with only the positional arguments
+        obj = sp.Basic.__new__(cls, varSpace, Christoffel_symbols_of_the_second_kind)
         return obj
 
     from sympy.tensor.array import ImmutableSparseNDimArray
@@ -987,6 +1000,7 @@ class LeviCivitaConnectionClass(Basic):
 
         # Handle variable type based on the default handling mode
         if variable_handling_default == "complex":
+            variable_registry = get_variable_registry()
             if all(
                 var in variable_registry["conversion_dictionaries"]["realToSym"]
                 for var in varSpace
@@ -1018,16 +1032,16 @@ class LeviCivitaConnectionClass(Basic):
             )
         dimLoc = len(self.varSpace)
 
-        def _coeff(VF1, VF2, l):
+        def _coeff(VF1, VF2, L):
             term1 = sum(
                 [
-                    diff(VF2.coeffs[l], self.varSpace[j]) * VF1.coeffs[j]
+                    sp.diff(VF2.coeffs[L], self.varSpace[j]) * VF1.coeffs[j]
                     for j in range(dimLoc)
                 ]
             )
             term2 = sum(
                 [
-                    self.Christoffel_symbols[j, k, l] * VF1.coeffs[j] * VF2.coeffs[k]
+                    self.Christoffel_symbols[j, k, L] * VF1.coeffs[j] * VF2.coeffs[k]
                     for j in range(dimLoc)
                     for k in range(dimLoc)
                 ]
@@ -1037,17 +1051,17 @@ class LeviCivitaConnectionClass(Basic):
         if self._varSpace_type == "standard":
             vf1 = changeVFBasis(vf1, self.varSpace)
             vf2 = changeVFBasis(vf2, self.varSpace)
-            newCoeffs = [_coeff(vf1, vf2, l) for l in range(dimLoc)]
+            newCoeffs = [_coeff(vf1, vf2, L) for L in range(dimLoc)]
             return VFClass(self.varSpace, newCoeffs)
         elif self._varSpace_type == "real":
             vf1 = changeVFBasis(allToReal(vf1), self.varSpace)
             vf2 = changeVFBasis(allToReal(vf2), self.varSpace)
-            newCoeffs = [_coeff(vf1, vf2, l) for l in range(dimLoc)]
+            newCoeffs = [_coeff(vf1, vf2, L) for L in range(dimLoc)]
             return VFClass(self.varSpace, newCoeffs, DGCVType="complex")
         elif self._varSpace_type == "complex":
             vf1 = changeVFBasis(allToSym(vf1), self.varSpace)
             vf2 = changeVFBasis(allToSym(vf2), self.varSpace)
-            newCoeffs = [_coeff(vf1, vf2, l) for l in range(dimLoc)]
+            newCoeffs = [_coeff(vf1, vf2, L) for L in range(dimLoc)]
             return VFClass(self.varSpace, newCoeffs, DGCVType="complex")
 
 

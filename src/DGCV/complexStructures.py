@@ -21,11 +21,23 @@ License:
 
 ############## dependencies
 
-from sympy import sympify
+import warnings
+
+import sympy as sp
 
 from .config import get_variable_registry
-from .DGCore import *
-from .RiemannianGeometry import *
+from .DGCVCore import (
+    DFClass,
+    STFClass,
+    TFClass,
+    addDF,
+    allToSym,
+    changeDFBasis,
+    complex_struct_op,
+    realToSym,
+    symToReal,
+)
+from .RiemannianGeometry import metricClass
 from .vectorFieldsAndDifferentialForms import makeZeroForm
 
 ############## Dolbeault operators
@@ -55,12 +67,12 @@ def Del(arg1):
     """
     variable_registry = get_variable_registry()
     # Ensure arg1 is a DFClass or convert it into a zero-form
-    if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sympy.Expr)):
+    if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sp.Expr)):
         arg1 = allToSym(arg1)
         varSpace = tuple(
             [
                 j
-                for j in sympify(arg1).free_symbols
+                for j in sp.sympify(arg1).free_symbols
                 if variable_registry["conversion_dictionaries"]["symToReal"]
             ]
         )
@@ -90,7 +102,7 @@ def Del(arg1):
     def DelOfZeroForm(arg1):
         HVSpace = arg1.holVarSpace
         sparseDataLoc = {
-            (j,): diff(allToSym(arg1.coeffsInKFormBasis[0]), HVSpace[j])
+            (j,): sp.diff(allToSym(arg1.coeffsInKFormBasis[0]), HVSpace[j])
             for j in range(len(HVSpace))
         }
         return DFClass(arg1.varSpace, sparseDataLoc, 1, DGCVType="complex")
@@ -140,12 +152,12 @@ def DelBar(arg1):
     """
     variable_registry = get_variable_registry()
     # Ensure arg1 is a DFClass or convert it into a zero-form
-    if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sympy.Expr)):
+    if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sp.Expr)):
         arg1 = allToSym(arg1)
         varSpace = tuple(
             [
                 j
-                for j in sympify(arg1).free_symbols
+                for j in sp.sympify(arg1).free_symbols
                 if variable_registry["conversion_dictionaries"]["symToReal"]
             ]
         )
@@ -176,7 +188,7 @@ def DelBar(arg1):
         AHVspace = arg1.antiholVarSpace
         CDim = len(AHVspace)
         sparseDataLoc = {
-            (j + CDim,): diff(allToSym(arg1.coeffsInKFormBasis[0]), AHVspace[j])
+            (j + CDim,): sp.diff(allToSym(arg1.coeffsInKFormBasis[0]), AHVspace[j])
             for j in range(CDim)
         }
         return DFClass(arg1.varSpace, sparseDataLoc, 1, DGCVType="complex")
@@ -206,8 +218,8 @@ def DelBar(arg1):
 ############## Kahler geometry
 
 
-class KahlerStructure(Basic):
-    """
+class KahlerStructure(sp.Basic):
+    r"""
     Represents a Kähler structure, including its metric, , and Bochner tensor.
 
     The Kähler structure is defined by a symplectic form (Kähler form) and a coordinate space. The class
@@ -240,7 +252,7 @@ class KahlerStructure(Basic):
 
     def __new__(cls, varSpace, kahlerForm):
         # Call Basic.__new__ with only the positional arguments
-        obj = Basic.__new__(cls, varSpace, kahlerForm)
+        obj = sp.Basic.__new__(cls, varSpace, kahlerForm)
         return obj
 
     def __init__(self, varSpace, kahlerForm):
@@ -454,8 +466,8 @@ class KahlerStructure(Basic):
 
     @property
     def metric(self):
-        if self._metric == None:
-            if self._is_closed == False:
+        if self._metric is None:
+            if not self._is_closed:
                 warnings.warn(
                     "The provided symplectic form does not define a Kahler structure, so the associated metric tensor may not actually describe a metric."
                 )
@@ -477,7 +489,7 @@ class KahlerStructure(Basic):
         """
         The holomorphic Riemann curvature tensor, defined by hooking the complex structure operator into the second and fourth positions of the Kahler structure's metric's (0,4)-type Riemann curvature tensor.
         """
-        if self._holRiemann == None:
+        if self._holRiemann is None:
 
             dim = len(self.coor_frame)
             R = self.metric.RiemannCurvature
@@ -485,13 +497,13 @@ class KahlerStructure(Basic):
             VFBasis = self.coor_frame
 
             def entry_rule(a, b, c, d):
-                return simplify(R(a, complex_struct_op(b), c, complex_struct_op(d)))
+                return sp.simplify(R(a, complex_struct_op(b), c, complex_struct_op(d)))
 
             coeffData = {
-                (j, k, l, m): entry_rule(VFBasis[j], VFBasis[k], VFBasis[l], VFBasis[m])
+                (j, k, L, m): entry_rule(VFBasis[j], VFBasis[k], VFBasis[L], VFBasis[m])
                 for j in range(dim)
                 for k in range(j, dim)
-                for l in range(dim)
+                for L in range(dim)
                 for m in range(dim)
             }
             self._holRiemann = TFClass(self.varSpace, coeffData, 4, DGCVType="complex")
@@ -502,7 +514,7 @@ class KahlerStructure(Basic):
         """
         The holomorphic Ricci curvature tensor, defined by hooking the complex structure operator into the second position of the Kahler structure's metric's Ricci curvature tensor.
         """
-        if self._holRicci == None:
+        if self._holRicci is None:
 
             dim = len(self.coor_frame)
             Ric = self.metric.RicciTensor
@@ -510,7 +522,7 @@ class KahlerStructure(Basic):
             VFBasis = self.coor_frame
 
             def entry_rule(a, b):
-                return simplify(Ric(a, complex_struct_op(b)))
+                return sp.simplify(Ric(a, complex_struct_op(b)))
 
             coeffData = {
                 (j, k): entry_rule(VFBasis[j], VFBasis[k])
@@ -522,40 +534,40 @@ class KahlerStructure(Basic):
 
     @property
     def Bochner(self):
-        """
+        r"""
         The Bochner curvature tensor in $T^{1,0}M\otimes T^{0,1}M\otimes T^{1,0}M\otimes T^{0,1}M$.
         """
-        if self._Bochner == None:
+        if self._Bochner is None:
 
             VFBasis = self.coor_frame_complex
             dim = len(VFBasis)
-            compDim = int(Rational(dim, 2))
+            compDim = int(sp.Rational(dim, 2))
 
             g = self.metric.SymTensorField
             R = self.metric.RiemannCurvature
             Ric = self.metric.RicciTensor
             S = self.metric.scalarCurvature
 
-            def entry_rule(j, h, l, k):
-                term1 = R(j, h, l, k)
-                term2 = Rational(1, compDim + 2) * (
-                    (g(j, k)) * (Ric(l, h))
-                    + (g(l, k)) * (Ric(j, h))
-                    + (g(l, h)) * (Ric(j, k))
-                    + (g(j, h)) * (Ric(l, k))
+            def entry_rule(j, h, L, k):
+                term1 = R(j, h, L, k)
+                term2 = sp.Rational(1, compDim + 2) * (
+                    (g(j, k)) * (Ric(L, h))
+                    + (g(L, k)) * (Ric(j, h))
+                    + (g(L, h)) * (Ric(j, k))
+                    + (g(j, h)) * (Ric(L, k))
                 )
                 term3 = (
                     S
-                    * Rational(1, 2 * (compDim + 1) * (compDim + 2))
-                    * (g(l, h) * g(j, k) + g(j, h) * g(l, k))
+                    * sp.Rational(1, 2 * (compDim + 1) * (compDim + 2))
+                    * (g(L, h) * g(j, k) + g(j, h) * g(L, k))
                 )
-                return simplify(term1 + term2 - term3)
+                return sp.simplify(term1 + term2 - term3)
 
             coeffData = {
-                (j, k, l, m): entry_rule(VFBasis[j], VFBasis[k], VFBasis[l], VFBasis[m])
+                (j, k, L, m): entry_rule(VFBasis[j], VFBasis[k], VFBasis[L], VFBasis[m])
                 for j in range(compDim)
                 for k in range(compDim, dim)
-                for l in range(compDim)
+                for L in range(compDim)
                 for m in range(compDim, dim)
             }
             self._Bochner = TFClass(
@@ -574,6 +586,6 @@ class KahlerStructure(Basic):
 
     @property
     def is_closed(self):
-        if self._is_closed == None:
+        if self._is_closed is None:
             self._is_closed = self.kahlerForm.is_zero()
         return self._is_closed

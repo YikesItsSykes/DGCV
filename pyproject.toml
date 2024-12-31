@@ -14,8 +14,13 @@ readme = "README.md"
 
 [tool.ruff]
 line-length = 88
-extend-exclude = ["_build", "buck-out", "build", "dist"]
+select = ["F", "E", "W", "I"]
+extend-exclude = ["_build", "buck-out", "build", "dist", "tutorials"]
 
 [tool.ruff.lint]
-select = ["F", "E", "W", "I"]
-extend-select = ["Q"]         # Enforce double-quote normalization
+ignore = ["E501", "Q", "W291"]
+
+[tool.black]
+line-length = 88
+skip-string-normalization = false
+target-version = ["py37", "py38", "py39", "py310", "py311"]

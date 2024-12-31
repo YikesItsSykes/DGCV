@@ -1,18 +1,27 @@
 ############## dependencies
+import random
 import warnings
 
-from sympy import Matrix, nsimplify
+import sympy as sp
+from vectorFieldsAndDifferentialForms import VF_bracket
 
-from .combinatorics import *
-from .config import _cached_caller_globals, get_variable_registry
-from .DGCore import *
-from .vectorFieldsAndDifferentialForms import *
+from ._safeguards import (
+    create_key,
+    get_variable_registry,
+    retrieve_passkey,
+    retrieve_public_key,
+    validate_label,
+    validate_label_list,
+)
+from .config import _cached_caller_globals
+from .DGCVCore import VFClass, addVF, allToReal, clearVar, listVar, variableProcedure
+from .styles import get_style
 
 ############## Algebras
 
 
 # finite dimensional algebra class
-class FAClass(Basic):
+class FAClass(sp.Basic):
     def __new__(cls, structure_data, *args, **kwargs):
         # Validate structure data
         validated_structure_data = cls.validate_structure_data(
@@ -20,7 +29,7 @@ class FAClass(Basic):
         )
 
         # Create the new instance
-        obj = Basic.__new__(cls, validated_structure_data)
+        obj = sp.Basic.__new__(cls, validated_structure_data)
 
         # Attach structureData directly for use in __init__
         obj.structureData = validated_structure_data
@@ -76,7 +85,7 @@ class FAClass(Basic):
                 The validated and adjusted grading vector.
             """
             # Ensure vector is a list, tuple, or SymPy Tuple
-            if not isinstance(vector, (list, tuple, Tuple)):
+            if not isinstance(vector, (list, tuple, sp.Tuple)):
                 raise ValueError(
                     "Grading vector must be a list, tuple, or SymPy Tuple."
                 )
@@ -102,22 +111,22 @@ class FAClass(Basic):
 
             # Validate components
             for i, component in enumerate(vector):
-                if not isinstance(component, (int, float, sympy.Basic)):
+                if not isinstance(component, (int, float, sp.Basic)):
                     raise ValueError(
                         f"Invalid component in grading vector at index {i}: {component}. "
                         f"Expected int, float, or sympy.Expr."
                     )
 
-            return Tuple(*vector)
+            return sp.Tuple(*vector)
 
         # Process grading
         if grading is None:
             # Default to a single grading vector [0, 0, ..., 0]
-            self.grading = [Tuple(*([0] * self.dimension))]
+            self.grading = [sp.Tuple(*([0] * self.dimension))]
         else:
             # Handle single or multiple grading vectors
             if isinstance(grading, (list, tuple)) and all(
-                isinstance(g, (list, tuple, Tuple)) for g in grading
+                isinstance(g, (list, tuple, sp.Tuple)) for g in grading
             ):
                 # Multiple grading vectors provided
                 self.grading = [
@@ -182,14 +191,14 @@ class FAClass(Basic):
         # Case 1: If process_matrix_rep is True, handle matrix representation
         if process_matrix_rep:
             if all(
-                isinstance(Matrix(obj), Matrix)
-                and Matrix(obj).shape[0] == Matrix(obj).shape[1]
+                isinstance(sp.Matrix(obj), sp.Matrix)
+                and sp.Matrix(obj).shape[0] == sp.Matrix(obj).shape[1]
                 for obj in data
             ):
                 return algebraDataFromMatRep(data)
             else:
                 raise ValueError(
-                    "Matrix representation requires a list of square matrices."
+                    "sp.Matrix representation requires a list of square matrices."
                 )
 
         # Case 2: If the input is a list of VFClass objects, handle vector fields
@@ -280,7 +289,7 @@ class FAClass(Basic):
             )
 
         def format_algebra_label(label):
-            """Wrap the algebra label in \mathfrak{} if all characters are lowercase, and subscript any numeric suffix."""
+            r"""Wrap the algebra label in \mathfrak{} if all characters are lowercase, and subscript any numeric suffix."""
             if label and label[-1].isdigit():
                 label_text = "".join(filter(str.isalpha, label))
                 label_number = "".join(filter(str.isdigit, label))
@@ -306,7 +315,7 @@ class FAClass(Basic):
             )
 
         def format_algebra_label(label):
-            """
+            r"""
             Formats an algebra label for LaTeX. Handles:
             1. Labels with an underscore, splitting into two parts:
             - The first part goes into \mathfrak{} if it is lowercase.
@@ -361,7 +370,7 @@ class FAClass(Basic):
         )
         return (
             f"Algebra: ${formatted_label}$, Basis: ${formatted_basis_labels}$, "
-            f"Dimension: ${self.dimension}$, Grading: ${latex(self.grading)}$"
+            f"Dimension: ${self.dimension}$, Grading: ${sp.latex(self.grading)}$"
         )
 
     def _sympystr(self):
@@ -389,8 +398,8 @@ class FAClass(Basic):
         try:
             # Check if structureData contains only symbolic or numeric elements
             if self._is_symbolic_matrix(self.structureData):
-                return sympy.latex(
-                    Matrix(self.structureData)
+                return sp.latex(
+                    sp.Matrix(self.structureData)
                 )  # Convert to matrix if valid
             else:
                 return str(
@@ -403,7 +412,7 @@ class FAClass(Basic):
         """
         Checks if the matrix contains only symbolic or numeric entries.
         """
-        return all(all(isinstance(elem, sympy.Basic) for elem in row) for row in data)
+        return all(all(isinstance(elem, sp.Basic) for elem in row) for row in data)
 
     def is_skew_symmetric(self, verbose=False):
         """
@@ -436,7 +445,7 @@ class FAClass(Basic):
         for i in range(self.dimension):
             for j in range(self.dimension):
                 for k in range(len(self.structureData[i][j])):
-                    vector_sum_element = simplify(
+                    vector_sum_element = sp.simplify(
                         self.structureData[i][j][k] + self.structureData[j][i][k]
                     )
                     if vector_sum_element != 0:
@@ -583,7 +592,7 @@ class FAClass(Basic):
             return False
 
         # Compute the determinant of the Killing form
-        det = simplify(killingForm(self).det())
+        det = sp.simplify(killingForm(self).det())
 
         if verbose:
             if det != 0:
@@ -621,7 +630,7 @@ class FAClass(Basic):
         """
 
         # Perform linear independence check
-        span_matrix = Matrix.hstack(*[el.coeffs for el in elements])
+        span_matrix = sp.Matrix.hstack(*[el.coeffs for el in elements])
         linearly_independent = span_matrix.rank() == len(elements)
 
         if not linearly_independent:
@@ -647,7 +656,7 @@ class FAClass(Basic):
 
                 for k, coeff in enumerate(solution):
                     # Apply nsimplify to enforce exact representation
-                    coeff_simplified = nsimplify(coeff)
+                    coeff_simplified = sp.nsimplify(coeff)
                     structure_data[i][j][k] = coeff_simplified
 
         if return_structure_data:
@@ -796,7 +805,6 @@ class FAClass(Basic):
         - For Lie algebras, the center is the set of elements `z` such that `z * x = 0` for all `x` in the algebra.
         - For associative algebras, the center is the set of elements `z` such that `z * x = x * z` for all `x` in the algebra.
         """
-        from sympy import solve
 
         if not for_associative_alg and not self.is_lie_algebra():
             raise ValueError(
@@ -819,7 +827,7 @@ class FAClass(Basic):
         else:
             eqns = sum([list((el * other).coeffs) for other in self.basis], [])
 
-        solutions = solve(eqns, temp_vars, dict=True)
+        solutions = sp.solve(eqns, temp_vars, dict=True)
         if not solutions:
             warnings.warn(
                 'Using sympy.solve returned no solutions, indicating that this computation of the center failed, as solutions do exist.'
@@ -913,7 +921,6 @@ class FAClass(Basic):
         list of AlgebraElement
             A subset of the input elements that are linearly independent and unique.
         """
-        from sympy import Matrix
 
         # Remove duplicate elements based on their coefficients
         unique_elements = []
@@ -925,7 +932,7 @@ class FAClass(Basic):
                 unique_elements.append(el)
 
         # Create a matrix where each column is the coefficients of an element
-        coeff_matrix = Matrix.hstack(*[el.coeffs for el in unique_elements])
+        coeff_matrix = sp.Matrix.hstack(*[el.coeffs for el in unique_elements])
 
         # Get the column space (linearly independent vectors)
         independent_vectors = coeff_matrix.columnspace()
@@ -1140,7 +1147,7 @@ class FAClass(Basic):
                 pandas_style = get_style("default")
 
             # Apply the style to the DataFrame
-            styled_df = df.style.set_caption("Structure Matrix").set_table_styles(
+            styled_df = df.style.set_caption("Structure sp.Matrix").set_table_styles(
                 pandas_style
             )
             return styled_df
@@ -1150,7 +1157,7 @@ class FAClass(Basic):
 
 
 # algebra element class
-class AlgebraElement(Basic):
+class AlgebraElement(sp.Basic):
     def __new__(cls, algebra, coeffs, format_sparse=False):
         # Ensure the algebra is of type FAClass
         if not isinstance(algebra, FAClass):
@@ -1162,7 +1169,7 @@ class AlgebraElement(Basic):
         coeffs = tuple(coeffs)
 
         # Call Basic.__new__ with these symbolic properties
-        obj = Basic.__new__(cls, algebra, coeffs, format_sparse)
+        obj = sp.Basic.__new__(cls, algebra, coeffs, format_sparse)
 
         # Return the new instance
         return obj
@@ -1170,9 +1177,9 @@ class AlgebraElement(Basic):
     def __init__(self, algebra, coeffs, format_sparse=False):
         self.algebra = algebra
         if format_sparse:
-            self.coeffs = SparseMatrix(coeffs)
+            self.coeffs = sp.SparseMatrix(coeffs)
         else:
-            self.coeffs = Matrix(coeffs)
+            self.coeffs = sp.Matrix(coeffs)
 
         self.is_sparse = format_sparse
 
@@ -1202,7 +1209,7 @@ class AlgebraElement(Basic):
             elif coeff == -1:
                 terms.append(f"-{basis_label}")
             else:
-                if isinstance(coeff, sympy.Expr) and len(coeff.args) > 1:
+                if isinstance(coeff, sp.Expr) and len(coeff.args) > 1:
                     terms.append(f"({coeff}) * {basis_label}")
                 else:
                     terms.append(f"{coeff} * {basis_label}")
@@ -1237,10 +1244,10 @@ class AlgebraElement(Basic):
             elif coeff == -1:
                 terms.append(rf"-{basis_label}")
             else:
-                if isinstance(coeff, sympy.Expr) and len(coeff.args) > 1:
-                    terms.append(rf"({sympy.latex(coeff)}) \cdot {basis_label}")
+                if isinstance(coeff, sp.Expr) and len(coeff.args) > 1:
+                    terms.append(rf"({sp.latex(coeff)}) \cdot {basis_label}")
                 else:
-                    terms.append(rf"{sympy.latex(coeff)} \cdot {basis_label}")
+                    terms.append(rf"{sp.latex(coeff)} \cdot {basis_label}")
 
         if not terms:
             return rf"$0 \cdot {self.algebra.basis_labels[0] if self.algebra.basis_labels else 'e_1'}$"
@@ -1248,7 +1255,7 @@ class AlgebraElement(Basic):
         result = " + ".join(terms).replace("+ -", "- ")
 
         def format_algebra_label(label):
-            """
+            r"""
             Wrap the algebra label in \mathfrak{} if lowercase, and add subscripts for numeric suffixes or parts.
             """
             if "_" in label:
@@ -1314,13 +1321,13 @@ class AlgebraElement(Basic):
 
     def is_zero(self):
         for j in self.coeffs:
-            if simplify(j) != 0:
+            if sp.simplify(j) != 0:
                 return False
         else:
             return True
 
     def subs(self, subsData):
-        newCoeffs = [sympify(j).subs(subsData) for j in self.coeffs]
+        newCoeffs = [sp.sympify(j).subs(subsData) for j in self.coeffs]
         return AlgebraElement(self.algebra, newCoeffs, format_sparse=self.is_sparse)
 
     def __add__(self, other):
@@ -1388,12 +1395,12 @@ class AlgebraElement(Basic):
 
                         # Sum the resulting vector into result_coeffs element-wise
                         result_coeffs = [
-                            sympify(result_coeffs[k] + structure_vector_product[k])
+                            sp.sympify(result_coeffs[k] + structure_vector_product[k])
                             for k in range(len(result_coeffs))
                         ]
 
                 # Convert result_coeffs to an ImmutableDenseNDimArray
-                result_coeffs = ImmutableDenseNDimArray(result_coeffs)
+                result_coeffs = sp.ImmutableDenseNDimArray(result_coeffs)
 
                 # Return a new AlgebraElement with the updated coefficients
                 return AlgebraElement(
@@ -1403,11 +1410,11 @@ class AlgebraElement(Basic):
                 raise TypeError(
                     "Both operands for * must be AlgebraElement instances from the same FAClass."
                 )
-        elif isinstance(other, (int, float, sympy.Expr)):
+        elif isinstance(other, (int, float, sp.Expr)):
             # Scalar multiplication case
             new_coeffs = [coeff * other for coeff in self.coeffs]
             # Convert to ImmutableDenseNDimArray
-            new_coeffs = ImmutableDenseNDimArray(new_coeffs)
+            new_coeffs = sp.ImmutableDenseNDimArray(new_coeffs)
             # Return a new AlgebraElement with the updated coefficients
             return AlgebraElement(
                 self.algebra, new_coeffs, format_sparse=self.is_sparse
@@ -1420,7 +1427,7 @@ class AlgebraElement(Basic):
     def __rmul__(self, other):
         # If other is a scalar, treat it as commutative
         if isinstance(
-            other, (int, float, sympy.Expr)
+            other, (int, float, sp.Expr)
         ):  # Handles numeric types and SymPy scalars
             return self * other  # Calls __mul__ (which is already implemented)
         elif isinstance(other, AlgebraElement):
@@ -1498,14 +1505,14 @@ def createFiniteAlg(
         # Case 1: If process_matrix_rep is True, handle matrix representation
         if process_matrix_rep:
             if all(
-                isinstance(Matrix(obj), Matrix)
-                and Matrix(obj).shape[0] == Matrix(obj).shape[1]
+                isinstance(sp.Matrix(obj), sp.Matrix)
+                and sp.Matrix(obj).shape[0] == sp.Matrix(obj).shape[1]
                 for obj in data
             ):
                 return algebraDataFromMatRep(data)
             else:
                 raise ValueError(
-                    "Matrix representation requires a list of square matrices."
+                    "sp.Matrix representation requires a list of square matrices."
                 )
 
         # Case 2: If the input is a list of VFClass objects, handle vector fields
@@ -1608,16 +1615,16 @@ def createFiniteAlg(
 
     # Process grading
     if grading is None:
-        grading = [Tuple(*([0] * dimension))]  # Default grading: all zeros
+        grading = [sp.Tuple(*([0] * dimension))]  # Default grading: all zeros
     elif isinstance(grading, (list, tuple)) and all(
-        isinstance(w, (int, sympy.Expr)) for w in grading
+        isinstance(w, (int, sp.Expr)) for w in grading
     ):
         # Single grading vector
         if len(grading) != dimension:
             raise ValueError(
                 f"Grading vector length ({len(grading)}) must match the algebra dimension ({dimension})."
             )
-        grading = [Tuple(*grading)]  # Wrap single vector in a list
+        grading = [sp.Tuple(*grading)]  # Wrap single vector in a list
     elif isinstance(grading, list) and all(
         isinstance(vec, (list, tuple)) for vec in grading
     ):
@@ -1627,7 +1634,7 @@ def createFiniteAlg(
                 raise ValueError(
                     f"Grading vector length ({len(vec)}) must match the algebra dimension ({dimension})."
                 )
-        grading = [Tuple(*vec) for vec in grading]  # Convert each vector to Tuple
+        grading = [sp.Tuple(*vec) for vec in grading]  # Convert each vector to Tuple
     else:
         raise ValueError("Grading must be a single vector or a list of vectors.")
 
@@ -1767,7 +1774,7 @@ def algebraDataFromVF(vector_fields):
                                     [
                                         (
                                             varSpaceLoc[i],
-                                            Rational((i + 1) ** sampling_index, 32),
+                                            sp.Rational((i + 1) ** sampling_index, 32),
                                         )
                                         for i in range(len(varSpaceLoc))
                                     ]
@@ -1782,7 +1789,8 @@ def algebraDataFromVF(vector_fields):
             )
         else:
             # Use random sampling system for larger cases
-            random_rational = lambda: Rational(randint(1, 1000), randint(1001, 2000))
+            def random_rational():
+                return sp.Rational(random.randint(1, 1000), random.randint(1001, 2000))            
             bracketVals = list(
                 set(
                     sum(
@@ -1804,7 +1812,7 @@ def algebraDataFromVF(vector_fields):
             )
 
         # Solve the system of equations
-        solutions = list(linsolve(bracketVals, _cached_caller_globals[tempVarLabel]))
+        solutions = list(sp.linsolve(bracketVals, _cached_caller_globals[tempVarLabel]))
 
         if len(solutions) == 1:
             # Extract the solution and substitute into all temporary variables
@@ -1862,8 +1870,8 @@ def algebraDataFromMatRep(mat_list):
     """
     if isinstance(mat_list, list):
         mListLoc = [
-            Matrix(j) for j in mat_list
-        ]  # Convert input to sympy Matrix objects
+            sp.Matrix(j) for j in mat_list
+        ]  # Convert input to sympy sp.Matrix objects
         shapeLoc = mListLoc[0].shape[0]
 
         # Ensure all matrices are square and of the same size
@@ -1878,7 +1886,7 @@ def algebraDataFromMatRep(mat_list):
                     _cached_caller_globals[tempVarLabel][j] * mListLoc[j]
                     for j in range(len(_cached_caller_globals[tempVarLabel]))
                 ],
-                zeros(shapeLoc, shapeLoc),
+                sp.zeros(shapeLoc, shapeLoc),
             )
 
             def pairValue(j, k):
@@ -1908,7 +1916,7 @@ def algebraDataFromMatRep(mat_list):
                 )
 
                 solLoc = list(
-                    linsolve(bracketVals, _cached_caller_globals[tempVarLabel])
+                    sp.linsolve(bracketVals, _cached_caller_globals[tempVarLabel])
                 )
 
                 if len(solLoc) == 1:
@@ -1961,7 +1969,7 @@ def killingForm(arg1, list_processing=False):
             ]
         else:
             aRepLoc = adjointRepresentation(arg1)
-            return Matrix(
+            return sp.Matrix(
                 arg1.dimension,
                 arg1.dimension,
                 lambda j, k: (aRepLoc[j] * aRepLoc[k]).trace(),
@@ -1979,7 +1987,7 @@ def adjointRepresentation(arg1, list_format=False):
             )
         if list_format:
             return arg1.structureData
-        return [Matrix(j) for j in arg1.structureData]
+        return [sp.Matrix(j) for j in arg1.structureData]
     else:
         raise Exception(
             "adjointRepresentation expected to receive an FAClass instance."
@@ -2059,7 +2067,7 @@ def trace_matrix(A):
     # Check if the matrix is square
     if rows_A != cols_A:
         raise ValueError(
-            "Trace can only be computed for square matrices. Matrix is {}x{}.".format(
+            "Trace can only be computed for square matrices. sp.Matrix is {}x{}.".format(
                 rows_A, cols_A
             )
         )
