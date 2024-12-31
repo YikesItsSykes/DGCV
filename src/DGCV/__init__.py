@@ -1,6 +1,58 @@
+"""
+DGCV: Package Initialization
+
+The DGCV package integrates tools for differential geometry with a framework for conveniently working with complex variables. The `__init__.py` module initializes core components of the package.
+
+Initialization:
+    - Global Cache and Variable Management: Automatically sets up the global cache and variable registry
+      systems that underly DGCV's Variable Management Framework (VMF). The VMF tracks and caches 
+      relationships between variables (of coordinate systems) and related objects, and it is fundamental
+      in much of the library's functionalities.
+    - Warnings Configuration: Configures DGCV-specific warning behaviors.
+
+Usage Notes:
+    - To start using DGCV, simply import the package:
+    ```python
+    import DGCV
+
+DGCV: Package Initialization
+
+The DGCV package integrates tools for differential geometry with a framework for conveniently working with complex variables. The `__init__.py` module initializes core components of the package.
+
+
+Initialization:
+    - Global Cache and Variable Management: Automatically sets up the global cache and variable registry
+      systems that underly DGCV's Variable Management Framework (VMF). The VMF tracks and caches 
+      relationships between variables (of coordinate systems) and related objects, and it is fundamental
+      in much of the library's functionalities.
+    - Warnings Configuration: Configures DGCV-specific warning behaviors.
+
+Usage Notes:
+- To start using DGCV, simply import the package:
+  ```python
+  import DGCV
+  ```
+- SymPy utilities frequently used with DGCV (e.g., `I`, `conjugate`, `im`, `re`, `simplify`) should be imported 
+  directly from SymPy:
+  ```python
+  from sympy import I, conjugate, im, re, simplify
+  ```
+- The package initialization automatically configures the VMF and integrates DGCV-specific warnings.
+
+Dependencies:
+    - sympy: Provides foundational symbolic computation tools.
+    - IPython: Supports enhanced output display for Jupyter notebooks.
+
+Author: David Sykes (https://www.realandimaginary.com/dgcv/)
+
+License:
+    MIT License
+
+"""
+
 # Imports
 from IPython.display import Latex
-from sympy import I, conjugate, im, latex, re, simplify
+from sympy import latex
 from sympy.printing.latex import LatexPrinter
 
 from ._DGCV_display import LaTeX, display_DGCV, load_fonts
@@ -110,14 +162,6 @@ configure_warnings()
 
 # Default functions/classes
 __all__ = [
-    ############ Re-exported from SymPy ############
-    "I",                    # Imaginary unit
-    "conjugate",            # Complex conjugation
-    "im",                   # Imaginary part
-    "re",                   # Real part
-    "simplify",             # Simplifies expressions
-    ################################################
-
     ############ DGCV default functions/classes ####
     # From config
     "cache_globals",        # Initialize global caches
