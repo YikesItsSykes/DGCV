@@ -828,8 +828,6 @@ class FAClass(Basic):
         el_sol = el.subs(solutions[0])
 
         free_variables = tuple(set.union(*[set(j.free_symbols) for j in el_sol.coeffs]))
-        print(solutions[0])
-        print(free_variables)
 
         return_list = []
         for var in free_variables:
