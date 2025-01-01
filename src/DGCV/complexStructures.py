@@ -38,7 +38,7 @@ from .DGCVCore import (
     symToReal,
 )
 from .RiemannianGeometry import metricClass
-from .vectorFieldsAndDifferentialForms import makeZeroForm
+from .vectorFieldsAndDifferentialForms import exteriorDerivative, makeZeroForm
 
 ############## Dolbeault operators
 
@@ -467,7 +467,7 @@ class KahlerStructure(sp.Basic):
     @property
     def metric(self):
         if self._metric is None:
-            if not self._is_closed:
+            if not self.is_closed:
                 warnings.warn(
                     "The provided symplectic form does not define a Kahler structure, so the associated metric tensor may not actually describe a metric."
                 )
@@ -587,5 +587,5 @@ class KahlerStructure(sp.Basic):
     @property
     def is_closed(self):
         if self._is_closed is None:
-            self._is_closed = self.kahlerForm.is_zero()
+            self._is_closed = exteriorDerivative(self.kahlerForm).is_zero()
         return self._is_closed

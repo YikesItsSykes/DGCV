@@ -1,7 +1,7 @@
 """
 _display.py
 
-This module provides functions for customizing font display in Jupyter notebooks.
+This module provides functions for customizing the display in Jupyter notebooks.
 The `load_fonts()` function loads web fonts and applies them to the notebook
 environment using HTML and CSS.
 
@@ -10,10 +10,14 @@ Functions
 - load_fonts: Injects HTML and CSS to load Google Fonts and apply custom fonts to the notebook.
 """
 
-import sympy
-from IPython.display import HTML, Latex, display
-from sympy import Basic, latex
 
+############# for printing
+import sympy as sp
+from IPython.display import HTML, Latex, display
+from sympy import Basic, latex  # Rename SymPy's latex
+from sympy.printing.latex import LatexPrinter
+
+############# DGCV classes to format
 from .DGCVCore import (
     DFClass,
     DGCVPolyClass,
@@ -100,7 +104,7 @@ def _display_DGCV_single(arg):
         display(Latex(arg))
     elif isinstance(
         arg,
-        (sympy.Expr, metricClass, DFClass, VFClass, TFClass, STFClass, DGCVPolyClass),
+        (sp.Expr, metricClass, DFClass, VFClass, TFClass, STFClass, DGCVPolyClass),
     ):
         _complexDisplay(arg)
     elif isinstance(arg, FAClass):
@@ -157,13 +161,13 @@ class _alglabeldisplayclass(Basic):
                     )  # Suppress 1 but keep the negative sign
                 else:
                     # Check if the coefficient has more than one term (e.g., 1 + I)
-                    if isinstance(coeff, sympy.Expr) and len(coeff.args) > 1:
+                    if isinstance(coeff, sp.Expr) and len(coeff.args) > 1:
                         terms.append(
-                            rf"({sympy.latex(coeff)}) \cdot {basis_label}"
+                            rf"({sp.latex(coeff)}) \cdot {basis_label}"
                         )  # Wrap multi-term coefficient in parentheses
                     else:
                         terms.append(
-                            rf"{sympy.latex(coeff)} \cdot {basis_label}"
+                            rf"{sp.latex(coeff)} \cdot {basis_label}"
                         )  # Single-term coefficient
 
             # Handle special case: all zero coefficients
@@ -215,3 +219,52 @@ def load_fonts():
     </style>
     """
     display(HTML(font_links))
+
+
+
+# DGCV-specific SymPy LatexPrinter for VFClass and DFClass
+class DGCVLatexPrinter(LatexPrinter):
+    def _print_VFClass(self, expr):
+        return expr._repr_latex_()
+
+    def _print_DFClass(self, expr):
+        return expr._repr_latex_()
+
+
+def DGCV_collection_latex_printer(obj):
+    if isinstance(obj, (tuple, list)):
+        return tuple(
+            Latex(element._repr_latex_() if hasattr(element, "_repr_latex_") else latex(element))
+            for element in obj
+        )
+    return None
+
+
+def DGCV_latex_printer(obj, **kwargs):
+    if isinstance(
+        obj,
+        (
+            VFClass,
+            DFClass,
+            TFClass,
+            STFClass,
+            metricClass,
+            FAClass,
+            AlgebraElement,
+            DGCVPolyClass,
+        ),
+    ):
+        latex_str = obj._repr_latex_()
+        return latex_str.strip("$")
+    elif isinstance(obj, (list, tuple)):
+        latex_elements = [DGCV_latex_printer(elem) for elem in obj]
+        return r"\left( " + r" , ".join(latex_elements) + r" \right)"
+    return latex(obj, **kwargs)
+
+
+def DGCV_init_printing(*args, **kwargs):
+    load_fonts()
+    from sympy import init_printing
+
+    kwargs["latex_printer"] = DGCV_latex_printer
+    init_printing(*args, **kwargs)

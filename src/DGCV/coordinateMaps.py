@@ -77,7 +77,7 @@ class coordinate_map(Basic):
 
     @property
     def JacobianMatrix(self):
-        if self._JacobianMatrix:
+        if self._JacobianMatrix is None:
             self._JacobianMatrix = [
                 [simplify(j(k)) for j in self.domain_frame]
                 for k in self.coordinate_formulas

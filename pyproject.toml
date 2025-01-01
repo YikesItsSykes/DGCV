@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 requires-python = ">=3.6"
 name = "DGCV"
-version = "0.2.4"
+version = "0.2.5"
 description = "Differential Geometry with Complex Variables"
 authors = [{ name = "David Sykes", email = "david@realandimaginary.com" }]
 license = { text = "MIT" }
@@ -14,11 +14,15 @@ readme = "README.md"
 
 [tool.ruff]
 line-length = 88
-select = ["F", "E", "W", "I"]
 extend-exclude = ["_build", "buck-out", "build", "dist", "tutorials"]
 
 [tool.ruff.lint]
-ignore = ["E501", "Q", "W291"]
+select = ["F", "E", "W", "I"]  # Move linter rules to this section
+ignore = ["E501", "Q", "W291"] # Add global ignores here if needed
+
+# Move per-file-ignores to the lint section
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402"]
 
 [tool.black]
 line-length = 88

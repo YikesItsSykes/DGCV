@@ -23,6 +23,7 @@ Dependencies:
 License:
     MIT License
 """
+import re
 import warnings
 
 import sympy as sp
@@ -887,7 +888,7 @@ class metricClass(sp.Basic):
             var_str = var_str[3:]
 
             # Regular expression to match label part and trailing number part
-            match = sp.re.match(
+            match = re.match(
                 r"([a-zA-Z_]+)(\d*)$", var_str
             )  # Match label followed by optional digits
 

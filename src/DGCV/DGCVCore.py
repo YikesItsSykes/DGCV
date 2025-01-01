@@ -4126,7 +4126,7 @@ def createVariables(
         warnings.warn(
             "`createVariables` was called with `complex=True` and `assumeReal=True`. The latter keyword was disregarded because DGCV has fixed variable assumptions for elements in its complex variable systems."
         )
-    if not complex and any([real_label is not None, imaginary_label is not None]):
+    if complex == False and any([real_label is not None, imaginary_label is not None]):  # noqa: E712
         warnings.warn(
             "`createVariables` recieved `complex=False` and recieved values for the `real_label` or `imaginary_label` keywords. Honoring `complex=False`, only a standard variable system was created, and latter labels were disregarded. Set `complex=True` if a complex variable system is needed instead."
         )

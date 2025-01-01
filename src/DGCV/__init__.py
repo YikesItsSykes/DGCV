@@ -51,14 +51,20 @@ License:
 """
 
 # Imports
-from IPython.display import Latex
-from sympy import latex
-from sympy.printing.latex import LatexPrinter
 
-from ._DGCV_display import LaTeX, display_DGCV, load_fonts
+from .config import cache_globals, configure_warnings, get_variable_registry
+
+############# Variable Management Framework (VMF) tools
+# Initialize the globals pointer cache when DGCV is imported
+cache_globals()
+
+# Initialize variable_registry when DGCV is imported
+_ = get_variable_registry()
+
+
+from ._DGCV_display import DGCV_init_printing, LaTeX, display_DGCV
 from .combinatorics import carProd, chooseOp, permSign
 from .complexStructures import Del, DelBar, KahlerStructure
-from .config import cache_globals, configure_warnings, get_variable_registry
 from .coordinateMaps import coordinate_map
 from .CRGeometry import (
     findWeightedCRSymmetries,
@@ -123,6 +129,7 @@ from .finiteDimAlgebras import (
     adjointRepresentation,
     algebraDataFromMatRep,
     algebraDataFromVF,
+    createClassicalLA,
     createFiniteAlg,
     killingForm,
 )
@@ -153,27 +160,17 @@ from .vectorFieldsAndDifferentialForms import (
     makeZeroForm,
 )
 
-# Initialize global caches and variable registry
-cache_globals()
-_ = get_variable_registry()
-
-# Configure warnings
-configure_warnings()
-
 # Default functions/classes
 __all__ = [
     ############ DGCV default functions/classes ####
-    # From config
-    "cache_globals",        # Initialize global caches
-    "configure_warnings",   # Configure DGCV warnings
-    "get_variable_registry",# Get the DGCV variable registry
 
     # From _DGCV_display
-    "LaTeX",                # Custom LaTeX renderer
-    "load_fonts",           # Load custom fonts for LaTeX output
+    "LaTeX",                # Custom LaTeX renderer for DGCV objects
     "display_DGCV",         # Augments IPython.display.display
                             # with support for DGCV object like
                             # custom latex rendering
+    "DGCV_init_printing",    # Augments SymPy.init_printing for DGCV
+                            # objects
 
     # From combinatorics
     "carProd",              # Cartesian product
@@ -251,6 +248,7 @@ __all__ = [
     # From finiteDimAlgebras
     "AlgebraElement",       # Algebra element class
     "FAClass",              # Finite dimensional algebra class
+    "createClassicalLA",    # Initialize classicle simple L.A.
     "adjointRepresentation",# Adjoint representation of algebra
     "algebraDataFromMatRep",# Algebra data from matrix representation
     "algebraDataFromVF",    # Algebra data from vector fields
@@ -286,49 +284,6 @@ __all__ = [
     "makeZeroForm",         # Create zero-form from scalar
 ]
 
-# DGCV-specific SymPy LatexPrinter for VFClass and DFClass
-class DGCVLatexPrinter(LatexPrinter):
-    def _print_VFClass(self, expr):
-        return expr._repr_latex_()
 
-    def _print_DFClass(self, expr):
-        return expr._repr_latex_()
-
-
-def DGCV_collection_latex_printer(obj):
-    if isinstance(obj, (tuple, list)):
-        return tuple(
-            Latex(element._repr_latex_() if hasattr(element, "_repr_latex_") else latex(element))
-            for element in obj
-        )
-    return None
-
-
-def DGCV_latex_printer(obj, **kwargs):
-    if isinstance(
-        obj,
-        (
-            VFClass,
-            DFClass,
-            TFClass,
-            STFClass,
-            metricClass,
-            FAClass,
-            AlgebraElement,
-            DGCVPolyClass,
-        ),
-    ):
-        latex_str = obj._repr_latex_()
-        return latex_str.strip("$")
-    elif isinstance(obj, (list, tuple)):
-        latex_elements = [DGCV_latex_printer(elem) for elem in obj]
-        return r"\left( " + r" , ".join(latex_elements) + r" \right)"
-    return latex(obj, **kwargs)
-
-
-def DGCV_init_printing(*args, **kwargs):
-    load_fonts()
-    from sympy import init_printing
-
-    kwargs["latex_printer"] = DGCV_latex_printer
-    init_printing(*args, **kwargs)
+# Configure warnings
+configure_warnings()

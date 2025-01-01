@@ -3,7 +3,6 @@ import random
 import warnings
 
 import sympy as sp
-from vectorFieldsAndDifferentialForms import VF_bracket
 
 from ._safeguards import (
     create_key,
@@ -16,6 +15,7 @@ from ._safeguards import (
 from .config import _cached_caller_globals
 from .DGCVCore import VFClass, addVF, allToReal, clearVar, listVar, variableProcedure
 from .styles import get_style
+from .vectorFieldsAndDifferentialForms import VF_bracket
 
 ############## Algebras
 
@@ -1155,6 +1155,65 @@ class FAClass(sp.Basic):
         # Return as a list of lists
         return structure_matrix
 
+    def is_ideal(self, subspace_elements):
+        """
+        Checks if the given list of elgebra elements spans an ideal.
+
+        Parameters
+        ----------
+        subspace_elements : list
+            A list of AlgebraElement instances representing the subspace
+            they span.
+
+        Returns
+        -------
+        bool
+            True if the subspace is an ideal, False otherwise.
+
+        Raises
+        ------
+        ValueError
+            If the provided elements do not belong to this algebra.
+        """
+        # Ensure all subspace elements belong to this algebra
+        for el in subspace_elements:
+            if not isinstance(el, AlgebraElement) or el.algebra != self:
+                raise ValueError("All elements in subspace_elements must belong to this algebra.")
+
+        # Check the ideal condition
+        for el in subspace_elements:
+            for other in self.basis:
+                # Compute the product and check if it is in the span of subspace_elements
+                product = el * other
+                if not self.is_in_span(product, subspace_elements):
+                    return False
+        return True
+
+    def is_in_span(self, element, subspace_elements):
+        """
+        Checks if a given AlgebraElement is in the span of subspace_elements.
+
+        Parameters
+        ----------
+        element : AlgebraElement
+            The element to check.
+        subspace_elements : list
+            A list of AlgebraElement instances representing the subspace they span.
+
+        Returns
+        -------
+        bool
+            True if the element is in the span of subspace_elements, False otherwise.
+        """
+        # Build a matrix where columns are the coefficients of subspace_elements
+        span_matrix = sp.Matrix.hstack(*[el.coeffs for el in subspace_elements])
+
+        # Solve for the coefficients that express `element` as a linear combination
+        product_vector = sp.Matrix(element.coeffs)
+        solution = span_matrix.solve_least_squares(product_vector)
+
+        # Check if the solution satisfies the equation
+        return span_matrix * solution == product_vector
 
 # algebra element class
 class AlgebraElement(sp.Basic):
@@ -1462,7 +1521,7 @@ class AlgebraElement(sp.Basic):
         return self.algebra.check_element_weight(self)
 
 
-############## finite algebra creation and tools
+############## finite algebra creation 
 
 
 def createFiniteAlg(
@@ -1497,6 +1556,10 @@ def createFiniteAlg(
     verbose : bool, optional
         If True, provides detailed feedback during the creation process.
     """
+
+    if label in listVar(algebras_only=True):
+        warnings.warn('`createFiniteAlg` was called with a `label` already assigned to another algebra, so `createFiniteAlg` will overwrite the other algebra.')
+        clearVar(label)
 
     def validate_structure_data(data, process_matrix_rep=False):
         """
@@ -1950,6 +2013,326 @@ def algebraDataFromMatRep(mat_list):
     else:
         raise Exception("algebraDataFromMatRep expects a list of square matrices.")
 
+
+def createClassicalLA(
+    series: str,
+    label: str = None,
+    basis_labels: list = None,
+):
+    """
+    Creates a simple (with 2 exceptions) complex Lie algebra specified from the classical
+    series
+        - A_n = sl(n+1)     for n>0
+        - B_n = so(2n+1)    for n>0
+        - C_n = sp(2n)      for n>0
+        - D_n = so(2n)      for n>0 (not simple for n=1,2)
+
+
+    Parameters
+    ----------
+    series : str
+        The type and rank of the Lie algebra, e.g., "A1", "A2", ..., "Dn".
+    label : str, optional
+        Custom label for the Lie algebra. If not provided, defaults to a standard notation,
+        like sl2 for A2 etc.
+    basis_labels : list, optional
+        Custom labels for the basis elements. If not provided, default labels will be generated.
+
+    Returns
+    -------
+    FAClass
+        The resulting Lie algebra as an FAClass instance.
+
+    Raises
+    ------
+    ValueError
+        If the series is not recognized or not implemented.
+
+    Notes
+    -----
+    - Currently supports only the A series (special linear Lie algebras: A_n = sl(n+1)).
+    """
+    # Extract series type and rank
+    try:
+        series_type, rank = series[0], int(series[1:])
+    except (IndexError, ValueError):
+        raise ValueError(f"Invalid series format: {series}. Expected a letter 'A', 'B', 'C', or 'D' followed by a positive integer, like 'A1', 'B5', etc.")
+    if rank <= 0:
+            raise ValueError(f"Sequence index must be a positive integer, but got: {rank}.")
+
+    def generate_A_series_structure_data(n):
+        """
+        Generates the structure data and weights for the A_n series (special linear: sl(n+1)).
+
+        Parameters
+        ----------
+        n : int
+            The relevant term in the A-series
+
+        Returns
+        -------
+        tuple
+            - basis (list): A 3-dimensional list representing the structure data for sl(n+1).
+                            Each element is a 2D list of lists representing a trace-free (n+1)x(n+1) matrix.
+            - weight_vectors (list): A list containing one inner list representing the weight vectors of the basis.
+
+        Notes
+        -----
+        - Basis includes off-diagonal elementary matrices E_{j,k} (j < k first, then j > k).
+        - Diagonal basis elements are trace-free combinations of E_{j,j}.
+        - Weight vectors:
+            - Off-diagonal E_{j,k} is assigned weight j-k.
+            - Diagonal trace-free matrices are assigned weight 0.
+        """
+        # Dimension of the matrices
+        matrix_dim = n + 1
+
+        # Basis elements and weight vectors
+        basis = []
+        weight_vectors = []
+
+        # Add off-diagonal elements with j < k
+        for j in range(matrix_dim):
+            for k in range(j + 1, matrix_dim):
+                E_jk = [[0] * matrix_dim for _ in range(matrix_dim)]
+                E_jk[j][k] = 1  # Set the (j, k)-entry to 1
+                basis.append(E_jk)
+                weight_vectors.append(j - k)
+
+        # Add diagonal trace-free elements
+        for j in range(matrix_dim - 1):
+            E_diag = [[0] * matrix_dim for _ in range(matrix_dim)]
+            E_diag[j][j] = 1       # +1 for the j-th diagonal entry
+            E_diag[j + 1][j + 1] = -1  # -1 for the (j+1)-th diagonal entry
+            basis.append(E_diag)
+            weight_vectors.append(0)
+
+        # Add off-diagonal elements with j > k
+        for j in range(matrix_dim):
+            for k in range(j):
+                E_jk = [[0] * matrix_dim for _ in range(matrix_dim)]
+                E_jk[j][k] = 1  # Set the (j, k)-entry to 1
+                basis.append(E_jk)
+                weight_vectors.append(j - k)
+
+        # Wrap weight vectors in a list (for compatibility with multiple weight systems)
+        weight_vectors = [weight_vectors]
+
+        return basis, weight_vectors
+
+    def generate_B_series_structure_data(n):
+        """
+        Generates the structure data the B_n series 
+        (special orthogonal: so(2n+1)).
+
+        Parameters
+        ----------
+        n : int
+            The rank of the B-series Lie algebra (2n+1 is the matrix dimension).
+
+        Returns
+        -------
+        tuple
+            - basis (list): A 3-dimensional list representing the structure data for so(2n+1).
+                            Each element is a 2D list of lists representing a skew-symmetric (2n+1)x(2n+1) matrix.
+            - weight_vectors (list): An empty list (weights not assigned for B-series).
+
+        Notes
+        -----
+        - Basis includes skew-symmetric matrices E_{j,k} - E_{k,j} (j < k).
+        - Weight vector assignment for B-series is non-trivial and left empty for now.
+        """
+        # Dimension of the matrices
+        matrix_dim = 2 * n + 1
+
+        # Basis elements
+        basis = []
+
+        # Generate skew-symmetric off-diagonal matrices E_{j,k} - E_{k,j}
+        for j in range(matrix_dim):
+            for k in range(j + 1, matrix_dim):
+                # Create a zero matrix
+                skew_symmetric = [[0] * matrix_dim for _ in range(matrix_dim)]
+                skew_symmetric[j][k] = 1   # Set the (j, k)-entry to 1
+                skew_symmetric[k][j] = -1  # Set the (k, j)-entry to -1
+                basis.append(skew_symmetric)
+
+        # Return basis and empty weight_vectors
+        return basis, None
+
+    def generate_C_series_structure_data(n):
+        """
+        Generates the structure data and weight vectors for the C_n series 
+        (symplectic Lie algebra: sp(2n)).
+
+        Parameters
+        ----------
+        n : int
+            The rank of the C-series Lie algebra (2n is the matrix dimension).
+
+        Returns
+        -------
+        tuple
+            - basis (list): A 3-dimensional list representing the structure data for sp(2n).
+                            Each element is a 2D list of lists representing a matrix.
+            - weight_vectors (list): A single weight vector for the basis elements, 
+                                    representing a grading of the algebra.
+
+        Notes
+        -----
+        - Basis matrices are partitioned into nxn blocks and constructed in three groups:
+        1. Lower block triangular: [[0, 0], [S_{j,k}, 0]] (weight = -1).
+        2. Block diagonal: [[E_{j,k}, 0], [0, -E_{k,j}]] (weight = 0).
+        3. Upper block triangular: [[0, S_{j,k}], [0, 0]] (weight = 1).
+        """
+        # Dimension of the full matrices
+        matrix_dim = 2 * n
+
+        # Basis elements and weight vector
+        basis = []
+        weight_vector = []
+
+        # Step 1: Create symmetric matrices S_{j,k} = E_{j,k} + E_{k,j} for j ≤ k
+        symmetric_matrices = []
+        for j in range(n):
+            for k in range(j, n):
+                S = [[0] * n for _ in range(n)]
+                S[j][k] = 1
+                if j != k:
+                    S[k][j] = 1
+                symmetric_matrices.append(S)
+
+        # Step 2: Create pairs P_{j,k} = (E_{j,k}, -E_{k,j})
+        matrix_pairs = []
+        for j in range(n):
+            for k in range(n):
+                P1 = [[0] * n for _ in range(n)]
+                P2 = [[0] * n for _ in range(n)]
+                P1[j][k] = 1
+                P2[k][j] = -1
+                matrix_pairs.append((P1, P2))
+
+        # Step 3: Create basis matrices in three groups
+        # Group 1: Lower block triangular [[0, 0], [S_{j,k}, 0]] (weight = -1)
+        for S in symmetric_matrices:
+            lower_triangular = [[0] * matrix_dim for _ in range(matrix_dim)]
+            # Insert S into the lower-left block
+            for i in range(n):
+                for j in range(n):
+                    lower_triangular[n + i][j] = S[i][j]
+            basis.append(lower_triangular)
+            weight_vector.append(-1)
+
+        # Group 2: Block diagonal [[E_{j,k}, 0], [0, -E_{k,j}]] (weight = 0)
+        for P1, P2 in matrix_pairs:
+            block_diagonal = [[0] * matrix_dim for _ in range(matrix_dim)]
+            # Insert P1 into the top-left block and P2 into the bottom-right block
+            for i in range(n):
+                for j in range(n):
+                    block_diagonal[i][j] = P1[i][j]
+                    block_diagonal[n + i][n + j] = P2[i][j]
+            basis.append(block_diagonal)
+            weight_vector.append(0)
+
+        # Group 3: Upper block triangular [[0, S_{j,k}], [0, 0]] (weight = 1)
+        for S in symmetric_matrices:
+            upper_triangular = [[0] * matrix_dim for _ in range(matrix_dim)]
+            # Insert S into the upper-right block
+            for i in range(n):
+                for j in range(n):
+                    upper_triangular[i][n + j] = S[i][j]
+            basis.append(upper_triangular)
+            weight_vector.append(1)
+
+        # Return basis and weight vector wrapped in a list (to allow multiple gradings)
+        return basis, [weight_vector]
+
+    def generate_D_series_structure_data(n):
+        """
+        Generates the structure data and an empty weight vector for the D_n series 
+        (special orthogonal Lie algebra: so(2n)).
+
+        Parameters
+        ----------
+        n : int
+            The rank of the D-series Lie algebra (2n is the matrix dimension).
+
+        Returns
+        -------
+        tuple
+            - basis (list): A 3-dimensional list representing the structure data for so(2n).
+                            Each element is a 2D list of lists representing a matrix.
+            - weight_vectors (list): An empty list (weights not assigned for D-series).
+
+        Notes
+        -----
+        - Reuses the skew-symmetric construction logic from the B-series generator.
+        - The weight vector assignment for D-series is left empty for now.
+        """
+        return generate_B_series_structure_data(n)
+
+    # A-series implementation
+    if series_type == "A":
+        default_label = f"sl{rank + 1}" if label is None else label
+        # Compute structure data for sl(n+1)
+        structure_data, grading = generate_A_series_structure_data(rank)
+        # Create and return the Lie algebra
+        return createFiniteAlg(
+            structure_data,
+            default_label,
+            basis_labels=basis_labels,
+            grading=grading,
+            process_matrix_rep=True
+        )
+
+    # B-series implementation
+    elif series_type == "B":
+        default_label = f"so{2*rank + 1}" if label is None else label
+        # Compute structure data for so(2n+1)
+        structure_data, grading = generate_B_series_structure_data(rank)
+        # Create and return the Lie algebra
+        return createFiniteAlg(
+            structure_data,
+            default_label,
+            basis_labels=basis_labels,
+            grading=grading,
+            process_matrix_rep=True
+        )
+
+    # C-series implementation
+    elif series_type == "C":
+        default_label = f"sp{2*rank}" if label is None else label
+        # Compute structure data for sp(2n)
+        structure_data, grading = generate_C_series_structure_data(rank)
+        # Create and return the Lie algebra
+        return createFiniteAlg(
+            structure_data,
+            default_label,
+            basis_labels=basis_labels,
+            grading=grading,
+            process_matrix_rep=True
+        )
+
+    # D-series implementation
+    elif series_type == "D":
+        default_label = f"so{2*rank}" if label is None else label
+        # Compute structure data for so(2n)
+        structure_data, grading = generate_D_series_structure_data(rank)
+        # Create and return the Lie algebra
+        return createFiniteAlg(
+            structure_data,
+            default_label,
+            basis_labels=basis_labels,
+            grading=grading,
+            process_matrix_rep=True
+        )
+
+    # Raise an error for unrecognized series
+    else:
+        raise ValueError(f"Series type '{series_type}' is not recognized. Expected 'A', 'B', 'C', or 'D'.")
+
+
+############## algebra tools
 
 def killingForm(arg1, list_processing=False):
     if arg1.__class__.__name__ == "FAClass":
