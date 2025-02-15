@@ -220,7 +220,7 @@ def findWeightedCRSymmetries(
             ),
         ),
     )
-    tOLoc = tangencyObstruction(VFLoc, arg1, arg5, arg2, simplify=simplify)
+    tOLoc = tangencyObstruction(VFLoc, arg1, arg5, simplify=simplify)
     varLoc = tOLoc.atoms(sp.Symbol)
     varLoc1 = {j for j in varLoc}
     varComp = set(extractRIVar(arg2))
@@ -246,10 +246,13 @@ def findWeightedCRSymmetries(
             sp.expand(simplify(symToReal(simplifyingFactor) * tOLoc)), *varLoc1
         )[0].coeffs()
         solLoc = sp.solve(coefListLoc, varLoc)
-    if solLoc == []:
-        clearVar(*listVar(temporary_only=True), report=False)
-        return "no solution"
-    elif type(solLoc) is dict:
+    if len(solLoc) == 0:
+        if tOLoc!=0:
+            clearVar(*listVar(temporary_only=True), report=False)
+            raise ValueError(f"no solution to this system: {coefListLoc}")
+        else:
+            solLoc=dict()
+    if type(solLoc) is dict:
         VFCLoc = [j.subs(solLoc) for j in holVF_coeffs(VFLoc, arg2)]
         subVar = sum(VFCLoc).atoms(sp.Symbol)
         subVar.difference_update(set(arg2))
