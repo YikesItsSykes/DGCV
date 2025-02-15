@@ -10,7 +10,8 @@ _passkey = "".join(random.choices(string.ascii_letters + string.digits, k=16))
 # Generate a dynamic public key using random
 public_key = "".join(random.choices(string.ascii_letters + string.digits, k=8))
 
-
+DGCV_types = {'standard','complex'}
+simplify_formats = {None, "holomorphic", "real", "symbolic_conjugate"}
 
 def create_key(prefix=None, avoid_caller_globals=False):
     """

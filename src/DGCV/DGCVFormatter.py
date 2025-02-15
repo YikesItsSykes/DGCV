@@ -284,12 +284,6 @@ def convert_to_greek(var_name):
             return greek
     return var_name
 
-
-# Helper function to wrap content in LaTeX dollar signs for rendering
-def wrap_in_dollars(content):
-    return f"${content}$"
-
-
 # Helper function to process basis labels (e.g., e1 -> e_{1})
 def process_basis_label(label):
     # Use regex to split the name and numeric suffix
@@ -305,3 +299,8 @@ def process_basis_label(label):
         return f"{convert_to_greek(basis_elem_name)}_{{{basis_elem_number}}}"
     else:
         return f"{convert_to_greek(basis_elem_name)}"
+
+# Helper function to wrap content in LaTeX dollar signs for rendering
+def wrap_in_dollars(content):
+    return f"${content}$"
+

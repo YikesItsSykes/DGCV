@@ -22,11 +22,12 @@ from .DGCVCore import (
     DFClass,
     DGCVPolyClass,
     STFClass,
-    TFClass,
     VFClass,
     symToHol,
     symToReal,
+    tensorField,
 )
+from .filtered_structures import Tanaka_symbol
 from .finiteDimAlgebras import AlgebraElement, FAClass
 from .RiemannianGeometry import metricClass
 
@@ -37,9 +38,9 @@ def LaTeX(obj, removeBARs=False):
     Applies sympy.latex() to the input object, with special handling for lists and tuples.
 
     For lists, the elements are LaTeX-processed, stripped of surrounding $ or $$ symbols if present,
-    and wrapped in \\left[ ... \right].
+    and wrapped in \\left[ ... \\right].
 
-    For tuples, the elements are LaTeX-processed similarly but wrapped in \\left( ... \right).
+    For tuples, the elements are LaTeX-processed similarly but wrapped in \\left( ... \\right).
 
     Parameters
     ----------
@@ -55,7 +56,7 @@ def LaTeX(obj, removeBARs=False):
     def filter(term):
         if removeBARs:
             return latex(term)
-        if isinstance(term, (DFClass, VFClass, STFClass, DGCVPolyClass, TFClass)):
+        if isinstance(term, (DFClass, VFClass, STFClass,tensorField, DGCVPolyClass)):
             if term._varSpace_type == "real":
                 return latex(symToReal(term))
             elif term._varSpace_type == "complex":
@@ -66,6 +67,8 @@ def LaTeX(obj, removeBARs=False):
             return _alglabeldisplayclass(term.label)._repr_latex_()
         elif isinstance(term, AlgebraElement):
             return _alglabeldisplayclass(term.algebra.label, term)._repr_latex_()
+        elif isinstance(term, Tanaka_symbol):
+            return "Tanaka_symbol Class"
         else:
             return latex(symToHol(term))
 
@@ -104,7 +107,7 @@ def _display_DGCV_single(arg):
         display(Latex(arg))
     elif isinstance(
         arg,
-        (sp.Expr, metricClass, DFClass, VFClass, TFClass, STFClass, DGCVPolyClass),
+        (sp.Expr, metricClass, DFClass, VFClass, STFClass,tensorField, DGCVPolyClass,Tanaka_symbol),
     ):
         _complexDisplay(arg)
     elif isinstance(arg, FAClass):
@@ -246,12 +249,13 @@ def DGCV_latex_printer(obj, **kwargs):
         (
             VFClass,
             DFClass,
-            TFClass,
             STFClass,
+            tensorField,
             metricClass,
             FAClass,
             AlgebraElement,
             DGCVPolyClass,
+            Tanaka_symbol
         ),
     ):
         latex_str = obj._repr_latex_()

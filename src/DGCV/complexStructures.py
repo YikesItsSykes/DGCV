@@ -29,13 +29,13 @@ from .config import get_variable_registry
 from .DGCVCore import (
     DFClass,
     STFClass,
-    TFClass,
     addDF,
     allToSym,
     changeDFBasis,
     complex_struct_op,
     realToSym,
     symToReal,
+    tensorField,
 )
 from .RiemannianGeometry import metricClass
 from .vectorFieldsAndDifferentialForms import exteriorDerivative, makeZeroForm
@@ -506,7 +506,7 @@ class KahlerStructure(sp.Basic):
                 for L in range(dim)
                 for m in range(dim)
             }
-            self._holRiemann = TFClass(self.varSpace, coeffData, 4, DGCVType="complex")
+            self._holRiemann = tensorField(self.varSpace, coeffData, valence=(0,0,0,0), DGCVType="complex")
         return self._holRiemann
 
     @property
@@ -529,7 +529,7 @@ class KahlerStructure(sp.Basic):
                 for j in range(dim)
                 for k in range(j, dim)
             }
-            self._holRicci = TFClass(self.varSpace, coeffData, 2, DGCVType="complex")
+            self._holRicci = tensorField(self.varSpace, coeffData, valence=(0,0), DGCVType="complex")
         return self._holRicci
 
     @property
@@ -570,12 +570,12 @@ class KahlerStructure(sp.Basic):
                 for L in range(compDim)
                 for m in range(compDim, dim)
             }
-            self._Bochner = TFClass(
+            self._Bochner = tensorField(
                 self.varSpace,
                 coeffData,
-                4,
+                valence=(0,0,0,0),
                 DGCVType="complex",
-                simplifyKW={
+                _simplifyKW={
                     "simplify_rule": None,
                     "simplify_ignore_list": None,
                     "preferred_basis_element": (0, compDim, 0, compDim),

@@ -887,7 +887,7 @@ style_guide = {
             ]
         },
     },
-    "sunset_gradient": {
+    "warm_orange_purple": {
         "header": {
             "props": [
                 ("background-color", "#ff7f50"),
@@ -944,7 +944,7 @@ style_guide = {
             ]
         },
     },
-    "sci_fi_hologram": {
+    "sci_fi": {
         "table": {
             "props": [("border", "2px solid #7fdbff")]
         },  # Hologram-like cyan border
@@ -998,7 +998,7 @@ style_guide = {
         "alt_row": {"props": [("background-color", "#ffffff")]},
         "hover": {"props": [("background-color", "#cce5ff")]},
     },
-    "antique_parchment": {
+    "parchment": {
         "table": {"props": [("border", "2px solid #5c4327")]},  # Elegant brown borders
         "header": {
             "props": [
@@ -1030,7 +1030,7 @@ style_guide = {
             ]
         },
     },
-    "misty": {
+    "mist": {
         "table": {"props": [("border", "2px solid #b2dfdb")]},  # teal borders
         "header": {
             "props": [
@@ -1089,6 +1089,109 @@ style_guide = {
                 ("color", "#e65100"),
                 ("box-shadow", "0 0 10px rgba(191, 54, 12, 0.5)"),
                 ("transform", "scale(1.01)"),
+            ]
+        },
+    },
+    "gruvbox_dark": {
+        "table": {"props": [("border", "2px solid #ddc7a1")]},  # Gruvbox white borders
+        "header": {
+            "props": [
+                ("background-color", "#2a2827"),  # Gruvbox dark background
+                ("color", "#a9b665"),  # Gruvbox green for header text
+                ("font-family", "Georgia, serif"),
+                ("font-size", "18px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#3c3836"),  # Gruvbox medium-dark
+                ("color", "#e78a4e"),  # Gruvbox warm yellow for column headings
+                ("font-size", "16px"),
+            ]
+        },
+        "row_heading": {
+            "props": [("background-color", "#3c3836"), ("color", "#7daea3")],  # Gruvbox blue
+        },
+        "row": {
+            "props": [
+                ("background-color", "#202020"),  # Gruvbox dark background for rows
+                ("color", "#ddc7a1"),  # Gruvbox white for text
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#282828"),  # Gruvbox medium-dark for alternate rows
+                ("color", "#a9b665"),  # Gruvbox green for alternate text
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#3c3836"),  # Gruvbox medium-dark for hover
+                ("color", "#7daea3"),  # Gruvbox blue/cyan for brighter text on hover
+                ("box-shadow", "0 0 10px rgba(125, 174, 163, 0.5)"),  # Blue shadow to match text color
+                ("transform", "scale(1.01)"),
+            ]
+        },
+    },
+    "gruvbox_light": {
+        "table": {"props": [("border", "2px solid #a9b665")]},  # Gruvbox green for borders
+        "header": {
+            "props": [
+                ("background-color", "#f9f5d7"),  # Gruvbox light-muted
+                ("color", "#7c6f64"),  # Gruvbox medium-muted for text
+                ("font-family", "Georgia, serif"),
+                ("font-size", "18px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#ebdbb2"),  # Gruvbox light-muted
+                ("color", "#d3869b"),  # Gruvbox magenta for column headings
+                ("font-size", "16px"),
+            ]
+        },
+        "row_heading": {
+            "props": [("background-color", "#fbf1c7"), ("color", "#7daea3")],  # Gruvbox blue
+        },
+        "row": {"props": [("background-color", "#fbf1c7"), ("color", "#665c54")]},  # Gruvbox muted text
+        "alt_row": {"props": [("background-color", "#f2e5bc"), ("color", "#928374")]},  # Muted alternate rows
+        "hover": {
+            "props": [
+                ("background-color", "#a9b665"),  # Gruvbox green for hover
+                ("color", "#282828"),  # Dark text for contrast
+                ("box-shadow", "0 0 10px rgba(169, 182, 101, 0.5)"),  # Green shadow
+                ("transform", "scale(1.01)"),
+            ]
+        },
+    },
+    "gruvbox_colorful": {
+        "table": {"props": [("border", "2px solid #d3869b")]},  # Gruvbox magenta
+        "header": {
+            "props": [
+                ("background-color", "#7daea3"),  # Gruvbox aqua for header background
+                ("color", "#202020"),  # Dark text
+                ("font-family", "Comic Sans MS, sans-serif"),
+                ("font-size", "20px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#d8a657"),  # Gruvbox yellow
+                ("color", "#202020"),  # Dark text
+                ("font-size", "18px"),
+            ]
+        },
+        "row_heading": {
+            "props": [("background-color", "#a9b665"), ("color", "#202020")],  # Gruvbox green
+        },
+        "row": {"props": [("background-color", "#89b482"), ("color", "#282828")]},  # Gruvbox cyan
+        "alt_row": {"props": [("background-color", "#7daea3"), ("color", "#282828")]},  # Gruvbox aqua
+        "hover": {
+            "props": [
+                ("background-color", "#d3869b"),  # Gruvbox magenta for hover
+                ("color", "#202020"),  # Dark text
+                ("box-shadow", "0 0 10px rgba(211, 134, 155, 0.5)"),  # Magenta shadow
+                ("transform", "scale(1.02)"),
             ]
         },
     },

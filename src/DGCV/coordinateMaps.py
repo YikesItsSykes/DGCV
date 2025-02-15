@@ -213,7 +213,7 @@ class coordinate_map(Basic):
                     sparse_data,
                     deg,
                     DGCVType=tf.DGCVType,
-                    simplifyKW=tf.simplifyKW,
+                    _simplifyKW=tf._simplifyKW,
                 )
 
             else:
@@ -258,7 +258,7 @@ class coordinate_map(Basic):
                     sparse_data,
                     deg,
                     DGCVType=tf.DGCVType,
-                    simplifyKW=tf.simplifyKW,
+                    _simplifyKW=tf._simplifyKW,
                 )
 
             else:
@@ -314,7 +314,7 @@ class coordinate_map(Basic):
                     sparse_data,
                     deg,
                     DGCVType=tf.DGCVType,
-                    simplifyKW=tf.simplifyKW,
+                    _simplifyKW=tf._simplifyKW,
                 )
 
             else:
