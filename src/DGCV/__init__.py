@@ -77,13 +77,11 @@ from .DGCVCore import (
     DGCV_snapshot,
     DGCVPolyClass,
     STFClass,
-    TFClass,
     VF_bracket,
     VF_coeffs,
     VFClass,
     addDF,
     addSTF,
-    addTF,
     addVF,
     allToHol,
     allToReal,
@@ -120,7 +118,8 @@ from .DGCVCore import (
     scaleVF,
     symToHol,
     symToReal,
-    tensorProduct,
+    tensor_product,
+    tensorField,
     variableSummary,
 )
 from .finiteDimAlgebras import (
@@ -129,6 +128,7 @@ from .finiteDimAlgebras import (
     adjointRepresentation,
     algebraDataFromMatRep,
     algebraDataFromVF,
+    algebraSubspace,
     createClassicalLA,
     createFiniteAlg,
     killingForm,
@@ -144,7 +144,9 @@ from .RiemannianGeometry import (
     metric_from_matrix,
     metricClass,
 )
+from .solvers import solve_carefully
 from .styles import get_DGCV_themes
+from .tensors import createVectorSpace, tensorProduct, vectorSpace, vectorSpaceElement
 from .vectorFieldsAndDifferentialForms import (
     LieDerivative,
     annihilator,
@@ -192,17 +194,16 @@ __all__ = [
     "weightedHomogeneousVF",# Produce general weighted homogeneous vector fields
 
     # From DGCVCore
+    "tensorField",          # Tensor field class
     "DFClass",              # Differential form class
     "DGCVPolyClass",        # DGCV polynomial class
     "DGCV_snapshot",        # Summarize initialized DGCV objects
     "STFClass",             # Symmetric tensor field class
-    "TFClass",              # Tensor field class
     "VFClass",              # Vector field class
     "VF_bracket",           # Lie bracket of vector fields
     "VF_coeffs",            # Coefficients of vector fields
     "addDF",                # Add differential forms
     "addSTF",               # Add symmetric tensor fields
-    "addTF",                # Add tensor fields
     "addVF",                # Add vector fields
     "allToHol",             # Convert DGCV expressions to holomorphic
                             # coordinate format
@@ -242,11 +243,12 @@ __all__ = [
     "scaleVF",              # Scale vector fields
     "symToHol",             # Convert symbolic conjugates to holomorphic format
     "symToReal",            # Convert symbolic conjugates to real format
-    "tensorProduct",        # Compute tensor product
+    "tensor_product",        # Compute tensor product of tensorField instances
     "variableSummary",      # Depricated - use DGCV_snapshot instead
 
     # From finiteDimAlgebras
     "AlgebraElement",       # Algebra element class
+    "algebraSubspace",      # Algebra subspace class
     "FAClass",              # Finite dimensional algebra class
     "createClassicalLA",    # Initialize classicle simple L.A.
     "adjointRepresentation",# Adjoint representation of algebra
@@ -268,6 +270,16 @@ __all__ = [
 
     # From styles
     "get_DGCV_themes",      # Get DGCV themes for various output styles
+
+    # From solvers
+    "solve_carefully",      # Recursively tests sympy.solve on variable subsets
+
+    # From tensors
+    "vectorSpace",          # Class representing vector spaces
+    "vectorSpaceElement",   # Class representing elements in a vector space
+    "tensorProduct",       # Class representing elements in tensor products (of VS elements)
+                            # of vector space and their dual spaces
+    "createVectorSpace",    # Create vectorSpace class instances with labeling
 
     # From vectorFieldsAndDifferentialForms
     "LieDerivative",        # Compute Lie derivative

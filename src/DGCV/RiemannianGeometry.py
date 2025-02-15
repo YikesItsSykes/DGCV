@@ -34,12 +34,12 @@ from .combinatorics import carProd_with_weights_without_R, permSign
 from .config import greek_letters
 from .DGCVCore import (
     STFClass,
-    TFClass,
     VFClass,
     allToHol,
     allToReal,
     allToSym,
     changeVFBasis,
+    tensorField,
 )
 
 
@@ -62,7 +62,7 @@ class metricClass(sp.Basic):
             )
         self.varSpace = STF.varSpace
         self.degree = STF.degree
-        self.simplifyKW = STF.simplifyKW
+        self._simplifyKW = STF._simplifyKW
         self.DGCVType = STF.DGCVType
         self.SymTensorField = STF
         self._varSpace_type = STF._varSpace_type
@@ -593,7 +593,7 @@ class metricClass(sp.Basic):
             sparse_data = {
                 indices: entry_rule(indices) for indices in generate_indices(shape)
             }
-            self._RCT04 = TFClass(self.varSpace, sparse_data, 4, DGCVType=self.DGCVType)
+            self._RCT04 = tensorField(self.varSpace, sparse_data, valence=(0,0,0,0), DGCVType=self.DGCVType)
         return self._RCT04
 
     @property
@@ -635,7 +635,7 @@ class metricClass(sp.Basic):
                 sparse_data,
                 self.degree,
                 DGCVType=self.DGCVType,
-                simplifyKW=self.simplifyKW,
+                _simplifyKW=self._simplifyKW,
             )
         return self._Ricci
 
@@ -707,7 +707,7 @@ class metricClass(sp.Basic):
             sparse_data = {
                 indices: entry_rule(indices) for indices in generate_indices(shape)
             }
-            self._Weyl = TFClass(self.varSpace, sparse_data, 4, DGCVType=self.DGCVType)
+            self._Weyl = tensorField(self.varSpace, sparse_data, valence=(0,0,0,0), DGCVType=self.DGCVType)
         return self._Weyl
 
     @property
@@ -796,48 +796,48 @@ class metricClass(sp.Basic):
 
     def _eval_simplify(self, **kwargs):
         """
-        Applies the simplification based on the current simplification settings in the self.simplifyKW attribute.
+        Applies the simplification based on the current simplification settings in the self._simplifyKW attribute.
 
         Returns
         -------
         DFClass
             A simplified DFClass object.
         """
-        if self.simplifyKW["simplify_rule"] is None:
+        if self._simplifyKW["simplify_rule"] is None:
             # Simplify each element in the coeffs list
             simplified_coeffs = {
                 a: sp.simplify(b, **kwargs) for a, b in self.MetricDataDict.items()
             }
-        elif self.simplifyKW["simplify_rule"] == "holomorphic":
+        elif self._simplifyKW["simplify_rule"] == "holomorphic":
             # Simplify each element in the coeffs list
             simplified_coeffs = {
                 a: sp.simplify(
-                    allToHol(b, skipVar=self.simplifyKW["simplify_ignore_list"]),
+                    allToHol(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
                     **kwargs,
                 )
                 for a, b in self.MetricDataDict.items()
             }
-        elif self.simplifyKW["simplify_rule"] == "real":
+        elif self._simplifyKW["simplify_rule"] == "real":
             # Simplify each element in the coeffs list
             simplified_coeffs = {
                 a: sp.simplify(
-                    allToReal(b, skipVar=self.simplifyKW["simplify_ignore_list"]),
+                    allToReal(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
                     **kwargs,
                 )
                 for a, b in self.MetricDataDict.items()
             }
-        elif self.simplifyKW["simplify_rule"] == "symbolic_conjugate":
+        elif self._simplifyKW["simplify_rule"] == "symbolic_conjugate":
             # Simplify each element in the coeffs list
             simplified_coeffs = {
                 a: sp.simplify(
-                    allToSym(b, skipVar=self.simplifyKW["simplify_ignore_list"]),
+                    allToSym(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
                     **kwargs,
                 )
                 for a, b in self.MetricDataDict.items()
             }
         else:
             warnings.warn(
-                "_eval_simplify recieved an unsupported STFClass.simplifyKW['simplify_rule']. It is recommend to only set the simplifyKW['simplify_rule'] attribute to None, 'holomorphic', 'real',  or 'symbolic_conjugate'."
+                "_eval_simplify recieved an unsupported STFClass._simplifyKW['simplify_rule']. It is recommend to only set the _simplifyKW['simplify_rule'] attribute to None, 'holomorphic', 'real',  or 'symbolic_conjugate'."
             )
             simplified_coeffs = {
                 a: sp.simplify(b, **kwargs) for a, b in self.MetricDataDict.items()
@@ -852,7 +852,7 @@ class metricClass(sp.Basic):
                 simplified_coeffs,
                 self.degree,
                 DGCVType=self.DGCVType,
-                simplifyKW=self.simplifyKW,
+                _simplifyKW=self._simplifyKW,
             )
         )
 

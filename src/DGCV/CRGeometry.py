@@ -26,21 +26,7 @@ License:
 ############## dependencies
 from functools import reduce
 
-from sympy import (
-    I,
-    Matrix,
-    Rational,
-    Symbol,
-    Transpose,
-    conjugate,
-    expand,
-    eye,
-    im,
-    numer,
-    poly_from_expr,
-    simplify,
-    solve,
-)
+import sympy as sp
 
 from ._safeguards import retrieve_passkey
 from .config import _cached_caller_globals
@@ -63,7 +49,7 @@ from .vectorFieldsAndDifferentialForms import assembleFromHolVFC
 ############## CR geometry
 
 
-def tangencyObstruction(arg1, arg2, arg3, *args):
+def tangencyObstruction(arg1, arg2, arg3, simplify=False, *args):
     """
     Computes the tangency obstruction for a holomorphic vector field with respect to a CR hypersurface.
 
@@ -103,7 +89,12 @@ def tangencyObstruction(arg1, arg2, arg3, *args):
     evaluationLoc = allToReal(realPartOfVF(arg1)(holToReal(arg3 - arg2))).subs(
         holToReal(symToReal(arg3)), symToReal(arg2)
     )
-    return simplify(symToReal(evaluationLoc))
+    def simplify_rules(expr):
+        if simplify:
+            return sp.simplify(expr)
+        else:
+            return expr
+    return simplify_rules(symToReal(evaluationLoc))
 
 
 def weightedHomogeneousVF(
@@ -175,6 +166,7 @@ def findWeightedCRSymmetries(
     returnVectorFieldBasis=False,
     applyNumer=False,
     simplifyingFactor=None,
+    simplify=False
 ):
     """
     ***This function's algorithm will be revised in future updates***
@@ -204,9 +196,8 @@ def findWeightedCRSymmetries(
     Raises:
         NA
     """
-
     def extractRIVar(arg1):
-        return sum([list(holToReal(j).atoms(Symbol)) for j in arg1], [])
+        return sum([list(holToReal(j).atoms(sp.Symbol)) for j in arg1], [])
 
     VFLoc = addVF(
         weightedHomogeneousVF(
@@ -218,9 +209,7 @@ def findWeightedCRSymmetries(
             degreeCap=degreeCap,
             assumeReal=True,
         ),
-        scaleVF(
-            I,
-            weightedHomogeneousVF(
+        scaleVF(sp.I,weightedHomogeneousVF(
                 arg2,
                 arg4,
                 arg3,
@@ -231,8 +220,8 @@ def findWeightedCRSymmetries(
             ),
         ),
     )
-    tOLoc = tangencyObstruction(VFLoc, arg1, arg5, arg2)
-    varLoc = tOLoc.atoms(Symbol)
+    tOLoc = tangencyObstruction(VFLoc, arg1, arg5, arg2, simplify=simplify)
+    varLoc = tOLoc.atoms(sp.Symbol)
     varLoc1 = {j for j in varLoc}
     varComp = set(extractRIVar(arg2))
     varLoc.difference_update(varComp)
@@ -242,26 +231,27 @@ def findWeightedCRSymmetries(
     if applyNumer:
         if varLoc1 == set():
             varLoc1 = set(arg2)
-        coefListLoc = poly_from_expr(expand(numer(tOLoc)), *varLoc1)[0].coeffs()
-        solLoc = solve(coefListLoc, varLoc)
+        coefListLoc = sp.poly_from_expr(sp.expand(sp.numer(tOLoc)), *varLoc1)[0].coeffs()
+        solLoc = sp.solve(coefListLoc, varLoc)
     elif simplifyingFactor is None:
         if varLoc1 == set():
             varLoc1 = set(arg2)
-        coefListLoc = poly_from_expr(expand(tOLoc), *varLoc1)[0].coeffs()
-        solLoc = solve(coefListLoc, varLoc)
+        coefListLoc = sp.poly_from_expr(sp.expand(tOLoc), *varLoc1)[0].coeffs()
+        solLoc = sp.solve(coefListLoc, varLoc)
     else:
         if varLoc1 == set():
             varLoc1 = set(arg2)
-        coefListLoc = poly_from_expr(
-            expand(simplify(symToReal(simplifyingFactor) * tOLoc)), *varLoc1
+
+        coefListLoc = sp.poly_from_expr(
+            sp.expand(simplify(symToReal(simplifyingFactor) * tOLoc)), *varLoc1
         )[0].coeffs()
-        solLoc = solve(coefListLoc, varLoc)
+        solLoc = sp.solve(coefListLoc, varLoc)
     if solLoc == []:
         clearVar(*listVar(temporary_only=True), report=False)
         return "no solution"
     elif type(solLoc) is dict:
         VFCLoc = [j.subs(solLoc) for j in holVF_coeffs(VFLoc, arg2)]
-        subVar = sum(VFCLoc).atoms(Symbol)
+        subVar = sum(VFCLoc).atoms(sp.Symbol)
         subVar.difference_update(set(arg2))
         variableProcedure(arg6, len(subVar), assumeReal=True)
         VFCLoc = [
@@ -285,7 +275,7 @@ def findWeightedCRSymmetries(
             return VFCLoc
     else:
         VFCLoc = holVF_coeffs(VFLoc, arg2)
-        subVar = sum(VFCLoc).atoms(Symbol)
+        subVar = sum(VFCLoc).atoms(sp.Symbol)
         subVar.difference_update(set(arg2))
         variableProcedure(arg6, len(subVar), assumeReal=True)
         VFCLoc = [
@@ -296,7 +286,7 @@ def findWeightedCRSymmetries(
         return VFCLoc, solLoc
 
 
-def model2Nondegenerate(arg1, arg2, arg3, arg4, return_matrices=False):
+def model2Nondegenerate(arg1, arg2, arg3, arg4, return_matrices=False, simplify=True):
     """
     Builds the defining equation for a 2-nondegnerate model hypersurface using the general formula from the arXiv preprint arXiv:2404.06525.
 
@@ -312,50 +302,55 @@ def model2Nondegenerate(arg1, arg2, arg3, arg4, return_matrices=False):
     Raises:
         NA
     """
-    BARSLoc = conjugate(arg2)
-    zVecLoc = Matrix(arg3)
-    bzVecLoc = Matrix([conjugate(j) for j in arg3])
+    def simplify_rules(expr):
+        if simplify:
+            return sp.simplify(expr)
+        else:
+            return expr
+    BARSLoc = sp.conjugate(arg2)
+    zVecLoc = sp.Matrix(arg3)
+    bzVecLoc = sp.Matrix([sp.conjugate(j) for j in arg3])
     sizeLoc = arg1.shape[0]
-    hFun = (Rational(1, 2)) * (
-        (arg1 * (eye(sizeLoc) - (BARSLoc * Transpose(arg1) * arg2 * arg1)) ** (-1))
-        + ((eye(sizeLoc) - (arg1 * BARSLoc * Transpose(arg1) * arg2)) ** (-1) * arg1)
+    hFun = (sp.Rational(1, 2)) * (
+        (arg1 * (sp.eye(sizeLoc) - (BARSLoc * sp.Transpose(arg1) * arg2 * arg1)) ** (-1))
+        + ((sp.eye(sizeLoc) - (arg1 * BARSLoc * sp.Transpose(arg1) * arg2)) ** (-1) * arg1)
     )
     sFun = (
         arg1
-        * ((eye(sizeLoc) - (BARSLoc * Transpose(arg1) * arg2 * arg1)) ** (-1))
+        * ((sp.eye(sizeLoc) - (BARSLoc * sp.Transpose(arg1) * arg2 * arg1)) ** (-1))
         * BARSLoc
-        * Transpose(arg1)
+        * sp.Transpose(arg1)
     )
     bsFun = (
-        Transpose(arg1)
-        * ((eye(sizeLoc) - (arg2 * arg1 * BARSLoc * Transpose(arg1))) ** (-1))
+        sp.Transpose(arg1)
+        * ((sp.eye(sizeLoc) - (arg2 * arg1 * BARSLoc * sp.Transpose(arg1))) ** (-1))
         * arg2
         * arg1
     )
     if return_matrices:
         return (
-            simplify(
+            simplify_rules(
                 (
-                    Transpose(zVecLoc) * hFun * bzVecLoc
-                    + (Rational(1, 2))
+                    sp.Transpose(zVecLoc) * hFun * bzVecLoc
+                    + (sp.Rational(1, 2))
                     * (
-                        Transpose(zVecLoc) * sFun * zVecLoc
-                        + Transpose(bzVecLoc) * bsFun * bzVecLoc
+                        sp.Transpose(zVecLoc) * sFun * zVecLoc
+                        + sp.Transpose(bzVecLoc) * bsFun * bzVecLoc
                     )
                 )[0]
             )
-            - im(arg4),
+            - sp.im(arg4),
             hFun,
             sFun,
         )
     else:
-        return simplify(
+        return simplify_rules(
             (
-                Transpose(zVecLoc) * hFun * bzVecLoc
-                + (Rational(1, 2))
+                sp.Transpose(zVecLoc) * hFun * bzVecLoc
+                + (sp.Rational(1, 2))
                 * (
-                    Transpose(zVecLoc) * sFun * zVecLoc
-                    + Transpose(bzVecLoc) * bsFun * bzVecLoc
+                    sp.Transpose(zVecLoc) * sFun * zVecLoc
+                    + sp.Transpose(bzVecLoc) * bsFun * bzVecLoc
                 )
             )[0]
-        ) - im(arg4)
+        ) - sp.im(arg4)

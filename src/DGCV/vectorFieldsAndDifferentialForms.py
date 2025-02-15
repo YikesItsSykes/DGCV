@@ -57,7 +57,6 @@ from .DGCVCore import (
     changeDFBasis,
     clearVar,
     compressDGCVClass,
-    conj_with_hol_coor,
     listVar,
     minimalVFDataDict,
     variableProcedure,
@@ -120,18 +119,18 @@ def get_DF(*coordinates):
 ############## complex vector fields
 
 
-def assembleFromHolVFC(arg1, arg2):
+def assembleFromHolVFC(coeffs, holVars):
     """
     Constructs a holomorphic vector field (i.e., VFClass instance) with prescribed coefficients in chosen coordinates.
 
     The vector field is expressed as a linear combination of the coordinate holomorphic vector fields
-    corresponding to the variables in *arg2* with coefficients in *arg1*.
+    corresponding to the variables in *holVars* with coefficients in *coeffs*.
 
     Parameters:
     -----------
-    arg1 : tuple of sympy expressions
+    coeffs : tuple of sympy expressions
         Coefficients for the vector field in terms of the holomorphic variables.
-    arg2 : list or tuple
+    holVars : list or tuple
         A list or tuple containing Symbol objects that were initialized as holomorphic variables via DGCV variable creation functions.
 
     Returns:
@@ -142,9 +141,9 @@ def assembleFromHolVFC(arg1, arg2):
     Raises:
     -------
     ValueError
-        If the length of *arg1* does not match the number of holomorphic variables in *arg2*.
+        If the length of *coeffs* does not match the number of holomorphic variables in *holVars*.
     Exception
-        If variables in *arg2* were not initialized as holomorphic variables.
+        If variables in *holVars* were not initialized as holomorphic variables.
 
     Example:
     --------
@@ -153,24 +152,31 @@ def assembleFromHolVFC(arg1, arg2):
     >>> print(assembleFromHolVFC((z1 + z2, z3, 0), [z1, z2, z3]))
     (z1/2 + z2/2)*D_x1+z3/2*D_x2+(-I*(z1 + z2)/2)*D_y1-I*z3/2*D_y2
     """
-    # Ensure the length of coefficients matches the variable space
-    if len(arg1) != len(arg2):
+    # Check that length of coefficients matches the variable space
+    if len(coeffs) != len(holVars):
         raise ValueError(
-            "The number of coefficients in arg1 must match the number of variables in arg2."
+            f"The number of coefficients in coeffs must match the number of variables in holVars. Instead given \n coeffs: {coeffs} \n vars: {holVars}."
         )
     vr = get_variable_registry()
-    if all(var in vr["conversion_dictionaries"]["symToReal"] for var in arg2):
+    if all(var in vr["conversion_dictionaries"]["holToReal"] for var in holVars):
         pass
     else:
+        problem_vars = []
+        for var in holVars:
+            if var not in vr["conversion_dictionaries"]["symToReal"]:
+                problem_vars += [var]
         raise TypeError(
-            "`assembleFromHolVFC` expects the provided varibles for the coordinate space to be holomorphic."
+            f"`assembleFromHolVFC` expects the provided varibles for the coordinate space to be holomorphic. The following given vars do not satisfy this: {problem_vars}"
         )
+    antiHolVars = tuple([vr['conversion_dictionaries']['conjugation'][var] for var in holVars])
+    vars = tuple(holVars)+antiHolVars
+    coeffs = tuple(coeffs)+((0,)*len(holVars))
 
     # Return the resulting vector field as a VFClass instance
-    return VFClass(arg2, arg1, "complex")
+    return VFClass(vars, coeffs, "complex")
 
 
-def assembleFromAntiholVFC(arg1, arg2):
+def assembleFromAntiholVFC(coeffs, holVars):
     """
     Constructs an antiholomorphic vector field (i.e., VFClass instance) with prescribed coefficients in chosen coordinates.
 
@@ -204,23 +210,28 @@ def assembleFromAntiholVFC(arg1, arg2):
     (z1/2 + z2/2)*D_x1+z3/2*D_x2+(I*(z1 + z2)/2)*D_y1+I*z3/2*D_y2
     """
 
-    # Ensure the length of coefficients matches the variable space
-    if len(arg1) != len(arg2):
+    # Check that length of coefficients matches the variable space
+    if len(coeffs) != len(holVars):
         raise ValueError(
-            "The number of coefficients in arg1 must match the number of variables in arg2."
+            f"The number of coefficients in coeffs must match the number of variables in holVars. Instead given \n coeffs: {coeffs} \n vars: {holVars}."
         )
     vr = get_variable_registry()
-    if all(var in vr["conversion_dictionaries"]["symToReal"] for var in arg2):
+    if all(var in vr["conversion_dictionaries"]["holToReal"] for var in holVars):
         pass
     else:
+        problem_vars = []
+        for var in holVars:
+            if var not in vr["conversion_dictionaries"]["symToReal"]:
+                problem_vars += [var]
         raise TypeError(
-            "`assembleFromHolVFC` expects the provided varibles for the coordinate space to be holomorphic."
+            f"`assembleFromHolVFC` expects the provided varibles for the coordinate space to be holomorphic. The following given vars do not satisfy this: {problem_vars}"
         )
-
-    varSpaceLoc = tuple([conj_with_hol_coor(j) for j in arg2])
+    antiHolVars = tuple([vr['conversion_dictionaries']['conjugation'][var] for var in holVars])
+    vars = tuple(holVars)+antiHolVars
+    coeffs = ((0,)*len(holVars)) + tuple(coeffs)
 
     # Return the resulting vector field as a VFClass instance
-    return VFClass(varSpaceLoc, arg1, "complex")
+    return VFClass(vars, coeffs, "complex")
 
 
 def assembleFromCompVFC(arg1, arg2, arg3):
@@ -260,7 +271,7 @@ def assembleFromCompVFC(arg1, arg2, arg3):
     >>> assembleFromCompVFC((z1 + z2, z3, 0), (z1, z2, z3), [z1, z2, z3])
     VFClass instance representing the complex vector field with holomorphic and antiholomorphic parts
     """
-    # Ensure the length of both sets of coefficients matches the variable space
+    # check that the length of both sets of coefficients matches the variable space
     if len(arg1) != len(arg3) or len(arg2) != len(arg3):
         raise ValueError(
             "The number of coefficients in arg1 and arg2 must match the number of variables in arg3."
@@ -407,12 +418,12 @@ def exteriorDerivative(arg1, forceComplexType=None):
     Example:
     --------
     >>> from DGCV import createVariables, makeZeroForm, exteriorDerivative
-    >>> createVariables('z', 'x', 'y')
+    >>> createVariables('z', 'x', 'y', withVF=True)
     >>> f_Form = makeZeroForm(z,DGCVType='complex')
     >>> exteriorDerivative(f_Form)
     I*d_y+d_x
     """
-    # Ensure arg1 is a DFClass or convert it into a zero-form
+    # Check that arg1 is a DFClass or convert it into a zero-form
     if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sp.Expr)):
         arg1 = makeZeroForm(arg1, DGCVType="complex" if forceComplexType else None)
     elif arg1.DGCVType == "complex":

@@ -30,22 +30,27 @@ greek_letters = {
     "gamma": "\\gamma",
     "delta": "\\delta",
     "epsilon": "\\epsilon",
+    "varepsilon": "\\varepsilon",
     "zeta": "\\zeta",
     "eta": "\\eta",
     "theta": "\\theta",
+    "vartheta": "\\vartheta",
     "iota": "\\iota",
     "kappa": "\\kappa",
     "lambda": "\\lambda",
     "mu": "\\mu",
     "nu": "\\nu",
     "xi": "\\xi",
-    "omicron": "\\omicron",
     "pi": "\\pi",
+    "varpi": "\\varpi",
     "rho": "\\rho",
+    "varrho": "\\varrho",
     "sigma": "\\sigma",
+    "varsigma": "\\varsigma",
     "tau": "\\tau",
     "upsilon": "\\upsilon",
     "phi": "\\phi",
+    "varphi": "\\varphi",
     "chi": "\\chi",
     "psi": "\\psi",
     "omega": "\\omega",
@@ -60,8 +65,9 @@ greek_letters = {
     "Phi": "\\Phi",
     "Psi": "\\Psi",
     "Omega": "\\Omega",
+    "ell": "\\ell",
+    "hbar": "\\hbar"
 }
-
 
 def get_caller_globals():
     """
@@ -126,6 +132,7 @@ variable_registry = {
     "standard_variable_systems": {},
     "complex_variable_systems": {},
     "finite_algebra_systems": {},
+    "misc":{},
     "protected_variables": set(),
     "temporary_variables": set(),
     "obscure_variables": set(),
@@ -137,6 +144,8 @@ variable_registry = {
         "realToHol": {},
         "conjugation": {},
         "find_parents": {},
+        "real_part": {},
+        "im_part": {},
     },
 }
 
@@ -164,5 +173,7 @@ def clear_variable_registry():
             "realToHol": {},
             "conjugation": {},
             "find_parents": {},
+            "real_part": {},
+            "im_part": {},
         },
     }
