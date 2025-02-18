@@ -238,12 +238,17 @@ class zeroFormAtom(sp.Basic):
                     return new_value
                 else:
                     raise TypeError(f'subs() cannot replace a `zeroFormAtom` with object type {type(new_value)}.')
+            else:
+                return self
         else:
             raise TypeError('`zeroFormAtom.subs()` received unsupported subs data.')
 
     def __repr__(self):
+        return (f"zeroFormAtom({self.label!r})")
+
+    def __str__(self):
         """
-        String representation for zeroFormAtom.
+        Fallback string representation.
         """
         if self.is_one:
             return '1'
@@ -256,11 +261,6 @@ class zeroFormAtom(sp.Basic):
 
         return self.label
 
-    def __str__(self):
-        """
-        Fallback string representation.
-        """
-        return self.__repr__()
 
     def _latex(self, printer=None):
         """
@@ -358,8 +358,20 @@ class abstract_ZF(sp.Basic):
         """
         if base is None or base==list() or base==tuple():
             base = 0
+        if isinstance(base,list):
+            base = tuple(base)
         if isinstance(base,abstract_ZF):
             base = base.base
+        if isinstance(base,tuple):
+            op, *args = base  # Extract operator and operands
+            new_args = []
+            for arg in args:
+                if isinstance(arg,abstract_ZF):
+                    new_args += [arg.base]
+                else:
+                    new_args += [arg]
+            args = new_args
+
 
         # Define sorting hierarchy: lower index = lower precedence
         type_hierarchy = {int: 0, float: 0, sp.Expr: 1, zeroFormAtom: 2, abstract_ZF: 3, tuple: 4}
@@ -386,30 +398,30 @@ class abstract_ZF(sp.Basic):
         # If `base` is a tuple, process it
         if isinstance(base, tuple):
             op, *args = base  # Extract operator and operands
-
             if op == 'sub':
                 if all(isinstance(j,(int,float,sp.Expr)) for j in args):
                     base = args[0]-args[1]
                 elif args[0]==args[1]:
                     base = 0
                 elif abstract_ZF(args[0]).is_zero:
-                    base = args[1]
+                    base = ('mul',-1,args[1])
                 elif abstract_ZF(args[1]).is_zero:
                     base = args[0]
-            if op == 'div':
+            elif op == 'div':
                 if all(isinstance(j,(int,float,sp.Expr)) for j in args):
                     base = sp.Rational(args[0],args[1])
                 elif args[0]==args[1] and (not abstract_ZF(args[0]).is_zero):
                     base = 1
                 elif abstract_ZF(args[0]).is_zero:
                     base = 0
-
-            if op in {"add", "mul"}:
+            elif op in {"add", "mul"}:
                 # Flatten nested structures (("add", ("add", x, y), z) --> ("add", x, y, z))
                 flat_args = []
                 for arg in args:
                     if isinstance(arg, abstract_ZF) and isinstance(arg.base, tuple) and arg.base[0] == op:
                         flat_args.extend(arg.base[1:])  # Expand nested elements
+                    elif isinstance(arg, tuple) and arg[0] == op:
+                        flat_args.extend(arg[1:])  # Expand nested elements
                     else:
                         flat_args.append(arg)
 
@@ -425,9 +437,42 @@ class abstract_ZF(sp.Basic):
                 else:
                     if op=="mul":
                         other_terms = [j for j in other_terms if isinstance(j,tuple) or not j.is_one]
-                    if op=="add":
-                        other_terms = [j for j in other_terms if isinstance(j,tuple) or not j.is_zero]
-                    # Combine numeric terms into a single sum and insert if nonzero
+
+                    if op == "add":
+                        new_other_terms = {}
+
+                        for term in other_terms:
+                            if isinstance(term, abstract_ZF):
+                                term = term.base  # Extract base representation
+
+                            # Case 1: Standalone atomic term (e.g., A_low_1_2_hi_1)
+                            if isinstance(term, zeroFormAtom):
+                                new_other_terms[term] = new_other_terms.get(term, 0) + 1
+
+                            # Case 2: Multiplication structure (e.g., ('mul', 1, A))
+                            elif isinstance(term, tuple) and term[0] == "mul" and len(term) == 3 and isinstance(term[1], (int, float, sp.Expr)):
+                                coeff, base_term = term[1], term[2]
+                                new_other_terms[base_term] = new_other_terms.get(base_term, 0) + coeff
+
+                            # Case 3: Any other term, store as-is
+                            else:
+                                new_other_terms[term] = new_other_terms.get(term, 0) + 1
+
+                        # Reconstruct terms, applying simplifications
+                        other_terms = []
+                        for key, coeff in new_other_terms.items():
+                            if coeff == 0:
+                                continue  # Skip zero terms
+
+                            # Keep structure intact, ensuring multiplication doesn't get disrupted
+                            if coeff == 1:
+                                other_terms.append(key)
+                            elif coeff == -1:
+                                other_terms.append(("mul", -1, key))
+                            else:
+                                other_terms.append(("mul", coeff, key))
+
+                    # Combine numeric terms into a single sum/prod and insert if nonzero
                     numeric_terms = [j for j in numeric_terms if j is not None]
                     if numeric_terms:
                         if op == "add":
@@ -473,9 +518,11 @@ class abstract_ZF(sp.Basic):
                     elif isinstance(left, abstract_ZF) and isinstance(left.base, tuple) and left.base[0] == "pow":
                         inner_base, inner_exp = left.base[1], left.base[2]
 
-                        base = ("pow", inner_base, abstract_ZF(("mul", inner_exp, right)))
+                        base = ("pow", inner_base,  ( "mul", inner_exp, right))
 
             # Assign updated base
+            if isinstance(base,(tuple,list)): 
+                base = tuple([j.base if isinstance(j,abstract_ZF) else j for j in base])
             obj = super().__new__(cls, base)
             obj.base = base 
             return obj
@@ -484,7 +531,7 @@ class abstract_ZF(sp.Basic):
             raise TypeError("Base must be zeroFormAtom, int, float, sympy.Expr, abstract_ZF, or an operation tuple.")
 
         # Call sp.Basic constructor
-        obj = sp.Basic.__new__(cls, base)
+        obj = super().__new__(cls, base)
         obj.base = base
         return obj
 
@@ -516,22 +563,63 @@ class abstract_ZF(sp.Basic):
             return NotImplemented
         return self.base == other.base
 
-    def _eval_conjugate(self):
+    def subs(self, data):
+        """
+        Symbolic substitution in abstract_ZF.
+        """
+        if isinstance(self.base,(int,float)):
+            return self
+        if isinstance(data, (list, tuple)) and all(isinstance(j, tuple) and len(j) == 2 for j in data):
+            l1 = len(data)
+            data = dict(data)
+            if len(data) < l1:
+                warnings.warn('Provided substitution rules had repeat keys, and only one was used.')
+        if isinstance(self.base,sp.Expr):
+            new_subs = dict()
+            for k,v in data.items():
+                if isinstance(k,sp.Expr):
+                    new_subs[k] = v
+            return abstract_ZF(self.base.subs(new_subs))
+        if isinstance(self.base,zeroFormAtom):
+            return abstract_ZF(self.base.subs(data))
         if isinstance(self.base,tuple):
-            op, *args = self.base
-            new_base = tuple([op]+[_custom_conj(arg) for arg in args])
+            op,*args = self.base
+            def sub_process(arg,sub_data):
+                if isinstance(arg,sp.Expr):
+                    new_subs = dict()
+                    for k,v in sub_data.items():
+                        if isinstance(k,sp.Expr):
+                            new_subs[k] = v
+                    return arg.subs(new_subs)
+                if isinstance(arg, (zeroFormAtom,abstract_ZF)):
+                    return arg.subs(sub_data)
+                return arg
+            new_base = (op,)+tuple([sub_process(arg,data) for arg in args])                
             return abstract_ZF(new_base)
-        else:
-            return abstract_ZF(_custom_conj(self.base))
+
+    def _eval_conjugate(self):
+        def recursive_conjugate(expr):
+            if isinstance(expr,tuple):
+                op, *args = expr
+                return tuple([op]+[recursive_conjugate(arg) for arg in args])
+            else:
+                return _custom_conj(expr)
+        return abstract_ZF(recursive_conjugate(self.base))
+
 
     def __add__(self, other):
         """
         Addition of abstract_ZF instances.
         Supports addition with int, float, and sympy.Expr.
         """
-        if not isinstance(other, (abstract_ZF, int, float, sp.Expr)):
+        if not isinstance(other, (abstract_ZF, int, float, sp.Expr, zeroFormAtom)):
             return NotImplemented
+        if other == 0:
+            return self
         return abstract_ZF(("add", self, other))
+
+    def __radd__(self,other):
+        return self.__add__(other)
 
     def __sub__(self, other):
         """
@@ -540,6 +628,8 @@ class abstract_ZF(sp.Basic):
         """
         if not isinstance(other, (abstract_ZF, int, float, sp.Expr)):
             return NotImplemented
+        if other == 0:
+            return self
         return abstract_ZF(("sub", self, other))
 
     def __mul__(self, other):
@@ -547,20 +637,29 @@ class abstract_ZF(sp.Basic):
         Multiplication of abstract_ZF instances.
         Supports multiplication with int, float, and sympy.Expr.
         """
-        if isinstance(other, (int, float, sp.Expr, abstract_ZF)):
-            return abstract_ZF(("mul", self, other))
+        if isinstance(other, abstract_ZF):
+            # If multiplying same base, add exponents (x^a * x^b --> x^(a + b))
+            if (
+                isinstance(self.base, tuple) and self.base[0] == "pow" and
+                isinstance(other.base, tuple) and other.base[0] == "pow"
+            ):
+                base1, exp1 = self.base[1], self.base[2]
+                base2, exp2 = other.base[1], other.base[2]
+                if base1 == base2:
+                    return abstract_ZF(("pow", base1, ("add", exp1, exp2)))  # x^(a+b)
 
-        if not isinstance(other, abstract_ZF):
-            return NotImplemented
+            return abstract_ZF(("mul", self.base, other.base))  # Default multiplication for abstract_ZF instances
 
-        # If multiplying same base, add exponents (x^a * x^b --> x^(a + b))
-        if isinstance(self.base, tuple) and self.base[0] == "pow" and isinstance(other.base, tuple) and other.base[0] == "pow":
-            base1, exp1 = self.base[1], self.base[2]
-            base2, exp2 = other.base[1], other.base[2]
-            if base1 == base2:
-                return abstract_ZF(("pow", base1, ("add", exp1, exp2)))  # x^(a+b)
+        elif isinstance(other, (int, float, sp.Expr)):
+            if isinstance(self.base,tuple) and self.base[0]=='mul' and isinstance(self.base[1],(int,float,sp.Expr)):
+                factors = tuple(['mul']+[other*f if count==0 else f for count,f in enumerate(self.base[1:])])
+            else: 
+                factors = ("mul", other, self.base)
+            return abstract_ZF(factors)
+        elif isinstance(other, zeroFormAtom):
+            return abstract_ZF(("mul", self.base, other))
 
-        return abstract_ZF(("mul", self, other))
+        return NotImplemented 
 
     def __rmul__(self, other):
         """
@@ -617,55 +716,68 @@ class abstract_ZF(sp.Basic):
                 for term in args:
                     if isinstance(term, abstract_ZF) and isinstance(term.base, tuple) and term.base[0] == "add":
                         expanded_products = [
-                            abstract_ZF(("mul", term2, *args[:i], *args[i+1:]))  # ✅ Fix: No unpacking inside list comprehension
+                            abstract_ZF(("mul", term2, *args[:i], *args[i+1:]))
                             for i, term2 in enumerate(term.base[1:])
                         ]
-                        expanded_terms.append(abstract_ZF(("add", *expanded_products)))  # ✅ Unpack outside list comprehension
+                        expanded_terms.append(abstract_ZF(("add", *expanded_products)))
+                    elif isinstance(term, tuple) and term[0] == "add":
+                        expanded_products = [
+                            abstract_ZF(("mul", *args[:i], term2, *args[i+1:]))
+                            for i, term2 in enumerate(term[1:])
+                        ]
+                        expanded_terms.append(abstract_ZF(("add", *expanded_products)))
                     else:
                         expanded_terms.append(term)
                     return abstract_ZF(("mul", *expanded_terms))
 
                 if op == "pow":
                     base, exp = args
-                    # Expand (x + y)^2 --> x^2 + 2xy + y^2
-                    if isinstance(base, abstract_ZF) and isinstance(base.base, tuple) and base.base[0] == "add":
-                        terms = base.base[1:]
-                        expanded = sum(abstract_ZF(("mul", abstract_ZF(("pow", t1, exp)), 
-                                                    abstract_ZF(("pow", t2, exp)))) for t1 in terms for t2 in terms)
+                    if isinstance(exp, int) and exp>0:
+                        if isinstance(base, abstract_ZF) and isinstance(base.base, tuple) and base.base[0] == "add":
+                            base = base.base
+                        if isinstance(base, tuple) and base[0] == "add":
+                            terms = base[1:]
+                            expanded = [('mul',term) for term in terms]
+                        for j in range(exp):
+                            expanded = [prod+(term,) for prod in expanded for term in terms]
+
+                        expanded = abstract_ZF(('sum',)+tuple(expanded))
                         return expanded._eval_simplify()
+                    else:
+                        return abstract_ZF(('pow',base,exp))
 
             # Use `ratio` to decide whether to factor (a * b + a * c --> a * (b + c))
             if op == "add" and ratio is not None:
                 common_factors = set()
                 for term in args:
                     if isinstance(term, abstract_ZF) and isinstance(term.base, tuple) and term.base[0] == "mul":
-                        factors = set(term.base[1:])
+                        term = term.base
+                    if isinstance(term, tuple) and term[0] == "mul":
+                        factors = set(term[1:])
                         if not common_factors:
                             common_factors = factors
                         else:
                             common_factors &= factors  # Intersect common factors
+                    elif isinstance(term,(int,float,sp.Expr,zeroFormAtom,abstract_ZF)):
+                        if not common_factors:
+                            common_factors = set([term])
+                        else:
+                            common_factors &= set([term])
 
                 if common_factors and ratio > 0.1:  # Custom threshold for factoring
-                    remaining_terms = [
-                        abstract_ZF(("mul", *(set(term.base[1:]) - common_factors))) if isinstance(term, abstract_ZF) 
-                        and isinstance(term.base, tuple) and term.base[0] == "mul" else term
-                        for term in args
-                    ]
-                    return abstract_ZF(("mul", *common_factors, abstract_ZF(("add", *remaining_terms))))
+                    remaining_terms = []
+                    for term in args:
+                        if isinstance(term, abstract_ZF) and isinstance(term.base, tuple) and term.base[0] == "mul":
+                            factors = set(term.base[1:])
+                        elif isinstance(term, tuple) and term[0] == "mul":
+                            factors = set(term[1:])
+                        else:
+                            factors = {term}
 
-            # Handle division:
-            elif op == "div":
-                num, denom = args
-                if num == denom and num != 0:
-                    return abstract_ZF(1)  # x / x --> 1
+                        reduced_factors = factors - common_factors
+                        remaining_terms.append(("mul", *reduced_factors) if reduced_factors else 1)
 
-            # Handle exponentiation:
-            elif op == "pow":
-                base, exp = args
-                if exp == 1:
-                    return base  # x^1 --> x
-                if exp == 0 and base != 0:
-                    return abstract_ZF(1)  # x^0 --> 1
+                    return abstract_ZF(("mul", *common_factors, ("add", *remaining_terms)))
 
             # Return simplified operation
             return abstract_ZF((op, *args))
@@ -740,15 +852,15 @@ class abstract_ZF(sp.Basic):
                 Determines whether an expression needs parentheses based on its operator.
                 """
                 expr_str = str(expr)
-                if context_op == "mul" and ("+" in expr_str or "-" in expr_str):
+                if context_op == "mul" and any(j in expr_str for j in {"+", "-","add","sub"}):
                     if position == 0 and ('-' not in expr_str[1:] and '+' not in expr_str[1:]):
                         return False
                     return True  # Wrap sums inside products
-                if context_op == "pow" and any(j in expr_str for j in {"+", "-", "*", "/"}) and position == 0:
+                if context_op == "pow" and any(j in expr_str for j in {"+", "-", "*", "/","add","sub","mul","div"}) and position == 0:
                     return True  # base of expontents with sums/products/divs should be wrapped
-                if context_op == "div" and position == 0 and (any(j in expr_str for j in {"+", "/"}) or '-' in expr_str[1:]):
+                if context_op == "div" and position == 0 and (any(j in expr_str for j in {"+", "/","add","div"}) or '-' in expr_str[1:] or 'sub' in expr_str[1:]):
                     return True  # base of expontents with sums/products/divs should be wrapped
-                if context_op == "sub" and ("+" in expr_str or "-" in expr_str):
+                if context_op == "sub" and (j in expr_str for j in {"+", "-","add","sub"}):
                     return True
                 return False
 
@@ -765,7 +877,10 @@ class abstract_ZF(sp.Basic):
                             formatted_args.append('-')
                 elif op=='pow' and isinstance(args[1],sp.Rational) and all(isinstance(j,int) and j>0 for j in [args[1].numerator,args[1].denominator-1]):
                     op = '_handled'
-                    arg_latex = f"{{{arg._latex(printer=printer)}}}" if hasattr(arg, "_latex") else sp.latex(arg)
+                    if isinstance(arg,tuple):
+                        arg_latex = f"{{{abstract_ZF(arg)._latex(printer=printer)}}}"
+                    else:
+                        arg_latex = f"{{{arg._latex(printer=printer)}}}" if hasattr(arg, "_latex") else sp.latex(arg)
                     if args[1].numerator==1:
                         if args[1].denominator==2:
                             formatted_str = f'\\sqrt{{{arg_latex}}}'
@@ -777,7 +892,10 @@ class abstract_ZF(sp.Basic):
                         else:
                             formatted_str = f'\\left(\\sqrt[{args[1].denominator}]{{{arg_latex}}}\\right)^{{{args[1].numerator}}}'
                 else:
-                    arg_latex = f"{{{arg._latex(printer=printer)}}}" if hasattr(arg, "_latex") else sp.latex(arg)
+                    if isinstance(arg,tuple):
+                        arg_latex = f"{{{abstract_ZF(arg)._latex(printer=printer)}}}"
+                    else:
+                        arg_latex = f"{{{arg._latex(printer=printer)}}}" if hasattr(arg, "_latex") else sp.latex(arg)
                     if needs_parentheses(arg, op, count):
                         arg_latex = f"\\left({arg_latex}\\right)"
                     formatted_args.append(arg_latex)
@@ -794,7 +912,7 @@ class abstract_ZF(sp.Basic):
             elif op == "pow":
                 formatted_str = f"{formatted_args[0]}^{{{formatted_args[1]}}}"
 
-            return formatted_str.replace("+ {\\left(-1\\right) ", "- { ")
+            return formatted_str.replace("+ {\\left(-1\\right) ", "- { ").replace("+ -", "-").replace("+ {-", "-{")
 
         return sp.latex(self.base)
 
@@ -961,10 +1079,21 @@ class abstDFAtom():
         return self
 
     def subs(self,subs_data):
-        if isinstance(self.coeff,(zeroFormAtom)) and hasattr(self.coeff, 'subs') and callable(getattr(self.coeff, 'subs')):
-            return abstDFAtom((self.coeff).subs(subs_data),self.degree,self.label,self.ext_deriv_order,_markers=self._markers) # add sympy.Expr support!!!
-        else:
-            return self
+        if isinstance(subs_data, (list, tuple)) and all(isinstance(j, tuple) and len(j) == 2 for j in subs_data):
+            l1 = len(subs_data)
+            subs_data = dict(subs_data)
+            if len(subs_data) < l1:
+                warnings.warn('Provided substitution rules had repeat keys, and only one was used.')
+
+        if isinstance(self.coeff,(zeroFormAtom,abstract_ZF)):
+            return abstDFAtom((self.coeff).subs(subs_data),self.degree,self.label,self.ext_deriv_order,_markers=self._markers)
+        if isinstance(self.coeff,sp.Expr):
+            new_subs = dict()
+            for k,v in subs_data.items():
+                if isinstance(k,sp.Expr):
+                    new_subs[k] = v
+            return abstDFAtom((self.coeff).subs(new_subs),self.degree,self.label,self.ext_deriv_order,_markers=self._markers)
+        return self
 
     def __mul__(self, other):
         """Handle left multiplication."""
@@ -1148,6 +1277,8 @@ class abstDFMonom(sp.Basic):
         if isinstance(coeff_inner,zeroFormAtom):
             if coeff_inner.is_one:
                 coeff_latex = ''
+            elif ((-1)*coeff_inner).is_one:
+                coeff_latex = '-'
             elif coeff_inner.is_zero:
                 coeff_latex = '0'
             else:
@@ -1156,7 +1287,7 @@ class abstDFMonom(sp.Basic):
             if coeff_inner.is_one:
                 coeff_latex = ''
             elif (-1*coeff_inner).is_one:
-                coeff_latex ='-'
+                coeff_latex = '-'
             elif coeff_inner.is_zero:
                 coeff_latex = '0'
             else:
@@ -1580,7 +1711,7 @@ class abst_coframe(sp.Basic):
         """
         return r"\{" + r", ".join(form._latex(printer=printer) for form in self.forms) + r"\}"
 
-    def update_structure_equations(self, replace_symbols = {}, replace_eqns = {}):
+    def update_structure_equations(self, replace_symbols = {}, replace_eqns = {}, simplify=True):
         """
         Update the structure equation for a specific form.
 
@@ -1592,10 +1723,19 @@ class abst_coframe(sp.Basic):
             raise TypeError('If specified, `replace_symbols` and `replace_eqns` should be `dict` type')
         for key, value in self.structure_equations.items():
             if hasattr(value, 'subs') and callable(getattr(value, 'subs')):
-                self.structure_equations[key]=sp.simplify(value.subs(replace_symbols))
+                if simplify:
+                    self.structure_equations[key]=sp.simplify(value.subs(replace_symbols))
+                else:
+                    self.structure_equations[key]=value.subs(replace_symbols)
         for key, value in replace_eqns.items():
             if key in self.forms:
                 self.structure_equations[key]=value
+        if simplify:
+            for key, value in self.structure_equations.items():
+                if isinstance(value,abstDFAtom):
+                    self.structure_equations[key]=key._eval_simplify(value)
+                else:
+                    self.structure_equations[key]=sp.simplify(value)
 
 def create_coframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, complete_to_complex_cf = None,  integrable_complex_struct=False, markers=dict(),remove_guardrails=False):
     """
@@ -1978,7 +2118,7 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
             num, denom = args
             dnum = _cofrDer_abstract_ZF(num, cf, cfIndex)
             ddenom = _cofrDer_abstract_ZF(denom, cf, cfIndex)
-            return abstract_ZF(("div", abstract_ZF(("sub", abstract_ZF(("mul", dnum, denom)), abstract_ZF(("mul", num, ddenom)))), abstract_ZF(("pow", denom, 2))))
+            return abstract_ZF(("div", ("sub", abstract_ZF(("mul", dnum, denom)), abstract_ZF(("mul", num, ddenom))), ("pow", denom, 2)))
 
         elif op == "pow":  # Power Rule: d(f^g)
             base, exponent = args
@@ -1986,7 +2126,7 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
 
             if isinstance(exponent, (int, float, sp.Expr)):
                 new_exp = exponent-1
-                return abstract_ZF(("mul", exponent, abstract_ZF(("pow", base, new_exp)), dbase))
+                return abstract_ZF(("mul", exponent, ("pow", base, new_exp), dbase))
             else:
                 raise NotImplementedError(f'coframe derivatives are not implemented for type {type(base)} raised to type {type(exponent)}')
 

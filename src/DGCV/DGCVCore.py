@@ -30,11 +30,11 @@ Coordinate Conversion:
     - allToHol(): Converts all types of coordinates to holomorphic coordinates.
     - allToSym(): Converts all types of coordinates to holomorphic with symbolic conjugate representations.
 
-Structural Operations:
+Structure Operations:
     - complex_struct_op(): Applies the complex structure operator to a vector field.
     - changeVFBasis(): Changes the coordinates space of a vector field.
     - changeDFBasis(): Changes the coordinates space of a differential form.
-    - changeTFBasis(): Changes the coordinates space of a tensor field.
+    - changeTensorFieldBasis(): Changes the coordinates space of a tensor field.
     - changeSTFBasis(): Changes the coordinates space of a symmetric tensor field.
     - VF_bracket(): Computes the Lie bracket of two vector fields.
     - exteriorProduct(): Computes the exterior product of differential forms.
@@ -641,7 +641,7 @@ class tensorField(sp.Basic):
         """
         Overload `@` for the tensor product.
         """
-        return self.__mul__(other)
+        return tensor_product(self,other)
 
     def __add__(self, other):
         """
@@ -678,36 +678,12 @@ class tensorField(sp.Basic):
         - If `other` is another `tensorField` their tensor product is returned
         """
         if isinstance(other, (int, float, sp.Expr)):
-            return scaleTensorField(self, other)
+            return scaleTensorField(other,self)
 
-        elif isinstance(other, tensorField):
-            # Construct new_varSpace by keeping self.varSpace and adding non-duplicate elements from other.varSpace
-            new_varSpace = list(self.varSpace) + [var for var in other.varSpace if var not in self.varSpace]
-
-            # Transform both tensors to the new variable space
-            self_aligned = changeTensorFieldBasis(self, new_varSpace)
-            other_aligned = changeTensorFieldBasis(other, new_varSpace)
-
-            # Compute the product of expanded coefficient dictionaries
-            new_coeff_dict = {
-                key1 + key2: self_aligned.expanded_coeff_dict[key1] * other_aligned.expanded_coeff_dict[key2]
-                for key1 in self_aligned.expanded_coeff_dict
-                for key2 in other_aligned.expanded_coeff_dict
-            }
-
-            # Determine new valence: concatenate self.valence and other.valence
-            new_valence = self_aligned.valence + other_aligned.valence
-
-            # Preserve other properties (defaulting to general form)
-            return tensorField(
-                varSpace=tuple(new_varSpace),
-                coeff_dict=new_coeff_dict,
-                valence=new_valence,
-                data_shape="general",  # Full tensor product initially treated as general
-                DGCVType=self.DGCVType,  # Assume same type; refinement can come later
-                _simplifyKW=self._simplifyKW,
-            )
-
+        elif isinstance(other,tensorField):
+            if self.data_shape == 'skew' and other.data_shape == 'skew':
+                warnings.deprecated('`*` for tensor products is depricated. Use `@` instead. `*` was applied to multiply a pair of skew symmetric tensorField instances of which at least one was not a DFClass. A usual tensor product was therefore returned. If a wedge product was intended then make sure to initialize arguments as DFClass instances (a TFClass subclass).')
+            return self.__matmul__(other)
         else:
             raise TypeError(f"Unsupported operand type(s) for *: `tensorField` and `{type(other).__name__}`")
 
@@ -1156,7 +1132,7 @@ class DFClass(tensorField):
         """
         return super().__matmul__(other)
 
-    def __mul__(self, arg1):
+    def __mul__(self, other):
         """
         Multiplication for DFClass objects. If the argument is a scalar (SymPy expression or numeric),
         the form is scaled by the scalar. If the argument is another DFClass object,
@@ -1179,20 +1155,21 @@ class DFClass(tensorField):
         TypeError
             If the argument is neither a scalar (SymPy expression, numeric) nor a DFClass instance.
         """
-        if isinstance(arg1, DFClass):
+        if isinstance(other, DFClass):
             # If the argument is another differential form, compute the exterior product
-            return exteriorProduct(self, arg1)
+            return exteriorProduct(self, other)
         elif isinstance(
-            arg1, (sp.Basic, int, float, sp.Rational)
-        ):  # Handle SymPy expressions and numeric types
-            # If the argument is a scalar (SymPy expression or numeric), scale the form
-            return scaleDF(arg1, self)
+            other, (sp.Expr, int, float)
+        ):
+            return scaleDF(other, self)
+        elif isinstance(other,tensorField):
+            return super().__mul__(other)
         else:
             raise TypeError(
-                f"Unsupported operand type(s) for *: 'DFClass' and '{type(arg1).__name__}'"
+                f"Unsupported operand type(s) for *: 'DFClass' and '{type(other).__name__}'"
             )
 
-    def __rmul__(self, arg1):
+    def __rmul__(self, other):
         """
         Right multiplication for DFClass objects. If the argument is a scalar (SymPy expression or numeric),
         the form is scaled by the scalar. If the argument is another DFClass object,
@@ -1215,17 +1192,18 @@ class DFClass(tensorField):
         TypeError
             If the argument is neither a scalar (SymPy expression, numeric) nor a DFClass instance.
         """
-        if isinstance(arg1, DFClass):
+        if isinstance(other, DFClass):
             # If the argument is another differential form, compute the exterior product
-            return exteriorProduct(arg1, self)
+            return exteriorProduct(other, self)
         elif isinstance(
-            arg1, (sp.Basic, int, float, sp.Rational)
-        ):  # Handle SymPy expressions and numeric types
-            # If the argument is a scalar (SymPy expression or numeric), scale the form
-            return scaleDF(arg1, self)
+            other, (sp.Expr, int, float)
+        ):
+            return scaleDF(other, self)
+        elif isinstance(other,tensorField):
+            return super().__mul__(other)
         else:
             raise TypeError(
-                f"Unsupported operand type(s) for *: 'DFClass' and '{type(arg1).__name__}'"
+                f"Unsupported operand type(s) for *: 'DFClass' and '{type(other).__name__}'"
             )
 
     def __neg__(self):
@@ -5601,7 +5579,7 @@ def addTensorFields(*args, doNotSimplify=False):
     if len({tuple(arg.varSpace) for arg in args}) != 1:
         # Combine varSpace while preserving order
         varSpaceLoc = tuple(dict.fromkeys(sum([arg.varSpace for arg in args], ())))
-        args = [changeTFBasis(arg, varSpaceLoc) for arg in args]
+        args = [changeTensorFieldBasis(arg, varSpaceLoc) for arg in args]
     else:
         varSpaceLoc = args[0].varSpace
 
@@ -6104,6 +6082,22 @@ def tensor_product(*args, doNotSimplify=False):
     if not all(isinstance(arg, tensorField) for arg in args):
         raise Exception("Expected all arguments to be instances of tensorField.")
 
+    if len(set([tf.DGCVType for tf in args]))==1:
+        target_type = args[0].DGCVType
+    else:
+        warnings.warn('`tensor_product` was applied to tensorField instances with different DGCVType attributes, so a `DGCVType = \'standard\'` tensorField was returned and variable formatting specific to any particular DGCVType was ignored.')
+        target_type = 'standard'
+    if target_type == 'complex':
+        cd = get_variable_registry()['conversion_dictionaries']  # Retrieve conversion dictionaries
+        # Determine the sub-target type based on the first variable in tensor_field.varSpace
+        first_var = args[0].varSpace[0]
+        if first_var in cd['real_part']:  # Means it is in holomorphic/antiholomorphic set
+            args = [allToSym(arg) for arg in args]
+        elif first_var in cd['find_parents']:  # Means it is in real/imaginary set
+            args = [allToReal(arg) for arg in args]
+        else:
+            raise KeyError(f"First variable {first_var} in tensor_field.varSpace is not part of complex variable system in DGCV's variable management framework.")
+
     # Helper function to multiply terms
     def TermMultiplier(coeff_dict1, coeff_dict2):
         result = dict()
@@ -6115,13 +6109,12 @@ def tensor_product(*args, doNotSimplify=False):
         return result if result else {(0,) * (len(coeff_dict1) + len(coeff_dict2)): 0}
 
     # Helper function to compute the tensor product of two tensorFields
-    def tensor_productOf2(arg1, arg2):
-        # Combine variable spaces
+    def tensor_productOf2(arg1, arg2, TT):
         new_varSpace = tuple(dict.fromkeys(arg1.varSpace + arg2.varSpace))
 
         # Align the variable spaces and transform coefficients
-        aligned_arg1 = changeTFBasis(arg1, new_varSpace)
-        aligned_arg2 = changeTFBasis(arg2, new_varSpace)
+        aligned_arg1 = changeTensorFieldBasis(arg1, new_varSpace)
+        aligned_arg2 = changeTensorFieldBasis(arg2, new_varSpace)
 
         # Combine valences
         new_valence = aligned_arg1.valence + aligned_arg2.valence
@@ -6130,7 +6123,7 @@ def tensor_product(*args, doNotSimplify=False):
         new_coeff_dict = TermMultiplier(aligned_arg1.expanded_coeff_dict, aligned_arg2.expanded_coeff_dict)
 
         # Return the new tensorField
-        return tensorField(new_varSpace, new_coeff_dict, new_valence, data_shape='general',DGCVType=arg1.DGCVType,_simplifyKW=arg1._simplifyKW)
+        return tensorField(new_varSpace, new_coeff_dict, new_valence, data_shape='general',DGCVType=arg1,_simplifyKW=arg1._simplifyKW)
 
     # Handle multiple tensors
     if len(args) > 1:
