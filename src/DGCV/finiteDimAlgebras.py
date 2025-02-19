@@ -69,7 +69,6 @@ class FAClass(sp.Basic):
         def validate_and_adjust_grading_vector(vector, dimension):
             """
             Validates and adjusts a grading vector to match the algebra's dimension.
-            Ensures components are numeric or symbolic.
 
             Parameters
             ----------
@@ -1269,7 +1268,7 @@ class AlgebraElement(sp.Basic):
         if valence not in {0, 1}:
             raise TypeError("AlgebraElement expects valence to be 0 or 1.")
 
-        coeffs = tuple(coeffs)  # Ensure immutability
+        coeffs = tuple(coeffs)
 
         obj = sp.Basic.__new__(cls, algebra, coeffs, valence, format_sparse)
         return obj

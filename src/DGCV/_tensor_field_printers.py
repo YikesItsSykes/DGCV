@@ -40,7 +40,6 @@ def tensor_field_printer(tensor):
             formatted_terms.append(f"{coeff_formatter(scalar)}{basis_element}")
 
     if not formatted_terms:  # If all scalars are zero
-        # Use the preferred basis element for the zero case
         pref_index = tensor._simplifyKW['preferred_basis_element'] if tensor._simplifyKW['preferred_basis_element'] else (0,) * len(valence)
         basis_elements = [
             f"D_{tensor.varSpace[pref_index[j]]}" if valence[j] == 1 else f"d_{tensor.varSpace[pref_index[j]]}"
@@ -48,7 +47,7 @@ def tensor_field_printer(tensor):
         ]
         formatted_terms.append(f"0{_shape_joinders(tensor.data_shape,'plain').join(basis_elements)}")
 
-    # join terms (manually to avoid the "+-" case)
+    # join terms
     result = formatted_terms[0]
     for term in formatted_terms[1:]:
         if term.startswith("-"):
@@ -79,8 +78,8 @@ def tensor_field_latex(tensor):
 
         scalar_str = sp.latex(scalar)
 
-        # Use is_Add to check for multi-term expressions (more reliable than len(args))
-        if scalar.is_Add:
+        # Use is_Add to check for multi-term expressions
+        if sp.sympify(scalar).is_Add:
             return f"\\left({scalar_str}\\right)"
 
         return scalar_str
@@ -150,14 +149,13 @@ def tensor_VS_printer(tp):
             formatted_terms.append(f"{coeff_formatter(scalar)}{basis_element}")
 
     if not formatted_terms:  # If all scalars are zero
-        # Use the preferred basis element for the zero case
         basis_elements = [
             f"{_process_var_label(basis_labels[vec[j]])}"
             for j in range(tp.max_degree)
         ]
         formatted_terms.append(f"0{'@'.join(basis_elements)}")
 
-    # join terms (manually to avoid the "+-" case)
+    # join terms
     result = formatted_terms[0]
     for term in formatted_terms[1:]:
         if term.startswith("-"):
@@ -203,15 +201,13 @@ def tensor_VS_latex(tp):
             formatted_terms.append(f"{coeff_formatter(scalar)} {basis_element}")
 
     if not formatted_terms:  # If all scalars are zero
-
-        # Build LaTeX for the zero case
         basis_elements = [
             f"{_process_var_label(basis_labels[vec[j]])}"
             for j in range(tp.max_degree)
         ]
         formatted_terms.append("0" + '\\otimes '.join(basis_elements))
 
-    # Join terms with "+" and handle "+-" cases
+    # Join terms
     latex_str = formatted_terms[0]
     for term in formatted_terms[1:]:
         if term.startswith("-"):
@@ -264,7 +260,7 @@ def tensor_latex_helper(tp):
         ]
         formatted_terms.append("0" + '\\otimes '.join(basis_elements))
 
-    # Join terms with "+" and handle "+-" cases
+    # Join terms
     latex_str = formatted_terms[0]
     for term in formatted_terms[1:]:
         if term.startswith("-"):
@@ -294,7 +290,7 @@ def _process_var_label(var):
     var_str = str(var)
     is_conjugate = False
 
-    # Handle "BAR" prefix before anything else
+    # Handle "BAR" prefix
     if var_str.startswith("BAR"):
         var_str = var_str[3:]  # Remove "BAR"
         is_conjugate = True
@@ -306,7 +302,7 @@ def _process_var_label(var):
         label_part = match.group(1).rstrip("_")  # Remove trailing underscores
         number_part = match.group(2)  # Extract number if present
 
-        # Convert to Greek if applicable
+        # Special latex symbols filter
         label_part = _convert_to_greek(label_part)
 
         # Format final output

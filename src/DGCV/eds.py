@@ -464,7 +464,6 @@ class abstract_ZF(sp.Basic):
                             if coeff == 0:
                                 continue  # Skip zero terms
 
-                            # Keep structure intact, ensuring multiplication doesn't get disrupted
                             if coeff == 1:
                                 other_terms.append(key)
                             elif coeff == -1:
@@ -1436,7 +1435,7 @@ class abstract_DF(sp.Basic):
         """
         def process_abstDF(elem):
             """
-            Ensure all elements are abstDFMonom instances.
+            Check that all elements are abstDFMonom/Atom instances.
             """
             if isinstance(elem, abstDFMonom):
                 return elem
@@ -1596,7 +1595,6 @@ class abstract_DF(sp.Basic):
         # Build the string for terms
         terms_repr = [repr(term) for term in self.terms]
 
-        # Suppress leading "+" and ensure proper spacing around "-"
         result = terms_repr[0] if len(terms_repr)>0 else ""
         for term in terms_repr[1:]:
             if term.startswith("-"):
@@ -2053,11 +2051,9 @@ def _cofrDer_zeroFormAtom(zf, cf, cfIndex):
     if not isinstance(cfIndex, int) or cfIndex < 0:
         raise ValueError("`cfIndex` must be a non-negative integer.")
 
-    # Ensure compatibility of `zf` with `cf`
     if zf.coframe is not None and zf.coframe != cf:
         raise ValueError("Cannot differentiate a `zeroFormAtom` with respect to a different coframe.")
 
-    # Ensure cfIndex is within bounds
     if cfIndex >= len(cf.forms):
         raise IndexError(f"`cfIndex` {cfIndex} is out of bounds for coframe with {len(cf.forms)} forms.")
 
