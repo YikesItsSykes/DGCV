@@ -735,15 +735,13 @@ class metricClass(sp.Basic):
 
     def _sympystr(self, printer):
         """
-        Overrides SymPy's default string formatting method.
-        This ensures that custom __repr__ is used when printing metric class objects.
+        custom _repr_latex_ is used when calling sympy.latex().
         """
         return self.__repr__()
 
     def _latex(self, printer=None):
         """
-        Overrides SymPy's default LaTeX formatting method.
-        This ensures that custom _repr_latex_ is used when calling sympy.latex().
+        custom _repr_latex_ is used when calling sympy.latex().
         """
         return self._repr_latex_()
 
@@ -1099,7 +1097,7 @@ def metric_from_matrix(coordinates, matrix):
         shape : tuple
             A tuple where each element defines the dimension (length) of each axis.
         min_val : int, optional
-            The minimum value allowed for the current index, ensuring nondecreasing order.
+            The minimum value allowed for the current index, with nondecreasing order.
 
         Returns
         -------
@@ -1110,7 +1108,7 @@ def metric_from_matrix(coordinates, matrix):
             # Generate the indices for the last dimension, constrained by min_val
             return [(i,) for i in range(min_val, shape[0])]
         else:
-            # Recursively generate indices for the next dimensions, ensuring nondecreasing order
+            # Recursively generate indices for the next dimensions, with nondecreasing order
             return [
                 (i,) + t
                 for i in range(min_val, shape[0])
@@ -1123,60 +1121,3 @@ def metric_from_matrix(coordinates, matrix):
         for indices in generate_nondecreasing_indices(shape)
     }
     return metricClass(STFClass(coordinates, sparse_data, deg))
-
-
-# import importlib
-# from sympy import Symbol
-# def inverse_with_precomputed(matrix):
-#     # Ensure the input is an ImmutableSparseNDimArray and 2D
-#     if not isinstance(matrix, ImmutableSparseNDimArray):
-#         raise TypeError("Input must be a sympy.ImmutableSparseNDimArray.")
-
-#     shape = matrix.shape
-#     if len(shape) != 2 or shape[0] != shape[1]:
-#         raise ValueError("Input must be a 2D square matrix.")
-
-#     dim = shape[0]
-
-#     try:
-#         # Dynamically import the correct module for the matrix dimension
-#         module_name = f'DGCV.assets.inversions.precomputed_{dim}x{dim}'
-#         precomputed_inverses = importlib.import_module(module_name)
-#     except ImportError:
-#         raise ImportError(f"Precomputed inverses for {dim}x{dim} matrices not found.")
-
-#     # Retrieve the precomputed inverse formula
-#     inverse_formula = precomputed_inverses.inverse_formulas.get(dim)
-
-#     if not inverse_formula:
-#         raise ValueError(f"No precomputed formula found for {dim}x{dim} matrices.")
-
-#     # Create a dictionary for substitution (map symbolic labels to matrix entries)
-#     subs_dict = {}
-
-#     # Substitute values for the symbolic variables in the adjugate and determinant
-#     for i in range(dim):
-#         for j in range(dim):
-#             subs_dict[Symbol(f'l{i+1}l{j+1}')] = matrix[(i, j)]  # Use tuple indexing
-
-#     # Substitute the symbolic variables in the adjugate and determinant
-#     adjugate_substituted = [[entry.subs(subs_dict) for entry in row] for row in inverse_formula['adjugate']]
-#     det_substituted = inverse_formula['det'].subs(subs_dict)
-
-#     # Compute the inverse using the adjugate and determinant
-#     if det_substituted == 0:
-#         raise ValueError("Matrix is singular and cannot be inverted.")
-
-#     # Divide adjugate by determinant to get the inverse
-#     inverse_matrix = [[entry / det_substituted for entry in row] for row in adjugate_substituted]
-
-#     # Clean up memory
-#     del precomputed_inverses
-#     import gc
-#     gc.collect()
-
-#     # Convert result back to an ImmutableSparseNDimArray
-#     result_shape = (dim, dim)
-#     inverse_sparse = ImmutableSparseNDimArray(inverse_matrix, result_shape)
-
-#     return Matrix(inverse_sparse)

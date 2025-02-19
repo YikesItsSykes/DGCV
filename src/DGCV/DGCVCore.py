@@ -105,7 +105,7 @@ class TFClass:
 class tensorField(sp.Basic):
     def __new__(cls, varSpace, coeff_dict, valence=None, data_shape="general",
                 DGCVType="standard", _simplifyKW=None):
-        varSpace = tuple(varSpace)  # Ensure hashability
+        varSpace = tuple(varSpace)
 
         # Validate coeff_dict
         if not isinstance(coeff_dict, dict):
@@ -160,10 +160,8 @@ class tensorField(sp.Basic):
         self.contravariant_degree = sum(self.valence)
         self.covariant_degree = self.total_degree - self.contravariant_degree
 
-        # Process coefficient dictionary (already handled in __new__)
         self.coeff_dict = coeff_dict  
 
-        # Ensure `_simplifyKW` is properly handled
         if _simplifyKW is None:
             _simplifyKW = {
                 "simplify_rule": None,
@@ -172,7 +170,6 @@ class tensorField(sp.Basic):
             }
         self._simplifyKW = _simplifyKW
 
-        # Compute preferred basis element
         self._preferred_basis_element = self._compute_preferred_basis_element()
 
         # Determine variable space type for complex cases
@@ -380,14 +377,12 @@ class tensorField(sp.Basic):
     def coeffArray(self):
         """
         Returns the tensor coefficients as a SymPy Immutable Sparse Array.
-
-        If the tensor is symmetric, it ensures that all entries are properly symmetrized.
         """
         if self._coeffArray is None:
             def entry_rule(indexTuple):
                 """
                 Retrieves the coefficient for a given index tuple.
-                If symmetric, ensures index tuple is sorted.
+                sorts if symmetric
                 """
                 sortedTuple = tuple(sorted(indexTuple)) if self.data_shape == "symmetric" else indexTuple
                 return self.expanded_coeff_dict.get(sortedTuple, 0)
@@ -1659,14 +1654,11 @@ class STFClass(tensorField):
                 "preferred_basis_element": None,
             }
 
-        # Ensure `varSpace` has unique variables
         if len(varSpace) != len(set(varSpace)):
             raise TypeError("`STFClass` expects `varSpace` to contain unique variables.")
 
-        # Set valence: all indices are covariant (default for STFClass)
         valence = (0,) * degree
 
-        # Call `tensorField.__new__` with `data_shape="symmetric"`
         obj = super().__new__(
             cls,
             varSpace,
@@ -2947,9 +2939,8 @@ def variableProcedure(
         if isinstance(multiindex_shape, (list, tuple)) and all(
             isinstance(n, int) and n > 0 for n in multiindex_shape
         ):
-            # Ensure that all elements in multiindex_shape are positive integers
 
-            # Generate multi-index variable names using carProd
+            # Generate multi-index variable names
             indices = list(
                 carProd(
                     *[range(initialIndex, initialIndex + n) for n in multiindex_shape]
@@ -2964,7 +2955,7 @@ def variableProcedure(
             # Update globals
             _cached_caller_globals.update(zip(var_names, vars))
             _cached_caller_globals[labelLoc] = (
-                vars  # Storing as list, since multi-index systems may not naturally tuple together
+                vars
             )
 
             # Create parent dictionary for the multi-indexed variables
@@ -3353,7 +3344,7 @@ def complexVarProc(
         def validate_variable_labels(*labels):
             """
             Checks if any of the provided variable labels start with 'BAR', reformats them to 'anti_',
-            and ensures no duplicate labels are provided. Also checks if the labels are protected globals.
+            and prevents duplicate labels. Also checks if the labels are protected globals.
 
             Parameters
             ----------
@@ -3888,7 +3879,7 @@ def _complexVarProc_default_to_hol(
     def validate_variable_labels(*labels):
         """
         Checks if any of the provided variable labels start with 'BAR', reformats them to 'anti_',
-        and ensures no duplicate labels are provided. Also checks if the labels are protected globals.
+        and prevents duplicate labels. Also checks if the labels are protected globals.
 
         Parameters
         ----------
@@ -5023,11 +5014,9 @@ def VF_coeffs_direct(vf, var_space, sparse=False):
     Examples
     --------
     """
-    # Ensure that vf is an instance of VFClass
     if not isinstance(vf, VFClass):
         raise TypeError("Expected first argument to be an instance of VFClass")
 
-    # Ensure var_space is a list or tuple
     if not isinstance(var_space, (list, tuple)):
         raise TypeError("Expected second argument to be a list or tuple of variables")
 
@@ -5247,7 +5236,6 @@ def VF_bracket(arg1, arg2, doNotSimplify=False, fast_algorithm=True):
     >>> print(VF_bracket(z2*D_z1 - z1*D_z2, z3*D_z1 - z1*D_z3))
     z3/2*D_x2 - z2/2*D_x3 - I*z3/2*D_y2 + I*z2/2*D_y3
     """
-    # Ensure both arguments are instances of VFClass
     if {arg1.__class__.__name__, arg2.__class__.__name__} == {"VFClass"}:
         # Determine the type (standard/complex) based on DGCVType attribute
         if arg1.DGCVType == "complex" or arg2.DGCVType == "complex":
@@ -5414,7 +5402,7 @@ def changeTensorFieldBasis(tensor_field, new_varSpace):
     """
     Converts a tensorField to a new basis while handling complex variable transformations.
 
-    If `tensor_field` has `DGCVType='complex'`, `new_varSpace` is validated to ensure that:
+    If `tensor_field` has `DGCVType='complex'`, `new_varSpace` is validated so that:
     - All variables belong to a complex variable system.
     - Variables are converted to match the tensor's target type (real/imaginary or hol/antihol).
 
@@ -5442,9 +5430,9 @@ def changeTensorFieldBasis(tensor_field, new_varSpace):
 
         # Determine the target type based on the first variable in tensor_field.varSpace
         first_var = tensor_field.varSpace[0]
-        if first_var in cd['real_part']:  # Means it is in holomorphic/antiholomorphic set
+        if first_var in cd['real_part']:
             target_type = "hol"
-        elif first_var in cd['find_parents']:  # Means it is in real/imaginary set
+        elif first_var in cd['find_parents']:
             target_type = "real"
         else:
             raise KeyError(f"First variable {first_var} in tensor_field.varSpace is not part of complex variable system in DGCV's variable management framework.")
@@ -5529,7 +5517,6 @@ def _TFDictToNewBasis(data_dict, oldBasis, newBasis):
             f"This issue arises because the sparse tensor data structure indicates this element is crucial in the tensor's definition: {e}"
         )
 
-    # Ensure the dictionary isn't empty
     if not new_data_dict:
         new_data_dict = {(0,) * degree: 0}
 
@@ -5690,7 +5677,7 @@ def addDF(*args, doNotSimplify=False):
                 typeLoc = "standard"
                 if len(typeList) != 1:
                     warnings.warn(
-                        "Addition was performed between differential forms of `DGCVType` both `complex` and `standard`, so the resulting DFClass object has `DGCVType='standard'`, which disables complex variable handling. To preserves `DGCVType='complex'` ensure all DFClass objects in sum have `DGCVType='complex'`."
+                        "Addition was performed between differential forms of `DGCVType` both `complex` and `standard`, so the resulting DFClass object has `DGCVType='standard'`, which disables complex variable handling. To preserve `DGCVType='complex'` make sure all DFClass objects in sum have `DGCVType='complex'`."
                     )
 
             # Fix here: Convert varSpace to tuples
@@ -5847,7 +5834,7 @@ def exteriorProduct(*args, doNotSimplify=False):
                 combined_indices = j[0] + k[0]
                 if len(combined_indices) == len(
                     set(combined_indices)
-                ):  # Ensure antisymmetry
+                ):  # antisymmetry
                     permS, orderedList = permSign(combined_indices, returnSorted=True)
                     orderedTuple = tuple(orderedList)
                     if orderedTuple in result:
@@ -5995,7 +5982,7 @@ def addSTF(*args, doNotSimplify=False):
                 typeLoc = "standard"
                 if len(typeList) != 1:
                     warnings.warn(
-                        "Addition was performed between symmetric tensor fields of `DGCVType` both `complex` and `standard`, so the resulting STFClass object has `DGCVType='standard'`, which disables complex variable handling. To preserves `DGCVType='complex'` ensure all STFClass objects in sum have `DGCVType='complex'`."
+                        "Addition was performed between symmetric tensor fields of `DGCVType` both `complex` and `standard`, so the resulting STFClass object has `DGCVType='standard'`, which disables complex variable handling. To preserve `DGCVType='complex'`, use only STFClass objects in sum with `DGCVType='complex'`."
                     )
 
             # Fix here: Convert varSpace to tuples
@@ -6325,7 +6312,7 @@ def _conjComplexVFDF(arg):
     >>> conjComplexVF(vf)
     VFClass instance representing the complex conjugate of *vf*
     """
-    # Ensure the argument is a VFClass instance
+
     if isinstance(arg, VFClass):
         # Return the complex conjugate of the vector field
         if arg.DGCVType == "complex":
@@ -6403,7 +6390,6 @@ def realPartOfVF(arg1, *args):
     >>> print(simplify(realPartOfVF(vf, [z1, z2, z3]).simplify_format('real'))) # using simplify, it is easy to see that it is real!
     2*x1*D_x1 + 2*x2*D_x2 + 2*y1*D_y1 + 2*y2*D_y2
     """
-    # Ensure the argument is a VFClass instance
     if isinstance(arg1, VFClass):
         # Return the real part of the vector field by adding it to its complex conjugate
         return addVF(arg1, _conjComplexVFDF(arg1))
@@ -6544,9 +6530,8 @@ def clearVar(*labels, report=True):
 
     Notes
     -----
-    - This function ensures that variables and their associated metadata
-      are comprehensively cleared from the DGCV system, preventing any
-      dangling references in the internal data structures.
+    - Comprehensively clears variables and their associated metadata from the DGCV
+      system.
     - Use with `listVar` to expediantly clear everything, e.g., `clearVar(*listVar())`.
 
     Examples
@@ -6556,8 +6541,7 @@ def clearVar(*labels, report=True):
     >>> clearVar('z', 'y', 'w')
 
     This will remove all variables, vector fields, and differential forms
-    associated with the labels 'x', 'z', 'y', and 'w', along with any
-    conversion dictionary entries.
+    associated with the labels 'z', 'y', and 'w'.
 
     """
     # Access variable_registry from _cached_caller_globals
@@ -6722,7 +6706,6 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
 
     variable_registry = get_variable_registry()
 
-    # Helper functions to escape Greek letters in LaTeX
     def check_greek(var_name):
         if var_name in greek_letters:
             return True
@@ -6735,11 +6718,9 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
                 return var_name.replace(name, greek, 1)
         return var_name
 
-    # Wrap content in $$
     def wrap_in_dollars(content):
         return f"${content}$"
 
-    # String formatting for the var names column
     def format_variable_name(var_name, system_type, use_latex=False):
         if system_type == "standard":
             family_type = variable_registry["standard_variable_systems"][var_name].get(
@@ -6794,7 +6775,6 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
 
         return content
 
-    # Helper function to get tuple length or return 1 if not a tuple
     def tupleProcLoc(var_name, system_type):
         if system_type == "standard":
             return len(
@@ -6807,11 +6787,9 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
                 ]
             )
 
-    # Retrieve and sort complex and standard variable lists from variable_registry
     complex_vars = sorted(variable_registry["complex_variable_systems"].keys())
     standard_vars = sorted(variable_registry["standard_variable_systems"].keys())
 
-    # Retrieve starting index for a given variable
     def retrieveStart(var_name, system_type):
         if system_type == "standard":
             return variable_registry["standard_variable_systems"][var_name].get(
@@ -6822,7 +6800,6 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
                 "initial_index", 1
             )
 
-    # Modular function to generate LaTeX-compatible object strings for VF/DF
     def build_object_string(
         obj_type, var_name, start_index, tuple_len, system_type, use_latex=False
     ):
@@ -6879,23 +6856,21 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
 
         return content
 
-    # Modular function to generate LaTeX-compatible object strings for VF/DF
     def build_object_string_for_complex(
         obj_type, part_names, family_names, start_index, use_latex=False
     ):
         parts = []
         for part_name, part in zip(part_names, family_names):
-            # Ensure start_index is an integer for tuple cases, otherwise handle single variables without subscripts
+            # Check that start_index is an integer for tuple cases. If not, handle single variables without subscripts
             if start_index is None or start_index == "":
                 is_single = True  # Handle single variables
             else:
                 is_single = False  # Handle tuple variables
                 start_index = int(
                     start_index
-                )  # Ensure start_index is treated as an integer
+                )
 
             if use_latex:
-                # Only remove "BAR" if it's at the start of the part_name (for antiholomorphic variables)
                 if part_name.startswith("BAR"):
                     base_var = part_name.replace(
                         "BAR", "", 1
@@ -6920,17 +6895,17 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
                             for i in range(start_index, start_index + len(part))
                         ]
 
-                if obj_type == "d":  # Differential Forms (DF)
+                if obj_type == "d":  # Differential Forms
                     if is_single:
                         part_str = f"d {part_str_latex}"  # No list wrapping for single variables
                     else:
                         part_str = f"d {part_str_latex[0]}, \\ldots, d {part_str_latex[-1]}"  # Use ellipsis for tuples
-                else:  # Vector Fields (VF)
+                else:  # Vector Fields
                     if is_single:
                         part_str = f"\\frac{{\\partial}}{{\\partial {part_str_latex}}}"  # No list wrapping for single variables
                     else:
                         part_str = f"\\frac{{\\partial}}{{\\partial {part_str_latex[0]}}}, \\ldots, \\frac{{\\partial}}{{\\partial {part_str_latex[-1]}}}"  # Use ellipsis for tuples
-                part_str = wrap_in_dollars(part_str)  # Ensure it is wrapped in $$
+                part_str = wrap_in_dollars(part_str) 
             else:
                 # Non-LaTeX handling
                 if is_single:

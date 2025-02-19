@@ -49,7 +49,6 @@ class vectorSpace(sp.Basic):
         def validate_and_adjust_grading_vector(vector, dimension):
             """
             Validates and adjusts a grading vector to match the vector space's dimension.
-            Ensures components are numeric or symbolic.
 
             Parameters
             ----------
@@ -345,7 +344,7 @@ class vectorSpaceElement(sp.Basic):
         if valence not in {0, 1}:
             raise TypeError("vectorSpaceElement expects third argument to be 0 or 1.")
 
-        coeffs = tuple(coeffs)  # Ensure immutability
+        coeffs = tuple(coeffs)
 
         obj = sp.Basic.__new__(cls, VS, coeffs, valence)
         return obj
@@ -807,14 +806,13 @@ class tensorProduct(sp.Basic):
         Returns:
         - A new tensorProduct with a filtered coeff_dict.
         """
-        self._compute_weights()  # Ensure weights are computed
+        self._compute_weights()
 
         # Filter components whose weights match the given weight_list
         filtered_coeff_dict = {
             key: value for key, value in self.coeff_dict.items() if self._weights[key] == tuple(weight_list)
         }
 
-        # Return a new tensorProduct with the filtered components
         return tensorProduct(self.vector_space, filtered_coeff_dict)
 
     def tp(self, other):
@@ -1135,7 +1133,7 @@ def createVectorSpace(
         _calledFromCreator=passkey,
     )
 
-    # Ensure that the VS object and its basis are fully initialized
+    # initialize vector space and its basis
     assert (
         vs_obj.basis is not None
     ), "VS object basis elements must be initialized."
