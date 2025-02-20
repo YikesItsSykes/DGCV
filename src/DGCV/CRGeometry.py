@@ -305,6 +305,19 @@ def model2Nondegenerate(arg1, arg2, arg3, arg4, return_matrices=False, simplify=
     Raises:
         NA
     """
+
+    def format_mat(mat):
+        if isinstance(mat,(tuple,list)):
+            if all(isinstance(elem,(tuple,list)) for elem in mat):
+                if len(set(len(elem) for elem in mat))==1:
+                    mat = sp.Matrix(mat)
+        if isinstance(mat,sp.Matrix):
+            return mat
+        else:
+            raise TypeError('`model2Nondegenerate` expects first to arguments to be array-like data.')
+
+    arg1 = format_mat(arg1)
+    arg2 = format_mat(arg2)
     def simplify_rules(expr):
         if simplify:
             return sp.simplify(expr)
