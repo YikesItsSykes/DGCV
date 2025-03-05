@@ -2132,10 +2132,9 @@ class DGCVPolyClass(sp.Basic):
         return filtered_monomials
 
     def get_coeffs(
-        self, min_degree=0, max_degree=None, format="unformatted", return_coeffs=False
+        self, min_degree=0, max_degree=None, format="unformatted"
     ):
-        return self.get_monomials(
-            self, min_degree=0, max_degree=max_degree, format=format, return_coeffs=True
+        return self.get_monomials(min_degree=min_degree, max_degree=max_degree, format=format, return_coeffs=True
         )
 
     @property
@@ -6066,13 +6065,21 @@ def tensor_product(*args, doNotSimplify=False):
         If any of the arguments are not instances of tensorField.
     """
     # Check if all arguments are tensorField instances
-    if not all(isinstance(arg, tensorField) for arg in args):
-        raise Exception("Expected all arguments to be instances of tensorField.")
+    if not all(isinstance(arg, (tensorField,float,int,sp.Expr)) for arg in args):
+        bad_types = []
+        for arg in args:
+            if not isinstance(arg, (tensorField,float,int,sp.Expr)):
+                bad_types += [type(arg)]
+        bad_types = list(set(bad_types))
+        bt_str = ', '.join(bad_types)
+        raise Exception(f"Expected all arguments to be instances of tensorField or scalar-like objects, not type: {bt_str}")
+    non_scalars = [arg for arg in args if isinstance(arg,tensorField)]
 
-    if len(set([tf.DGCVType for tf in args]))==1:
-        target_type = args[0].DGCVType
+    if len(set([tf.DGCVType for tf in non_scalars]))==1:
+        target_type = non_scalars[0].DGCVType
     else:
-        warnings.warn('`tensor_product` was applied to tensorField instances with different DGCVType attributes, so a `DGCVType = \'standard\'` tensorField was returned and variable formatting specific to any particular DGCVType was ignored.')
+        if len(non_scalars)>0:
+            warnings.warn('`tensor_product` was applied to tensorField instances with different DGCVType attributes, so a `DGCVType = \'standard\'` tensorField was returned and variable formatting specific to any particular DGCVType was ignored.')
         target_type = 'standard'
     if target_type == 'complex':
         cd = get_variable_registry()['conversion_dictionaries']  # Retrieve conversion dictionaries
@@ -6096,7 +6103,7 @@ def tensor_product(*args, doNotSimplify=False):
         return result if result else {(0,) * (len(coeff_dict1) + len(coeff_dict2)): 0}
 
     # Helper function to compute the tensor product of two tensorFields
-    def tensor_productOf2(arg1, arg2, TT):
+    def tensor_productOf2(arg1, arg2):
         new_varSpace = tuple(dict.fromkeys(arg1.varSpace + arg2.varSpace))
 
         # Align the variable spaces and transform coefficients
@@ -6116,7 +6123,10 @@ def tensor_product(*args, doNotSimplify=False):
     if len(args) > 1:
         result = args[0]
         for next_tensor in args[1:]:
-            result = tensor_productOf2(result, next_tensor)
+            if isinstance(next_tensor,(float,int,sp.Expr)):
+                result = next_tensor * result
+            else:
+                result = tensor_productOf2(result, next_tensor)
         return result
     elif len(args) == 1:
         return args[0]
