@@ -923,26 +923,6 @@ class abstract_ZF(sp.Basic):
 
 class abstDFAtom():
 
-    # def __new__(cls, coeff, degree, label=None, ext_deriv_order=None, _markers=frozenset()):
-    #     # Type validations
-    #     if not isinstance(coeff, (int, float, sp.Basic)):
-    #         raise TypeError(f"Expected 'coeff' to be int, float, or sympy expression, got {type(coeff).__name__}")
-
-    #     if not isinstance(degree, int):
-    #         raise TypeError(f"Expected 'degree' to be an int, got {type(degree).__name__}")
-
-    #     if label is not None and not isinstance(label, str):
-    #         raise TypeError(f"Expected 'label' to be a str or None, got {type(label).__name__}")
-
-    #     if ext_deriv_order is not None and not isinstance(ext_deriv_order, int):
-    #         raise TypeError(f"Expected 'ext_deriv_order' to be an int or None, got {type(ext_deriv_order).__name__}")
-
-    #     if not isinstance(_markers, (set, frozenset)):
-    #         raise TypeError(f"Expected '_markers' to be a set or frozenset, got {type(_markers).__name__}")
-
-    #     obj = super().__new__(cls, coeff, degree)
-    #     return obj
-
     def __init__(self, coeff, degree, label=None, ext_deriv_order=None, _markers=frozenset()):
         if hasattr(coeff,'is_zero') and coeff.is_zero:
             coeff = 0
@@ -951,6 +931,7 @@ class abstDFAtom():
         if isinstance(coeff,(int,float)):
             coeff = sp.sympify(coeff)
         self.coeff = coeff
+        self._coeff = coeff
         self.degree = degree
         self.label = label
         self.ext_deriv_order = ext_deriv_order
@@ -998,10 +979,8 @@ class abstDFAtom():
     def __repr__(self):
         """String representation for abstDFAtom."""
         def extDerFormat(string):
-            if self.ext_deriv_order==1:
-                return f'D({string})'
-            elif self.ext_deriv_order is not None and self.ext_deriv_order>1:
-                return f'D^{self.ext_deriv_order}({string})'
+            if isinstance(self.ext_deriv_order,int) and self.ext_deriv_order>0:
+                return f'extDer({string},order = {self.ext_deriv_order})'
             else:
                 return string
         if isinstance(self.coeff,(zeroFormAtom,abstract_ZF)):
@@ -1054,8 +1033,25 @@ class abstDFAtom():
         return f"${sp.latex(self)}$"
 
     def __str__(self):
-        """Fallback to the string representation."""
-        return self.__repr__()
+        def extDerFormat(string):
+            if isinstance(self.ext_deriv_order,int) and self.ext_deriv_order!=0:
+                return f'{string}_extD_{self.ext_deriv_order}'
+            else:
+                return string
+        if isinstance(self.coeff,(zeroFormAtom,abstract_ZF)):
+            return extDerFormat(self.coeff.__repr__())
+        coeff_sympy = sp.sympify(self.coeff)
+        if len(coeff_sympy.free_symbols)==0 and self.ext_deriv_order is not None and self.ext_deriv_order>0:
+            return 0
+        if coeff_sympy == 1:
+            return str(self.label) if self.label else "1"
+        elif coeff_sympy == -1:
+            return f"-{self.label}" if self.label else "-1"
+        else:
+            # Wrap in parentheses if there are multiple terms
+            coeff_str = f"({coeff_sympy})" if len(coeff_sympy.as_ordered_terms()) > 1 else str(coeff_sympy)
+            return extDerFormat(f"{coeff_str}{self.label}") if self.label else extDerFormat(coeff_str)
+
 
     def has_common_factor(self, other):
         if not isinstance(other, (abstDFAtom, abstDFMonom)):
@@ -1625,7 +1621,6 @@ class abstract_DF(sp.Basic):
     def __str__(self):
         return self.__repr__()
 
-
 class abst_coframe(sp.Basic):
     def __new__(cls, coframe_basis, structure_equations, min_conj_rules={}):
         """
@@ -1915,7 +1910,14 @@ def coframe_derivative(df, coframe, cfIndex):
         return _cofrDer_zeroFormAtom(df, coframe, cfIndex)
     elif isinstance(df, abstract_ZF):
         return _cofrDer_abstract_ZF(df, coframe, cfIndex)
+    elif isinstance(df, abstDFAtom) and df.degree == 0:
+        coeff = df.coeff
+        other = zeroFormAtom(df.label,_markers=df._markers)
+        newDF = coeff*other
+        return coframe_derivative(newDF, coframe, cfIndex)
     else:
+        if isinstance(df, abstDFAtom):
+            raise TypeError(f"`coframe_derivative` does not support type `{type(df).__name__}` with nonzero degree.")
         raise TypeError(f"`coframe_derivative` does not support type `{type(df).__name__}`.")
 
 def extDer(df, coframe=None, order=1):
@@ -1931,16 +1933,20 @@ def extDer(df, coframe=None, order=1):
     Returns:
     - The exterior derivative of the form.
     """
-    if coframe is None:
-        raise KeyError('Applying `extDer` without specifying a coframe is not supported in the version of DGCV due to a bug in it\'s algorithm that will be patched in a later version.\n\n Suggestion apply `extDer(df, coframe="coframe_name")` instead of `extDer(df)`')
     if not isinstance(order, int) or order < 1:
         raise ValueError("`order` must be a positive integer.")
-
     # Recursive case for order > 1
     if order > 1:
         return extDer(extDer(df, coframe=coframe), coframe=coframe, order=order - 1)
 
-    # Dispatch based on the type of `df`
+    if isinstance(df,abstDFAtom) and coframe is None:
+        return abstDFAtom(df.coeff,df.degree,label=df.label,ext_deriv_order=df.ext_deriv_order+order,_markers=df._markers)
+    if isinstance(df,(zeroFormAtom,abstract_ZF)) and coframe is None:
+        markers = df._markers if hasattr(df,'_markers') else frozenset()
+        return extDer(abstDFAtom(df,0,_markers=markers),coframe=None, order=order)
+
+
+    # distribute cases to helper functions based on the type of `df`
     if isinstance(df, zeroFormAtom):
         return _extDer_zeroFormAtom(df, coframe)
     if isinstance(df, abstract_ZF):
@@ -2094,11 +2100,12 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
         return 0
     if isinstance(df, zeroFormAtom):
         return _cofrDer_zeroFormAtom(df, cf, cfIndex)
-    if isinstance(df.base, zeroFormAtom):  # Differentiate zeroFormAtom
+    if not isinstance(df, tuple) and isinstance(df.base, zeroFormAtom):  # Differentiate zeroFormAtom
         return _cofrDer_zeroFormAtom(df.base, cf, cfIndex)
-
-    if isinstance(df.base, tuple):
-        op, *args = df.base
+    if hasattr(df, 'base'):
+        df = df.base
+    if isinstance(df, tuple):
+        op, *args = df
 
         if op == "add":  # d(f + g) = df + dg
             return abstract_ZF(("add", *[_cofrDer_abstract_ZF(arg, cf, cfIndex) for arg in args]))

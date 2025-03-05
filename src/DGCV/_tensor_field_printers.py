@@ -99,9 +99,7 @@ def tensor_field_latex(tensor):
 
     # Handle case where all coefficients are zero
     if not terms or all(scalar == 0 for scalar in terms.values()):
-        pref_index = (
-            tensor._simplifyKW.get('preferred_basis_element', (0,) * len(valence))
-        )
+        pref_index = tensor._simplifyKW['preferred_basis_element'] if tensor._simplifyKW['preferred_basis_element'] else (0,) * len(valence)
         basis_elements = [
             f"\\frac{{\\partial}}{{\\partial {_process_var_label(tensor.varSpace[pref_index[j]])}}}"
             if valence[j] == 1

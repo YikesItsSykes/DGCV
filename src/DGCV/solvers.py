@@ -1,16 +1,12 @@
 import random
 import string
 from itertools import combinations
+from math import prod  # requires python >=3.8
 
 import sympy as sp
 
 from .config import _cached_caller_globals
-from .eds import (
-    abstDFAtom,
-    abstDFMonom,
-    abstract_DF,
-    zeroFormAtom,
-)
+from .eds import abstDFAtom, abstDFMonom, abstract_DF, abstract_ZF, zeroFormAtom
 
 
 def solve_carefully(eqns, vars_to_solve, dict=True):
@@ -57,6 +53,12 @@ def solve_carefully(eqns, vars_to_solve, dict=True):
     # If no subset worked, raise the error
     raise NotImplementedError(f"No valid subset found for variables {vars_to_solve}")
 
+def DGCV_solve(eqns, vars_to_solve):
+    processed_eqns, system_vars, extra_vars, variables_dict = _equations_preprocessing(eqns,vars_to_solve)
+    solutions = sp.solve(processed_eqns, system_vars, dict=True)
+    solutions_formatted = []
+    for solution in solutions:
+        solutions_formatted += [{variables_dict.get(var,var):solution[var] for var in solution}]
 
 def _generate_str_id(base_str: str, *dicts: dict) -> str:
     """
@@ -70,27 +72,44 @@ def _generate_str_id(base_str: str, *dicts: dict) -> str:
 
     return candidate
 
-
 def _equations_preprocessing(eqns:tuple|list,vars:tuple|list):
     processed_eqns = []
     variables_dict = dict()
     for eqn in eqns:
         eqn_formatted, new_var_dict = _equation_formatting(eqn,variables_dict)
-        processed_eqns += [eqn_formatted]
+        processed_eqns += eqn_formatted
         variables_dict = variables_dict | new_var_dict
-    return processed_eqns, variables_dict
+    subbedValues = {variables_dict[k][0]:variables_dict[k][1] for k in variables_dict}
+    pre_system_vars = [subbedValues[var] if var in subbedValues else var for var in vars]
+    system_vars = []
+    extra_vars = []
+    for var in pre_system_vars:
+        if isinstance(var,sp.Symbol):
+            system_vars += [var]
+        else:
+            extra_vars += [var]
+    return processed_eqns, system_vars, extra_vars, variables_dict
 
 def _equation_formatting(eqn,variables_dict):
     var_dict = dict()
     if isinstance(eqn,(sp.Expr,int,float)):
-         return sp.sympify(eqn), var_dict
+         return [sp.sympify(eqn)], var_dict
     elif isinstance(eqn,zeroFormAtom):
-        identifier = _generate_str_id(eqn.__str__(),variables_dict,_cached_caller_globals)
-        eqn_formatted =  sp.symbols(identifier)
-        var_dict[identifier] = (eqn,eqn_formatted)
+        candidate_str = eqn.__str__()
+        if candidate_str in variables_dict and variables_dict[candidate_str][0]==eqn:
+            identifier = candidate_str
+            eqn_formatted = variables_dict[candidate_str][1]
+            # nothing new to add to var_dict here.
+        else:
+            identifier = _generate_str_id(candidate_str,variables_dict,_cached_caller_globals)
+            eqn_formatted =  [sp.symbols(identifier)]   # The single variable is the equation
+            var_dict[identifier] = (eqn,eqn_formatted)  # string label --> (original, formatted)
         return eqn_formatted,var_dict
+    elif isinstance(eqn,abstract_ZF):
+        eqn_formatted,var_dict= _sympify_abst_ZF(eqn_formatted,variables_dict)
+        return eqn_formatted, var_dict
     elif isinstance(eqn,abstDFAtom):
-        eqn_formatted,var_dict = _equation_formatting(eqn.coeff,variables_dict)
+        eqn_formatted,var_dict = _equation_formatting(eqn._coeff,variables_dict)
         return eqn_formatted, var_dict
     elif isinstance(eqn,abstDFMonom):
         eqn_formatted,var_dict = _equation_formatting(eqn._coeff,variables_dict)
@@ -102,8 +121,33 @@ def _equation_formatting(eqn,variables_dict):
             new_term,new_var_dict = _equation_formatting(term,variables_dict|var_dict)
             var_dict = var_dict|new_var_dict
             terms += new_term
-        eqn_formatted = sum(terms)
-        return eqn_formatted, var_dict
+        return terms, var_dict
+
+def _sympify_abst_ZF(zf:abstract_ZF, varDict):
+    if isinstance(zf.base,(int,float,sp.Expr)):
+        return [zf.base], varDict
+    if isinstance(zf.base,zeroFormAtom):
+        return _equation_formatting(zf.base,varDict)
+    if isinstance(zf.base,tuple):
+        op, args = zf.base
+        new_args = []
+        constructedVarDict = varDict
+        for arg in args:
+            new_arg, new_dict = _sympify_abst_ZF(arg, constructedVarDict)
+            new_args += new_arg
+            constructedVarDict |= new_dict
+        if op == 'mul':
+            zf_formatted = [prod(new_args)]
+        if op == 'add':
+            zf_formatted = [sum(new_args)]
+        if op == 'pow':
+            zf_formatted = [new_args[0]**new_args[1]]
+        if op == 'sub':
+            zf_formatted = [new_args[0]-new_args[1]]
+        if op == 'div':
+            zf_formatted = [sp.Rational(new_args[0],new_args[1])]
+        return zf_formatted, constructedVarDict
+
 
 
 
