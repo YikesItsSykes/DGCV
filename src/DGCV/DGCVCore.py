@@ -79,8 +79,10 @@ import itertools
 import re
 import warnings
 
+import pandas as pd
 import sympy as sp
-from pandas import DataFrame, MultiIndex
+from IPython.display import display
+from pandas import DataFrame
 from sympy import I
 
 from ._safeguards import (
@@ -1444,72 +1446,12 @@ class VFClass(tensorField):
         )
 
     def __add__(self, other):
-        """
-        Adds two vector fields together. Both vector fields must be instances of `VFClass`.
-
-        The addition is performed component-wise: the coefficients of each vector field are added together for
-        the corresponding variables in their respective variable spaces. If the variable spaces differ, the result
-        will have a union of both variable spaces.
-
-        Parameters
-        ----------
-        other : VFClass
-            Another vector field to be added to the current vector field.
-
-        Returns
-        -------
-        VFClass
-            A new `VFClass` instance representing the sum of the two vector fields.
-
-        Raises
-        ------
-        TypeError
-            If `other` is not an instance of `VFClass`.
-
-        Examples
-        --------
-        >>> variableProcedure(['a', 'b'])
-        >>> vf1 = VFClass([a, b], [a**2, b**2], 'standard')
-        >>> vf2 = VFClass([a, b], [b**2, a**2], 'standard')
-        >>> vf_sum = vf1 + vf2
-        >>> display(vf_sum)  # Displays the sum of the two vector fields
-        """
         if isinstance(other, VFClass):
             return addVF(self, other)
         else:
             raise TypeError("Unsupported operand type(s) for + with VFClass")
 
     def __sub__(self, other):
-        """
-        Subtracts one vector field from another. Both vector fields must be instances of `VFClass`.
-
-        The subtraction is performed component-wise: the coefficients of each vector field are subtracted from each other
-        for the corresponding variables in their respective variable spaces. If the variable spaces differ, the result will
-        have a union of both variable spaces.
-
-        Parameters
-        ----------
-        other : VFClass
-            Another vector field to be subtracted from the current vector field.
-
-        Returns
-        -------
-        VFClass
-            A new `VFClass` instance representing the difference of the two vector fields.
-
-        Raises
-        ------
-        TypeError
-            If `other` is not an instance of `VFClass`.
-
-        Examples
-        --------
-        >>> variableProcedure(['a', 'b'])
-        >>> vf1 = VFClass([a, b], [a**2, b**2], 'standard')
-        >>> vf2 = VFClass([a, b], [b**2, a**2], 'standard')
-        >>> vf_diff = vf1 - vf2
-        >>> display(vf_diff)  # Displays the difference between the two vector fields
-        """
         if isinstance(other, VFClass):
             return addVF(self, scaleVF(-1, other))
         else:
@@ -1519,92 +1461,12 @@ class VFClass(tensorField):
         return scaleVF(-1, self)
 
     def __mul__(self, scalar):
-        """
-        Multiplies the vector field by a scalar, which can be a SymPy expression or a number.
-
-        The multiplication is performed by multiplying each coefficient in the vector field by the scalar.
-
-        Parameters
-        ----------
-        scalar : sympy.Expr or number
-            A scalar or SymPy expression to multiply the vector field by.
-
-        Returns
-        -------
-        VFClass
-            A new `VFClass` instance where each coefficient is scaled by the scalar.
-
-        Examples
-        --------
-        >>> variableProcedure(['a', 'b'])
-        >>> vf = VFClass([a, b], [a**2, b**2], 'standard')
-        >>> vf_scaled = 2 * vf  # Multiplies the vector field by 2
-        >>> display(vf_scaled)  # Displays the scaled vector field
-        """
         return scaleVF(scalar, self)
 
     def __rmul__(self, scalar):
-        """
-        Allows scalar multiplication on the left-hand side, which can be a SymPy expression or a number.
-
-        This method is invoked when the scalar is on the left-hand side of the multiplication operation. The multiplication
-        is performed by multiplying each coefficient in the vector field by the scalar.
-
-        Parameters
-        ----------
-        scalar : sympy.Expr or number
-            A scalar or SymPy expression to multiply the vector field by.
-
-        Returns
-        -------
-        VFClass
-            A new `VFClass` instance where each coefficient is scaled by the scalar.
-
-        Examples
-        --------
-        >>> variableProcedure(['a', 'b'])
-        >>> vf = VFClass([a, b], [a**2, b**2], 'standard')
-        >>> vf_scaled = vf * 2  # Multiplies the vector field by 2 (right-hand side)
-        >>> display(vf_scaled)  # Displays the scaled vector field
-        """
         return scaleVF(scalar, self)
 
     def __call__(self, *args, ignore_complex_handling=None):
-        """
-        Applies the vector field to a scalar function or degree zero differential form, computing the directional derivative.
-
-        If applied to a scalar function (SymPy expression), this computes the directional derivative of the function along
-        the vector field. If the vector field is complex, the computation may use either real or complex variables depending
-        on the `DGCVType` and the `ignore_complex_handling` flag.
-
-        Parameters
-        ----------
-        args : sympy.Expr or degree zero DFClass
-            A scalar function (SymPy expression) or a differential form to apply the vector field to.
-
-        ignore_complex_handling : bool, optional
-            If True, bypasses any special handling of complex variables and treats the vector field as a standard field.
-            Defaults to False.
-
-        Returns
-        -------
-        sympy.Expr
-            The result of applying the vector field to the given scalar function or degree zero differential form.
-
-        Raises
-        ------
-        ValueError
-            If the number of arguments passed is not 1.
-
-        Examples
-        --------
-        >>> from sympy import exp
-        >>> from DGCV import complexVarProc, VFClass
-        >>> complexVarProc('z', 'x', 'y')
-        >>> vf = VFClass([z], [z**2], 'complex')
-        >>> f = z * exp(z)
-        >>> vf(f)  # Applies the vector field to the function f(z) returning (z**3+z**2)*exp(z)
-        """
         if len(args) == 1:
             if isinstance(args[0], tensorField):  # Check if first arg is a tensorField
                 return super().__call__(*args)
@@ -2849,7 +2711,7 @@ def variableProcedure(
         The label for the variable(s). If a string, it defines one variable set. If a list of strings, it initializes multiple variable sets.
 
     number_of_variables : positive int, optional
-        If provided, specifies the number of variables to be initialized and labels them in an an enumerated tuple creating labels based on variables_label. If not provided, a single variable is initialized.
+        If provided, specifies the number of variables to be initialized and labels them in an enumerated tuple creating labels based on variables_label. If not provided, a single variable is initialized.
 
     initialIndex : int, optional
         The starting index for enumerating variable names in a tuple. Defaults to 1.
@@ -2858,187 +2720,143 @@ def variableProcedure(
         If provided, specifies whether to treat the variable(s) as real. If True, the variable(s) are assumed to be real.
 
     _tempVar : None
-        Intended for internal DGCV use. If set to the internal DGCV passkey, marks the variable system as temporary. Temporary variable systems will be tracked in the 'temporary_variables' set of the internal variable_registry dict.
+        Intended for internal DGCV use. If set to the internal DGCV passkey, marks the variable system as temporary.
 
     _obscure : None
-        Intended for internal DGCV use. If set to the internal DGCV passkey, marks the variable system as \'obscure\'. This is used by functions that need to create variables on the fly with sufficiently obscure labels such that they are unlikely to overwrite anything. Unlike `temporary` variables, the only DGCV function authorized to clear `obscure` variables is `clearVar`.  They are tracked in the 'obscure_variables' set of the internal variable_registry dict.
-
+        Intended for internal DGCV use. If set to the internal DGCV passkey, marks the variable system as 'obscure'.
 
     _doNotUpdateVar : None
-        Intended for internal DGCV use. If set to the internal DGCV passkey, prevents the variable(s) from being cleared and reinitialized. Used when avoiding overwriting existing variables.
+        Intended for internal DGCV use. If set to the internal DGCV passkey, prevents the variable(s) from being cleared and reinitialized.
 
     _calledFromCVP : None
-        Intended for internal DGCV use. If set to the internal DGCV passkey, appropriately interfaces with the Variable Management Framework supposing this is called from `complexVarProc`.
+        Intended for internal DGCV use. If set to the internal DGCV passkey, interfaces with the Variable Management Framework supposing this is called from complexVarProc.
 
-    Updates the internal variable_registry dict:
-    --------------------------------------------
-    - For a single variable:
-        - Adds a new entry in 'standard_variable_systems' with:
-            - 'family_type': 'single'
-            - 'family_names': (str,)
-            - 'family_values': (variable,)
-            - 'differential_system': bool (default None)
-            - 'tempVar': bool (default None)
-            - 'initial_index': None
-            - 'variable_relatives': A dictionary containing the variable's label and associated properties.
+    remove_guardrails : bool, optional
+        If set to True, bypasses DGCV's safeguard system for variable labeling.
 
-    - For a tuple of variables:
-        - Adds a new entry in 'standard_variable_systems' with:
-            - 'family_type': 'tuple'
-            - 'family_names': tuple of strings
-            - 'family_values': tuple of variables
-            - 'differential_system': bool (default None)
-            - 'tempVar': bool (default None)
-            - 'initial_index': The starting index of the tuple
-            - 'variable_relatives': A dictionary mapping each variable in the tuple to its associated properties.
-
-    Raises:
-    -------
-    Exception:
-        If the variable label is part of the 'protected_variables' set in the internal variable_registry dict and this function was not called from complexVarProc.
+    Updates the internal variable_registry dict accordingly.
     """
+
+    # Cache globals and passkey to avoid repeated lookups.
+    globals_cache = _cached_caller_globals
+    passkey = retrieve_passkey()
+
     variable_registry = get_variable_registry()
     # Check if the variable is part of the protected variables when not called from complexVarProc
-    if not _calledFromCVP == retrieve_passkey():
-        for j in (
-            tuple(variables_label)
-            if isinstance(variables_label, (list, tuple))
-            else (variables_label,)
-        ):
+    if not _calledFromCVP == passkey:
+        for j in (tuple(variables_label) if isinstance(variables_label, (list, tuple)) else (variables_label,)):
             if j in variable_registry.get("protected_variables", set()):
                 raise Exception(
                     f"{variables_label} is already assigned to the real or imaginary part of a complex variable system, so DGCV variable creation functions will not reassign it as a standard variable. Instead, use the clearVar function to remove the conflicting CV system first before implementing such reassignments."
                 )
 
-    for j in (
-        tuple(variables_label)
-        if isinstance(variables_label, (list, tuple))
-        else (variables_label,)
-    ):
-        if not _calledFromCVP == retrieve_passkey() and not remove_guardrails:
+    # Process each variable label.
+    for j in (tuple(variables_label) if isinstance(variables_label, (list, tuple)) else (variables_label,)):
+        if not _calledFromCVP == passkey and not remove_guardrails:
             labelLoc = validate_label(j)
         else:
             labelLoc = j
 
-        # Clear variable if necessary and _doNotUpdateVar is not set
-        if _doNotUpdateVar != retrieve_passkey():
+        # Clear variable if necessary and if _doNotUpdateVar is not set.
+        if _doNotUpdateVar != passkey:
             clearVar(j, report=False)
 
-        # Add each tuple variable to temporary variables if marked as temporary
-        if _tempVar == retrieve_passkey():
+        # Mark as temporary/obscure if appropriate.
+        if _tempVar == passkey:
             variable_registry["temporary_variables"].add(labelLoc)
             _tempVar = True
-
-        # Add each tuple variable to temporary variables if marked as temporary
-        if _obscure == retrieve_passkey():
+        if _obscure == passkey:
             variable_registry["obscure_variables"].add(labelLoc)
             _obscure = True
 
-        # Handle lone variable
-        if isinstance(multiindex_shape, (list, tuple)) and all(
-            isinstance(n, int) and n > 0 for n in multiindex_shape
-        ):
-
-            # Generate multi-index variable names
-            indices = list(
-                carProd(
-                    *[range(initialIndex, initialIndex + n) for n in multiindex_shape]
-                )
-            )
+        # Handle multi-index variable case.
+        if isinstance(multiindex_shape, (list, tuple)) and all(isinstance(n, int) and n > 0 for n in multiindex_shape):
+            # Generate multi-index variable names.
+            indices = list(carProd(*[range(initialIndex, initialIndex + n) for n in multiindex_shape]))
             var_names = [f"{labelLoc}_{'_'.join(map(str, idx))}" for idx in indices]
-            vars = [
-                sp.symbols(f"{labelLoc}_{'_'.join(map(str, idx))}", real=assumeReal)
-                for idx in indices
-            ]
+            vars = [sp.symbols(f"{labelLoc}_{'_'.join(map(str, idx))}", real=assumeReal) for idx in indices]
 
-            # Update globals
-            _cached_caller_globals.update(zip(var_names, vars))
-            _cached_caller_globals[labelLoc] = (
-                vars
-            )
+            # Batch update globals.
+            new_globals = dict(zip(var_names, vars))
+            new_globals[labelLoc] = vars
+            globals_cache.update(new_globals)
 
-            # Create parent dictionary for the multi-indexed variables
-            if _doNotUpdateVar != retrieve_passkey():
+            # Create parent dictionary for the multi-indexed variables.
+            if _doNotUpdateVar != passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "multi_index",
                     "family_shape": multiindex_shape,
                     "family_names": tuple(var_names),
-                    "family_values": _cached_caller_globals[labelLoc],
+                    "family_values": globals_cache[labelLoc],
                     "differential_system": None,
                     "tempVar": _tempVar,
                     "obsVar": _obscure,
                     "initial_index": initialIndex,
                     "variable_relatives": {
-                        var_name: {
-                            "VFClass": None,
-                            "DFClass": None,
-                            "assumeReal": assumeReal,
-                        }
+                        var_name: {"VFClass": None, "DFClass": None, "assumeReal": assumeReal}
                         for var_name in var_names
                     },
                 }
 
-        # Handle lone variable
+        # Handle lone (single) variable.
         elif number_of_variables is None:
             symbol = sp.symbols(labelLoc, real=assumeReal)
-            _cached_caller_globals[labelLoc] = symbol
+            globals_cache[labelLoc] = symbol
 
-            # Create a parent dictionary for lone variable
-            if _doNotUpdateVar != retrieve_passkey():
+            # Create parent dictionary for lone variable.
+            if _doNotUpdateVar != passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "single",
                     "family_names": (labelLoc,),
-                    "family_values": (_cached_caller_globals[labelLoc],),
+                    "family_values": (globals_cache[labelLoc],),
                     "differential_system": None,
                     "tempVar": _tempVar,
                     "obsVar": _obscure,
                     "initial_index": None,
                     "variable_relatives": {
-                        labelLoc: {
-                            "VFClass": None,
-                            "DFClass": None,
-                            "assumeReal": assumeReal,
-                        }
+                        labelLoc: {"VFClass": None, "DFClass": None, "assumeReal": assumeReal}
                     },
                 }
 
-        # Handle tuple of variables
+        # Handle tuple of variables.
         elif isinstance(number_of_variables, int) and number_of_variables >= 0:
             lengthLoc = number_of_variables
-            var_names = [
-                f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
-            ]
-            vars = [
-                sp.symbols(f"{labelLoc}{i}", real=assumeReal)
-                for i in range(initialIndex, lengthLoc + initialIndex)
-            ]
-            _cached_caller_globals.update(zip(var_names, vars))
-            _cached_caller_globals[labelLoc] = tuple(vars)
+            var_names = [f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)]
+            vars = [sp.symbols(f"{labelLoc}{i}", real=assumeReal) for i in range(initialIndex, lengthLoc + initialIndex)]
+            new_globals = dict(zip(var_names, vars))
+            new_globals[labelLoc] = tuple(vars)
+            globals_cache.update(new_globals)
 
-            # Create parent dictionary for the tuple of variables
-            if _doNotUpdateVar != retrieve_passkey():
+            # Create individual vector fields.
+            vf_instances = [VFClass(tuple(vars), [1 if k == j else 0 for k in range(len(vars))])
+                            for j in range(len(vars))]
+            new_globals = dict(zip([f"D_{var_name}" for var_name in var_names], vf_instances))
+            globals_cache.update(new_globals)
+
+            # Create individual differential 1-forms.
+            df_instances = [DFClass(tuple(vars), {(j,): 1}, 1) for j in range(len(vars))]
+            new_globals = dict(zip([f"d_{var_name}" for var_name in var_names], df_instances))
+            globals_cache.update(new_globals)
+
+            # Update parent dictionary for the tuple of variables.
+            if _doNotUpdateVar != passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "tuple",
+                    "family_values": tuple(vars),
                     "family_names": tuple(var_names),
-                    "family_values": _cached_caller_globals[labelLoc],
-                    "differential_system": None,
+                    "differential_system": True,
                     "tempVar": _tempVar,
-                    "obsVar": _obscure,
                     "initial_index": initialIndex,
+                    "obsVar": _obscure,
                     "variable_relatives": {
-                        var_name: {
-                            "VFClass": None,
-                            "DFClass": None,
-                            "assumeReal": assumeReal,
-                        }
-                        for var_name in var_names
+                        var_name: {"VFClass": vf_instances[i], "DFClass": df_instances[i], "assumeReal": assumeReal}
+                        for i, var_name in enumerate(var_names)
                     },
                 }
         else:
             raise ValueError(
                 "variableProcedure expected its second argument number_of_variables (optional) to be a positive integer, if provided."
             )
-
 
 def varProcMultiIndex(arg1, arg2, arg3):
     """
@@ -3253,7 +3071,6 @@ def varWithVF(
 
 ############## complex variables
 
-
 def complexVarProc(
     holom_label,
     real_label,
@@ -3265,643 +3082,53 @@ def complexVarProc(
 ):
     """
     Initializes a complex variable system, linking a holomorphic variable with its real and imaginary parts and
-    a symbolic representative of its complex conjugate (labeled by prepending BAR to the complex variable's label).
+    a symbolic representative of its complex conjugate.
 
-    Parameters
-    ----------
-    holom_label : str or list of str
-        The label or labels for the complex variable(s) are constructed from this. (e.g., If 'z' is provided, constructs 'z' for a single variable or ['z1', 'z2'] etc. for a tuple).
-
-    real_label : str or list of str
-        The label or labels for the real part(s) of the complex variable(s) are constructed from this. (e.g., If 'x' is provided, constructs 'x' for a single variable or ['x1', 'x2'] etc. for a tuple).
-
-    im_label : str or list of str
-        The label or labels for the imaginary part(s) of the complex variable(s) are constructed from this. (e.g., If 'y' is provided, constructs 'y' for a single variable or ['y1', 'y2'] etc. for a tuple).
-
-    number_of_variables : positive int, optional
-        The length of the variable tuple (if initializing a tuple system). If provided, this will initialize the complex variable
-        system as a tuple of length `number_of_variables`.
-
-    initialIndex : int, optional, default=1
-        The starting index for tuple variables, used when initializing a tuple of complex variables.
-
-    Functionality
-    -------------
-    - Creates the specified holomorphic variable(s), its conjugate (antiholomorphic) counterpart(s), and their associated real and imaginary parts.
-    - Adds the created variables to the global namespace and tracks them in the internal variable_registry dict.
-    - Updates conversion dictionaries (`holToReal`, `realToSym`, `symToHol`, `symToReal`, `realToHol`, and `find_parents`) which allow transformations between the holomorphic and real coordinate systems.
-    - Supports both single complex variable systems and tuple-based systems, where multiple complex variables are initialized together.
-
-    Example Usage
-    -------------
-    >>> complexVarProc('z', 'x', 'y')
-    Initializes the complex variable system (z, BARz, x, y).
-
-    >>> complexVarProc('z', 'x', 'y', 2)
-    Initializes the complex variable system tuple ((z1, z2), (BARz1, BARz2), (x1, x2), (y1, y2)).
-
-    Conversion Dictionaries
-    -----------------------
-    The following dictionaries are updated when initializing the complex variable system:
-    - holToReal : Maps holomorphic variables to their real and imaginary parts.
-    - realToSym : Maps real variables to their symbolic holomorphic representations.
-    - symToHol : Maps symbolic conjugates (BAR) to their holomorphic counterparts.
-    - symToReal : Maps holomorphic variables to their real and imaginary parts.
-    - realToHol : Maps real variables to their holomorphic counterparts.
-    - find_parents : Tracks the relationship between real/imaginary variables and their holomorphic counterparts.
-
-    Raises
-    ------
-    Exception
-        If a variable already exists in the global namespace or if an invalid argument is provided.
-
-    Notes
-    -----
-    This function integrates tightly with the internal variable_registry structure, ensuring that all complex variable systems are properly tracked and accessible for subsequent operations (such as vector fields and differential forms).
+    (Docstring truncated for brevity.)
     """
-    if default_var_format != "real" and default_var_format != "complex":
+    # Validate default_var_format.
+    if default_var_format not in ("real", "complex"):
         if default_var_format is not None:
             warnings.warn(
-                "`default_var_format` was set to an unsuported value, so it was reset to the default 'complex'."
+                "`default_var_format` was set to an unsupported value, so it was reset to the default 'complex'."
             )
         default_var_format = "complex"
-    if default_var_format == "complex":
-        _complexVarProc_default_to_hol(
-            holom_label,
-            real_label,
-            im_label,
-            number_of_variables=number_of_variables,
-            initialIndex=initialIndex,
-            remove_guardrails=remove_guardrails,
-        )
-    elif default_var_format == "real":
-        variable_registry = get_variable_registry()
 
-        conversion_dicts = variable_registry["conversion_dictionaries"]
-        find_parents = conversion_dicts["find_parents"]
-
-        def validate_variable_labels(*labels):
-            """
-            Checks if any of the provided variable labels start with 'BAR', reformats them to 'anti_',
-            and prevents duplicate labels. Also checks if the labels are protected globals.
-
-            Parameters
-            ----------
-            labels : str
-                Any number of strings representing variable labels to be validated.
-
-            Returns
-            -------
-            tuple
-                A tuple containing the reformatted labels.
-            """
-            reformatted_labels = []
-            seen_labels = set()
-            protectedGlobals = protected_caller_globals()
-
-            for label in labels:
-                # Check if the label is a protected global
-                if label in protectedGlobals:
-                    raise ValueError(
-                        f"DGCV recognizes label '{label}' as a protected global name and recommends not using it as a variable name. Set remove_guardrails=True in the variable creation functions to force it."
-                    )
-
-                # Check if the label starts with "BAR" and reformat if necessary
-                if label.startswith("BAR"):
-                    reformatted_label = "anti_" + label[3:]
-                    warnings.warn(
-                        f"Label '{label}' starts with 'BAR', which has special meaning in DGCV. It has been automatically reformatted to '{reformatted_label}'."
-                    )
-                else:
-                    reformatted_label = label
-
-                # Check for duplicate labels
-                if reformatted_label in seen_labels:
-                    raise ValueError(
-                        f"Duplicate label found: '{reformatted_label}'. Each label must be unique."
-                    )
-
-                seen_labels.add(reformatted_label)
-                reformatted_labels.append(reformatted_label)
-
-            return tuple(reformatted_labels)
-
-        # Convert to lists if single string arguments are provided
-        if isinstance(holom_label, str):
-            holom_label = [holom_label]
-            real_label = [real_label]
-            im_label = [im_label]
-
-        for j in range(len(holom_label)):
-            if remove_guardrails:
-                labelLoc1 = holom_label[j]  # Complex variable (e.g., z)
-                labelLoc2 = real_label[j]  # Real part (e.g., x)
-                labelLoc3 = im_label[j]  # Imaginary part (e.g., y)
-            else:
-                labelLoc1, labelLoc2, labelLoc3 = validate_variable_labels(
-                    holom_label[j], real_label[j], im_label[j]
-                )  # Complex variable, Real part, Imaginary part
-            labelLocBAR = f"BAR{labelLoc1}"  # Antiholomorphic variable (e.g., BARz)
-
-            # Clear existing variables
-            clearVar(labelLoc1, report=False)
-            clearVar(labelLoc2, report=False)
-            clearVar(labelLoc3, report=False)
-            clearVar(labelLocBAR, report=False)
-
-            # Add real and imaginary part variables to protected_variables
-            variable_registry["protected_variables"].update({labelLoc2, labelLoc3})
-
-            # # Define the complex family of variables
-            # complex_family = (labelLoc1, labelLocBAR, labelLoc2, labelLoc3)
-
-            # Handle the lone variable system case (no args provided)
-            if number_of_variables is None:
-                # Create the variables
-                variableProcedure(
-                    labelLoc1,
-                    _doNotUpdateVar=retrieve_passkey(),
-                    _calledFromCVP=retrieve_passkey(),
-                )
-                variableProcedure(
-                    labelLocBAR,
-                    _doNotUpdateVar=retrieve_passkey(),
-                    _calledFromCVP=retrieve_passkey(),
-                )
-                variableProcedure(
-                    labelLoc2,
-                    _doNotUpdateVar=retrieve_passkey(),
-                    assumeReal=True,
-                    _calledFromCVP=retrieve_passkey(),
-                )
-                variableProcedure(
-                    labelLoc3,
-                    _doNotUpdateVar=retrieve_passkey(),
-                    assumeReal=True,
-                    _calledFromCVP=retrieve_passkey(),
-                )
-
-                # Update find_parents
-                find_parents[_cached_caller_globals[labelLoc2]] = (
-                    _cached_caller_globals[labelLoc1],
-                    _cached_caller_globals[labelLocBAR],
-                )
-                find_parents[_cached_caller_globals[labelLoc3]] = (
-                    _cached_caller_globals[labelLoc1],
-                    _cached_caller_globals[labelLocBAR],
-                )
-
-                # Update conversion dictionaries
-                conversion_dicts["conjugation"][_cached_caller_globals[labelLoc1]] = (
-                    _cached_caller_globals[labelLocBAR]
-                )
-                conversion_dicts["conjugation"][_cached_caller_globals[labelLocBAR]] = (
-                    _cached_caller_globals[labelLoc1]
-                )
-                conversion_dicts["holToReal"][_cached_caller_globals[labelLoc1]] = (
-                    _cached_caller_globals[labelLoc2]
-                    + I * _cached_caller_globals[labelLoc3]
-                )
-                conversion_dicts["realToSym"][
-                    _cached_caller_globals[labelLoc2]
-                ] = sp.Rational(1, 2) * (
-                    _cached_caller_globals[labelLoc1]
-                    + _cached_caller_globals[labelLocBAR]
-                )
-                conversion_dicts["realToSym"][_cached_caller_globals[labelLoc3]] = (
-                    -I
-                    * sp.Rational(1, 2)
-                    * (
-                        _cached_caller_globals[labelLoc1]
-                        - _cached_caller_globals[labelLocBAR]
-                    )
-                )
-                conversion_dicts["symToHol"][_cached_caller_globals[labelLocBAR]] = (
-                    sp.conjugate(_cached_caller_globals[labelLoc1])
-                )
-                conversion_dicts["symToReal"][_cached_caller_globals[labelLoc1]] = (
-                    _cached_caller_globals[labelLoc2]
-                    + I * _cached_caller_globals[labelLoc3]
-                )
-                conversion_dicts["symToReal"][_cached_caller_globals[labelLocBAR]] = (
-                    _cached_caller_globals[labelLoc2]
-                    - I * _cached_caller_globals[labelLoc3]
-                )
-                conversion_dicts["realToHol"][
-                    _cached_caller_globals[labelLoc2]
-                ] = sp.Rational(1, 2) * (
-                    _cached_caller_globals[labelLoc1]
-                    + sp.conjugate(_cached_caller_globals[labelLoc1])
-                )
-                conversion_dicts["realToHol"][_cached_caller_globals[labelLoc3]] = (
-                    I
-                    * sp.Rational(1, 2)
-                    * (
-                        sp.conjugate(_cached_caller_globals[labelLoc1])
-                        - _cached_caller_globals[labelLoc1]
-                    )
-                )
-                conversion_dicts["real_part"][_cached_caller_globals[labelLoc1]] = _cached_caller_globals[labelLoc2]
-                conversion_dicts["real_part"][_cached_caller_globals[labelLocBAR]] = _cached_caller_globals[labelLoc2]
-                conversion_dicts["im_part"][_cached_caller_globals[labelLoc1]] = _cached_caller_globals[labelLoc3]
-                conversion_dicts["im_part"][_cached_caller_globals[labelLocBAR]] = -_cached_caller_globals[labelLoc3]
-
-
-                # Create holomorphic and antiholomorphic differential objects
-                vf_instance_hol = VFClass(
-                    (
-                        _cached_caller_globals[labelLoc2],
-                        _cached_caller_globals[labelLoc3],
-                    ),
-                    [sp.Rational(1, 2), -I / 2],
-                    DGCVType="complex",
-                )
-                vf_instance_aHol = VFClass(
-                    (
-                        _cached_caller_globals[labelLoc2],
-                        _cached_caller_globals[labelLoc3],
-                    ),
-                    [sp.Rational(1, 2), +I / 2],
-                    DGCVType="complex",
-                )
-                df_instance_hol = DFClass(
-                    (
-                        _cached_caller_globals[labelLoc2],
-                        _cached_caller_globals[labelLoc3],
-                    ),
-                    {(0,): 1, (1,): I},
-                    1,
-                    DGCVType="complex",
-                )
-                df_instance_aHol = DFClass(
-                    (
-                        _cached_caller_globals[labelLoc2],
-                        _cached_caller_globals[labelLoc3],
-                    ),
-                    {(0,): 1, (1,): -I},
-                    1,
-                    DGCVType="complex",
-                )
-                _cached_caller_globals[f"D_{labelLoc1}"] = vf_instance_hol
-                _cached_caller_globals[f"D_{labelLocBAR}"] = vf_instance_aHol
-                _cached_caller_globals[f"d_{labelLoc1}"] = df_instance_hol
-                _cached_caller_globals[f"d_{labelLocBAR}"] = df_instance_aHol
-
-                # Create differential objects for real and imaginary coordinates
-                _cached_caller_globals[f"D_{labelLoc2}"] = (
-                    vf_instance_hol + vf_instance_aHol
-                )
-                _cached_caller_globals[f"D_{labelLoc3}"] = I * (
-                    vf_instance_hol - vf_instance_aHol
-                )
-                _cached_caller_globals[f"d_{labelLoc2}"] = sp.Rational(1, 2) * (
-                    df_instance_hol + df_instance_aHol
-                )
-                _cached_caller_globals[f"d_{labelLoc3}"] = (
-                    -I * sp.Rational(1, 2) * (df_instance_hol - df_instance_aHol)
-                )
-
-                # Update complex_variable_systems for the complex variable and its parts
-                variable_registry["complex_variable_systems"][labelLoc1] = {
-                    "family_type": "single",
-                    "family_names": (
-                        (labelLoc1,),
-                        (labelLocBAR,),
-                        (labelLoc2,),
-                        (labelLoc3,),
-                    ),
-                    "family_values": (
-                        _cached_caller_globals[labelLoc1],
-                        _cached_caller_globals[labelLocBAR],
-                        _cached_caller_globals[labelLoc2],
-                        _cached_caller_globals[labelLoc3],
-                    ),
-                    "family_houses": (labelLoc1, labelLocBAR, labelLoc2, labelLoc3),
-                    "differential_system": True,
-                    "initial_index": None,
-                    "variable_relatives": {
-                        labelLoc1: {
-                            "complex_positioning": "holomorphic",
-                            "complex_family": (
-                                _cached_caller_globals[labelLoc1],
-                                _cached_caller_globals[labelLocBAR],
-                                _cached_caller_globals[labelLoc2],
-                                _cached_caller_globals[labelLoc3],
-                            ),
-                            "variable_value": _cached_caller_globals[labelLoc1],
-                            "VFClass": _cached_caller_globals[f"D_{labelLoc1}"],
-                            "DFClass": _cached_caller_globals[f"d_{labelLoc1}"],
-                            "assumeReal": None,
-                        },
-                        labelLocBAR: {
-                            "complex_positioning": "antiholomorphic",
-                            "complex_family": (
-                                _cached_caller_globals[labelLoc1],
-                                _cached_caller_globals[labelLocBAR],
-                                _cached_caller_globals[labelLoc2],
-                                _cached_caller_globals[labelLoc3],
-                            ),
-                            "variable_value": _cached_caller_globals[labelLocBAR],
-                            "VFClass": _cached_caller_globals[f"D_{labelLocBAR}"],
-                            "DFClass": _cached_caller_globals[f"d_{labelLocBAR}"],
-                            "assumeReal": None,
-                        },
-                        labelLoc2: {
-                            "complex_positioning": "real",
-                            "complex_family": (
-                                _cached_caller_globals[labelLoc1],
-                                _cached_caller_globals[labelLocBAR],
-                                _cached_caller_globals[labelLoc2],
-                                _cached_caller_globals[labelLoc3],
-                            ),
-                            "variable_value": _cached_caller_globals[labelLoc2],
-                            "VFClass": _cached_caller_globals[f"D_{labelLoc2}"],
-                            "DFClass": _cached_caller_globals[f"d_{labelLoc2}"],
-                            "assumeReal": True,
-                        },
-                        labelLoc3: {
-                            "complex_positioning": "imaginary",
-                            "complex_family": (
-                                _cached_caller_globals[labelLoc1],
-                                _cached_caller_globals[labelLocBAR],
-                                _cached_caller_globals[labelLoc2],
-                                _cached_caller_globals[labelLoc3],
-                            ),
-                            "variable_value": _cached_caller_globals[labelLoc3],
-                            "VFClass": _cached_caller_globals[f"D_{labelLoc3}"],
-                            "DFClass": _cached_caller_globals[f"d_{labelLoc3}"],
-                            "assumeReal": True,
-                        },
-                    },
-                }
-
-            # Handle the tuple system case (args provided)
-            elif isinstance(number_of_variables, int) and number_of_variables > 0:
-                lengthLoc = number_of_variables
-
-                # Create the variables
-                variableProcedure(
-                    labelLoc1,
-                    lengthLoc,
-                    initialIndex=initialIndex,
-                    _doNotUpdateVar=retrieve_passkey(),
-                    _calledFromCVP=retrieve_passkey(),
-                )
-                variableProcedure(
-                    labelLocBAR,
-                    lengthLoc,
-                    initialIndex=initialIndex,
-                    _doNotUpdateVar=retrieve_passkey(),
-                    _calledFromCVP=retrieve_passkey(),
-                )
-                variableProcedure(
-                    labelLoc2,
-                    lengthLoc,
-                    initialIndex=initialIndex,
-                    _doNotUpdateVar=retrieve_passkey(),
-                    assumeReal=True,
-                    _calledFromCVP=retrieve_passkey(),
-                )
-                variableProcedure(
-                    labelLoc3,
-                    lengthLoc,
-                    initialIndex=initialIndex,
-                    _doNotUpdateVar=retrieve_passkey(),
-                    assumeReal=True,
-                    _calledFromCVP=retrieve_passkey(),
-                )
-
-                var_names1 = _cached_caller_globals[labelLoc1]  # Complex variables
-                var_namesBAR = _cached_caller_globals[
-                    labelLocBAR
-                ]  # Antiholomorphic variables
-                var_names2 = _cached_caller_globals[labelLoc2]  # Real parts
-                var_names3 = _cached_caller_globals[labelLoc3]  # Imaginary parts
-
-                # Create variable name strings for registry
-                var_str1 = tuple(
-                    [
-                        f"{labelLoc1}{i}"
-                        for i in range(initialIndex, lengthLoc + initialIndex)
-                    ]
-                )
-                var_strBAR = tuple(
-                    [
-                        f"{labelLocBAR}{i}"
-                        for i in range(initialIndex, lengthLoc + initialIndex)
-                    ]
-                )
-                var_str2 = tuple(
-                    [
-                        f"{labelLoc2}{i}"
-                        for i in range(initialIndex, lengthLoc + initialIndex)
-                    ]
-                )
-                var_str3 = tuple(
-                    [
-                        f"{labelLoc3}{i}"
-                        for i in range(initialIndex, lengthLoc + initialIndex)
-                    ]
-                )
-
-                # Update complex_variable_systems for the holomorphic variable (as the parent)
-                variable_registry["complex_variable_systems"][labelLoc1] = {
-                    "family_type": "tuple",
-                    "family_names": (var_str1, var_strBAR, var_str2, var_str3),
-                    "family_values": (var_names1, var_namesBAR, var_names2, var_names3),
-                    "family_houses": (labelLoc1, labelLocBAR, labelLoc2, labelLoc3),
-                    "differential_system": True,
-                    "initial_index": initialIndex,
-                    "variable_relatives": dict(),
-                }
-
-                # Update complex_variable_systems for the child variables
-                totalVarListLoc = tuple(
-                    zip(var_names1, var_namesBAR, var_names2, var_names3)
-                )
-
-                for j in range(lengthLoc):
-                    comp_var, bar_comp_var, real_var, imag_var = totalVarListLoc[j]
-                    # Update find_parents for real and imaginary parts
-                    find_parents[real_var] = (comp_var, bar_comp_var)
-                    find_parents[imag_var] = (comp_var, bar_comp_var)
-
-                    # Update conversion dictionaries
-                    conversion_dicts["conjugation"][comp_var] = bar_comp_var
-                    conversion_dicts["conjugation"][bar_comp_var] = comp_var
-                    conversion_dicts["holToReal"][comp_var] = real_var + I * imag_var
-                    conversion_dicts["realToSym"][real_var] = sp.Rational(1, 2) * (
-                        comp_var + bar_comp_var
-                    )
-                    conversion_dicts["realToSym"][imag_var] = (
-                        -I * sp.Rational(1, 2) * (comp_var - bar_comp_var)
-                    )
-                    conversion_dicts["symToHol"][bar_comp_var] = sp.conjugate(comp_var)
-                    conversion_dicts["symToReal"][comp_var] = real_var + I * imag_var
-                    conversion_dicts["symToReal"][bar_comp_var] = (
-                        real_var - I * imag_var
-                    )
-                    conversion_dicts["realToHol"][real_var] = sp.Rational(1, 2) * (
-                        comp_var + sp.conjugate(comp_var)
-                    )
-                    conversion_dicts["realToHol"][imag_var] = (
-                        I * sp.Rational(1, 2) * (sp.conjugate(comp_var) - comp_var)
-                    )
-                    conversion_dicts["real_part"][comp_var] = real_var
-                    conversion_dicts["real_part"][bar_comp_var] = real_var
-                    conversion_dicts["im_part"][comp_var] = imag_var
-                    conversion_dicts["im_part"][bar_comp_var] = -imag_var
-
-                for j in range(lengthLoc):
-                    comp_var, bar_comp_var, real_var, imag_var = totalVarListLoc[j]
-
-                    # Create holomorphic and antiholomorphic vector fields and differential forms
-                    _cached_caller_globals[f"D_{comp_var}"] = VFClass(
-                        var_names2 + var_names3,
-                        [sp.Rational(1, 2) if i == j else 0 for i in range(lengthLoc)]
-                        + [-I / 2 if i == j else 0 for i in range(lengthLoc)],
-                        "complex",
-                    )
-                    _cached_caller_globals[f"D_{bar_comp_var}"] = VFClass(
-                        var_names2 + var_names3,
-                        [sp.Rational(1, 2) if i == j else 0 for i in range(lengthLoc)]
-                        + [I / 2 if i == j else 0 for i in range(lengthLoc)],
-                        "complex",
-                    )
-                    _cached_caller_globals[f"d_{comp_var}"] = DFClass(
-                        var_names2 + var_names3,
-                        {(j,): 1, (j + len(var_names2),): I},
-                        1,
-                        "complex",
-                    )
-                    _cached_caller_globals[f"d_{bar_comp_var}"] = DFClass(
-                        var_names2 + var_names3,
-                        {(j,): 1, (j + len(var_names2),): -I},
-                        1,
-                        "complex",
-                    )
-
-                    # Create differential objects for real and imaginary coordinates
-                    _cached_caller_globals[f"D_{real_var}"] = (
-                        _cached_caller_globals[f"D_{comp_var}"]
-                        + _cached_caller_globals[f"D_{bar_comp_var}"]
-                    )
-                    _cached_caller_globals[f"D_{imag_var}"] = I * (
-                        _cached_caller_globals[f"D_{comp_var}"]
-                        - _cached_caller_globals[f"D_{bar_comp_var}"]
-                    )
-                    _cached_caller_globals[f"d_{real_var}"] = sp.Rational(1, 2) * (
-                        _cached_caller_globals[f"d_{comp_var}"]
-                        + _cached_caller_globals[f"d_{bar_comp_var}"]
-                    )
-                    _cached_caller_globals[f"d_{imag_var}"] = (
-                        -I
-                        * sp.Rational(1, 2)
-                        * (
-                            _cached_caller_globals[f"d_{comp_var}"]
-                            - _cached_caller_globals[f"d_{bar_comp_var}"]
-                        )
-                    )
-
-                    variable_registry["complex_variable_systems"][labelLoc1][
-                        "variable_relatives"
-                    ][str(comp_var)] = {
-                        "complex_positioning": "holomorphic",
-                        "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
-                        "variable_value": comp_var,
-                        "VFClass": _cached_caller_globals[f"D_{comp_var}"],
-                        "DFClass": _cached_caller_globals[f"d_{comp_var}"],
-                        "assumeReal": None,
-                    }
-
-                    variable_registry["complex_variable_systems"][labelLoc1][
-                        "variable_relatives"
-                    ][str(bar_comp_var)] = {
-                        "complex_positioning": "antiholomorphic",
-                        "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
-                        "variable_value": bar_comp_var,
-                        "VFClass": _cached_caller_globals[f"D_{bar_comp_var}"],
-                        "DFClass": _cached_caller_globals[f"d_{bar_comp_var}"],
-                        "assumeReal": None,
-                    }
-
-                    variable_registry["complex_variable_systems"][labelLoc1][
-                        "variable_relatives"
-                    ][str(real_var)] = {
-                        "complex_positioning": "real",
-                        "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
-                        "variable_value": real_var,
-                        "VFClass": _cached_caller_globals[f"D_{real_var}"],
-                        "DFClass": _cached_caller_globals[f"d_{real_var}"],
-                        "assumeReal": True,
-                    }
-
-                    variable_registry["complex_variable_systems"][labelLoc1][
-                        "variable_relatives"
-                    ][str(imag_var)] = {
-                        "complex_positioning": "imaginary",
-                        "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
-                        "variable_value": imag_var,
-                        "VFClass": _cached_caller_globals[f"D_{imag_var}"],
-                        "DFClass": _cached_caller_globals[f"d_{imag_var}"],
-                        "assumeReal": True,
-                    }
-
-            else:
-                raise ValueError(
-                    "variableProcedure expected its second argument number_of_variables (optional) to be a positive integer, if provided."
-                )
-    else:
-        raise KeyError(
-            "`default_var_format` key should only be set to 'real' or 'complex'."
-        )
-
-
-def _complexVarProc_default_to_hol(
-    holom_label,
-    real_label,
-    im_label,
-    number_of_variables=None,
-    initialIndex=1,
-    remove_guardrails=None,
-):
-    """
-    Use `complexVarProc` with the default_to_hol=True` keyword instead.
-
-    This is one of two routines that excecutes when `complexVarProc` is called, this branch executes when `complexVarProc` is called with `default_to_hol=True`.
-    """
+    # Cache the registry sub-dictionaries for faster access.
     variable_registry = get_variable_registry()
+    conv = variable_registry["conversion_dictionaries"]
+    find_parents = conv["find_parents"]
+    protected_vars = variable_registry["protected_variables"]
 
-    conversion_dicts = variable_registry["conversion_dictionaries"]
-    find_parents = conversion_dicts["find_parents"]
+    # Set up temporary accumulators for batched conversion updates.
+    conj_updates = {}
+    holToReal_updates = {}
+    realToSym_updates = {}
+    symToHol_updates = {}
+    symToReal_updates = {}
+    realToHol_updates = {}
+    real_part_updates = {}
+    im_part_updates = {}
+    complex_system_updates = {}
+
+    # For tuple systems, store data for deferred differential object creation.
+    # Each entry: (labelLoc1, var_names1, var_namesBAR, var_names2, var_names3, lengthLoc)
+    tuple_system_data = []
 
     def validate_variable_labels(*labels):
         """
-        Checks if any of the provided variable labels start with 'BAR', reformats them to 'anti_',
-        and prevents duplicate labels. Also checks if the labels are protected globals.
-
-        Parameters
-        ----------
-        labels : str
-            Any number of strings representing variable labels to be validated.
-
-        Returns
-        -------
-        tuple
-            A tuple containing the reformatted labels.
+        Checks if provided labels start with 'BAR', reformats them,
+        prevents duplicates, and checks for protected globals.
         """
         reformatted_labels = []
         seen_labels = set()
         protectedGlobals = protected_caller_globals()
-
         for label in labels:
-            # Check if the label is a protected global
             if label in protectedGlobals:
                 raise ValueError(
-                    f"DGCV recognizes label '{label}' as a protected global name and recommends not using it as a variable name. Set remove_guardrails=True in the variable creation functions to force it."
+                    f"DGCV recognizes label '{label}' as a protected global name and recommends not using it as a variable name. "
+                    "Set remove_guardrails=True in the variable creation functions to force it."
                 )
-
-            # Check if the label starts with "BAR" and reformat if necessary
             if label.startswith("BAR"):
                 reformatted_label = "anti_" + label[3:]
                 warnings.warn(
@@ -3909,50 +3136,45 @@ def _complexVarProc_default_to_hol(
                 )
             else:
                 reformatted_label = label
-
-            # Check for duplicate labels
             if reformatted_label in seen_labels:
                 raise ValueError(
                     f"Duplicate label found: '{reformatted_label}'. Each label must be unique."
                 )
-
             seen_labels.add(reformatted_label)
             reformatted_labels.append(reformatted_label)
-
         return tuple(reformatted_labels)
 
-    # Convert to lists if single string arguments are provided
+    # Convert single string inputs into lists.
     if isinstance(holom_label, str):
         holom_label = [holom_label]
         real_label = [real_label]
         im_label = [im_label]
 
+    # Main loop over each set of labels.
     for j in range(len(holom_label)):
         if remove_guardrails:
-            labelLoc1 = holom_label[j]  # Complex variable (e.g., z)
-            labelLoc2 = real_label[j]  # Real part (e.g., x)
-            labelLoc3 = im_label[j]  # Imaginary part (e.g., y)
+            labelLoc1 = holom_label[j]
+            labelLoc2 = real_label[j]
+            labelLoc3 = im_label[j]
         else:
             labelLoc1, labelLoc2, labelLoc3 = validate_variable_labels(
                 holom_label[j], real_label[j], im_label[j]
-            )  # Complex variable, Real part, Imaginary part
-        labelLocBAR = f"BAR{labelLoc1}"  # Antiholomorphic variable (e.g., BARz)
+            )
+        labelLocBAR = f"BAR{labelLoc1}"
 
-        # Clear existing variables
+        # Clear any existing variables.
         clearVar(labelLoc1, report=False)
         clearVar(labelLoc2, report=False)
         clearVar(labelLoc3, report=False)
         clearVar(labelLocBAR, report=False)
 
-        # Add real and imaginary part variables to protected_variables
-        variable_registry["protected_variables"].update({labelLoc2, labelLoc3})
+        # Add real and imaginary parts to the protected set.
+        protected_vars.update({labelLoc2, labelLoc3})
 
-        # # Define the complex family of variables
-        # complex_family = (labelLoc1, labelLocBAR, labelLoc2, labelLoc3)
-
-        # Handle the lone variable system case (no args provided)
+        # -------------------------------------------------
+        # Single Variable System
+        # -------------------------------------------------
         if number_of_variables is None:
-            # Create the variables
             variableProcedure(
                 labelLoc1,
                 _doNotUpdateVar=retrieve_passkey(),
@@ -3976,203 +3198,148 @@ def _complexVarProc_default_to_hol(
                 _calledFromCVP=retrieve_passkey(),
             )
 
-            # Update find_parents
-            find_parents[_cached_caller_globals[labelLoc2]] = (
-                _cached_caller_globals[labelLoc1],
-                _cached_caller_globals[labelLocBAR],
-            )
-            find_parents[_cached_caller_globals[labelLoc3]] = (
-                _cached_caller_globals[labelLoc1],
-                _cached_caller_globals[labelLocBAR],
-            )
+            # Retrieve created variables from the caller's globals.
+            var_hol = _cached_caller_globals[labelLoc1]
+            var_bar = _cached_caller_globals[labelLocBAR]
+            var_real = _cached_caller_globals[labelLoc2]
+            var_im = _cached_caller_globals[labelLoc3]
 
-            # Update conversion dictionaries
-            conversion_dicts["conjugation"][_cached_caller_globals[labelLoc1]] = (
-                _cached_caller_globals[labelLocBAR]
-            )
-            conversion_dicts["conjugation"][_cached_caller_globals[labelLocBAR]] = (
-                _cached_caller_globals[labelLoc1]
-            )
-            conversion_dicts["holToReal"][_cached_caller_globals[labelLoc1]] = (
-                _cached_caller_globals[labelLoc2]
-                + I * _cached_caller_globals[labelLoc3]
-            )
-            conversion_dicts["realToSym"][_cached_caller_globals[labelLoc2]] = sp.Rational(
-                1, 2
-            ) * (
-                _cached_caller_globals[labelLoc1] + _cached_caller_globals[labelLocBAR]
-            )
-            conversion_dicts["realToSym"][_cached_caller_globals[labelLoc3]] = (
-                -I
-                * sp.Rational(1, 2)
-                * (
-                    _cached_caller_globals[labelLoc1]
-                    - _cached_caller_globals[labelLocBAR]
-                )
-            )
-            conversion_dicts["symToHol"][_cached_caller_globals[labelLocBAR]] = (
-                sp.conjugate(_cached_caller_globals[labelLoc1])
-            )
-            conversion_dicts["symToReal"][_cached_caller_globals[labelLoc1]] = (
-                _cached_caller_globals[labelLoc2]
-                + I * _cached_caller_globals[labelLoc3]
-            )
-            conversion_dicts["symToReal"][_cached_caller_globals[labelLocBAR]] = (
-                _cached_caller_globals[labelLoc2]
-                - I * _cached_caller_globals[labelLoc3]
-            )
-            conversion_dicts["realToHol"][_cached_caller_globals[labelLoc2]] = sp.Rational(
-                1, 2
-            ) * (
-                _cached_caller_globals[labelLoc1]
-                + sp.conjugate(_cached_caller_globals[labelLoc1])
-            )
-            conversion_dicts["realToHol"][_cached_caller_globals[labelLoc3]] = (
-                I
-                * sp.Rational(1, 2)
-                * (
-                    sp.conjugate(_cached_caller_globals[labelLoc1])
-                    - _cached_caller_globals[labelLoc1]
-                )
-            )
-            conversion_dicts["real_part"][_cached_caller_globals[labelLoc1]] = _cached_caller_globals[labelLoc2]
-            conversion_dicts["real_part"][_cached_caller_globals[labelLocBAR]] = _cached_caller_globals[labelLoc2]
-            conversion_dicts["im_part"][_cached_caller_globals[labelLoc1]] = _cached_caller_globals[labelLoc3]
-            conversion_dicts["im_part"][_cached_caller_globals[labelLocBAR]] = -_cached_caller_globals[labelLoc3]
+            # Accumulate conversion updates.
+            conj_updates[var_hol] = var_bar
+            conj_updates[var_bar] = var_hol
+            holToReal_updates[var_hol] = var_real + I * var_im
+            realToSym_updates[var_real] = sp.Rational(1, 2) * (var_hol + var_bar)
+            realToSym_updates[var_im] = -I * sp.Rational(1, 2) * (var_hol - var_bar)
+            symToHol_updates[var_bar] = sp.conjugate(var_hol)
+            symToReal_updates[var_hol] = var_real + I * var_im
+            symToReal_updates[var_bar] = var_real - I * var_im
+            realToHol_updates[var_real] = sp.Rational(1, 2) * (var_hol + sp.conjugate(var_hol))
+            realToHol_updates[var_im] = I * sp.Rational(1, 2) * (sp.conjugate(var_hol) - var_hol)
+            real_part_updates[var_hol] = var_real
+            real_part_updates[var_bar] = var_real
+            im_part_updates[var_hol] = var_im
+            im_part_updates[var_bar] = -var_im
 
-            # Create holomorphic and antiholomorphic differential objects
-            vf_instance_hol = VFClass(
-                (
-                    _cached_caller_globals[labelLoc1],
-                    _cached_caller_globals[labelLocBAR],
-                ),
-                [1, 0],
-                DGCVType="complex",
-            )
-            vf_instance_aHol = VFClass(
-                (
-                    _cached_caller_globals[labelLoc1],
-                    _cached_caller_globals[labelLocBAR],
-                ),
-                [0, 1],
-                DGCVType="complex",
-            )
-            df_instance_hol = DFClass(
-                (
-                    _cached_caller_globals[labelLoc1],
-                    _cached_caller_globals[labelLocBAR],
-                ),
-                {(0,): 1},
-                1,
-                DGCVType="complex",
-            )
-            df_instance_aHol = DFClass(
-                (
-                    _cached_caller_globals[labelLoc1],
-                    _cached_caller_globals[labelLocBAR],
-                ),
-                {(1,): 1},
-                1,
-                DGCVType="complex",
-            )
-            _cached_caller_globals[f"D_{labelLoc1}"] = vf_instance_hol
-            _cached_caller_globals[f"D_{labelLocBAR}"] = vf_instance_aHol
-            _cached_caller_globals[f"d_{labelLoc1}"] = df_instance_hol
-            _cached_caller_globals[f"d_{labelLocBAR}"] = df_instance_aHol
+            conv["conjugation"].update(conj_updates)
+            conv["holToReal"].update(holToReal_updates)
+            conv["realToSym"].update(realToSym_updates)
+            conv["symToHol"].update(symToHol_updates)
+            conv["symToReal"].update(symToReal_updates)
+            conv["realToHol"].update(realToHol_updates)
+            conv["real_part"].update(real_part_updates)
+            conv["im_part"].update(im_part_updates)
 
-            # Create differential objects for real and imaginary coordinates
-            _cached_caller_globals[f"D_{labelLoc2}"] = (
-                vf_instance_hol + vf_instance_aHol
-            )
-            _cached_caller_globals[f"D_{labelLoc3}"] = I * (
-                vf_instance_hol - vf_instance_aHol
-            )
-            _cached_caller_globals[f"d_{labelLoc2}"] = sp.Rational(1, 2) * (
-                df_instance_hol + df_instance_aHol
-            )
-            _cached_caller_globals[f"d_{labelLoc3}"] = (
-                -I * sp.Rational(1, 2) * (df_instance_hol - df_instance_aHol)
-            )
 
-            # Update complex_variable_systems for the complex variable and its parts
-            variable_registry["complex_variable_systems"][labelLoc1] = {
-                "family_type": "single",
-                "family_names": (
-                    (labelLoc1,),
-                    (labelLocBAR,),
-                    (labelLoc2,),
-                    (labelLoc3,),
-                ),
-                "family_values": (
-                    _cached_caller_globals[labelLoc1],
-                    _cached_caller_globals[labelLocBAR],
-                    _cached_caller_globals[labelLoc2],
-                    _cached_caller_globals[labelLoc3],
-                ),
-                "family_houses": (labelLoc1, labelLocBAR, labelLoc2, labelLoc3),
-                "differential_system": True,
-                "initial_index": None,
-                "variable_relatives": {
+            # Register this single variable system in the registry.
+            variable_registry['complex_variable_systems'][labelLoc1] = {
+                    "family_type": "single",
+                    "family_names": ((labelLoc1,), (labelLocBAR,), (labelLoc2,), (labelLoc3,)),
+                    "family_values": (var_hol, var_bar, var_real, var_im),
+                    "family_houses": (labelLoc1, labelLocBAR, labelLoc2, labelLoc3),
+                    "differential_system": True,
+                    "initial_index": None,
+                    "variable_relatives": {
                     labelLoc1: {
                         "complex_positioning": "holomorphic",
-                        "complex_family": (
-                            _cached_caller_globals[labelLoc1],
-                            _cached_caller_globals[labelLocBAR],
-                            _cached_caller_globals[labelLoc2],
-                            _cached_caller_globals[labelLoc3],
-                        ),
-                        "variable_value": _cached_caller_globals[labelLoc1],
-                        "VFClass": _cached_caller_globals[f"D_{labelLoc1}"],
-                        "DFClass": _cached_caller_globals[f"d_{labelLoc1}"],
+                        "complex_family": (var_hol, var_bar, var_real, var_im),
+                        "variable_value": var_hol,
+                        "VFClass": None,
+                        "DFClass": None,
                         "assumeReal": None,
                     },
                     labelLocBAR: {
                         "complex_positioning": "antiholomorphic",
-                        "complex_family": (
-                            _cached_caller_globals[labelLoc1],
-                            _cached_caller_globals[labelLocBAR],
-                            _cached_caller_globals[labelLoc2],
-                            _cached_caller_globals[labelLoc3],
-                        ),
-                        "variable_value": _cached_caller_globals[labelLocBAR],
-                        "VFClass": _cached_caller_globals[f"D_{labelLocBAR}"],
-                        "DFClass": _cached_caller_globals[f"d_{labelLocBAR}"],
+                        "complex_family": (var_hol, var_bar, var_real, var_im),
+                        "variable_value": var_bar,
+                        "VFClass": None,
+                        "DFClass": None,
                         "assumeReal": None,
                     },
                     labelLoc2: {
                         "complex_positioning": "real",
-                        "complex_family": (
-                            _cached_caller_globals[labelLoc1],
-                            _cached_caller_globals[labelLocBAR],
-                            _cached_caller_globals[labelLoc2],
-                            _cached_caller_globals[labelLoc3],
-                        ),
-                        "variable_value": _cached_caller_globals[labelLoc2],
-                        "VFClass": _cached_caller_globals[f"D_{labelLoc2}"],
-                        "DFClass": _cached_caller_globals[f"d_{labelLoc2}"],
+                        "complex_family": (var_hol, var_bar, var_real, var_im),
+                        "variable_value": var_real,
+                        "VFClass": None,
+                        "DFClass": None,
                         "assumeReal": True,
                     },
                     labelLoc3: {
                         "complex_positioning": "imaginary",
-                        "complex_family": (
-                            _cached_caller_globals[labelLoc1],
-                            _cached_caller_globals[labelLocBAR],
-                            _cached_caller_globals[labelLoc2],
-                            _cached_caller_globals[labelLoc3],
-                        ),
-                        "variable_value": _cached_caller_globals[labelLoc3],
-                        "VFClass": _cached_caller_globals[f"D_{labelLoc3}"],
-                        "DFClass": _cached_caller_globals[f"d_{labelLoc3}"],
+                        "complex_family": (var_hol, var_bar, var_real, var_im),
+                        "variable_value": var_im,
+                        "VFClass": None,
+                        "DFClass": None,
                         "assumeReal": True,
-                    },
-                },
+                    }
+                }
             }
 
-        # Handle the tuple system case (args provided)
+            def create_differential_objects_single(var_hol, var_bar, var_real, var_im, default_var_format):
+                if default_var_format == "real":
+                    # Differential objects using the real/imaginary parts.
+                    vf_instance_hol = VFClass((var_real, var_im), [sp.Rational(1, 2), -I/2], DGCVType="complex")
+                    vf_instance_aHol = VFClass((var_real, var_im), [sp.Rational(1, 2), I/2], DGCVType="complex")
+                    vf_instance_real = VFClass((var_real, var_im), [1, 0], DGCVType="complex")
+                    vf_instance_im = VFClass((var_real, var_im), [0, 1], DGCVType="complex")
+                    df_instance_hol = DFClass((var_real, var_im), {(0,): 1, (1,): I}, 1, DGCVType="complex")
+                    df_instance_aHol = DFClass((var_real, var_im), {(0,): 1, (1,): -I}, 1, DGCVType="complex")
+                    df_instance_real = DFClass((var_real, var_im), {(0,): 1}, 1, DGCVType="complex")
+                    df_instance_im = DFClass((var_real, var_im), {(1,): 1}, 1, DGCVType="complex")
+                else:  # default_var_format == "complex"
+                    vf_instance_hol = VFClass((var_hol, var_bar), [1, 0], DGCVType="complex")
+                    vf_instance_aHol = VFClass((var_hol, var_bar), [0, 1], DGCVType="complex")
+                    vf_instance_real = VFClass((var_hol, var_bar), [1, 1], DGCVType="complex")
+                    vf_instance_im = VFClass((var_hol, var_bar), [I, -I], DGCVType="complex")
+                    df_instance_hol = DFClass((var_hol, var_bar), {(0,): 1}, 1, DGCVType="complex")
+                    df_instance_aHol = DFClass((var_hol, var_bar), {(1,): 1}, 1, DGCVType="complex")
+                    df_instance_real = DFClass((var_hol, var_bar), {(0,): sp.Rational(1,2),(1,): sp.Rational(1,2)}, 1, DGCVType="complex")
+                    df_instance_im = DFClass((var_hol, var_bar), {(0,): -I/2, (1,): I/2}, 1, DGCVType="complex")
+                return vf_instance_hol, vf_instance_aHol, vf_instance_real, vf_instance_im, df_instance_hol, df_instance_aHol, df_instance_real, df_instance_im
+            # Create differential objects for single systems.
+            vf_instance_hol, vf_instance_aHol, vf_instance_real, vf_instance_im, df_instance_hol, df_instance_aHol, df_instance_real, df_instance_im = create_differential_objects_single(
+                var_hol, var_bar, var_real, var_im, default_var_format
+            )
+
+            # Register the differential objects in the caller's globals.
+            _cached_caller_globals.update({
+                f"D_{labelLoc1}": vf_instance_hol,
+                f"D_{labelLocBAR}": vf_instance_aHol,
+                f"d_{labelLoc1}": df_instance_hol,
+                f"d_{labelLocBAR}": df_instance_aHol,
+                f"D_{labelLoc2}": vf_instance_real,
+                f"D_{labelLoc3}": vf_instance_im,
+                f"d_{labelLoc2}": df_instance_real,
+                f"d_{labelLoc3}": df_instance_im,
+            })
+
+            # Update find_parents.
+            find_parents[var_real] = (var_hol, var_bar)
+            find_parents[var_im] = (var_hol, var_bar)
+
+            # Register VFClass and DFClass
+            address = variable_registry['complex_variable_systems'][labelLoc1]["variable_relatives"]
+            address[labelLoc1] |= {
+                    "VFClass": _cached_caller_globals[f"D_{labelLoc1}"],
+                    "DFClass": _cached_caller_globals[f"d_{labelLoc1}"]
+            }
+            address[labelLocBAR] |= {
+                    "VFClass": _cached_caller_globals[f"D_{labelLocBAR}"],
+                    "DFClass": _cached_caller_globals[f"d_{labelLocBAR}"]
+            }
+            address[labelLoc2] |= {
+                    "VFClass": _cached_caller_globals[f"D_{labelLoc2}"],
+                    "DFClass": _cached_caller_globals[f"d_{labelLoc2}"]
+            }
+            address[labelLoc3] |= {
+                    "VFClass": _cached_caller_globals[f"D_{labelLoc3}"],
+                    "DFClass": _cached_caller_globals[f"d_{labelLoc3}"]
+            }
+
+        # -------------------------------------------------
+        # Tuple System Case (Phase 1: Build variables and update conversion info)
+        # -------------------------------------------------
         elif isinstance(number_of_variables, int) and number_of_variables > 0:
             lengthLoc = number_of_variables
-
-            # Create the variables
             variableProcedure(
                 labelLoc1,
                 lengthLoc,
@@ -4204,178 +3371,259 @@ def _complexVarProc_default_to_hol(
                 _calledFromCVP=retrieve_passkey(),
             )
 
-            var_names1 = _cached_caller_globals[labelLoc1]  # Complex variables
-            var_namesBAR = _cached_caller_globals[
-                labelLocBAR
-            ]  # Antiholomorphic variables
-            var_names2 = _cached_caller_globals[labelLoc2]  # Real parts
-            var_names3 = _cached_caller_globals[labelLoc3]  # Imaginary parts
+            # Retrieve lists of created variables from the caller's globals.
+            var_names1 = _cached_caller_globals[labelLoc1]
+            var_namesBAR = _cached_caller_globals[labelLocBAR]
+            var_names2 = _cached_caller_globals[labelLoc2]
+            var_names3 = _cached_caller_globals[labelLoc3]
 
-            # Create variable name strings for registry
-            var_str1 = tuple(
-                [
-                    f"{labelLoc1}{i}"
-                    for i in range(initialIndex, lengthLoc + initialIndex)
-                ]
-            )
-            var_strBAR = tuple(
-                [
-                    f"{labelLocBAR}{i}"
-                    for i in range(initialIndex, lengthLoc + initialIndex)
-                ]
-            )
-            var_str2 = tuple(
-                [
-                    f"{labelLoc2}{i}"
-                    for i in range(initialIndex, lengthLoc + initialIndex)
-                ]
-            )
-            var_str3 = tuple(
-                [
-                    f"{labelLoc3}{i}"
-                    for i in range(initialIndex, lengthLoc + initialIndex)
-                ]
-            )
+            # Build string labels for registry.
+            var_str1 = tuple(f"{labelLoc1}{i}" for i in range(initialIndex, lengthLoc + initialIndex))
+            var_strBAR = tuple(f"{labelLocBAR}{i}" for i in range(initialIndex, lengthLoc + initialIndex))
+            var_str2 = tuple(f"{labelLoc2}{i}" for i in range(initialIndex, lengthLoc + initialIndex))
+            var_str3 = tuple(f"{labelLoc3}{i}" for i in range(initialIndex, lengthLoc + initialIndex))
 
-            # Update complex_variable_systems for the holomorphic variable (as the parent)
-            variable_registry["complex_variable_systems"][labelLoc1] = {
+            # Register the tuple system (the differential objects will be added in Phase 2).
+            complex_system_updates[labelLoc1] = {
                 "family_type": "tuple",
                 "family_names": (var_str1, var_strBAR, var_str2, var_str3),
                 "family_values": (var_names1, var_namesBAR, var_names2, var_names3),
                 "family_houses": (labelLoc1, labelLocBAR, labelLoc2, labelLoc3),
                 "differential_system": True,
                 "initial_index": initialIndex,
-                "variable_relatives": dict(),
+                "variable_relatives": {},
             }
 
-            # Update complex_variable_systems for the child variables
-            totalVarListLoc = tuple(
-                zip(var_names1, var_namesBAR, var_names2, var_names3)
-            )
-
-            for j in range(lengthLoc):
-                comp_var, bar_comp_var, real_var, imag_var = totalVarListLoc[j]
-                # Update find_parents for real and imaginary parts
+            # Accumulate conversion updates for each tuple element.
+            totalVarListLoc = list(zip(var_names1, var_namesBAR, var_names2, var_names3))
+            for idx, (comp_var, bar_comp_var, real_var, imag_var) in enumerate(totalVarListLoc):
                 find_parents[real_var] = (comp_var, bar_comp_var)
                 find_parents[imag_var] = (comp_var, bar_comp_var)
 
-                # Update conversion dictionaries
-                conversion_dicts["conjugation"][comp_var] = bar_comp_var
-                conversion_dicts["conjugation"][bar_comp_var] = comp_var
-                conversion_dicts["holToReal"][comp_var] = real_var + I * imag_var
-                conversion_dicts["realToSym"][real_var] = sp.Rational(1, 2) * (
-                    comp_var + bar_comp_var
-                )
-                conversion_dicts["realToSym"][imag_var] = (
-                    -I * sp.Rational(1, 2) * (comp_var - bar_comp_var)
-                )
-                conversion_dicts["symToHol"][bar_comp_var] = sp.conjugate(comp_var)
-                conversion_dicts["symToReal"][comp_var] = real_var + I * imag_var
-                conversion_dicts["symToReal"][bar_comp_var] = real_var - I * imag_var
-                conversion_dicts["realToHol"][real_var] = sp.Rational(1, 2) * (
-                    comp_var + sp.conjugate(comp_var)
-                )
-                conversion_dicts["realToHol"][imag_var] = (
-                    I * sp.Rational(1, 2) * (sp.conjugate(comp_var) - comp_var)
-                )
-                conversion_dicts["real_part"][comp_var] = real_var
-                conversion_dicts["real_part"][bar_comp_var] = real_var
-                conversion_dicts["im_part"][comp_var] = imag_var
-                conversion_dicts["im_part"][bar_comp_var] = -imag_var
+                conj_updates[comp_var] = bar_comp_var
+                conj_updates[bar_comp_var] = comp_var
+                holToReal_updates[comp_var] = real_var + I * imag_var
+                realToSym_updates[real_var] = sp.Rational(1, 2) * (comp_var + bar_comp_var)
+                realToSym_updates[imag_var] = -I * sp.Rational(1, 2) * (comp_var - bar_comp_var)
+                symToHol_updates[bar_comp_var] = sp.conjugate(comp_var)
+                symToReal_updates[comp_var] = real_var + I * imag_var
+                symToReal_updates[bar_comp_var] = real_var - I * imag_var
+                realToHol_updates[real_var] = sp.Rational(1, 2) * (comp_var + sp.conjugate(comp_var))
+                realToHol_updates[imag_var] = I * sp.Rational(1, 2) * (sp.conjugate(comp_var) - comp_var)
+                real_part_updates[comp_var] = real_var
+                real_part_updates[bar_comp_var] = real_var
+                im_part_updates[comp_var] = imag_var
+                im_part_updates[bar_comp_var] = -imag_var
 
-            for j in range(lengthLoc):
-                comp_var, bar_comp_var, real_var, imag_var = totalVarListLoc[j]
+            # Save tuple system info for Phase 2.
+            tuple_system_data.append((labelLoc1, var_names1, var_namesBAR, var_names2, var_names3, lengthLoc))
 
-                # Create holomorphic and antiholomorphic vector fields and differential forms
-                _cached_caller_globals[f"D_{comp_var}"] = VFClass(
-                    var_names1 + var_namesBAR,
-                    [1 if i == j else 0 for i in range(2 * lengthLoc)],
-                    "complex",
-                )
-                _cached_caller_globals[f"D_{bar_comp_var}"] = VFClass(
-                    var_names1 + var_namesBAR,
-                    [0 for i in range(lengthLoc)]
-                    + [1 if i == j else 0 for i in range(lengthLoc)],
-                    "complex",
-                )
-                _cached_caller_globals[f"d_{comp_var}"] = DFClass(
-                    var_names1 + var_namesBAR, {(j,): 1}, 1, "complex"
-                )
-                _cached_caller_globals[f"d_{bar_comp_var}"] = DFClass(
-                    var_names1 + var_namesBAR, {(j + len(var_names2),): 1}, 1, "complex"
-                )
-
-                # Create differential objects for real and imaginary coordinates
-                _cached_caller_globals[f"D_{real_var}"] = (
-                    _cached_caller_globals[f"D_{comp_var}"]
-                    + _cached_caller_globals[f"D_{bar_comp_var}"]
-                )
-                _cached_caller_globals[f"D_{imag_var}"] = I * (
-                    _cached_caller_globals[f"D_{comp_var}"]
-                    - _cached_caller_globals[f"D_{bar_comp_var}"]
-                )
-                _cached_caller_globals[f"d_{real_var}"] = sp.Rational(1, 2) * (
-                    _cached_caller_globals[f"d_{comp_var}"]
-                    + _cached_caller_globals[f"d_{bar_comp_var}"]
-                )
-                _cached_caller_globals[f"d_{imag_var}"] = (
-                    -I
-                    * sp.Rational(1, 2)
-                    * (
-                        _cached_caller_globals[f"d_{comp_var}"]
-                        - _cached_caller_globals[f"d_{bar_comp_var}"]
-                    )
-                )
-
-                variable_registry["complex_variable_systems"][labelLoc1][
-                    "variable_relatives"
-                ][str(comp_var)] = {
-                    "complex_positioning": "holomorphic",
-                    "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
-                    "variable_value": comp_var,
-                    "VFClass": _cached_caller_globals[f"D_{comp_var}"],
-                    "DFClass": _cached_caller_globals[f"d_{comp_var}"],
-                    "assumeReal": None,
-                }
-
-                variable_registry["complex_variable_systems"][labelLoc1][
-                    "variable_relatives"
-                ][str(bar_comp_var)] = {
-                    "complex_positioning": "antiholomorphic",
-                    "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
-                    "variable_value": bar_comp_var,
-                    "VFClass": _cached_caller_globals[f"D_{bar_comp_var}"],
-                    "DFClass": _cached_caller_globals[f"d_{bar_comp_var}"],
-                    "assumeReal": None,
-                }
-
-                variable_registry["complex_variable_systems"][labelLoc1][
-                    "variable_relatives"
-                ][str(real_var)] = {
-                    "complex_positioning": "real",
-                    "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
-                    "variable_value": real_var,
-                    "VFClass": _cached_caller_globals[f"D_{real_var}"],
-                    "DFClass": _cached_caller_globals[f"d_{real_var}"],
-                    "assumeReal": True,
-                }
-
-                variable_registry["complex_variable_systems"][labelLoc1][
-                    "variable_relatives"
-                ][str(imag_var)] = {
-                    "complex_positioning": "imaginary",
-                    "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
-                    "variable_value": imag_var,
-                    "VFClass": _cached_caller_globals[f"D_{imag_var}"],
-                    "DFClass": _cached_caller_globals[f"d_{imag_var}"],
-                    "assumeReal": True,
-                }
-
+            # Batch update the conversion dictionaries.
+            conv["conjugation"].update(conj_updates)
+            conv["holToReal"].update(holToReal_updates)
+            conv["realToSym"].update(realToSym_updates)
+            conv["symToHol"].update(symToHol_updates)
+            conv["symToReal"].update(symToReal_updates)
+            conv["realToHol"].update(realToHol_updates)
+            conv["real_part"].update(real_part_updates)
+            conv["im_part"].update(im_part_updates)            
         else:
             raise ValueError(
                 "variableProcedure expected its second argument number_of_variables (optional) to be a positive integer, if provided."
             )
 
+    # End main loop.
+    # Update the registry with the constructed complex variable systems.
+    variable_registry["complex_variable_systems"].update(complex_system_updates)
+
+    # --------------------------------------------------
+    # Phase 2: Create VFClass and DFClass objects for tuple systems.
+    # --------------------------------------------------
+    for (labelLoc1, var_names1, var_namesBAR, var_names2, var_names3, lengthLoc) in tuple_system_data:
+        relatives = variable_registry["complex_variable_systems"][labelLoc1]["variable_relatives"]
+        # Build a list of tuples for each element in the tuple system.
+        # Each tuple: (comp_var, bar_comp_var, real_var, imag_var)
+        totalVarListLoc = list(zip(var_names1, var_namesBAR, var_names2, var_names3))
+
+        # --- Batch conversion dictionary updates ---
+        # These updates are built over the entire tuple system.
+        conj_updates_batch = {comp: anti for comp, anti, _, _ in totalVarListLoc}
+        conj_updates_batch.update({anti: comp for comp, anti, _, _ in totalVarListLoc})
+
+        holToReal_updates_batch = {comp: real + I * imag for comp, _, real, imag in totalVarListLoc}
+
+        realToSym_updates_batch = {}
+        for comp, anti, real, imag in totalVarListLoc:
+            realToSym_updates_batch[real] = sp.Rational(1, 2) * (comp + anti)
+            realToSym_updates_batch[imag] = -I * sp.Rational(1, 2) * (comp - anti)
+
+        symToHol_updates_batch = {anti: sp.conjugate(comp) for comp, anti, _, _ in totalVarListLoc}
+
+        symToReal_updates_batch = {}
+        for comp, anti, real, imag in totalVarListLoc:
+            symToReal_updates_batch[comp] = real + I * imag
+            symToReal_updates_batch[anti] = real - I * imag
+
+        realToHol_updates_batch = {}
+        for comp, _, real, _ in totalVarListLoc:
+            realToHol_updates_batch[real] = sp.Rational(1, 2) * (comp + sp.conjugate(comp))
+        for comp, _, _, imag in totalVarListLoc:
+            realToHol_updates_batch[imag] = I * sp.Rational(1, 2) * (sp.conjugate(comp) - comp)
+
+        real_part_updates_batch = {}
+        im_part_updates_batch = {}
+        for comp, anti, real, imag in totalVarListLoc:
+            real_part_updates_batch[comp] = real
+            real_part_updates_batch[anti] = real
+            im_part_updates_batch[comp] = imag
+            im_part_updates_batch[anti] = -imag
+
+        # --- End Batch Updates ---
+
+        # Now, for each tuple element, create the differential objects.
+        # We loop over each element (indexed by idx) in totalVarListLoc.
+        for idx, (comp_var, bar_comp_var, real_var, imag_var) in enumerate(totalVarListLoc):
+            if default_var_format == "real":
+                # Use the original formulas based on real/imaginary parts.
+                N = len(var_names2)
+                D_comp = VFClass(
+                    var_names2 + var_names3,
+                    [sp.Rational(1, 2) if i == idx else 0 for i in range(lengthLoc)]
+                    + [-I / 2 if i == idx else 0 for i in range(lengthLoc)],
+                    "complex",
+                )
+                D_bar_comp = VFClass(
+                    var_names2 + var_names3,
+                    [sp.Rational(1, 2) if i == idx else 0 for i in range(lengthLoc)]
+                    + [I / 2 if i == idx else 0 for i in range(lengthLoc)],
+                    "complex",
+                )
+                D_real = VFClass(
+                    var_names2 + var_names3,
+                    [1 if i == idx else 0 for i in range(lengthLoc)]
+                    + [0] * N,
+                    "complex",
+                )
+                D_im = VFClass(
+                    var_names2 + var_names3,
+                    [0] * N
+                    + [1 if i == idx else 0 for i in range(lengthLoc)],
+                    "complex",
+                )
+                d_comp = DFClass(
+                    var_names2 + var_names3, {(idx,): 1, (idx + N,): I}, 1, "complex"
+                )
+                d_bar_comp = DFClass(
+                    var_names2 + var_names3,
+                    {(idx,): 1, (idx + N,): -I},
+                    1,
+                    "complex",
+                )
+                d_real = DFClass(
+                    var_names2 + var_names3, {(idx,): 1}, 1, "complex"
+                )
+                d_im = DFClass(
+                    var_names2 + var_names3,
+                    {(idx + N,):1},
+                    1,
+                    "complex",
+                )
+            else:  # default_var_format == "complex"
+                # Here we use the holomorphic/antiholomorphic formulas.
+                # Note: len(var_names1) equals the number of tuple elements.
+                N = len(var_names1)
+                D_comp = VFClass(
+                    var_names1 + var_namesBAR,
+                    [1 if i == idx else 0 for i in range(N)] + [0] * N,
+                    "complex",
+                )
+                D_bar_comp = VFClass(
+                    var_names1 + var_namesBAR,
+                    [0] * N + [1 if i == idx else 0 for i in range(N)],
+                    "complex",
+                )
+                D_real = VFClass(
+                    var_names1 + var_namesBAR,
+                    [1 if i == idx else 0 for i in range(N)]
+                    + [1 if i == idx else 0 for i in range(N)],
+                    "complex",
+                )
+                D_im = VFClass(
+                    var_names1 + var_namesBAR,
+                    [I if i == idx else 0 for i in range(N)]
+                    + [-I if i == idx else 0 for i in range(N)],
+                    "complex",
+                )
+                d_comp = DFClass(
+                    var_names1 + var_namesBAR, {(idx,): 1}, 1, "complex"
+                )
+                d_bar_comp = DFClass(
+                    var_names1 + var_namesBAR, {(idx + N,): 1}, 1, "complex"
+                )
+                d_real = DFClass(
+                    var_names1 + var_namesBAR, {(idx,): sp.Rational(1,2), (idx + N,): sp.Rational(1,2)}, 1, "complex"
+                )
+                d_im = DFClass(
+                    var_names1 + var_namesBAR,
+                    {(idx,): -I/2, (idx + N,): I/2},
+                    1,
+                    "complex",
+                )
+
+            # Register the differential objects in the caller's globals.
+            _cached_caller_globals[f"D_{comp_var}"] = D_comp
+            _cached_caller_globals[f"D_{bar_comp_var}"] = D_bar_comp
+            _cached_caller_globals[f"d_{comp_var}"] = d_comp
+            _cached_caller_globals[f"d_{bar_comp_var}"] = d_bar_comp
+            _cached_caller_globals[f"D_{real_var}"] = D_real
+            _cached_caller_globals[f"D_{imag_var}"] = D_im
+            _cached_caller_globals[f"d_{real_var}"] = d_real
+            _cached_caller_globals[f"d_{imag_var}"] = d_im
+
+            # Update variable_relatives for this tuple element.
+            relatives[str(comp_var)] = {
+                "complex_positioning": "holomorphic",
+                "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
+                "variable_value": comp_var,
+                "VFClass": D_comp,
+                "DFClass": d_comp,
+                "assumeReal": None,
+            }
+            relatives[str(bar_comp_var)] = {
+                "complex_positioning": "antiholomorphic",
+                "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
+                "variable_value": bar_comp_var,
+                "VFClass": D_bar_comp,
+                "DFClass": d_bar_comp,
+                "assumeReal": None,
+            }
+            relatives[str(real_var)] = {
+                "complex_positioning": "real",
+                "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
+                "variable_value": real_var,
+                "VFClass": _cached_caller_globals[f"D_{real_var}"],
+                "DFClass": _cached_caller_globals[f"d_{real_var}"],
+                "assumeReal": True,
+            }
+            relatives[str(imag_var)] = {
+                "complex_positioning": "imaginary",
+                "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
+                "variable_value": imag_var,
+                "VFClass": _cached_caller_globals[f"D_{imag_var}"],
+                "DFClass": _cached_caller_globals[f"d_{imag_var}"],
+                "assumeReal": True,
+            }
+        # End of Phase 2 loop for this tuple system.
+    if number_of_variables is not None:
+        # After processing all tuple systems, update the conversion dictionaries in one bulk call:
+        conv["conjugation"].update(conj_updates_batch)
+        conv["holToReal"].update(holToReal_updates_batch)
+        conv["realToSym"].update(realToSym_updates_batch)
+        conv["symToHol"].update(symToHol_updates_batch)
+        conv["symToReal"].update(symToReal_updates_batch)
+        conv["realToHol"].update(realToHol_updates_batch)
+        conv["real_part"].update(real_part_updates_batch)
+        conv["im_part"].update(im_part_updates_batch)
 
 def _format_complex_coordinates(
     coordinate_tuple, default_var_format="complex", pass_error_report=None
@@ -4507,151 +3755,180 @@ def holToReal(expr, skipVar=None, simplify_everything=True):
     Converts holomorphic variables in the expression to real variables.
 
     Parameters:
-    expr : sympy.Expr
-        The expression to convert.
-    skipVar : list of str, optional
-        A list of holomorphic variable system labels to skip during conversion.
-        For any variable in skipVar, the associated holomorphic variables will
-        not be substituted.
+        expr : sympy.Expr or VFClass/DFClass
+            The expression to convert.
+        skipVar : list of str, optional
+            A list of holomorphic variable system labels to skip during conversion.
+            For any variable in skipVar, the associated holomorphic variables will
+            not be substituted.
+        simplify_everything : bool, optional
+            If True, simplifies the resulting expression.
 
     Returns:
-    sympy.Expr
-        The expression with holomorphic variables replaced by real variables,
-        except for those specified in skipVar.
+        input type
+            The expression with holomorphic variables replaced by real variables,
+            except for those specified in skipVar.
     """
-    variable_registry = get_variable_registry()
-    conversion_dict = (
-        variable_registry.get("conversion_dictionaries", {}).get("holToReal", {}).copy()
-    )
+    vr = get_variable_registry()
+    # Work on a copy so as not to modify the original conversion dict.
+    conv_holToReal = vr.get("conversion_dictionaries", {}).get("holToReal", {}).copy()
 
-    def format(expr):
-        return sp.sympify(expr).subs(conversion_dict)
-
-    # Skip specified holomorphic variable systems if skipVar is provided
+    # If skipVar is provided, remove the holomorphic variables from conv_holToReal
     if skipVar:
         for var in skipVar:
-            complex_system = variable_registry.get("complex_variable_systems", {}).get(
-                var, {}
-            )
+            complex_system = vr.get("complex_variable_systems", {}).get(var, {})
             family_values = complex_system.get("family_values", ((), (), (), ()))
-            if complex_system.get("family_type", None) == "single":
-                family_values = tuple([(j,) for j in family_values])
-
-            # Remove the holomorphic variables (first tuple) from the conversion_dict
-            holomorphic_vars = family_values[0]
+            # For a single variable system, ensure family_values is iterable as tuple of iterables.
+            if complex_system.get("family_type") == "single":
+                family_values = tuple([j] for j in family_values)
+            # Assume the first tuple contains the holomorphic variables.
+            holomorphic_vars = family_values[0] if len(family_values) > 0 else ()
             for hol_var in holomorphic_vars:
-                if hol_var in conversion_dict:
-                    del conversion_dict[hol_var]
+                if hol_var in conv_holToReal:
+                    conv_holToReal.pop(hol_var)
 
     if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
         return _VFDF_conversion(expr, default_var_format="real", _converter=holToReal)
-    elif hasattr(expr, "applyfunc"):
-        return expr.applyfunc(format)
-    else:
-        return format(expr)
 
+    if isinstance(expr, (int, float)):
+        return expr
+
+    if isinstance(expr, sp.Symbol):
+        if expr in conv_holToReal:
+            return conv_holToReal[expr]
+        else:
+            return expr
+
+    if isinstance(expr, sp.Expr):
+        filtered_subs = {sym: conv_holToReal[sym] for sym in expr.free_symbols if sym in conv_holToReal}
+        result = sp.sympify(expr).subs(filtered_subs)
+        if simplify_everything:
+            result = sp.simplify(result)
+        return result
+
+    if hasattr(expr, "applyfunc"):
+        return expr.applyfunc(lambda e: holToReal(e, skipVar=skipVar, simplify_everything=simplify_everything))
+    return expr
 
 def realToSym(expr, skipVar=None, simplify_everything=True):
     """
     Converts real variables in the expression to symbolic conjugates.
 
     Parameters:
-    expr : sympy.Expr
-        The expression to convert.
-    skipVar : list of str, optional
-        A list of real variable system labels to skip during conversion.
-        For any variable in skipVar, the associated real and imaginary variables
-        will not be substituted.
+        expr : sympy.Expr or VFClass/DFClass
+            The expression to convert.
+        skipVar : list of str, optional
+            A list of real variable system labels to skip during conversion.
+            For any variable in skipVar, the associated real and imaginary variables
+            will not be substituted.
+        simplify_everything : bool, optional
+            If True, simplifies the resulting expression.
 
     Returns:
-    sympy.Expr
-        The expression with real variables replaced by symbolic conjugates,
-        except for those specified in skipVar.
+        input type
+            The expression with real variables replaced by symbolic conjugates,
+            except for those specified in skipVar.
     """
-    variable_registry = get_variable_registry()
-    conversion_dict = (
-        variable_registry.get("conversion_dictionaries", {}).get("realToSym", {}).copy()
-    )
+    vr = get_variable_registry()
+    conv_realToSym = vr.get("conversion_dictionaries", {}).get("realToSym", {}).copy()
 
-    def format(expr):
-        return sp.sympify(expr).subs(conversion_dict)
-
-    # Skip specified real and imaginary variable systems if skipVar is provided
+    # If skipVar is provided, remove the corresponding real and imaginary variables from conv_realToSym.
     if skipVar:
         for var in skipVar:
-            complex_system = variable_registry.get("complex_variable_systems", {}).get(
-                var, {}
-            )
+            complex_system = vr.get("complex_variable_systems", {}).get(var, {})
             family_values = complex_system.get("family_values", ((), (), (), ()))
             if complex_system.get("family_type", None) == "single":
+                # Ensure family_values is a tuple of iterables
                 family_values = tuple([(j,) for j in family_values])
+            # Assume the third and fourth tuples are real and imaginary variables, respectively.
+            real_vars = family_values[2] if len(family_values) > 2 else ()
+            imag_vars = family_values[3] if len(family_values) > 3 else ()
+            for real_var in real_vars + imag_vars:
+                if real_var in conv_realToSym:
+                    conv_realToSym.pop(real_var)
 
-            # Remove both the real (third tuple) and imaginary (fourth tuple) variables from the conversion_dict
-            real_vars = family_values[2] + family_values[3]
-            for real_var in real_vars:
-                if real_var in conversion_dict:
-                    del conversion_dict[real_var]
-
+    # Branch 1: If expr is a VFClass or DFClass instance and simplify_everything is True, delegate conversion.
     if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
-        return _VFDF_conversion(
-            expr, default_var_format="complex", _converter=realToSym
-        )
-    elif hasattr(expr, "applyfunc"):
-        return expr.applyfunc(format)
-    else:
-        return format(expr)
+        return _VFDF_conversion(expr, default_var_format="complex", _converter=realToSym)
 
+    if isinstance(expr, (int, float)):
+        return expr
+
+    if isinstance(expr, sp.Symbol):
+        if expr in conv_realToSym:
+            return conv_realToSym[expr]
+        else:
+            return expr
+
+    if isinstance(expr, sp.Expr):
+        filtered_subs = {
+            sym: conv_realToSym[sym]
+            for sym in expr.free_symbols
+            if sym in conv_realToSym
+        }
+        result = sp.sympify(expr).subs(filtered_subs)
+        if simplify_everything:
+            result = sp.simplify(result)
+        return result
+
+    if hasattr(expr, "applyfunc"):
+        return expr.applyfunc(lambda e: realToSym(e, skipVar=skipVar, simplify_everything=simplify_everything))
+    return expr
 
 def symToHol(expr, skipVar=None, simplify_everything=True):
     """
     Converts symbolic conjugated variables in the expression to holomorphic variables.
 
     Parameters:
-    expr : sympy.Expr
-        The expression to convert.
-    skipVar : list of str, optional
-        A list of holomorphic variable system labels to skip during conversion.
-        For any variable system labels in skipVar, the associated antiholomorphic variables
-        (i.e., conjugates) will not be substituted.
+        expr : sympy.Expr or VFClass/DFClass
+            The expression to convert.
+        skipVar : list of str, optional
+            A list of holomorphic variable system labels to skip during conversion.
+            For any variable in skipVar, the associated antiholomorphic variables
+            will not be substituted.
+        simplify_everything : bool, optional
+            If True, simplifies the resulting expression.
 
     Returns:
-    sympy.Expr
-        The expression with symbolic conjugates replaced by holomorphic variables,
-        except for those specified in skipVar.
+        Same type as input:
+            The expression with symbolic conjugates replaced by holomorphic variables,
+            except for those specified in skipVar.
     """
     variable_registry = get_variable_registry()
-    conversion_dict = (
-        variable_registry.get("conversion_dictionaries", {}).get("symToHol", {}).copy()
-    )
+    # Work on a copy so as not to modify the original conversion dict.
+    conversion_dict = variable_registry.get("conversion_dictionaries", {}).get("symToHol", {}).copy()
 
-    def format(expr):
-        return sp.sympify(expr).subs(conversion_dict)
-
-    # If skipVar is provided, modify the conversion_dict to exclude specified variables.
+    # If skipVar is provided, remove the antiholomorphic keys for those variable systems.
     if skipVar:
         for var in skipVar:
-            # Access the complex variable system for the skipped variable
-            complex_system = variable_registry.get("complex_variable_systems", {}).get(
-                var, {}
-            )
+            complex_system = variable_registry.get("complex_variable_systems", {}).get(var, {})
             family_values = complex_system.get("family_values", ((), (), (), ()))
             if complex_system.get("family_type", None) == "single":
                 family_values = tuple([(j,) for j in family_values])
-
-            # The second tuple contains the antiholomorphic variables
-            antiholomorphic_vars = family_values[1]
-
-            # Remove the antiholomorphic variables from the conversion_dict
+            # Assume the second tuple contains the antiholomorphic variables.
+            antiholomorphic_vars = family_values[1] if len(family_values) > 1 else ()
             for anti_var in antiholomorphic_vars:
                 if anti_var in conversion_dict:
                     del conversion_dict[anti_var]
 
     if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
         return _VFDF_conversion(expr, default_var_format="complex", _converter=symToHol)
-    elif hasattr(expr, "applyfunc"):
-        return expr.applyfunc(format)
-    else:
-        return format(expr)
+    if isinstance(expr, (int, float)):
+        return expr
+    if isinstance(expr, sp.Symbol):
+        if expr in conversion_dict:
+            return conversion_dict[expr]
+        else:
+            return expr
+    if isinstance(expr, sp.Expr):
+        filtered_subs = {sym: conversion_dict[sym] for sym in expr.free_symbols if sym in conversion_dict}
+        result = expr.subs(filtered_subs)
+        if simplify_everything:
+            result = sp.simplify(result)
+        return result
+    if hasattr(expr, "applyfunc"):
+        return expr.applyfunc(lambda e: symToHol(e, skipVar=skipVar, simplify_everything=simplify_everything))
+    return expr
 
 
 def holToSym(expr, skipVar=None, simplify_everything=True):
@@ -4712,50 +3989,65 @@ def realToHol(expr, skipVar=None, simplify_everything=True):
     Converts real variables in the expression to holomorphic variables.
 
     Parameters:
-    expr : sympy.Expr
-        The expression to convert.
-    skipVar : list of str, optional
-        A list of real variable system labels to skip during conversion.
-        For any variable in skipVar, the associated real and imaginary variables
-        will not be substituted.
+        expr : sympy.Expr
+            The expression to convert.
+        skipVar : list of str, optional
+            A list of real variable system labels to skip during conversion.
+            For any variable in skipVar, the associated real and imaginary variables
+            will not be substituted.
+        simplify_everything : bool, optional
+            If True, simplifies the resulting expression.
 
     Returns:
-    sympy.Expr
-        The expression with real variables replaced by holomorphic variables,
-        except for those specified in skipVar.
+        sympy.Expr
+            The expression with real variables replaced by holomorphic variables,
+            except for those specified in skipVar.
     """
-    variable_registry = get_variable_registry()
-    conversion_dict = (
-        variable_registry.get("conversion_dictionaries", {}).get("realToHol", {}).copy()
-    )
+    import sympy as sp
+    # Get variable registry and conversion dictionary
+    vr = get_variable_registry()
+    # We'll work on a copy so as not to modify the original dict
+    conv_realToHol = vr.get("conversion_dictionaries", {}).get("realToHol", {}).copy()
 
-    def format(expr):
-        return sp.sympify(expr).subs(conversion_dict)
-
-    # Skip specified real and imaginary variable systems if skipVar is provided
+    # If skipVar provided, remove the corresponding real and imaginary variables from conv_realToHol.
     if skipVar:
         for var in skipVar:
-            complex_system = variable_registry.get("complex_variable_systems", {}).get(
-                var, {}
-            )
+            complex_system = vr.get("complex_variable_systems", {}).get(var, {})
             family_values = complex_system.get("family_values", ((), (), (), ()))
-            if complex_system.get("family_type", None) == "single":
-                family_values = tuple([(j,) for j in family_values])
+            # For a single system, ensure family_values is treated as tuple of iterables
+            if complex_system.get("family_type") == "single":
+                family_values = tuple([j] for j in family_values)
+            # Assume the third and fourth tuples are real and imaginary parts.
+            real_vars = family_values[2] if len(family_values) > 2 else ()
+            imag_vars = family_values[3] if len(family_values) > 3 else ()
+            for real_var in real_vars + imag_vars:
+                if real_var in conv_realToHol:
+                    conv_realToHol.pop(real_var)
 
-            # Remove both the real (third tuple) and imaginary (fourth tuple) variables from the conversion_dict
-            real_vars = family_values[2] + family_values[3]
-            for real_var in real_vars:
-                if real_var in conversion_dict:
-                    del conversion_dict[real_var]
 
     if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
         return _VFDF_conversion(
             expr, default_var_format="complex", _converter=realToHol
         )
-    elif hasattr(expr, "applyfunc"):
-        return expr.applyfunc(format)
-    else:
-        return format(expr)
+    if isinstance(expr, (int, float)):
+        return expr
+    if isinstance(expr, sp.Symbol):
+        if expr in conv_realToHol:
+            return conv_realToHol[expr]
+        else:
+            return expr
+    if isinstance(expr, sp.Expr):
+        # Build a reformatted substitution dictionary only for symbols that occur in expr.free_symbols.
+        reformatted_subs_dict = {
+            sym: conv_realToHol[sym] for sym in expr.free_symbols if sym in conv_realToHol
+        }
+        result = sp.sympify(expr).subs(reformatted_subs_dict)
+        if simplify_everything:
+            result = sp.simplify(result)
+        return result
+    if hasattr(expr, "applyfunc"):
+        return expr.applyfunc(lambda e: realToHol(e, skipVar=skipVar, simplify_everything=simplify_everything))
+    return expr
 
 
 def symToReal(expr, skipVar=None, simplify_everything=True):
@@ -4763,49 +4055,56 @@ def symToReal(expr, skipVar=None, simplify_everything=True):
     Converts symbolic conjugates in the expression to real variables.
 
     Parameters:
-    expr : sympy.Expr
-        The expression to convert.
-    skipVar : list of str, optional
-        A list of symbolic conjugate system labels to skip during conversion.
-        For any variable in skipVar, the associated symbolic conjugates will
-        not be substituted.
+        expr : sympy.Expr or VFClass/DFClass
+            The expression to convert.
+        skipVar : list of str, optional
+            A list of symbolic conjugate system labels to skip during conversion.
+            For any variable in skipVar, the associated symbolic conjugates will not be substituted.
+        simplify_everything : bool, optional
+            If True, simplifies the resulting expression.
 
     Returns:
-    sympy.Expr
-        The expression with symbolic conjugates replaced by real variables,
-        except for those specified in skipVar.
+        Same type as input
+            The expression with symbolic conjugates replaced by real variables,
+            except for those specified in skipVar.
     """
     variable_registry = get_variable_registry()
-    conversion_dict = (
-        variable_registry.get("conversion_dictionaries", {}).get("symToReal", {}).copy()
-    )
+    conversion_dict = variable_registry.get("conversion_dictionaries", {}).get("symToReal", {}).copy()
 
-    def format(expr):
-        return sp.sympify(expr).subs(conversion_dict)
-
-    # Skip specified symbolic conjugate systems if skipVar is provided
+    # If skipVar is provided, remove the symbolic conjugate keys for the given systems.
     if skipVar:
         for var in skipVar:
-            complex_system = variable_registry.get("complex_variable_systems", {}).get(
-                var, {}
-            )
+            complex_system = variable_registry.get("complex_variable_systems", {}).get(var, {})
             family_values = complex_system.get("family_values", ((), (), (), ()))
             if complex_system.get("family_type", None) == "single":
+                # Ensure family_values is a tuple of iterables
                 family_values = tuple([(j,) for j in family_values])
-
-            # Remove the symbolic conjugates (second tuple) from the conversion_dict
-            antiholomorphic_vars = family_values[1]
-            for anti_var in antiholomorphic_vars:
+            # Assume the second tuple contains the symbolic conjugate (antiholomorphic) variables.
+            anti_vars = family_values[1] if len(family_values) > 1 else ()
+            for anti_var in anti_vars:
                 if anti_var in conversion_dict:
                     del conversion_dict[anti_var]
 
     if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
         return _VFDF_conversion(expr, default_var_format="real", _converter=symToReal)
-    elif hasattr(expr, "applyfunc"):
-        return expr.applyfunc(format)
-    else:
-        return format(expr)
 
+    if isinstance(expr, (int, float)):
+        return expr
+    if isinstance(expr, sp.Symbol):
+        if expr in conversion_dict:
+            return conversion_dict[expr]
+        else:
+            return expr
+    if isinstance(expr, sp.Expr):
+        filtered_subs = {sym: conversion_dict[sym]
+                         for sym in expr.free_symbols if sym in conversion_dict}
+        result = expr.subs(filtered_subs)
+        if simplify_everything:
+            result = sp.simplify(result)
+        return result
+    if hasattr(expr, "applyfunc"):
+        return expr.applyfunc(lambda e: symToReal(e, skipVar=skipVar, simplify_everything=simplify_everything))
+    return expr
 
 def allToReal(expr, skipVar=None, simplify_everything=True):
     """
@@ -4978,40 +4277,7 @@ def im_with_hol_coor(expr):
 
 def VF_coeffs_direct(vf, var_space, sparse=False):
     """
-    Computes the coefficients of a vector field `vf` when expressed in terms of the coordinate vector fields
-    corresponding to the variables in `var_space`. The result is either a full list of coefficients or a
-    sparse list, depending on the `sparse` argument.
-
-    This function applies the vector field to each element in `var_space`, returning the associated coefficient
-    for each direction. In the sparse case, only non-zero coefficients are returned.
-
-    Parameters
-    ----------
-    vf : VFClass
-        A vector field object defined in the DGCV system.
-
-    var_space : list or tuple
-        A list or tuple of SymPy Symbol objects representing the variable space on which the vector field is defined.
-
-    sparse : bool, optional
-        If True, returns a sparse list containing only the non-zero coefficients, with each entry represented as a
-        tuple of the index and the coefficient. If False (default), returns the full list of coefficients, including
-        zeros.
-
-    Returns
-    -------
-    list
-        A list of SymPy expressions representing the coefficients of the vector field along each direction in `var_space`.
-        If `sparse=True`, returns a sparse list where each entry is a tuple of the form `((index,), coefficient)`
-        for non-zero coefficients, or `[((0,), 0)]` if all coefficients are zero.
-
-    Raises
-    ------
-    TypeError
-        If `vf` is not an instance of `VFClass` or if `var_space` is not a list or tuple of SymPy symbols.
-
-    Examples
-    --------
+    Depricated: Use `VF_coeffs` instead.
     """
     if not isinstance(vf, VFClass):
         raise TypeError("Expected first argument to be an instance of VFClass")
@@ -5093,43 +4359,59 @@ def compressDGCVClass(obj):
         )
 
 
-def VF_coeffs(arg1, arg2):
+def VF_coeffs(vf, var_list, sparse=False):
     """
-     Expresses coefficients of the vector feild *arg1* with respect to the list of variables in *arg2* assuming *arg2* contains at least all of the basis variables found in the the *varSpace* attribute of *arg1*. It also works if *arg2* merely contains the minimum set of such variables needed to define the vector field, and returns an error if not.
+    Expresses coefficients of the vector field with respect to the list of variables in var_list,
+    assuming var_list contains at least all of the basis variables found in the varSpace attribute of vf.
+    It also works if var_list merely contains the minimum set of such variables needed to define the vector field,
+    and returns an error if not.
+
+    Additionally, if vf has DGCVType="complex" then var_list can have variables in real or holomorphic coordinates
+    but these types cannot be mixed.
 
     Args:
-        arg1: a vector field
-        arg2: a list or tuple containing Symbol objects
+        vf: a vector field (an instance of VFClass)
+        var_list: a list or tuple containing Sympy Symbol objects
 
     Returns:
-        List of sympy expressions.
+        List of Sympy expressions corresponding to the coefficients of vf with respect to each symbol in var_list.
 
     Raises:
-        NA
+        TypeError if vf is not a VFClass or if the symbols in var_list are not all from one coordinate format.
     """
+    # Get the DGCV variable registry
     variable_registry = get_variable_registry()
-    if isinstance(arg1, VFClass):
-        if arg1.DGCVType == "complex":
-            if all(
-                var in variable_registry["conversion_dictionaries"]["realToSym"]
-                for var in arg2
-            ):
-                if arg1._varSpace_type == "complex":
-                    arg1 = allToReal(arg1)
-            elif all(
-                var in variable_registry["conversion_dictionaries"]["symToReal"]
-                for var in arg2
-            ):
-                if arg1._varSpace_type == "real":
-                    arg1 = allToSym(arg1)
-            else:
-                raise TypeError(
-                    "The VFClass `VF_coeffs` was given has `DGCVType='complex'` while the variable list given to decompose the VF w.r.t. were not either simultaneously among real coordinates or simulaneously among holomorphic (and antiholomorphic) coordinates. Variables should be within just one coordinate format."
-                )
-    else:
-        raise TypeError("The first argument in `VF_coeffs` has to be VFClass type.")
-    MVFD = minimalVFDataDict(arg1)
-    return [0 if j not in MVFD else MVFD[j] for j in arg2]
+
+    # Ensure vf is a VFClass instance
+    if not isinstance(vf, VFClass):
+        raise TypeError(f"VF_coeffs expects the first argument to be an instance of VFClass, not type: {type(vf)}")
+
+    # For complex vector fields, check that the variable list is uniformly in one coordinate format.
+    if vf.DGCVType == "complex":
+        conv_realToSym = variable_registry["conversion_dictionaries"]["realToSym"]
+        conv_symToReal = variable_registry["conversion_dictionaries"]["symToReal"]
+        if all(var in conv_realToSym for var in var_list):
+            # All variables are in real coordinates.
+            if vf._varSpace_type == "complex":
+                vf = allToReal(vf)
+        elif all(var in conv_symToReal for var in var_list):
+            # All variables are in holomorphic coordinates.
+            if vf._varSpace_type == "real":
+                vf = allToSym(vf)
+        else:
+            raise TypeError(
+                "The VF_coeffs function was given a VFClass with DGCVType='complex' while the variable list contains "
+                "a mixture of real and holomorphic coordinates. Variables should be provided in just one coordinate format."
+            )
+
+    # Get a minimal vector field data dictionary mapping basis variables to their coefficients.
+    MVFD = minimalVFDataDict(vf)
+
+    # Return sparse or full result
+    if sparse:
+        return list(MVFD.keys())
+    # For each symbol in var_list, if it appears in MVFD return its coefficient; otherwise, return 0.
+    return [MVFD.get(var, 0) for var in var_list]
 
 
 def changeVFBasis(arg1, arg2):
@@ -5166,7 +4448,7 @@ def addVF(*args):
         # Convert to a tuple with unique entries using dict.fromkeys
         varSpaceLoc = tuple(dict.fromkeys(varSpaceLoc))
 
-        coeffListLoc = [VF_coeffs_direct(j, varSpaceLoc) for j in args]
+        coeffListLoc = [VF_coeffs(j, varSpaceLoc) for j in args]
         coeffsLoc = [sum(j) for j in zip(*coeffListLoc)]
 
         return VFClass(varSpaceLoc, coeffsLoc, typeLoc)
@@ -5248,7 +4530,7 @@ def VF_bracket(arg1, arg2, doNotSimplify=False, fast_algorithm=True):
             typeLoc = "standard"
             fast_handling = True
 
-        # Get the variable spaces, ensuring no duplicates if different
+        # align variable spaces
         varSpaceLoc = (
             arg1.varSpace
             if arg1.varSpace == arg2.varSpace
@@ -5257,15 +4539,15 @@ def VF_bracket(arg1, arg2, doNotSimplify=False, fast_algorithm=True):
 
         # Fast-handling: Avoid conversions if both are standard vector fields
         if fast_handling:
-            coefLoc1 = VF_coeffs_direct(arg1, varSpaceLoc)
-            coefLoc2 = VF_coeffs_direct(arg2, varSpaceLoc)
+            coefLoc1 = VF_coeffs(arg1, varSpaceLoc)
+            coefLoc2 = VF_coeffs(arg2, varSpaceLoc)
         elif fast_algorithm:
             # Convert both vector fields to real variables so that complex handling can be ignored later
-            coefLoc1 = [symToReal(j) for j in VF_coeffs_direct(arg1, varSpaceLoc)]
-            coefLoc2 = [symToReal(j) for j in VF_coeffs_direct(arg2, varSpaceLoc)]
+            coefLoc1 = [symToReal(j) for j in VF_coeffs(arg1, varSpaceLoc)]
+            coefLoc2 = [symToReal(j) for j in VF_coeffs(arg2, varSpaceLoc)]
         else:
-            coefLoc1 = VF_coeffs_direct(allToReal(arg1), varSpaceLoc)
-            coefLoc2 = VF_coeffs_direct(allToReal(arg2), varSpaceLoc)
+            coefLoc1 = VF_coeffs(allToReal(arg1), varSpaceLoc)
+            coefLoc2 = VF_coeffs(allToReal(arg2), varSpaceLoc)
 
         # Combine the coefficients and optionally simplify
         if doNotSimplify:
@@ -5341,8 +4623,8 @@ def contravariantVFTensorCoeffs(varSpace, *vector_fields):
 
     # Evaluate the coefficients of each vector field with respect to varSpace
     coeff_values = [
-        VF_coeffs_direct(vf, varSpace, sparse=True) for vf in vector_fields
-    ]  ### Update to the new VF_coeffs!!!
+        VF_coeffs(vf, varSpace, sparse=True) for vf in vector_fields
+    ]
 
     # Get the number of terms in each vector field's coefficient list
     term_counts = [len(coeff_list) for coeff_list in coeff_values]
@@ -6487,6 +5769,111 @@ def listVar(
     return list(all_labels)
 
 
+def _clearVar_single(label):
+    """
+    Helper function that clears a single variable system (standard, complex, or finite algebra)
+    from the DGCV variable management framework. Instead of printing a report, it returns
+    a tuple (system_type, label) indicating what was cleared.
+    """
+    registry = get_variable_registry()
+    global_vars = _cached_caller_globals  # Cached caller's globals for removal
+    cleared_info = None
+
+    # Handle standard variable systems
+    if label in registry["standard_variable_systems"]:
+        system_dict = registry["standard_variable_systems"][label]
+        family_names = system_dict["family_names"]
+        if isinstance(family_names, str):
+            family_names = (family_names,)
+        # Remove all family members from globals
+        for var in family_names:
+            if var in global_vars:
+                del global_vars[var]
+        if label in global_vars:
+            del global_vars[label]
+        # Remove differential objects if present
+        if system_dict.get("differential_system", None):
+            for var in family_names:
+                if f"D_{var}" in global_vars:
+                    del global_vars[f"D_{var}"]
+                if f"d_{var}" in global_vars:
+                    del global_vars[f"d_{var}"]
+            if f"D_{label}" in global_vars:
+                del global_vars[f"D_{label}"]
+            if f"d_{label}" in global_vars:
+                del global_vars[f"d_{label}"]
+        # Remove temporary and obscure markers
+        if system_dict.get("tempVar", None):
+            registry["temporary_variables"].discard(label)
+        if system_dict.get("obsVar", None):
+            registry["obscure_variables"].discard(label)
+        # Remove the system from the registry
+        del registry["standard_variable_systems"][label]
+        cleared_info = ("standard", label)
+
+    # Handle complex variable systems
+    elif label in registry["complex_variable_systems"]:
+        system_dict = registry["complex_variable_systems"][label]
+        family_houses = system_dict["family_houses"]
+
+        # Remove real and imaginary parent labels from protected_variables
+        real_parent = family_houses[-2]
+        imag_parent = family_houses[-1]
+        registry["protected_variables"].discard(real_parent)
+        registry["protected_variables"].discard(imag_parent)
+
+        # For tuple or multi_index systems, remove all parent labels from globals
+        if system_dict["family_type"] in ("tuple", "multi_index"):
+            for house in family_houses:
+                if house in global_vars:
+                    del global_vars[house]
+
+        # Remove variables and associated DFClass/VFClass objects from globals
+        variable_relatives = system_dict["variable_relatives"]
+        for var_label, var_data in variable_relatives.items():
+            if var_label in global_vars:
+                del global_vars[var_label]
+            if var_data.get("DFClass") and f"D_{var_label}" in global_vars:
+                del global_vars[f"D_{var_label}"]
+            if var_data.get("VFClass") and f"d_{var_label}" in global_vars:
+                del global_vars[f"d_{var_label}"]
+
+        # Clean up conversion dictionaries
+        conversion_dictionaries = registry["conversion_dictionaries"]
+        for var_label, var_data in variable_relatives.items():
+            position = var_data.get("complex_positioning")
+            value_pointer = var_data.get("variable_value")
+            if position == "holomorphic":
+                conversion_dictionaries["conjugation"].pop(value_pointer, None)
+                conversion_dictionaries["holToReal"].pop(value_pointer, None)
+                conversion_dictionaries["symToReal"].pop(value_pointer, None)
+            elif position == "antiholomorphic":
+                conversion_dictionaries["symToHol"].pop(value_pointer, None)
+                conversion_dictionaries["symToReal"].pop(value_pointer, None)
+            elif position in ["real", "imaginary"]:
+                conversion_dictionaries["realToHol"].pop(value_pointer, None)
+                conversion_dictionaries["realToSym"].pop(value_pointer, None)
+                conversion_dictionaries["find_parents"].pop(value_pointer, None)
+
+        # Remove temporary marker
+        registry["temporary_variables"].discard(label)
+        # Remove the system from the registry
+        del registry["complex_variable_systems"][label]
+        cleared_info = ("complex", label)
+
+    # Handle finite algebra systems
+    elif label in registry["finite_algebra_systems"]:
+        family_names = registry["finite_algebra_systems"][label].get("family_names", {})
+        for family_member in family_names:
+            if family_member in global_vars:
+                del global_vars[family_member]
+        if label in global_vars:
+            del global_vars[label]
+        del registry["finite_algebra_systems"][label]
+        cleared_info = ("algebra", label)
+
+    return cleared_info
+
 def clearVar(*labels, report=True):
     """
     Clears variables from the registry and global namespace. Because sometimes, we all need a fresh start.
@@ -6555,146 +5942,37 @@ def clearVar(*labels, report=True):
 
     """
     # Access variable_registry from _cached_caller_globals
-    variable_registry = get_variable_registry()
 
-    # Lists to track cleared labels for printing summary later
     cleared_standard = []
     cleared_complex = []
     cleared_algebras = []
 
     for label in labels:
-        # Handle standard variables
-        if label in variable_registry["standard_variable_systems"]:
-            system_dict = variable_registry["standard_variable_systems"][label]
-            family_names = system_dict["family_names"]
+        info = _clearVar_single(label)
+        if info:
+            system_type, cleared_label = info
+            if system_type == "standard":
+                cleared_standard.append(cleared_label)
+            elif system_type == "complex":
+                cleared_complex.append(cleared_label)
+            elif system_type == "algebra":
+                cleared_algebras.append(cleared_label)
 
-            # Remove all family members and parent from _cached_caller_globals
-            for var in family_names:
-                if var in _cached_caller_globals:
-                    del _cached_caller_globals[var]
-            if label in _cached_caller_globals:
-                del _cached_caller_globals[label]
-
-            # Remove differential system if present
-            if system_dict.get("differential_system", None):
-                for var in family_names:
-                    if f"D_{var}" in _cached_caller_globals:
-                        del _cached_caller_globals[f"D_{var}"]
-                    if f"d_{var}" in _cached_caller_globals:
-                        del _cached_caller_globals[f"d_{var}"]
-                if f"D_{label}" in _cached_caller_globals:
-                    del _cached_caller_globals[f"D_{label}"]
-                if f"d_{label}" in _cached_caller_globals:
-                    del _cached_caller_globals[f"d_{label}"]
-
-            # Remove temporary marker if present
-            if system_dict.get("tempVar", None):
-                variable_registry["temporary_variables"].discard(label)
-
-            # Remove obscure marker if present
-            if system_dict.get("obsVar", None):
-                variable_registry["obscure_variables"].discard(label)
-
-            # Remove from variable_registry
-            del variable_registry["standard_variable_systems"][label]
-            cleared_standard.append(label)  # Add to cleared list
-
-        # Handle complex variables
-        elif label in variable_registry["complex_variable_systems"]:
-            system_dict = variable_registry["complex_variable_systems"][label]
-            family_houses = system_dict["family_houses"]
-
-            # Remove string labels for the real and imaginary variable parents from protected_variables
-            real_parent = family_houses[-2]
-            imag_parent = family_houses[-1]
-            if real_parent in variable_registry["protected_variables"]:
-                variable_registry["protected_variables"].discard(real_parent)
-            if imag_parent in variable_registry["protected_variables"]:
-                variable_registry["protected_variables"].discard(imag_parent)
-
-            # Remove tuple parent labels if family_type is 'tuple'
-            if (
-                system_dict["family_type"] == "tuple"
-                or system_dict["family_type"] == "multi_index"
-            ):  # patch until multi_index is fully implemented
-                for house in family_houses:
-                    if house in _cached_caller_globals:
-                        del _cached_caller_globals[house]
-
-            # Remove variables and their associated DFClass, VFClass from _cached_caller_globals
-            variable_relatives = system_dict["variable_relatives"]
-            for var_label, var_data in variable_relatives.items():
-                if var_label in _cached_caller_globals:
-                    del _cached_caller_globals[var_label]
-                if (
-                    var_data.get("DFClass")
-                    and f"D_{var_label}" in _cached_caller_globals
-                ):
-                    del _cached_caller_globals[f"D_{var_label}"]
-                if (
-                    var_data.get("VFClass")
-                    and f"d_{var_label}" in _cached_caller_globals
-                ):
-                    del _cached_caller_globals[f"d_{var_label}"]
-
-            # Clean up conversion dictionaries
-            conversion_dictionaries = variable_registry["conversion_dictionaries"]
-            for var_label, var_data in variable_relatives.items():
-                position = var_data.get("complex_positioning")
-                value_pointer = var_data.get("variable_value")
-
-                if position == "holomorphic":
-                    conversion_dictionaries["conjugation"].pop(value_pointer, None)
-                    conversion_dictionaries["holToReal"].pop(value_pointer, None)
-                    conversion_dictionaries["symToReal"].pop(value_pointer, None)
-
-                elif position == "antiholomorphic":
-                    conversion_dictionaries["symToHol"].pop(value_pointer, None)
-                    conversion_dictionaries["symToReal"].pop(value_pointer, None)
-
-                elif position in ["real", "imaginary"]:
-                    conversion_dictionaries["realToHol"].pop(value_pointer, None)
-                    conversion_dictionaries["realToSym"].pop(value_pointer, None)
-                    conversion_dictionaries["find_parents"].pop(value_pointer, None)
-
-            # Remove from temporary_variables and complex_variable_systems
-            variable_registry["temporary_variables"].discard(label)
-            del variable_registry["complex_variable_systems"][label]
-            cleared_complex.append(label)  # Add to cleared list
-
-        # Handle finite algebra systems
-        elif label in variable_registry["finite_algebra_systems"]:
-            family_names = variable_registry["finite_algebra_systems"][label].get(
-                "family_names", {}
+    if report:
+        if cleared_standard:
+            print(
+                f"Cleared standard variable systems from the DGCV variable management framework: {', '.join(cleared_standard)}"
+            )
+        if cleared_complex:
+            print(
+                f"Cleared complex variable systems from the DGCV variable management framework: {', '.join(cleared_complex)}"
+            )
+        if cleared_algebras:
+            print(
+                f"Cleared finite algebra systems from the DGCV variable management framework: {', '.join(cleared_algebras)}"
             )
 
-            # Remove all related family names from _cached_caller_globals
-            for family_member in family_names:
-                if family_member in _cached_caller_globals:
-                    del _cached_caller_globals[family_member]
-            if label in _cached_caller_globals:
-                del _cached_caller_globals[label]
-
-            # Now delete the parent label from finite_algebra_systems
-            del variable_registry["finite_algebra_systems"][label]
-            cleared_algebras.append(label)  # Add to cleared list
-
-    # Summarize the cleared variable systems
-    if cleared_standard and report:
-        print(
-            f"Cleared standard variable systems from the DGCV variable management framework: {', '.join(cleared_standard)}"
-        )
-    if cleared_complex and report:
-        print(
-            f"Cleared complex variable systems from the DGCV variable management framework: {', '.join(cleared_complex)}"
-        )
-    if cleared_algebras and report:
-        print(
-            f"Cleared finite algebra systems from the DGCV variable management framework: {', '.join(cleared_algebras)}"
-        )
-
-
-def DGCV_snapshot(style="chalkboard_green", use_latex=False):
+def DGCV_snapshot(style="default", use_latex=False):
     """
     Generate a comprehensive snapshot of DGCV's variable management framework (VMF), including variables,
     algebras, coordinate systems, vector fields, and differential forms.
@@ -6713,465 +5991,8 @@ def DGCV_snapshot(style="chalkboard_green", use_latex=False):
         A formatted snapshot displaying the initialized variables, algebras, coordinate systems,
         vector fields, and differential forms.
     """
-
-    variable_registry = get_variable_registry()
-
-    def check_greek(var_name):
-        if var_name in greek_letters:
-            return True
-        else:
-            return False
-
-    def convert_to_greek(var_name):
-        for name, greek in greek_letters.items():
-            if var_name.startswith(name):
-                return var_name.replace(name, greek, 1)
-        return var_name
-
-    def wrap_in_dollars(content):
-        return f"${content}$"
-
-    def format_variable_name(var_name, system_type, use_latex=False):
-        if system_type == "standard":
-            family_type = variable_registry["standard_variable_systems"][var_name].get(
-                "family_type", "single"
-            )
-            if (
-                family_type == "multi_index"
-            ):  # patch until multi_index is fully integrated!!!
-                family_type = "tuple"
-            family_names = variable_registry["standard_variable_systems"][var_name][
-                "family_names"
-            ]
-            initial_index = variable_registry["standard_variable_systems"][
-                var_name
-            ].get("initial_index", 1)
-        else:  # system_type == 'complex'
-            family_type = variable_registry["complex_variable_systems"][var_name].get(
-                "family_type", "single"
-            )
-            family_names = variable_registry["complex_variable_systems"][var_name][
-                "family_names"
-            ][
-                0
-            ]  # First tuple entry
-            initial_index = variable_registry["complex_variable_systems"][var_name].get(
-                "initial_index", 1
-            )
-
-        # Check if the tuple is empty
-        if family_type == "tuple" and len(family_names) == 0:
-            content = f"{var_name} = (empty tuple)"
-        elif family_type == "tuple":
-            first_index = initial_index
-            last_index = initial_index + len(family_names) - 1
-            if use_latex:
-                # LaTeX formatting with subscripts and proper index starting from initial_index
-                content = f"{convert_to_greek(var_name)} = \\left( {convert_to_greek(var_name)}_{{{first_index}}}, \\ldots, {convert_to_greek(var_name)}_{{{last_index}}} \\right)"
-            else:
-                # Standard formatting with ellipsis
-                content = f"{var_name} = ({family_names[0]}, ..., {family_names[-1]})"
-        else:
-            if use_latex:
-                # Single variable case, apply LaTeX formatting
-                content = f"{convert_to_greek(var_name)}"
-            else:
-                # Single variable case without LaTeX
-                content = var_name
-
-        # Wrap content in $$ for LaTeX if needed
-        if use_latex:
-            content = wrap_in_dollars(content)
-
-        return content
-
-    def tupleProcLoc(var_name, system_type):
-        if system_type == "standard":
-            return len(
-                variable_registry["standard_variable_systems"][var_name]["family_names"]
-            )
-        elif system_type == "complex":
-            return len(
-                variable_registry["complex_variable_systems"][var_name]["family_names"][
-                    0
-                ]
-            )
-
-    complex_vars = sorted(variable_registry["complex_variable_systems"].keys())
-    standard_vars = sorted(variable_registry["standard_variable_systems"].keys())
-
-    def retrieveStart(var_name, system_type):
-        if system_type == "standard":
-            return variable_registry["standard_variable_systems"][var_name].get(
-                "initial_index", 1
-            )
-        elif system_type == "complex":
-            return variable_registry["complex_variable_systems"][var_name].get(
-                "initial_index", 1
-            )
-
-    def build_object_string(
-        obj_type, var_name, start_index, tuple_len, system_type, use_latex=False
-    ):
-        # Access variable_registry using the original variable name (no LaTeX conversion here)
-        original_var_name = var_name
-
-        if system_type == "standard":
-            # Check if the standard variable has a differential system
-            if (
-                variable_registry["standard_variable_systems"][original_var_name].get(
-                    "differential_system", None
-                )
-                is None
-            ):
-                content = "----"  # No associated vector fields or differential forms
-            elif tuple_len == 1:
-                if use_latex:
-                    if obj_type == "d":  # DF case: Use 'd X'
-                        content = f"d {convert_to_greek(original_var_name)}"
-                    else:  # VF case: Use partial derivative notation
-                        content = f"\\frac{{\\partial}}{{\\partial {convert_to_greek(original_var_name)}}}"
-                else:
-                    content = f"{obj_type}_{original_var_name}"  # Non-LaTeX formatting
-            else:
-                if use_latex:
-                    if obj_type == "d":  # DF case: Use 'd X'
-                        content = f"d {convert_to_greek(original_var_name)}_{{{start_index}}}, \\ldots, d {convert_to_greek(original_var_name)}_{{{int(start_index) + tuple_len - 1}}}"
-                    else:  # VF case: Use partial derivative notation
-                        content = f"\\frac{{\\partial}}{{\\partial {convert_to_greek(original_var_name)}_{{{start_index}}}}}, \\ldots, \\frac{{\\partial}}{{\\partial {convert_to_greek(original_var_name)}_{{{int(start_index) + tuple_len - 1}}}}}"
-                else:
-                    content = f"{obj_type}_{original_var_name}{start_index},...,{obj_type}_{original_var_name}{int(start_index) + tuple_len - 1}"
-        else:
-            # Complex variable system
-            if tuple_len == 1:
-                if use_latex:
-                    if obj_type == "d":  # DF case: Use 'd X'
-                        content = f"d {convert_to_greek(original_var_name)}"
-                    else:  # VF case: Use partial derivative notation
-                        content = f"\\frac{{\\partial}}{{\\partial {convert_to_greek(original_var_name)}}}"
-                else:
-                    content = f"{obj_type}_{original_var_name}"
-            else:
-                if use_latex:
-                    if obj_type == "d":  # DF case: Use 'd X'
-                        content = f"d {convert_to_greek(original_var_name)}_{{{start_index}}}, \\ldots, d {convert_to_greek(original_var_name)}_{{{int(start_index) + tuple_len - 1}}}"
-                    else:  # VF case: Use partial derivative notation
-                        content = f"\\frac{{\\partial}}{{\\partial {convert_to_greek(original_var_name)}_{{{start_index}}}}}, \\ldots, \\frac{{\\partial}}{{\\partial {convert_to_greek(original_var_name)}_{{{int(start_index) + tuple_len - 1}}}}}"
-                else:
-                    content = f"{obj_type}_{original_var_name}{start_index},...,{obj_type}_{original_var_name}{int(start_index) + tuple_len - 1}"
-
-        # Wrap content in $$ for LaTeX if needed, but skip if content is "----"
-        if use_latex and content != "----":
-            content = wrap_in_dollars(content)
-
-        return content
-
-    def build_object_string_for_complex(
-        obj_type, part_names, family_names, start_index, use_latex=False
-    ):
-        parts = []
-        for part_name, part in zip(part_names, family_names):
-            # Check that start_index is an integer for tuple cases. If not, handle single variables without subscripts
-            if start_index is None or start_index == "":
-                is_single = True  # Handle single variables
-            else:
-                is_single = False  # Handle tuple variables
-                start_index = int(
-                    start_index
-                )
-
-            if use_latex:
-                if part_name.startswith("BAR"):
-                    base_var = part_name.replace(
-                        "BAR", "", 1
-                    )  # Remove only the first occurrence of 'BAR'
-                    base_var = convert_to_greek(
-                        base_var
-                    )  # Convert to Greek letter if applicable
-                    if is_single:
-                        part_str_latex = f"\\overline{{{base_var}}}"  # Single case, fully wrap in \overline{}
-                    else:
-                        part_str_latex = [
-                            f"\\overline{{{base_var}_{{{i}}}}}"
-                            for i in range(start_index, start_index + len(part))
-                        ]
-                else:
-                    # Standard case with Greek letter conversion
-                    if is_single:
-                        part_str_latex = f"{convert_to_greek(part_name)}"  # Treat single variables as a string, not a list
-                    else:
-                        part_str_latex = [
-                            f"{convert_to_greek(part_name)}_{{{i}}}"
-                            for i in range(start_index, start_index + len(part))
-                        ]
-
-                if obj_type == "d":  # Differential Forms
-                    if is_single:
-                        part_str = f"d {part_str_latex}"  # No list wrapping for single variables
-                    else:
-                        part_str = f"d {part_str_latex[0]}, \\ldots, d {part_str_latex[-1]}"  # Use ellipsis for tuples
-                else:  # Vector Fields
-                    if is_single:
-                        part_str = f"\\frac{{\\partial}}{{\\partial {part_str_latex}}}"  # No list wrapping for single variables
-                    else:
-                        part_str = f"\\frac{{\\partial}}{{\\partial {part_str_latex[0]}}}, \\ldots, \\frac{{\\partial}}{{\\partial {part_str_latex[-1]}}}"  # Use ellipsis for tuples
-                part_str = wrap_in_dollars(part_str) 
-            else:
-                # Non-LaTeX handling
-                if is_single:
-                    part_str = f"{obj_type}_{convert_to_greek(part_name)}"  # No subscript for single variables
-                else:
-                    part_str = f"{obj_type}_{convert_to_greek(part_name)}{start_index},...,{obj_type}_{convert_to_greek(part_name)}{int(start_index) + len(part) - 1}"  # Use ellipsis for tuples
-            parts.append(part_str)
-
-        # Join all parts together
-        return ", ".join(parts)
-
-    # Prepare the data for the summary table
-    data = [
-        [
-            "Number of Var.",
-            "Real Part",
-            "Imaginary Part",
-            "Vector Fields",
-            "Differential Forms",
-        ]
-    ]  # Top row of with sub-headers
-
-    complex_vars = sorted(variable_registry.get("complex_variable_systems", {}).keys())
-    standard_vars = sorted(
-        variable_registry.get("standard_variable_systems", {}).keys()
-    )
-    finite_algebra_vars = sorted(
-        variable_registry.get("finite_algebra_systems", {}).keys()
-    )
-
-    # Process complex variables
-    for var_name in complex_vars:
-        # family_type = variable_registry["complex_variable_systems"][var_name].get(
-        #     "family_type", "single"
-        # )
-        family_names = variable_registry["complex_variable_systems"][var_name][
-            "family_names"
-        ]
-
-        tuple_len = tupleProcLoc(var_name, "complex")
-        start_index = retrieveStart(var_name, "complex")
-
-        # Access family_houses and family_names (holomorphic, antiholomorphic, real, and imaginary parts)
-        family_houses = variable_registry["complex_variable_systems"][var_name][
-            "family_houses"
-        ]
-        family_names = variable_registry["complex_variable_systems"][var_name][
-            "family_names"
-        ]
-
-        # Determine if the variable is single or tuple based on family_type
-        is_single = (
-            variable_registry["complex_variable_systems"][var_name].get("family_type")
-            == "single"
-        )
-
-        if use_latex:
-            # Vector fields and differential forms for all parts with LaTeX formatting
-            vf_str = build_object_string_for_complex(
-                "D", family_houses, family_names, start_index, use_latex
-            )
-            df_str = build_object_string_for_complex(
-                "d", family_houses, family_names, start_index, use_latex
-            )
-
-            # Real and Imaginary part formatting with LaTeX
-            real_part = (
-                f"{convert_to_greek(family_houses[2])} = \\left( {convert_to_greek(family_houses[2])}_{{{start_index}}}, \\ldots, {convert_to_greek(family_houses[2])}_{{{int(start_index) + len(family_names[2]) - 1}}} \\right)"
-                if not is_single
-                else f"{convert_to_greek(family_houses[2])}"
-            )
-            real_part = wrap_in_dollars(real_part)
-
-            imaginary_part = (
-                f"{convert_to_greek(family_houses[3])} = \\left( {convert_to_greek(family_houses[3])}_{{{start_index}}}, \\ldots, {convert_to_greek(family_houses[3])}_{{{int(start_index) + len(family_names[3]) - 1}}} \\right)"
-                if not is_single
-                else f"{convert_to_greek(family_houses[3])}"
-            )
-            imaginary_part = wrap_in_dollars(imaginary_part)
-        else:
-            # Non-LaTeX formatting for Vector fields and Differential forms
-            vf_str = build_object_string_for_complex(
-                "D", family_houses, family_names, start_index
-            )
-            df_str = build_object_string_for_complex(
-                "d", family_houses, family_names, start_index
-            )
-
-            # Applying the ", ... ," tuples format for Real and Imaginary parts
-            if len(family_names[2]) > 1:
-                real_part = f"{family_houses[2]} = ({family_names[2][0]}, ..., {family_names[2][-1]})"
-            else:
-                real_part = f"{family_houses[2]} = ({family_names[2][0]})"
-
-            if len(family_names[3]) > 1:
-                imaginary_part = f"{family_houses[3]} = ({family_names[3][0]}, ..., {family_names[3][-1]})"
-            else:
-                imaginary_part = f"{family_houses[3]} = ({family_names[3][0]})"
-
-        # Append to data
-        data.append(
-            [
-                tuple_len,  # Number of variables
-                real_part,  # Real part
-                imaginary_part,  # Imaginary part
-                vf_str,  # Vector fields
-                df_str,  # Differential forms
-            ]
-        )
-
-    # Process standard variables
-    for var_name in standard_vars:
-        # family_type = variable_registry["standard_variable_systems"][var_name].get(
-        #     "family_type", "single"
-        # )
-        family_names = variable_registry["standard_variable_systems"][var_name][
-            "family_names"
-        ]
-
-        tuple_len = tupleProcLoc(var_name, "standard")
-        start_index = retrieveStart(var_name, "standard")
-        data.append(
-            [
-                tuple_len,  # Number of variables
-                "----",  # Real part not applicable here
-                "----",  # Imaginary part not applicable here
-                build_object_string(
-                    "D", var_name, start_index, tuple_len, "standard", use_latex
-                ),  # Vector fields
-                build_object_string(
-                    "d", var_name, start_index, tuple_len, "standard", use_latex
-                ),  # Differential forms
-            ]
-        )
-
-    # Process finite algebra systems. Plan: place everything in the first column
-
-    # Helper function to process basis labels
-    def process_basis_label(label):
-        # Use regex to split the name and numeric suffix
-        match = re.match(r"(.*?)(\d+)?$", label)
-        basis_elem_name = match.group(1)  # Alphabetic part
-        basis_elem_number = match.group(2)  # Numeric part, if any
-
-        # Remove trailing underscores from the name
-        basis_elem_name = basis_elem_name.rstrip("_")
-
-        # Build the LaTeX string
-        if basis_elem_number:
-            return f"{convert_to_greek(basis_elem_name)}_{{{basis_elem_number}}}"
-        else:
-            return f"{convert_to_greek(basis_elem_name)}"
-
-    index = []
-    for var_name in finite_algebra_vars:
-        system_data = variable_registry["finite_algebra_systems"][var_name]
-        algebra_family_names = system_data.get("family_names", [])
-
-        # Format algebra label and basis (existing logic for parent label)
-        if use_latex:
-            # Use regex to extract the numeric part only if it's at the end of the string
-            match = re.match(
-                r"(.*?)(\d+)?$", var_name
-            )  # Updated regex to handle numbers at the end
-            if match:
-                algebra_name = match.group(1)  # Alphabetic and mixed part
-                algebra_number = match.group(2)  # Numeric part, if any
-
-                # Check if the algebra_name consists of only lowercase Latin letters
-                if check_greek(algebra_name):
-                    algebra_label = f"{convert_to_greek(algebra_name)}"
-                elif re.fullmatch(r"[a-z]+", algebra_name):
-                    # If it's all lowercase Latin letters, wrap in \mathfrak{}
-                    algebra_label = f"\\mathfrak{{{algebra_name}}}"
-                else:
-                    algebra_label = algebra_name
-
-                # Add the subscript if a number exists
-                if algebra_number:
-                    algebra_label += f"_{{{algebra_number}}}"
-
-            # Build the basis string using the first and last labels, formatted
-            if len(algebra_family_names) > 1:
-                first_basis_label = process_basis_label(algebra_family_names[0])
-                last_basis_label = process_basis_label(algebra_family_names[-1])
-                basis_str = f"{first_basis_label}, \\ldots , {last_basis_label}"
-            else:
-                basis_str = (
-                    process_basis_label(algebra_family_names[0])
-                    if algebra_family_names
-                    else ""
-                )
-
-            formatted_str = f"Algebra: {wrap_in_dollars(algebra_label)} \\\\ Basis: {wrap_in_dollars(basis_str)}"
-
-        else:
-            # Non-LaTeX case
-            algebra_label = var_name
-            if len(algebra_family_names) > 1:
-                basis_str = (
-                    f"{algebra_family_names[0]}, ..., {algebra_family_names[-1]}"
-                )
-            else:
-                basis_str = algebra_family_names[0] if algebra_family_names else ""
-
-            formatted_str = f"Algebra: {algebra_label}<br>Basis: {basis_str}"
-
-        # Add a single row to the data part for each finite_algebra_systems element
-        data.append(
-            [
-                len(algebra_family_names),  # Number of variables
-                "----",  # Leave "Real Part" empty
-                "----",  # Leave "Imaginary Part" empty
-                "----",  # Leave "Vector Fields" empty
-                "----",  # Leave "Differential Forms" empty
-            ]
-        )
-
-        # Add the formatted_str to the index for this algebra
-        index.append((formatted_str, ""))
-
-    # Generate index (row labels) with a MultiIndex to display 'Variable Name(s)' at the top
-    index = MultiIndex.from_tuples(
-        [("Coordinate/Algebra Name(s)", "")]
-        + [
-            (format_variable_name(var_name, "complex", use_latex), "")
-            for var_name in complex_vars
-        ]
-        + [
-            (format_variable_name(var_name, "standard", use_latex), "")
-            for var_name in standard_vars
-        ]
-        + index  # Add the finite algebra index entries here
-    )
-    # Define your columns (these are the original column headers)
-    column_headers = ["", "", "", "", ""]  # blank placeholders
-
-    # Create DataFrame
-    table = DataFrame(data=data, index=index, columns=column_headers)
-    table_header = "Initialized Coordinate Systems and Algebras"
-
-    table.columns = MultiIndex.from_product([[table_header], table.columns])
-
-    # Fetch the styles from the style guide
-    table_styles = get_style(style)
-
-    # Apply the styles to the table
-    table = table.style.set_table_styles(table_styles)
-
-    # Add the caption (subheader) after setting the styles
-    table = table.set_caption(
-        "(summarizes objects within the scope of DGCV's variable management framework)"
-    )
-
-    return table
-
+    display(_snapshot_coor_(style=style, use_latex=use_latex))
+    display(_snapshot_algebras_(style=style, use_latex=use_latex))
 
 def variableSummary(*args, **kwargs):
     warnings.warn(
@@ -7181,3 +6002,291 @@ def variableSummary(*args, **kwargs):
         stacklevel=2,
     )
     return DGCV_snapshot(*args, **kwargs)
+
+def _snapshot_coor_(style="default", use_latex=False):
+    """
+    Returns a Pandas DataFrame summarizing the coordinate systems in DGCV.
+
+    This snapshot includes both complex and standard variable systems.
+    For each system, the summary includes:
+      - The number of variables (tuple length)
+      - The initial index
+      - For complex systems, the labels used for the real and imaginary parts,
+        as well as formatted representations of the vector fields and differential forms.
+      - For standard systems, the corresponding formatted vector fields and differential forms.
+
+    Parameters:
+        use_latex : bool, optional
+            If True, formatting is applied using LaTeX.
+        style : str, optional
+            A style theme to apply to the summary table.
+
+    Returns:
+        A styled Pandas DataFrame summarizing the coordinate systems and finite algebras.
+    """
+    def wrap_in_dollars(content):
+        return f"${content}$"
+
+    def convert_to_greek(var_name):
+        # Assume greek_letters is defined module-wide; its values are LaTeX-valid strings.
+        for name, greek in greek_letters.items():
+            if var_name.lower().startswith(name):
+                return var_name.replace(name, greek, 1)
+        return var_name
+
+    def format_variable_name(var_name, system_type, use_latex=False):
+        # Look up system info from the registry.
+        if system_type == "standard":
+            info = variable_registry["standard_variable_systems"].get(var_name, {})
+            family_names = info.get("family_names", var_name)
+            initial_index = info.get("initial_index", 1)
+        elif system_type == "complex":
+            info = variable_registry["complex_variable_systems"].get(var_name, {})
+            # For complex systems, assume family_names is a 4-tuple; we use its first element (holomorphic names)
+            family_names = info.get("family_names", ())
+            if family_names and isinstance(family_names, (list, tuple)) and len(family_names) > 0:
+                family_names = family_names[0]
+            else:
+                family_names = var_name
+            initial_index = info.get("initial_index", 1)
+        elif system_type == "algebra":
+            info = variable_registry["finite_algebra_systems"].get(var_name, {})
+            family_names = info.get("family_names", var_name)
+            initial_index = None
+        else:
+            family_names, initial_index = var_name, None
+
+        # If family_names is a sequence with more than one element, format with an ellipsis.
+        if isinstance(family_names, (list, tuple)) and len(family_names) > 1:
+            if use_latex:
+                if initial_index:
+                    content = (f"{convert_to_greek(var_name)} = \\left( {convert_to_greek(var_name)}_{{{initial_index}}}, "
+                            f"\\ldots, {convert_to_greek(var_name)}_{{{initial_index + len(family_names) - 1}}} \\right)")
+                else:
+                    content = (f"{convert_to_greek(var_name)} = {convert_to_greek(var_name)}")
+            else:
+                content = f"{var_name} = ({family_names[0]}, ..., {family_names[-1]})"
+        else:
+            content = f"{var_name}"
+        if use_latex:
+            content = wrap_in_dollars(content)
+        return content
+
+    def build_object_string(obj_type, var_name, start_index, tuple_len, system_type, use_latex=False):
+        # For standard systems, if there's only one variable, return a simple label;
+        # otherwise, show the range of indices.
+        if tuple_len == 1:
+            content = f"{obj_type}_{var_name}"
+        else:
+            content = f"{obj_type}_{var_name}{start_index},...,{obj_type}_{var_name}{start_index + tuple_len - 1}"
+        if use_latex:
+            content = wrap_in_dollars(content)
+        return content
+
+    def build_object_string_for_complex(obj_type, family_houses, family_names, start_index, use_latex=False):
+        """
+        For a complex variable system, family_houses is expected to be a 4-tuple of labels
+        (e.g. (hol, anti, real, imag)) and family_names is a 4-tuple of sequences, one for each part.
+        This function formats each part (only if the corresponding list has more than one element)
+        using an ellipsis; otherwise, it shows the single variable.
+        """
+        parts = []
+        # Expect family_names to be a 4-tuple: (hol_names, anti_names, real_names, imag_names)
+        if isinstance(family_names, (list, tuple)) and len(family_names) == 4:
+            for i, part in enumerate(family_houses):
+                part_names = family_names[i]  # list of names for this part
+                if isinstance(part_names, (list, tuple)) and len(part_names) > 1:
+                    if use_latex:
+                        part_str = f"\\frac{{\\partial}}{{\\partial {convert_to_greek(part)}_{{{start_index}}}}}, \\ldots, \\frac{{\\partial}}{{\\partial {convert_to_greek(part)}_{{{start_index + len(part_names) - 1}}}}}" if obj_type=="D" else f"d {convert_to_greek(part)}_{{{start_index}}}, \\ldots, d {convert_to_greek(part)}_{{{start_index + len(part_names) - 1}}}"
+                        part_str = wrap_in_dollars(part_str)
+                    else:
+                        part_str = f"{obj_type}_{part}{start_index},...,{obj_type}_{part}{start_index + len(part_names) - 1}"
+                else:
+                    if use_latex:
+                        part_str = wrap_in_dollars(f"{obj_type}_{convert_to_greek(part)}")
+                    else:
+                        part_str = f"{obj_type}_{part}"
+                parts.append(part_str)
+        else:
+            # Fallback: if family_names is not the expected 4-tuple, treat as a single list.
+            if isinstance(family_names, (list, tuple)) and len(family_names) > 1:
+                if use_latex:
+                    part_str = wrap_in_dollars(f"{obj_type}_{convert_to_greek(family_houses[0])}{start_index},...,{obj_type}_{convert_to_greek(family_houses[0])}{start_index + len(family_names) - 1}")
+                else:
+                    part_str = f"{obj_type}_{family_houses[0]}{start_index},...,{obj_type}_{family_houses[0]}{start_index + len(family_names) - 1}"
+                parts.append(part_str)
+            else:
+                if use_latex:
+                    parts.append(wrap_in_dollars(f"{obj_type}_{convert_to_greek(family_houses[0])}"))
+                else:
+                    parts.append(f"{obj_type}_{family_houses[0]}")
+        return ", ".join(parts)
+
+    variable_registry = get_variable_registry()
+    data = []          # Each row is: [# Variables, Initial Index, Real Part, Imaginary Part, Vector Fields, Differential Forms]
+    var_system_labels = []  # Regular column for variable system labels
+
+    # Process complex variable systems
+    for var_name in sorted(variable_registry.get("complex_variable_systems", {}).keys()):
+        system = variable_registry["complex_variable_systems"][var_name]
+        # For complex systems, family_names should be a 4-tuple.
+        fn = system.get("family_names", ())
+        if fn and isinstance(fn, (list, tuple)) and len(fn) == 4:
+            hol_names = fn[0]
+        else:
+            hol_names = []
+        tuple_len = len(hol_names) if isinstance(hol_names, (list, tuple)) else 1
+        start_index = system.get("initial_index", 1)
+        formatted_label = format_variable_name(var_name, "complex", use_latex=use_latex)
+        var_system_labels.append(formatted_label)
+        family_houses = system.get("family_houses", ("N/A", "N/A", "N/A", "N/A"))
+        # For complex systems, display real and imaginary parts from the 3rd and 4th entries.
+        if isinstance(fn, (list, tuple)) and len(fn)==4:
+            real_names = fn[2]
+            imag_names = fn[3]
+        else:
+            real_names, imag_names = "N/A", "N/A"
+        if use_latex:
+            real_part = wrap_in_dollars(f"{convert_to_greek(family_houses[2])} = \\left( {convert_to_greek(family_houses[2])}_{{{start_index}}}, \\ldots, {convert_to_greek(family_houses[2])}_{{{start_index + len(real_names) - 1}}} \\right)") if isinstance(real_names, (list, tuple)) and len(real_names)>1 else wrap_in_dollars(f"{convert_to_greek(family_houses[2])}")
+            imag_part = wrap_in_dollars(f"{convert_to_greek(family_houses[3])} = \\left( {convert_to_greek(family_houses[3])}_{{{start_index}}}, \\ldots, {convert_to_greek(family_houses[3])}_{{{start_index + len(imag_names) - 1}}} \\right)") if isinstance(imag_names, (list, tuple)) and len(imag_names)>1 else wrap_in_dollars(f"{convert_to_greek(family_houses[3])}")
+        else:
+            real_part = f"{family_houses[2]} = ({real_names[0]}, ..., {real_names[-1]})" if isinstance(real_names, (list, tuple)) and len(real_names)>1 else f"{family_houses[2]}"
+            imag_part = f"{family_houses[3]} = ({imag_names[0]}, ..., {imag_names[-1]})" if isinstance(imag_names, (list, tuple)) and len(imag_names)>1 else f"{family_houses[3]}"
+        vf_str = build_object_string_for_complex("D", family_houses, fn, start_index, use_latex)
+        df_str = build_object_string_for_complex("d", family_houses, fn, start_index, use_latex)
+        data.append([tuple_len, real_part, imag_part, vf_str, df_str])
+
+    # Process standard variable systems
+    for var_name in sorted(variable_registry.get("standard_variable_systems", {}).keys()):
+        system = variable_registry["standard_variable_systems"][var_name]
+        family_names = system.get("family_names", ())
+        tuple_len = len(family_names) if isinstance(family_names, (list, tuple)) else 1
+        start_index = system.get("initial_index", 1)
+        formatted_label = format_variable_name(var_name, "standard", use_latex=use_latex)
+        var_system_labels.append(formatted_label)
+        vf_str = build_object_string("D", var_name, start_index, tuple_len, "standard", use_latex)
+        df_str = build_object_string("d", var_name, start_index, tuple_len, "standard", use_latex)
+        data.append([tuple_len, "----", "----", vf_str, df_str])
+
+    # Process finite algebra systems
+    finite_algebra_vars = sorted(variable_registry.get("finite_algebra_systems", {}).keys())
+    algebra_labels = []
+    for var_name in finite_algebra_vars:
+        system = variable_registry["finite_algebra_systems"][var_name]
+        family_names = system.get("family_names", ())
+        if isinstance(family_names, (list, tuple)):
+            num_basis = len(family_names)
+            basis_str = f"{family_names[0]}, ..., {family_names[-1]}" if num_basis > 5 else ", ".join(str(x) for x in family_names)
+        else:
+            num_basis = 1
+            basis_str = str(family_names)
+        formatted_label = format_variable_name(var_name, "algebra", use_latex=use_latex)
+        algebra_labels.append(formatted_label)
+        # For finite algebras, we place placeholders for other columns.
+        data.append([num_basis, "----", "----", "----", "----"])
+
+    # Combine labels from coordinate systems and algebras.
+    all_labels = var_system_labels + algebra_labels
+    # Prepend the label to each data row.
+    combined_data = []
+    for label, row in zip(all_labels, data):
+        combined_data.append([label] + row)
+
+    columns = ["Coordinate System", "# of Variables", "Real Part", "Imaginary Part", "Vector Fields", "Differential Forms"]
+    table = DataFrame(combined_data, columns=columns)
+    table_header = "Initialized Coordinate Systems"
+    table_styles = get_style(style)+[{'selector': 'td', 'props': [('text-align', 'left')]}]+[{'selector': 'th', 'props': [('text-align', 'left')]}]
+    styled_table = (
+        table.style
+        .set_table_styles(table_styles)
+        .set_caption(f"{table_header}")
+        .hide(axis="index")
+    )
+    return styled_table
+
+def _snapshot_algebras_(style="default", use_latex=False):
+    """
+    Returns a Pandas DataFrame summarizing the finite algebra systems in DGCV's VMF.
+
+    For each finite algebra system, the snapshot includes:
+      - The formatted algebra label.
+      - The family type.
+      - The basis (family_names), formatted as a comma‑separated string (with ellipsis if there are too many elements).
+      - The number of basis elements.
+
+    Args:
+        use_latex (bool, optional): If True, formats labels using LaTeX.
+        style (str, optional): A style theme name to retrieve table styles.
+
+    Returns:
+        A styled Pandas DataFrame.
+    """
+
+    # Helper: wrap content in dollars for LaTeX
+    def wrap_in_dollars(content):
+        return f"${content}$"
+
+    # Helper: convert variable name to Greek if applicable.
+    def convert_to_greek(var_name):
+        # Assume greek_letters is defined module-wide as a dict mapping strings to LaTeX-valid Greek strings.
+        # Example: {'alpha': '\\alpha', 'beta': '\\beta', ...}
+        for name, greek in greek_letters.items():
+            if var_name.lower().startswith(name):
+                return var_name.replace(name, greek, 1)
+        return var_name
+
+    # Helper: process a basis label into a LaTeX string.
+    def process_basis_label(label):
+        # Use regex to separate alphabetic and numeric parts.
+        match = re.match(r"(.*?)(\d+)?$", label)
+        if match:
+            basis_elem_name = match.group(1).rstrip("_")
+            basis_elem_number = match.group(2)
+            # Convert the alphabetic part to Greek if applicable.
+            basis_elem_name = convert_to_greek(basis_elem_name)
+            if basis_elem_number:
+                return f"{basis_elem_name}_{{{basis_elem_number}}}"
+            else:
+                return f"{basis_elem_name}"
+        else:
+            return label
+
+    # Retrieve the variable registry.
+    registry = get_variable_registry()
+    data = []
+
+    finite_algebras = registry.get("finite_algebra_systems", {})
+    for label in sorted(finite_algebras.keys()):
+        system = finite_algebras[label]
+        family_names = system.get("family_names", ())
+        if isinstance(family_names, (list, tuple)):
+            num_basis = len(family_names)
+            if num_basis > 5:
+                basis_str = f"{process_basis_label(family_names[0])}, ..., {process_basis_label(family_names[-1])}"
+            else:
+                basis_str = ", ".join(process_basis_label(x) for x in family_names)
+        else:
+            num_basis = 1
+            basis_str = process_basis_label(family_names)
+        # For the algebra label, use the module-wide format_variable_name with system_type "algebra".
+        # Here, we simply assume the formatted label is the label itself wrapped in LaTeX if needed.
+        if use_latex:
+            formatted_label = wrap_in_dollars(convert_to_greek(label))
+        else:
+            formatted_label = label
+
+        data.append([formatted_label, basis_str, num_basis])
+
+    columns = ["Algebra Label", "Basis", "Dimension"]
+    df = pd.DataFrame(data, columns=columns)
+
+    # Apply styling using get_style().
+    table_styles = get_style(style)+[{'selector': 'td', 'props': [('text-align', 'left')]}]+[{'selector': 'th', 'props': [('text-align', 'left')]}]
+    styled_df = df.style.set_table_styles(table_styles)
+    styled_df = (
+        df.style
+        .set_table_styles(table_styles)
+        .set_caption("Initialized Finite Algebra Systems")
+        .hide(axis="index")
+    )
+    return styled_df
