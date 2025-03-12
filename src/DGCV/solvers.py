@@ -1,12 +1,13 @@
-import random
-import string
 from itertools import combinations
-from math import prod  # requires python >=3.8
 
 import sympy as sp
 
-from .config import _cached_caller_globals
-from .eds import abstDFAtom, abstDFMonom, abstract_DF, abstract_ZF, zeroFormAtom
+from .eds import (
+    _equation_formatting,
+    _sympy_to_abstract_ZF,
+    abstract_ZF,
+    zeroFormAtom,
+)
 
 
 def solve_carefully(eqns, vars_to_solve, dict=True):
@@ -53,24 +54,43 @@ def solve_carefully(eqns, vars_to_solve, dict=True):
     # If no subset worked, raise the error
     raise NotImplementedError(f"No valid subset found for variables {vars_to_solve}")
 
-def DGCV_solve(eqns, vars_to_solve):
+def solve_DGCV(eqns, vars_to_solve = None, verbose = False):
+    if not isinstance(eqns,(list,tuple)):
+        eqns = [eqns]
+    if vars_to_solve is None:
+        vars_to_solve = set()
+        for eqn in eqns:
+            if hasattr(eqn,'free_symbols'):
+                vars_to_solve |= eqn.free_symbols
+    if isinstance(vars_to_solve,set):
+        vars_to_solve = list(vars_to_solve)
+    if not isinstance(vars_to_solve,(list,tuple)):
+        vars_to_solve = [vars_to_solve]
     processed_eqns, system_vars, extra_vars, variables_dict = _equations_preprocessing(eqns,vars_to_solve)
     solutions = sp.solve(processed_eqns, system_vars, dict=True)
     solutions_formatted = []
     for solution in solutions:
-        solutions_formatted += [{variables_dict.get(var,var):solution[var] for var in solution}]
+        def extract_reformatting(var):
+            if str(var) in variables_dict:
+                return variables_dict[str(var)][0]
+            else:
+                return var
+        def expr_reformatting(expr):
+            if isinstance(expr,(int,float)) or not hasattr(expr,'subs'):
+                return expr
+            DGCV_var_dict = {v[1][0]:v[0] for _,v in variables_dict.items()}
+            if not isinstance(expr,(sp.Expr)) or isinstance(expr,zeroFormAtom):
+                return expr.subs(DGCV_var_dict)
+            regular_var_dict = {k:v for k,v in DGCV_var_dict.items() if isinstance(k,sp.Symbol)}
+            if not all(isinstance(v,(int,float,sp.Expr)) for v in regular_var_dict.values()):
+                return abstract_ZF(_sympy_to_abstract_ZF(expr,regular_var_dict))
+            return expr.subs(regular_var_dict)
 
-def _generate_str_id(base_str: str, *dicts: dict) -> str:
-    """
-    Generates a unique identifier based on base_str.
-    Filters against the provided dictionaries to make sure the generated str is not in them.
-    """
-    candidate = base_str
-    while any(candidate in d for d in dicts):
-        random_suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-        candidate = f"{base_str}_{random_suffix}"
-
-    return candidate
+        solutions_formatted += [{extract_reformatting(var):expr_reformatting(solution[var]) for var in solution}]
+    if verbose:
+        return solutions_formatted, system_vars, extra_vars
+    else:
+        return solutions_formatted
 
 def _equations_preprocessing(eqns:tuple|list,vars:tuple|list):
     processed_eqns = []
@@ -84,70 +104,11 @@ def _equations_preprocessing(eqns:tuple|list,vars:tuple|list):
     system_vars = []
     extra_vars = []
     for var in pre_system_vars:
+        if isinstance(var,(list,tuple)) and len(var)==1:
+            var = var[0]
         if isinstance(var,sp.Symbol):
             system_vars += [var]
         else:
             extra_vars += [var]
     return processed_eqns, system_vars, extra_vars, variables_dict
-
-def _equation_formatting(eqn,variables_dict):
-    var_dict = dict()
-    if isinstance(eqn,(sp.Expr,int,float)):
-         return [sp.sympify(eqn)], var_dict
-    elif isinstance(eqn,zeroFormAtom):
-        candidate_str = eqn.__str__()
-        if candidate_str in variables_dict and variables_dict[candidate_str][0]==eqn:
-            identifier = candidate_str
-            eqn_formatted = variables_dict[candidate_str][1]
-            # nothing new to add to var_dict here.
-        else:
-            identifier = _generate_str_id(candidate_str,variables_dict,_cached_caller_globals)
-            eqn_formatted =  [sp.symbols(identifier)]   # The single variable is the equation
-            var_dict[identifier] = (eqn,eqn_formatted)  # string label --> (original, formatted)
-        return eqn_formatted,var_dict
-    elif isinstance(eqn,abstract_ZF):
-        eqn_formatted,var_dict= _sympify_abst_ZF(eqn_formatted,variables_dict)
-        return eqn_formatted, var_dict
-    elif isinstance(eqn,abstDFAtom):
-        eqn_formatted,var_dict = _equation_formatting(eqn._coeff,variables_dict)
-        return eqn_formatted, var_dict
-    elif isinstance(eqn,abstDFMonom):
-        eqn_formatted,var_dict = _equation_formatting(eqn._coeff,variables_dict)
-        return eqn_formatted, var_dict
-    elif isinstance(eqn,abstract_DF):
-        terms = []
-        var_dict = dict()
-        for term in eqn.terms:
-            new_term,new_var_dict = _equation_formatting(term,variables_dict|var_dict)
-            var_dict = var_dict|new_var_dict
-            terms += new_term
-        return terms, var_dict
-
-def _sympify_abst_ZF(zf:abstract_ZF, varDict):
-    if isinstance(zf.base,(int,float,sp.Expr)):
-        return [zf.base], varDict
-    if isinstance(zf.base,zeroFormAtom):
-        return _equation_formatting(zf.base,varDict)
-    if isinstance(zf.base,tuple):
-        op, args = zf.base
-        new_args = []
-        constructedVarDict = varDict
-        for arg in args:
-            new_arg, new_dict = _sympify_abst_ZF(arg, constructedVarDict)
-            new_args += new_arg
-            constructedVarDict |= new_dict
-        if op == 'mul':
-            zf_formatted = [prod(new_args)]
-        if op == 'add':
-            zf_formatted = [sum(new_args)]
-        if op == 'pow':
-            zf_formatted = [new_args[0]**new_args[1]]
-        if op == 'sub':
-            zf_formatted = [new_args[0]-new_args[1]]
-        if op == 'div':
-            zf_formatted = [sp.Rational(new_args[0],new_args[1])]
-        return zf_formatted, constructedVarDict
-
-
-
 

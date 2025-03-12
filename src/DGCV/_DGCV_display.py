@@ -14,7 +14,6 @@ Functions
 ############# for printing
 import sympy as sp
 from IPython.display import HTML, Latex, display
-from sympy import Basic, latex  # Rename SymPy's latex
 from sympy.printing.latex import LatexPrinter
 
 ############# DGCV classes to format
@@ -34,13 +33,7 @@ from .RiemannianGeometry import metricClass
 
 def LaTeX(obj, removeBARs=False):
     """
-    Custom LaTeX function for DGCV.
-    Applies sympy.latex() to the input object, with special handling for lists and tuples.
-
-    For lists, the elements are LaTeX-processed, stripped of surrounding $ or $$ symbols if present,
-    and wrapped in \\left[ ... \\right].
-
-    For tuples, the elements are LaTeX-processed similarly but wrapped in \\left( ... \\right).
+    Custom LaTeX function for DGCV. Extends sympy.latex() to support application to DGCV classes.
 
     Parameters
     ----------
@@ -55,14 +48,14 @@ def LaTeX(obj, removeBARs=False):
 
     def filter(term):
         if removeBARs:
-            return latex(term)
+            return sp.latex(term)
         if isinstance(term, (DFClass, VFClass, STFClass,tensorField, DGCVPolyClass)):
             if term._varSpace_type == "real":
-                return latex(symToReal(term))
+                return sp.latex(symToReal(term))
             elif term._varSpace_type == "complex":
-                return latex(symToHol(term))
+                return sp.latex(symToHol(term))
             else:
-                return latex(term)
+                return sp.latex(term)
         elif isinstance(term, FAClass):
             return _alglabeldisplayclass(term.label)._repr_latex_()
         elif isinstance(term, AlgebraElement):
@@ -70,27 +63,29 @@ def LaTeX(obj, removeBARs=False):
         elif isinstance(term, Tanaka_symbol):
             return "Tanaka_symbol Class"
         else:
-            return latex(symToHol(term))
+            return sp.latex(symToHol(term))
 
     def strip_dollar_signs(latex_str):
         """Strip leading and trailing $ or $$ signs from a LaTeX string."""
         # if latex_str == None:
         #     return ''
+        if latex_str is None:
+            return latex_str
         if latex_str.startswith("$$") and latex_str.endswith("$$"):
             return latex_str[2:-2]
-        elif latex_str.startswith("$") and latex_str.endswith("$"):
+        if latex_str.startswith("$") and latex_str.endswith("$"):
             return latex_str[1:-1]
         return latex_str
 
     if isinstance(obj, list):
-        # Handle lists by applying LaTeX and wrapping with \left[ ... \right]
         latex_elements = [strip_dollar_signs(filter(elem)) for elem in obj]
         return r"\left[ " + ", ".join(latex_elements) + r" \right]"
-
     elif isinstance(obj, tuple):
-        # Handle tuples by applying LaTeX and wrapping with \left( ... \right)
         latex_elements = [strip_dollar_signs(filter(elem)) for elem in obj]
         return r"\left( " + ", ".join(latex_elements) + r" \right)"
+    elif isinstance(obj, set):
+        latex_elements = [strip_dollar_signs(filter(elem)) for elem in obj]
+        return r"\left\{ " + ", ".join(latex_elements) + r" \right\}"
 
     else:
         # Apply sympy.latex() for non-list/tuple objects
@@ -125,10 +120,10 @@ def _complexDisplay(*args):
     display(*[symToHol(j, simplify_everything=False) for j in args])
 
 
-class _alglabeldisplayclass(Basic):
+class _alglabeldisplayclass(sp.Basic):
 
     def __new__(cls, label, ae=None):
-        obj = Basic.__new__(cls, label)
+        obj = sp.Basic.__new__(cls, label)
         return obj
 
     def __init__(self, label, ae=None):
@@ -192,27 +187,6 @@ class _alglabeldisplayclass(Basic):
 
 
 def load_fonts():
-    """
-    Load custom web fonts into the Jupyter notebook.
-
-    This function injects HTML and CSS to load fonts from Google Fonts and sets
-    the body font to 'Roboto'. It is intended for use in Jupyter notebooks to
-    customize the appearance of text.
-
-    Fonts Loaded
-    ------------
-    - Orbitron
-    - Press Start 2P
-    - Roboto
-
-    Examples
-    --------
-    >>> load_fonts()
-
-    Notes
-    -----
-    The fonts are applied globally to the notebook interface via CSS.
-    """
     font_links = """
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Press+Start+2P&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <style>
@@ -237,37 +211,42 @@ class DGCVLatexPrinter(LatexPrinter):
 def DGCV_collection_latex_printer(obj):
     if isinstance(obj, (tuple, list)):
         return tuple(
-            Latex(element._repr_latex_() if hasattr(element, "_repr_latex_") else latex(element))
+            Latex(element._repr_latex_() if hasattr(element, "_repr_latex_") else sp.latex(element))
             for element in obj
         )
     return None
 
 
-def DGCV_latex_printer(obj, **kwargs):
-    if isinstance(
-        obj,
-        (
-            VFClass,
-            DFClass,
-            STFClass,
-            tensorField,
-            metricClass,
-            FAClass,
-            AlgebraElement,
-            DGCVPolyClass,
-            Tanaka_symbol
-        ),
-    ):
-        latex_str = obj._repr_latex_()
-        return latex_str.strip("$")
-    elif isinstance(obj, (list, tuple)):
-        latex_elements = [DGCV_latex_printer(elem) for elem in obj]
-        return r"\left( " + r" , ".join(latex_elements) + r" \right)"
-    return latex(obj, **kwargs)
+# def DGCV_latex_printer(obj, **kwargs):
+#     if isinstance(
+#         obj,
+#         (
+#             VFClass,
+#             DFClass,
+#             STFClass,
+#             tensorField,
+#             metricClass,
+#             FAClass,
+#             AlgebraElement,
+#             DGCVPolyClass,
+#             Tanaka_symbol
+#         ),
+#     ):
+#         latex_str = obj._repr_latex_()
+#         return latex_str.strip("$")
+#     elif isinstance(obj, (list, tuple)):
+#         latex_elements = [DGCV_latex_printer(elem) for elem in obj]
+#         return r"\left( " + r" , ".join(latex_elements) + r" \right)"
+#     return latex(obj, **kwargs)
 
+def DGCV_latex_printer(obj, **kwargs):
+    if obj is None:
+        return ''
+    if LaTeX(obj) is None:
+        return ''
+    return LaTeX(obj).strip("$")
 
 def DGCV_init_printing(*args, **kwargs):
-    load_fonts()
     from sympy import init_printing
 
     kwargs["latex_printer"] = DGCV_latex_printer

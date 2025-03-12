@@ -1,3 +1,5 @@
+import random
+
 # Base styles shared across all themes
 base_style = {
     "header": {
@@ -225,17 +227,17 @@ style_guide = {
         "col_heading": {
             "props": [
                 ("background-color", "#2c2c2c"),
-                ("color", "#ff0000"),
+                ("color", "rgb(51,108,178)"),
                 ("font-size", "22px"),
             ]
         },
         "row_heading": {
-            "props": [("background-color", "#595959"), ("color", "#ffffff")]
+            "props": [("background-color", "#595959"), ("color", "rgb(255, 196, 13)")]
         },
-        "row": {"props": [("background-color", "#3a3a3a"), ("color", "#ffffff")]},
+        "row": {"props": [("background-color", "#3a3a3a"), ("color", "#ff0000")]},
         "alt_row": {"props": [("background-color", "#4c4c4c")]},
-        "hover": {"props": [("background-color", "#ff3333")]},
-        "border": {"props": [("border", "1px solid #ff0000")]},
+        "hover": {"props": [("background-color", "rgb(255, 196, 13)")]},
+        "border": {"props": [("border", "1px solid #ffffff")]},
     },
     "lunar": {
         "header": {"props": [("background-color", "#394b59"), ("color", "#b0c4de")]},
@@ -658,11 +660,14 @@ style_guide = {
     "chalkboard_green": {
         "table": {
             "props": [
-                ("border", "10px solid #8b4513"),  # Wooden frame
+                ("border-top", "5px Solid #8b4513"),  # Inset for top border
+                ("border-right", "5px Solid #8b4513"),  # Outset for right border
+                ("border-bottom", "5px Solid #8b4513"),  # Outset for bottom border
+                ("border-left", "5px Solid #8b4513"),  # Inset for left border
                 (
                     "box-shadow",
                     "0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(139, 69, 19, 0.8)",
-                ),  # Inner shadow
+                ),  # Inner shadow remains the same
             ]
         },
         "header": {
@@ -890,27 +895,41 @@ style_guide = {
     "warm_orange_purple": {
         "header": {
             "props": [
-                ("background-color", "#ff7f50"),
-                ("color", "#ffffff"),
+                ("background-color", "#4B0082"),  # Deep indigo
+                ("color", "#FFDAB9"),             # Soft peach for header text
                 ("font-family", "Georgia, serif"),
                 ("font-size", "20px"),
             ]
         },
         "col_heading": {
             "props": [
-                ("background-color", "#ff4500"),
-                ("color", "#ffffff"),
+                ("background-color", "#FF4500"),  # Vibrant orange-red for column headings
+                ("color", "#FFF5EE"),             # Seashell white text for contrast
                 ("font-size", "22px"),
             ]
         },
         "row_heading": {
-            "props": [("background-color", "#ff6347"), ("color", "#ffffff")]
+            "props": [
+                ("background-color", "#800080"),  # Rich purple for row headings
+                ("color", "#FFDAB9"),             # Soft peach text
+            ]
         },
-        "row": {"props": [("background-color", "#ff8c00"), ("color", "#ffffff")]},
-        "alt_row": {"props": [("background-color", "#8b008b"), ("color", "#ffffff")]},
+        "row": {
+            "props": [
+                ("background-color", "#FFDEAD"),  # Navajo white for rows
+                ("color", "#4B0082"),             # Deep indigo text for readability
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#FFE4B5"),  # Moccasin for alternate rows
+                ("color", "#4B0082"),             # Deep indigo text
+            ]
+        },
         "hover": {
             "props": [
-                ("background-color", "#483d8b"),
+                ("background-color", "#FF7F50"),  # Coral on hover for a bright accent
+                ("color", "#4B0082"),
                 ("transition", "background-color 0.5s ease"),
             ]
         },
@@ -977,7 +996,100 @@ style_guide = {
             ]
         },
     },
-    "default": {
+    "sci_fi_green": {
+        "table": {"props": [("border", "2px solid #39FF14")]},  # Hologram-like neon green border
+        "header": {
+            "props": [
+                ("background-color", "#001f00"),  # Very dark green/black background
+                ("color", "#39FF14"),             # Neon green text
+                ("font-family", "Orbitron, sans-serif"),
+                ("font-size", "20px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#001f00"),
+                ("color", "#39FF14"),
+                ("font-size", "22px"),
+            ]
+        },
+        "row_heading": {
+            "props": [("background-color", "#012200"), ("color", "#39FF14")]
+        },
+        "row": {"props": [("background-color", "#000000"), ("color", "#39FF14")]},
+        "alt_row": {"props": [("background-color", "#012200"), ("color", "#39FF14")]},
+        "hover": {
+            "props": [
+                ("background-color", "#39FF14"),
+                ("color", "#001f00"),
+                ("box-shadow", "0 0 15px rgba(57, 255, 20, 0.9)"),
+                ("transform", "scale(1.02)"),
+            ]
+        },
+    },
+    "sci_fi_magenta": {
+        "table": {"props": [("border", "2px solid #FF00FF")]},  # Hologram-like magenta border
+        "header": {
+            "props": [
+                ("background-color", "#300033"),  # Dark purple background
+                ("color", "#FF00FF"),             # Vivid magenta text
+                ("font-family", "Orbitron, sans-serif"),
+                ("font-size", "20px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#300033"),
+                ("color", "#FF00FF"),
+                ("font-size", "22px"),
+            ]
+        },
+        "row_heading": {
+            "props": [("background-color", "#3A0040"), ("color", "#FF00FF")]
+        },
+        "row": {"props": [("background-color", "#1A001F"), ("color", "#FF00FF")]},
+        "alt_row": {"props": [("background-color", "#3A0040"), ("color", "#FF00FF")]},
+        "hover": {
+            "props": [
+                ("background-color", "#FF00FF"),
+                ("color", "#300033"),
+                ("box-shadow", "0 0 15px rgba(255, 0, 255, 0.9)"),
+                ("transform", "scale(1.02)"),
+            ]
+        },
+    },
+    "sci_fi_orange": {
+        "table": {"props": [("border", "2px solid #FFA500")]},  # Hologram-like orange border
+        "header": {
+            "props": [
+                ("background-color", "#331900"),  # Deep, dark brownish-orange background
+                ("color", "#FFA500"),             # Bright orange text
+                ("font-family", "Orbitron, sans-serif"),
+                ("font-size", "20px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#331900"),
+                ("color", "#FFA500"),
+                ("font-size", "22px"),
+            ]
+        },
+        "row_heading": {
+            "props": [("background-color", "#442600"), ("color", "#FFA500")]
+        },
+        "row": {"props": [("background-color", "#1A0D00"), ("color", "#FFA500")]},
+        "alt_row": {"props": [("background-color", "#442600"), ("color", "#FFA500")]},
+        "hover": {
+            "props": [
+                ("background-color", "#FFA500"),
+                ("color", "#331900"),
+                ("box-shadow", "0 0 15px rgba(255, 165, 0, 0.9)"),
+                ("transform", "scale(1.02)"),
+            ]
+        },
+    },
+    "blue_plain": {
         "header": {
             "props": [
                 ("background-color", "#0056b3"),
@@ -1375,6 +1487,358 @@ style_guide = {
             ]
         },
     },
+    "appalachian": {
+        "table": {"props": [("border", "2px solid #4682B4")]},  # Steel blue border
+        "header": {
+            "props": [
+                ("background-color", "#2E8B57"),  # SeaGreen for header
+                ("color", "#F0F8FF"),          # AliceBlue text
+                ("font-family", "Georgia, serif"),
+                ("font-size", "18px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#4682B4"),  # SteelBlue for column headings
+                ("color", "#F0F8FF"),               # AliceBlue text
+                ("font-size", "16px"),
+            ]
+        },
+        "row_heading": {
+            "props": [
+                ("background-color", "#4682B4"),
+                ("color", "#F0F8FF"),
+            ]
+        },
+        "row": {
+            "props": [
+                ("background-color", "#B0E0E6"),  # PowderBlue for rows
+                ("color", "#2F4F4F"),              # DarkSlateGray text
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#AFEEEE"),  # PaleTurquoise for alternate rows
+                ("color", "#2F4F4F"),              # DarkSlateGray text
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#5F9EA0"),  # CadetBlue for hover effect
+                ("color", "#ffffff"),
+                ("box-shadow", "0 0 8px rgba(255, 255, 255, 0.3)"),
+                ("transform", "scale(1.01)"),
+            ]
+        },
+    },
+    "turtle_shell": {
+        "table": {"props": [("border", "2px solid #556b2f")]},  # Olive-green border reminiscent of a turtle's shell
+        "header": {
+            "props": [
+                ("background-color", "#6b8e23"),  # Earthy green background
+                ("color", "#f5f5f5"),  # Clean, light text
+                ("font-family", "Tahoma, sans-serif"),
+                ("font-size", "18px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#78866b"),  # Subtle, mossy green
+                ("color", "#ffffff"),
+                ("font-size", "16px"),
+            ]
+        },
+        "row_heading": {
+            "props": [
+                ("background-color", "#78866b"),
+                ("color", "#f5f5f5"),
+            ]
+        },
+        "row": {
+            "props": [
+                ("background-color", "#556b2f"),
+                ("color", "#e0e0e0"),
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#6b8e23"),
+                ("color", "#ffffff"),
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#3e5e1b"),
+                ("color", "#ffffff"),
+                ("box-shadow", "0 0 8px rgba(230, 230, 230, 0.3)"),
+                ("transform", "scale(1.01)"),
+            ]
+        },
+    },
+    "sourdough": {
+        "table": {"props": [("border", "2px solid #d2a679")]},  # Warm, baked crust border
+        "header": {
+            "props": [
+                ("background-color", "#f4e1d2"),  # Soft, floury background
+                ("color", "#8b5a2b"),  # Toasted brown text
+                ("font-family", "Verdana, sans-serif"),
+                ("font-size", "18px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#e6d0b3"),  # Warm mid-tone reminiscent of a well-baked loaf
+                ("color", "#8b5a2b"),
+                ("font-size", "16px"),
+            ]
+        },
+        "row_heading": {
+            "props": [
+                ("background-color", "#e6d0b3"),
+                ("color", "#8b5a2b"),
+            ]
+        },
+        "row": {
+            "props": [
+                ("background-color", "#f4e1d2"),
+                ("color", "#5c4033"),
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#f9e8dc"),  # Lighter, airy tone
+                ("color", "#5c4033"),
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#d2a679"),
+                ("color", "#ffffff"),
+                ("box-shadow", "0 0 8px rgba(255, 255, 255, 0.3)"),
+                ("transform", "scale(1.01)"),
+            ]
+        },
+    },
+    "Sakura": {
+        "table": {"props": [("border", "2px solid #f7cac9")]},  # Gentle pink border
+        "header": {
+            "props": [
+                ("background-color", "#fff0f5"),  # Soft, blush background
+                ("color", "#d6336c"),  # Vibrant cherry blossom pink text
+                ("font-family", "Palatino, serif"),
+                ("font-size", "18px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#ffeef8"),  # Light and airy pink
+                ("color", "#d6336c"),
+                ("font-size", "16px"),
+            ]
+        },
+        "row_heading": {
+            "props": [
+                ("background-color", "#ffeef8"),
+                ("color", "#d6336c"),
+            ]
+        },
+        "row": {
+            "props": [
+                ("background-color", "#fff0f5"),
+                ("color", "#8a2a2b"),
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#ffeef8"),
+                ("color", "#8a2a2b"),
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#f7cac9"),
+                ("color", "#ffffff"),
+                ("box-shadow", "0 0 8px rgba(255, 255, 255, 0.3)"),
+                ("transform", "scale(1.01)"),
+            ]
+        },
+    },
+    "too_much": {
+        "table": {"props": [("border", "2px dashed #FF4500")]},  # Bold orange dashed border
+        "header": {
+            "props": [
+                ("background-color", "#000000"),  # Black background
+                ("color", "#FF4500"),             # Vibrant orange text
+                ("font-family", "Impact, sans-serif"),
+                ("font-size", "20px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#FF4500"),  # Orange for column headings
+                ("color", "#000000"),             # Black text
+                ("font-size", "18px"),
+            ]
+        },
+        "row_heading": {
+            "props": [
+                ("background-color", "#FF4500"),  # Consistent orange tone
+                ("color", "#000000"),
+            ]
+        },
+        "row": {
+            "props": [
+                ("background-color", "#1a1a1a"),  # Dark gray for rows
+                ("color", "#FFFFFF"),             # White text
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#333333"),  # Lighter dark gray for alternate rows
+                ("color", "#FFFFFF"),
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#FF4500"),  # Bright orange on hover
+                ("color", "#FFFFFF"),
+                ("box-shadow", "0 0 12px rgba(255, 69, 0, 0.7)"),
+                ("transform", "scale(1.03)"),
+            ]
+        },
+    },
+    "purples": {
+        "table": {"props": [("border", "2px dashed #6A5ACD")]},  # SlateBlue dashed border
+        "header": {
+            "props": [
+                ("background-color", "#2D2B55"),  # Dark blue/purple background
+                ("color", "#E6E6FA"),             # Soft lavender text
+                ("font-family", "Impact, sans-serif"),
+                ("font-size", "20px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#6A5ACD"),  # SlateBlue for column headings
+                ("color", "#2D2B55"),             # Dark blue text for contrast
+                ("font-size", "18px"),
+            ]
+        },
+        "row_heading": {
+            "props": [
+                ("background-color", "#6A5ACD"),  # Consistent SlateBlue tone
+                ("color", "#2D2B55"),
+            ]
+        },
+        "row": {
+            "props": [
+                ("background-color", "#3F3F7A"),  # Muted indigo for rows
+                ("color", "#F5F5F5"),             # Light, off-white text
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#4A4A8A"),  # Slightly lighter indigo for alternate rows
+                ("color", "#F5F5F5"),
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#6A5ACD"),  # SlateBlue on hover
+                ("color", "#F5F5F5"),
+                ("box-shadow", "0 0 12px rgba(106, 90, 205, 0.7)"),
+                ("transform", "scale(1.03)"),
+            ]
+        },
+    },
+    "teals": {
+        "table": {"props": [("border", "3px solid #00A8E8")]},  # Bold blue border
+        "header": {
+            "props": [
+                ("background-color", "#005F73"),  # Deep teal for header background
+                ("color", "#EDF6F9"),             # Off-white text for contrast
+                ("font-family", "Helvetica, sans-serif"),
+                ("font-size", "20px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#00A8E8"),  # Vibrant blue for column headings
+                ("color", "#005F73"),             # Matching deep teal text
+                ("font-size", "18px"),
+            ]
+        },
+        "row_heading": {
+            "props": [
+                ("background-color", "#00A8E8"),  # Consistent vibrant blue tone
+                ("color", "#005F73"),
+            ]
+        },
+        "row": {
+            "props": [
+                ("background-color", "#CAF0F8"),  # Light, refreshing blue for rows
+                ("color", "#023047"),             # Dark blue text for readability
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#ADE8F4"),  # Slightly different blue for alternate rows
+                ("color", "#023047"),
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#90E0EF"),  # Brighter blue on hover for a dynamic feel
+                ("color", "#023047"),
+                ("box-shadow", "0 0 10px rgba(0, 168, 232, 0.5)"),
+                ("transform", "scale(1.02)"),
+            ]
+        },
+    },
+    "brass": {
+        "table": {"props": [("border", "2px solid #B87333")]},  # Brass-colored border
+        "header": {
+            "props": [
+                ("background-color", "#B87333"),  # Brass background
+                ("color", "#FFF8DC"),             # Soft cream text (Cornsilk)
+                ("font-family", "Georgia, serif"),
+                ("font-size", "20px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#A97142"),  # Slightly darker brass tone
+                ("color", "#FFF8DC"),             # Creamy text for contrast
+                ("font-size", "22px"),
+            ]
+        },
+        "row_heading": {
+            "props": [
+                ("background-color", "#B87333"),
+                ("color", "#FFF8DC"),
+            ]
+        },
+        "row": {
+            "props": [
+                ("background-color", "#D2B48C"),  # Tan background for rows
+                ("color", "#4B3621"),             # Dark brown text for readability
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#E6D5B8"),  # Lighter tan for alternate rows
+                ("color", "#4B3621"),
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#CD7F32"),  # A deeper brass tone on hover
+                ("color", "#FFF8DC"),
+                ("box-shadow", "0 0 8px rgba(205, 127, 50, 0.5)"),
+                ("transition", "background-color 0.3s ease"),
+            ]
+        },
+    },
 }
 
 
@@ -1387,8 +1851,16 @@ def get_style(theme_name):
     """
     Retrieve the style properties for the given theme name in the required format.
     """
+    if theme_name == 'random':
+        theme_name = random.choice(list(style_guide.keys()))
+    if theme_name == 'chalckboard':
+        theme_name = random.choice(["chalkboard_green","chalkboard_blue","chalkboard_red","chalkboard_black","chalkboard_teal","chalkboard_yellow"])
+    if theme_name == 'gruv':
+        theme_name = random.choice(["gruvbox_dark","gruvbox_colorful","gruvbox_light"])
+    if theme_name == 'dark':
+        theme_name = random.choice(["gruvbox_dark","dark_high_contrast_bright",'dark_blue','dark_high_contrast','dark_high_contrast_bright','dark_modern','dark_moody','dark_purple'])
     if theme_name not in style_guide:
-        theme_name = "default"
+        theme_name = random.choice(["gruvbox_dark","gruvbox_colorful","chalkboard_teal","chalkboard_black","blueprint"])
 
     theme = style_guide[theme_name]
 

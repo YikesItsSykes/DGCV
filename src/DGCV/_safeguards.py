@@ -13,7 +13,7 @@ public_key = "".join(random.choices(string.ascii_letters + string.digits, k=8))
 DGCV_types = {'standard','complex'}
 simplify_formats = {None, "holomorphic", "real", "symbolic_conjugate"}
 
-def create_key(prefix=None, avoid_caller_globals=False):
+def create_key(prefix=None, avoid_caller_globals=False, key_length = 8):
     """
     Generates a unique alphanumeric key with an optional prefix.
 
@@ -42,7 +42,7 @@ def create_key(prefix=None, avoid_caller_globals=False):
     # Generate a new key
     while True:
         key = prefix + "".join(
-            random.choices(string.ascii_letters + string.digits, k=8)
+            random.choices(string.ascii_letters + string.digits, k=key_length)
         )
         if not avoid_caller_globals or key not in caller_globals:
             return key
