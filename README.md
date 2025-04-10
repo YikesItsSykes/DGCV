@@ -53,7 +53,7 @@ You can download the tutorials individually from the **dgcv** repository [**dgcv
 
 ## License
 
-**dgcv** is licensed under the MIT License. See the [`LICENSE.txt`](https://github.com/your-username/dgcv/blob/main/LICENSE.txt) file for more information.
+**dgcv** is licensed under the MIT License. See the [`LICENSE.txt`](https://github.com/YikesItsSykes/dgcv/blob/main/LICENSE.txt) file for more information.
 
 ## Author
 
