@@ -50,7 +50,7 @@ import sympy as sp
 
 from .combinatorics import chooseOp
 from .config import _cached_caller_globals
-from .DGCVCore import DGCVPolyClass, clearVar, variableProcedure
+from .dgcv_core import DGCVPolyClass, clearVar, variableProcedure
 
 ############## creating polynomials (monomialsOfPoly is in classesAndVariables.py)
 
