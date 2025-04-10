@@ -64,9 +64,9 @@ _ = get_variable_registry()
 
 from ._dgcv_display import DGCV_init_printing, LaTeX, display_DGCV
 from .combinatorics import carProd, chooseOp, permSign
-from .complexStructures import Del, DelBar, KahlerStructure
+from .complex_structures import Del, DelBar, KahlerStructure
 from .config import canonicalize
-from .coordinateMaps import coordinate_map
+from .coordinate_maps import coordinate_map
 from .CR_geometry import (
     findWeightedCRSymmetries,
     model2Nondegenerate,

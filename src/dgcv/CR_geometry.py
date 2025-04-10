@@ -31,7 +31,7 @@ import sympy as sp
 
 from ._safeguards import create_key, retrieve_passkey
 from .config import _cached_caller_globals, get_variable_registry
-from .DGCVCore import (
+from .dgcv_core import (
     VFClass,
     addVF,
     allToReal,

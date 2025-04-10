@@ -1,8 +1,8 @@
 from sympy import Basic, im, re, simplify
 
-from .complexStructures import KahlerStructure
+from .complex_structures import KahlerStructure
 from .config import get_variable_registry
-from .DGCVCore import DFClass, STFClass, TFClass, VF_coeffs, addVF, allToReal, allToSym
+from .dgcv_core import DFClass, STFClass, TFClass, VF_coeffs, addVF, allToReal, allToSym
 from .Riemannian_geometry import metricClass
 from .vector_fields_and_differential_forms import get_DF, get_VF
 
