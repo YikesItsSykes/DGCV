@@ -339,7 +339,6 @@ class Tanaka_symbol(sp.Basic):
 
         return styled_df
 
-
     def __str__(self):
         result = ["Tanaka Symbol:"]
         result.append("Graded vector space with weights and dimensions:")

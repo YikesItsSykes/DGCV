@@ -1,8 +1,7 @@
 
-from ._safeguards import _cached_caller_globals, create_key, retrieve_passkey
-from .DGCVCore import clearVar, listVar, variableProcedure
+from .._safeguards import _cached_caller_globals, create_key, retrieve_passkey
+from ..DGCVCore import clearVar, listVar, variableProcedure
 from .eds import abst_coframe, abstDFAtom, abstDFMonom, abstract_DF, extDer
-from .solvers import solve_DGCV
 
 
 def transform_coframe(original_coframe:abst_coframe, transformations:list|tuple|dict, new_coframe_basis = None, new_coframe_labels = None, min_conj_rules = {}):
@@ -47,6 +46,7 @@ def transform_coframe(original_coframe:abst_coframe, transformations:list|tuple|
     new_structure_eqns = dict()
 
     for df_atom, df in zip(new_coframe_basis,new_basis):
+        from ..solvers import solve_DGCV
         new_extD = extDer(df,original_coframe)
         eqns = [new_extD - general_elem]
         solution = solve_DGCV(eqns,cVars)

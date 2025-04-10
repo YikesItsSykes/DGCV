@@ -171,6 +171,7 @@ variable_registry = {
     "complex_variable_systems": {},
     "finite_algebra_systems": {},
     "misc":{},
+    "eds":{'atoms':{},'coframes':{}},
     "protected_variables": set(),
     "temporary_variables": set(),
     "obscure_variables": set(),
@@ -190,7 +191,6 @@ variable_registry = {
 # Getter and Setter functions for accessing variable_registry
 def get_variable_registry():
     return variable_registry
-
 
 def clear_variable_registry():
     # Optional: function to reset variable_registry if needed
@@ -214,3 +214,11 @@ def clear_variable_registry():
             "im_part": {},
         },
     }
+
+def canonicalize(obj,with_simplify = False, depth = 1000):
+    if hasattr(obj,'_eval_canonicalize'):
+        obj = obj._eval_canonicalize(depth=depth)
+    if with_simplify is True:
+        return obj._eval_simplify() if hasattr(obj,'_eval_simplify') else obj
+    else:
+        return obj

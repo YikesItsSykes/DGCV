@@ -2135,7 +2135,6 @@ def algebraDataFromVF(vector_fields):
         else:
             bracket = bracket.coeffs
 
-        # Check if len(varSpaceLoc) ** len(vector_fields) exceeds the threshold
         if len(varSpaceLoc) ** len(vector_fields) <= product_threshold:
             # Use the current system of pseudo-arbitrary substitutions
             bracketVals = list(
@@ -2169,6 +2168,7 @@ def algebraDataFromVF(vector_fields):
                     sum(
                         [
                             [
+                                expr if not hasattr(expr,'subs') else
                                 expr.subs(
                                     [
                                         (varSpaceLoc[i], random_rational())

@@ -12,6 +12,7 @@ from ._tensor_field_printers import (
     tensor_latex_helper,
     tensor_VS_printer,
 )
+from .combinatorics import shufflings
 from .config import _cached_caller_globals, get_variable_registry
 from .DGCVCore import clearVar, listVar
 
@@ -651,30 +652,29 @@ class vectorSpaceElement(sp.Basic):
             return self.dual()
             raise ValueError("Invalid operation. Use `^ ''` to denote the dual.")
 
-
 class tensorProduct(sp.Basic):
     def __new__(cls, vector_space, coeff_dict):
 
         if not isinstance(coeff_dict, dict):
-            raise ValueError("Coefficient dictionary must be a dict.")
+            raise ValueError("Coefficient dictionary must be a dictionary.")
 
         # Process the coefficient dictionary
         try:
             result = tensorProduct._process_coeffs_dict(coeff_dict)
 
             if not isinstance(result, tuple):
-                raise TypeError(f"Expected a tuple, but got {type(result)}")
+                raise TypeError(f"DEBUG: `tensorProduct._process_coeffs_dict` is expected to return a tuple, but produced type {type(result)}")
 
             if len(result) != 5:
-                raise ValueError(f"Expected 5 values, but got {len(result)}: {result}")
+                raise ValueError(f"DEBUG: `tensorProduct._process_coeffs_dict` is expected to return 5 values, but returned {len(result)}: {result}")
 
             processed_coeff_dict, max_degree, min_degree, prolongation_type, homogeneous_dicts = result
 
         except ValueError as ve:
-            print(f"ValueError: {ve}\nCheck the return statement of _process_coeffs_dict.")
+            print(f"ValueError: {ve}\nDebug info: Check the return statement of _process_coeffs_dict.")
 
         except TypeError as te:
-            print(f"TypeError: {te}\nMake sure _process_coeffs_dict returns a tuple.")
+            print(f"TypeError: {te}\nDebug info: Make sure _process_coeffs_dict returns a tuple.")
 
         except Exception as e:
             print(f"Unexpected error: {e}\nDebug info: {result if 'result' in locals() else 'Function did not return any value.'}")
@@ -691,8 +691,8 @@ class tensorProduct(sp.Basic):
 
     def __init__(self, vector_space, coeff_dict):
         self._weights = None
-        self. _leading_valence = None
-        self. _trailing_valence = None
+        self._leading_valence = None
+        self._trailing_valence = None
 
     @staticmethod
     def _process_coeffs_dict(coeff_dict):
@@ -748,7 +748,7 @@ class tensorProduct(sp.Basic):
         if len(lv)==1:
             self._leading_valence = list(lv)[0]
         else:
-            self._leading_valence = -1
+            self._leading_valence = -1      # denoting exceptional cases
         return self._leading_valence
 
     @property
@@ -762,7 +762,7 @@ class tensorProduct(sp.Basic):
         if len(lv)==1:
             self._trailing_valence = list(lv)[0]
         else:
-            self._trailing_valence = -1
+            self._trailing_valence = -1     # denoting exceptional cases
         return self._trailing_valence
 
     @property
@@ -917,7 +917,6 @@ class tensorProduct(sp.Basic):
         if other.is_zero():
             return 0*self
         if isinstance(other, tensorProduct):
-            # Original logic for tensorProduct instances
             if self.vector_space != other.vector_space:
                 raise ValueError("Both tensors must be defined w.r.t. the same vector_space.")
 
@@ -989,6 +988,72 @@ class tensorProduct(sp.Basic):
             terms = [t1._recursion_contract_hom(t2) for t1,t2 in zip(hc1,hc2)]
             return sum(terms[1:],terms[0])
 
+    def _bracket(self,other):
+        if self.is_zero():
+            return self
+        if other.is_zero():
+            return 0*self
+        if isinstance(other, tensorProduct):
+            if self.vector_space != other.vector_space:
+                raise ValueError("In `tensorProduct._bracket` both tensors must be defined w.r.t. the same vector_space.")
+
+            if self.prolongation_type!=other.prolongation_type or self.prolongation_type==-1:
+                raise ValueError("`tensorProduct._bracket` requires bracket components to have matching prolongation types.")
+
+            complimentType = 1 if self.prolongation_type==0 else 0
+
+            new_dict = {}
+            for key1, value1 in self.coeff_dict.items():
+                for key2, value2 in other.coeff_dict.items():
+                    if key1[(len(key1)//2)-1] == key2[0]:  # Matching indices for contraction
+                        new_value = value1 * value2
+                        key1_truncated = list(key1[:(len(key1)//2)-1])
+                        key1_start = [key1_truncated[0]]
+                        key1_tr_tail = key1_truncated[1:]
+                        key2_tail = key2[1:(len(key2)//2)]
+                        new_tails = shufflings(key1_tr_tail,key2_tail)
+                        valence = [self.prolongation_type]+([complimentType]*(len(key1_tr_tail)+len(key2_tail)))
+                        new_keys = [tuple(key1_start+tail+valence) for tail in new_tails]
+                        for key in new_keys:
+                            new_dict[key] = new_dict.get(key, 0) + new_value  # Accumulate values for duplicate keys
+                    if key2[(len(key1)//2)-1] == key1[0]:  # Matching indices for contraction
+                        new_value = -value1 * value2
+                        key2_truncated = list(key2[:(len(key2)//2)-1])
+                        key2_start = [key2_truncated[0]]
+                        key2_tr_tail = key2_truncated[1:]
+                        key1_tail = key1[1:(len(key1)//2)]
+                        new_tails = shufflings(key2_tr_tail,key1_tail)
+                        valence = [self.prolongation_type]+([complimentType]*(len(key2_tr_tail)+len(key1_tail)))
+                        new_keys = [tuple(key2_start+tail+valence) for tail in new_tails]
+                        for key in new_keys:
+                            new_dict[key] = new_dict.get(key, 0) + new_value  # Accumulate values for duplicate keys
+
+            return tensorProduct(self.vector_space, new_dict)
+
+        elif hasattr(other, "algebra") and self.vector_space == other.algebra:
+            # Logic for AlgebraElement instances
+            if self.vector_space != other.algebra:
+                raise ValueError("In `tensorProduct._bracket` both tensors must be defined w.r.t. the same vector_space.")
+
+            if self.prolongation_type != other.valence:
+                raise ValueError("`tensorProduct._bracket` operating on AlgebraElement requires all terms in self to end in covariant tensor factor.")
+
+            # Convert other (AlgebraElement) into a tensorProduct instance
+            other_as_tensor = other._convert_to_tp()
+            other_index,other_value = list(other_as_tensor.coeff_dict.items())[0]
+            new_dict = {}
+            for key, value in self.coeff_dict.items():
+                if key[(len(key)//2)-1] == other_index:  # Matching indices for contraction
+                    new_value = value * other_value
+                    key_truncated = tuple(key[:(len(key)//2)-1]+key[(len(key)//2):-1])
+                    new_dict[key_truncated] = new_dict.get(key_truncated, 0) + new_value
+            return tensorProduct(self.vector_space, new_dict)
+
+        else:
+            raise ValueError("In `tensorProduct._bracket` the second factor must be a tensorProduct or an AlgebraElement with matching algebra.")
+
+
+
     def __mul__(self, other):
         """Overload * to compute the Lie bracket, with special logic for AlgebraElement."""
         if self.max_degree==0:
@@ -1020,11 +1085,12 @@ class tensorProduct(sp.Basic):
                         LA_elem2 = AlgebraElement(other.vector_space,coeffs2,pt)
                         return (LA_elem1*LA_elem2)._convert_to_tp()
                     else:
+                        ###!!! mixed prolongation type needs an additional logic branch
                         pt1 = self.prolongation_type
                         pt2 = other.prolongation_type
                         return sum([self.coeff_dict[(j,pt1)]*other.coeff_dict[(j,pt2)] for j in range(self.vector_space.dimension)])
                 else:
-                    if self.trailing_valence != other.prolongation_type:
+                    if self.trailing_valence != other.prolongation_type and self.trailing_valence!=-1:
                         cd = {}
                         for t,tv in other.coeff_dict.items():
                             for key,val in {tuple(k[:(len(k)//2)-1]+k[(len(k)//2):-1]):v*tv for k,v in self.coeff_dict.items() if k[(len(k)//2)-1]==t[0]}.items():
@@ -1034,7 +1100,7 @@ class tensorProduct(sp.Basic):
                         raise TypeError(f'* cannot operate on `tensorProduct` pairs if: \n second arg is degree 1 \n first argument has degree>1 \n first\'s `trailing_valence` doesn\'t match the second\'s `prolongation_type`.\n `trailing_valence` of {self}: {self.trailing_valence} \n `prolongation_type` of {other}: {other.prolongation_type}')
             if self.max_degree==1 and self.min_degree==1:
                 return -1 * other * self
-            return self._recursion_contract(other)
+            return self._bracket(other)
         else:
             raise ValueError(f"Unsupported operation for * between the given object types: {type(self)} and {type(other)}")
 
@@ -1049,7 +1115,7 @@ class tensorProduct(sp.Basic):
             return NotImplemented
 
 
-################ creater functions
+################ creator functions
 def createVectorSpace(
     obj,
     label,

@@ -65,6 +65,7 @@ _ = get_variable_registry()
 from ._DGCV_display import DGCV_init_printing, LaTeX, display_DGCV
 from .combinatorics import carProd, chooseOp, permSign
 from .complexStructures import Del, DelBar, KahlerStructure
+from .config import canonicalize
 from .coordinateMaps import coordinate_map
 from .CRGeometry import (
     findWeightedCRSymmetries,
@@ -144,7 +145,7 @@ from .RiemannianGeometry import (
     metric_from_matrix,
     metricClass,
 )
-from .solvers import solve_carefully
+from .solvers import solve_DGCV
 from .styles import get_DGCV_themes
 from .tensors import createVectorSpace, tensorProduct, vectorSpace, vectorSpaceElement
 from .vectorFieldsAndDifferentialForms import (
@@ -183,6 +184,9 @@ __all__ = [
     "Del",                  # Holomorphic derivative operator
     "DelBar",               # Anti-holomorphic derivative operator
     "KahlerStructure",      # Represents a Kähler structure
+
+    # From config
+    "canonicalize",         # Reformat supported objects canonically
 
     # From coordinateMaps
     "coordinate_map",       # Transforms coordinates systems
@@ -272,7 +276,7 @@ __all__ = [
     "get_DGCV_themes",      # Get DGCV themes for various output styles
 
     # From solvers
-    "solve_carefully",      # Recursively tests sympy.solve on variable subsets
+    "solve_DGCV",           # supports solving equations with various DGCV types
 
     # From tensors
     "vectorSpace",          # Class representing vector spaces

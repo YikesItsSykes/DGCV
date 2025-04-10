@@ -29,12 +29,10 @@ This module minimizes dependencies and is critical for handling combinatorics wi
 """
 
 ############## dependencies
-
 from sympy import MutableDenseNDimArray
 
+
 ############## general combinatorics
-
-
 def carProd(*args):
     """
     Compute the Cartesian product of a variable number of lists.
@@ -79,7 +77,6 @@ def carProd(*args):
             resultLoc = carProdTwo(resultLoc, args[j])
         return resultLoc
 
-
 def carProd_with_weights_without_R(*args):
     """
     Form cartesian product (filtered for replacement) of a variable number of lists whose elements are marked with a weight (specifically, list entries should be length 2 lists whose first element goes into the car. prod. space and second element a scalar vaule). Weights are multiplied when elements are joined into a list (i.e., element of the cartesian product space).
@@ -108,7 +105,6 @@ def carProd_with_weights_without_R(*args):
         for j in range(len(args) - 1):
             resultLoc = prodOfTwo(resultLoc, list(args[j + 1]))
         return resultLoc
-
 
 def carProdWithOrder(*args):
     """
@@ -155,7 +151,6 @@ def carProdWithOrder(*args):
             seen.add(sorted_combo)
             yield sorted_combo
 
-
 def carProdWithoutRepl(*args):
     """
     Compute Cartesian product excluding repeated elements.
@@ -190,7 +185,6 @@ def carProdWithoutRepl(*args):
         If any of the input arguments are not iterable.
     """
     return (j for j in carProd(*args) if len(set(j)) == len(j))
-
 
 def carProdWithOrderWithoutRepl(*args):
     """
@@ -239,7 +233,6 @@ def carProdWithOrderWithoutRepl(*args):
             if sorted_combo not in seen:
                 seen.add(sorted_combo)
                 yield sorted_combo
-
 
 def chooseOp(
     arg1, arg2, withOrder=False, withoutReplacement=False, restrictHomogeneity=None
@@ -308,7 +301,6 @@ def chooseOp(
         return (j for j in resultLoc if sum(j) == restrictHomogeneity)
     else:
         return resultLoc
-
 
 def permSign(arg1, returnSorted=False, **kwargs):
     """
@@ -411,28 +403,6 @@ def permSign(arg1, returnSorted=False, **kwargs):
     else:
         return sign
 
-
-# def permSignOld(arg1,startAtZero=False):
-#     """
-#     Computes the signature of a permutation of consecutive integers from 1 up to some integer k
-
-#     Args:
-#         arg1: list containing a permutation of consecutive integers from 1 up to some integer k.
-#         key word arguments: optional argument *startAtZero=True* makes this function apply to permutations of consecutive integers starting from 0.
-
-#     Returns:
-#         1 or -1
-
-#     Raises:
-#     """
-#     if startAtZero==True:
-#         arg1=[j+1 for j in arg1]
-#     powLoc=0
-#     for j in range(1,len(arg1)+1):
-#         powLoc=powLoc+[k for k in range(len(arg1)) if arg1[k]==j][0]
-#         arg1=[k for k in arg1 if k!=j]
-#     return int((-1)**powLoc)
-
 def weightedPermSign(permutation, weights, returnSorted=False, use_degree_attribute=False):
     def merge_sort(permutation, weights):
         # Base case: single element or empty list
@@ -501,6 +471,46 @@ def weightedPermSign(permutation, weights, returnSorted=False, use_degree_attrib
     else:
         return sign
 
+def shufflings(list1: list | tuple, list2: list | tuple):
+    """
+    Yield all order-preserving shufflings of list1 and list2.
+
+    This is achieved by recursively building a tree of incrementally longer lists,
+    starting from the empty list []. Each step appends the next unused element 
+    from either list1 or list2, preserving the relative order within each list.
+
+    Parameters
+    ----------
+    list1 : list or tuple
+        First sequence to merge.
+    list2 : list or tuple
+        Second sequence to merge.
+
+    Yields
+    ------
+    list
+        A single shuffling of list1 and list2.
+
+    Examples
+    --------
+    >>> list(shufflings([1, 2], ['a', 'b']))
+    [[1, 2, 'a', 'b'], [1, 'a', 2, 'b'], [1, 'a', 'b', 2],
+     ['a', 1, 2, 'b'], ['a', 1, 'b', 2], ['a', 'b', 1, 2]]
+    """
+    def treeCrawl(path, i, j):
+        if i == len(list1) and j == len(list2):
+            yield path
+            return
+        if i < len(list1):
+            yield from treeCrawl(path + [list1[i]], i + 1, j)
+        if j < len(list2):
+            yield from treeCrawl(path + [list2[j]], i, j + 1)
+
+    yield from treeCrawl([], 0, 0)
+
+
+
+
 ############## for tensor caculus
 def permuteTupleEntries(arg1, arg2):
     """
@@ -544,7 +554,6 @@ def permuteTupleEntries(arg1, arg2):
 
     return tuple(arg2[arg1[j]] for j in range(len(arg1)))
 
-
 def permuteTuple(arg1, arg2):
     """
     Apply a permutation to the order of a tuple or list.
@@ -587,7 +596,6 @@ def permuteTuple(arg1, arg2):
         raise ValueError("arg2 must contain valid indices for arg1.")
 
     return tuple(arg1[j] for j in arg2)
-
 
 def permuteArray(arg1, arg2):
     """
@@ -643,7 +651,6 @@ def permuteArray(arg1, arg2):
         newArray[newListLoc] = arg1[iListLoc]
 
     return newArray
-
 
 def alternatingPartOfArray(arg1):
     """

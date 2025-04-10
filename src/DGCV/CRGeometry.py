@@ -24,12 +24,13 @@ License:
 """
 
 ############## dependencies
+############## CR geometry
 from functools import reduce
 
 import sympy as sp
 
-from ._safeguards import retrieve_passkey
-from .config import _cached_caller_globals
+from ._safeguards import create_key, retrieve_passkey
+from .config import _cached_caller_globals, get_variable_registry
 from .DGCVCore import (
     VFClass,
     addVF,
@@ -44,12 +45,11 @@ from .DGCVCore import (
     variableProcedure,
 )
 from .polynomials import createPolynomial
+from .solvers import solve_DGCV
 from .vectorFieldsAndDifferentialForms import assembleFromHolVFC
 
-############## CR geometry
 
-
-def tangencyObstruction(arg1, arg2, arg3, simplify=False, *args):
+def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, *args):
     """
     Computes the tangency obstruction for a holomorphic vector field with respect to a CR hypersurface.
 
@@ -59,12 +59,16 @@ def tangencyObstruction(arg1, arg2, arg3, simplify=False, *args):
 
     Parameters:
     -----------
-    arg1 : VFClass
-        A holomorphic vector field in the complex coordinate system, initialized by *assembleFromHolVFC*.
-    arg2 : sympy expression
-        The defining function of the CR hypersurface, expressed in holomorphic or real variables.
-    arg3 : sympy symbol
+    vf : VFClass
+        A holomorphic vector field in the complex coordinate 
+    CR_defining_expr : sympy expression
+        A defining function of the CR hypersurface, expressed in holomorphic or real variables.
+    graph_variable : sympy symbol
         The real variable whose value is set equal to the defining function to define the hypersurface.
+    simplify : bool, optional
+        If True, applies sp.simplify to the final result.
+    *args:
+        Additional arguments (unused).
 
     Returns:
     --------
@@ -76,25 +80,18 @@ def tangencyObstruction(arg1, arg2, arg3, simplify=False, *args):
     TypeError
         If the first argument is not a VFClass instance with DGCVType='complex'.
     """
-    if isinstance(arg1, VFClass):
-        if arg1.DGCVType == "standard":
-            raise TypeError(
-                "`tangencyObstruction` requires its first argument `vf` to be VFClass with vf.DGCVType='complex'"
-            )
-    else:
+    if not (isinstance(vf, VFClass) and vf.DGCVType == "complex"):
         raise TypeError(
-            "`tangencyObstruction` requires its first argument `vf` to be VFClass with vf.DGCVType='complex'"
+            "`tangencyObstruction` requires its first argument to be a VFClass instance with DGCVType='complex'"
         )
-    arg1 = allToReal(arg1)
-    evaluationLoc = allToReal(realPartOfVF(arg1)(holToReal(arg3 - arg2))).subs(
-        holToReal(symToReal(arg3)), symToReal(arg2)
-    )
-    def simplify_rules(expr):
-        if simplify:
-            return sp.simplify(expr)
-        else:
-            return expr
-    return simplify_rules(symToReal(evaluationLoc))
+    vf_real = allToReal(vf)
+    real_eval = realPartOfVF(vf_real)(holToReal(graph_variable - CR_defining_expr))
+    eval_real = allToReal(real_eval)
+    substituted_expr = eval_real.subs(holToReal(symToReal(graph_variable)), symToReal(CR_defining_expr))
+    result_expr = symToReal(substituted_expr)
+    if simplify:
+        result_expr = sp.simplify(result_expr)
+    return result_expr
 
 
 def weightedHomogeneousVF(
@@ -155,7 +152,7 @@ def weightedHomogeneousVF(
     )
 
 
-def findWeightedCRSymmetries(
+def findWeightedCRSymmetries_old(
     arg1,
     arg2,
     arg3,
@@ -220,8 +217,8 @@ def findWeightedCRSymmetries(
             ),
         ),
     )
-    tOLoc = tangencyObstruction(VFLoc, arg1, arg5, simplify=simplify)
-    varLoc = tOLoc.atoms(sp.Symbol)
+    tanObst = tangencyObstruction(VFLoc, arg1, arg5, simplify=simplify)
+    varLoc = tanObst.atoms(sp.Symbol)
     varLoc1 = {j for j in varLoc}
     varComp = set(extractRIVar(arg2))
     varLoc.difference_update(varComp)
@@ -231,29 +228,29 @@ def findWeightedCRSymmetries(
     if applyNumer:
         if varLoc1 == set():
             varLoc1 = set(arg2)
-        coefListLoc = sp.poly_from_expr(sp.expand(sp.numer(tOLoc)), *varLoc1)[0].coeffs()
-        solLoc = sp.solve(coefListLoc, varLoc)
+        coefList = sp.poly_from_expr(sp.expand(sp.numer(tanObst)), *varLoc1)[0].coeffs()
+        solutions = sp.solve(coefList, varLoc)
     elif simplifyingFactor is None:
         if varLoc1 == set():
             varLoc1 = set(arg2)
-        coefListLoc = sp.poly_from_expr(sp.expand(tOLoc), *varLoc1)[0].coeffs()
-        solLoc = sp.solve(coefListLoc, varLoc)
+        coefList = sp.poly_from_expr(sp.expand(tanObst), *varLoc1)[0].coeffs()
+        solutions = sp.solve(coefList, varLoc)
     else:
         if varLoc1 == set():
             varLoc1 = set(arg2)
 
-        coefListLoc = sp.poly_from_expr(
-            sp.expand(simplify(symToReal(simplifyingFactor) * tOLoc)), *varLoc1
+        coefList = sp.poly_from_expr(
+            sp.expand(simplify(symToReal(simplifyingFactor) * tanObst)), *varLoc1
         )[0].coeffs()
-        solLoc = sp.solve(coefListLoc, varLoc)
-    if len(solLoc) == 0:
-        if tOLoc!=0:
+        solutions = sp.solve(coefList, varLoc)
+    if len(solutions) == 0:
+        if tanObst!=0:
             clearVar(*listVar(temporary_only=True), report=False)
-            raise ValueError(f"no solution to this system: {coefListLoc}")
+            raise ValueError(f"no solution to this system: {coefList}")
         else:
-            solLoc=dict()
-    if type(solLoc) is dict:
-        VFCLoc = [j.subs(solLoc) for j in holVF_coeffs(VFLoc, arg2)]
+            solutions=dict()
+    if type(solutions) is dict:
+        VFCLoc = [j.subs(solutions) for j in holVF_coeffs(VFLoc, arg2)]
         subVar = sum(VFCLoc).atoms(sp.Symbol)
         subVar.difference_update(set(arg2))
         variableProcedure(arg6, len(subVar), assumeReal=True)
@@ -286,7 +283,118 @@ def findWeightedCRSymmetries(
             for j in VFCLoc
         ]
         clearVar(*listVar(temporary_only=True), report=False)
-        return VFCLoc, solLoc
+        return VFCLoc, solutions
+
+
+def findWeightedCRSymmetries(
+    graph_function,
+    holomorphic_coordinates,
+    coordinate_weights,
+    symmetry_weight,
+    graph_variable,
+    coeff_label = None,
+    degreeCap = 0,
+    returnVectorFieldBasis = False,
+    returnAllformats = False,
+    simplifyingFactor = None,
+    assume_polynomial = False,
+    simplify=False
+):
+    """
+    """
+    if returnAllformats:
+        returnVectorFieldBasis = True
+    vr = get_variable_registry()
+    cd = vr['conversion_dictionaries']
+    def extractRIVar(coordinate_list):
+        return set(sum([[cd['real_part'].get(var,var),cd['im_part'].get(var,var)] for var in coordinate_list], []))
+    VFLoc = addVF(
+        weightedHomogeneousVF(
+            holomorphic_coordinates,
+            symmetry_weight,
+            coordinate_weights,
+            "ALoc",
+            _tempVar=retrieve_passkey(),
+            degreeCap=degreeCap,
+            assumeReal=True,
+        ),
+        scaleVF(sp.I,weightedHomogeneousVF(
+                holomorphic_coordinates,
+                symmetry_weight,
+                coordinate_weights,
+                "BLoc",
+                _tempVar=retrieve_passkey(),
+                degreeCap=degreeCap,
+                assumeReal=True,
+            ),
+        ),
+    )
+    tanObst = tangencyObstruction(VFLoc, graph_function, graph_variable, simplify=simplify)
+    varLoc = tanObst.atoms(sp.Symbol)
+    varLoc1 = varLoc.copy()
+    varComp = extractRIVar(holomorphic_coordinates)
+    varLoc.difference_update(varComp)
+    varLoc1.difference_update(varLoc)
+    varComp.difference_update(varLoc1)
+    if coeff_label is None:
+        coeff_label = create_key(prefix='X',key_length=5)
+    variableProcedure(coeff_label, len(varLoc), assumeReal=True)
+    if simplifyingFactor is not None:
+        tanObst = sp.simplify(symToReal(simplifyingFactor)*tanObst)
+    if not assume_polynomial:
+        if varLoc1 == set():
+            varLoc1 = set(holomorphic_coordinates)
+        coefList = sp.poly_from_expr(sp.expand(sp.numer(tanObst)), *varLoc1)[0].coeffs()
+        solutions = solve_DGCV(coefList, varLoc, method="auto")
+    else:
+        if varLoc1 == set():
+            varLoc1 = set(holomorphic_coordinates)
+
+        coefList = sp.poly_from_expr(
+            sp.expand(tanObst), *varLoc1
+        )[0].coeffs()
+        solutions = solve_DGCV(coefList, varLoc, method="auto")
+    if len(solutions) == 0:
+        if tanObst!=0:
+            clearVar(*listVar(temporary_only=True), report=False)
+            raise ValueError(f"no solution to this system: {coefList}")
+        else:
+            solutions=dict()
+            VFCLoc = [0 for _ in holomorphic_coordinates]
+    else:
+        if isinstance(solutions,(list,tuple)):
+            solutions = solutions[0]
+        VFCLoc = [j.subs(solutions) for j in holVF_coeffs(VFLoc, holomorphic_coordinates)]
+
+    subVar = set()
+    for term in VFCLoc:
+        subVar |= term.atoms(sp.Symbol)
+    subVar.difference_update(set(holomorphic_coordinates))
+    variableProcedure(coeff_label, len(subVar), assumeReal=True)
+    coeff_vars = _cached_caller_globals[coeff_label]
+    VFCLoc = [
+        j.subs(dict(zip(subVar, coeff_vars)))
+        for j in VFCLoc
+    ]
+    clearVar(*listVar(temporary_only=True), report=False)
+    if returnVectorFieldBasis:
+        VFListLoc = []
+        for j in coeff_vars:
+            VFCLocTemp = [
+                k.subs(j, 1).subs(
+                    [(ll, 0) for ll in coeff_vars]
+                )
+                for k in VFCLoc
+            ]
+            VFListLoc.append(assembleFromHolVFC(VFCLocTemp, holomorphic_coordinates))
+        clearVar(coeff_label, report=False)
+        if returnAllformats:
+            return VFCLoc,VFListLoc
+        return VFListLoc
+    else:
+        return VFCLoc
+
+
 
 
 def model2Nondegenerate(arg1, arg2, arg3, arg4, return_matrices=False, simplify=True):

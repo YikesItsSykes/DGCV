@@ -864,7 +864,7 @@ def decompose(
             )
         )
         if not all([j in solObj.varSpace for j in obj.varSpace]):
-            warnings.warn(f"The differential form {obj} is not in the span of {basis}")
+            warnings.warn(f"The differential form {obj} is not in the span of {basis}. Variable space mis-alignment: {solObj.varSpace} and {obj.varSpace}")
             obj = changeDFBasis(obj, solObj.varSpace)
             return []
         eqns = [j[1] for j in (compressDGCVClass(obj - solObj)).DFClassDataMinimal]
