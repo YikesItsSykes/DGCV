@@ -30,13 +30,7 @@ pip install dgcv
 
 Depending on Python install configurations, the above command can vary. The key is to have the relevant Python environment active so that the package manager pip sources from the right location (suggested to use virtual environments: [Getting started with virtual environments](https://docs.python.org/3/library/venv.html)).
 
-Please note, old versions of **dgcv** where named with capital letters and thus required
-
-```bash
-pip install DGCV
-```
-
-The upper case name is no longer in use, so this old command will not install the latest version of **dgcv**. The change to using all lower case is to allign with accepted naming standards.
+Please note, old versions of **dgcv** where named with capital letters and thus required `pip install DGCV` instead. The upper case name is no longer in use, so this old command will not install the latest version of **dgcv**. The change to using all lower case is to allign with accepted naming standards.
 
 ## Tutorials
 
