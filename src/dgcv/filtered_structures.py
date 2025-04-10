@@ -4,9 +4,9 @@ import pandas as pd
 import sympy as sp
 
 from ._safeguards import _cached_caller_globals, create_key, retrieve_passkey
-from .DGCVCore import clearVar, listVar, variableProcedure
-from .DGCVFormatter import get_style
-from .finiteDimAlgebras import AlgebraElement, FAClass
+from .dgcv_core import clearVar, listVar, variableProcedure
+from .dgcv_formatter import get_style
+from .finite_dim_algebras import AlgebraElement, FAClass
 from .tensors import tensorProduct
 
 

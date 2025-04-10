@@ -10,8 +10,8 @@ import sympy as sp
 from .._safeguards import create_key, retrieve_passkey, validate_label
 from ..combinatorics import carProd, weightedPermSign
 from ..config import _cached_caller_globals, get_variable_registry
+from ..dgcv_formatter import process_basis_label
 from ..DGCVCore import clearVar
-from ..DGCVFormatter import process_basis_label
 
 
 def factor_dgcv(expr, **kw):

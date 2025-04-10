@@ -14,7 +14,7 @@ from ._tensor_field_printers import (
 )
 from .combinatorics import shufflings
 from .config import _cached_caller_globals, get_variable_registry
-from .DGCVCore import clearVar, listVar
+from .dgcv_core import clearVar, listVar
 
 
 # vector space class

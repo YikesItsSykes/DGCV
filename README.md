@@ -5,7 +5,7 @@
 At its core are fully featured symbolic representations of standard DG objects such as vector fields and differential forms, defined relative to coordinate systems that fall into two broad categories:
 
 - **standard** - basic systems that can represent real or complex coordinates, sufficient for all applications that do not require DGCV's complex variable handling features.
-- **complex** - richer systems for representing complex coordinate systems, which interact with DGCV's complex variable handling features. These are comprised holomorphic coordinate functions, their conjugates, and their real and imaginary parts (e.g. $\\{z_j,\overline{z_j},x_j,y_j\\}$).
+- **complex** - richer systems for representing complex coordinate patches, which interact with DGCV's complex variable handling features. These are comprised holomorphic coordinate functions, their conjugates, and their real and imaginary parts (e.g. $\\{z_j,\overline{z_j},x_j,y_j\\}$).
 
 **dgcv** functions account for coordinate types dynamically when oprating on objects built from coordinate systems. The package has a growing library for coordinate-free representations as well, and tools for converting between the two paradigms.
 
@@ -18,17 +18,25 @@ As systems of differential geometric objects constructed from complex variables 
 - Fully featured symbolic representations of vector fields, differential forms, and tensor fields
 - Intuitive interactions with complex structures from holomorphic coordinate systems: **dgcv** objects dynamically manage coordinate transformations between real and holomorphic coordinates during computation as necessary, so objects can be represented in and freely converted between either coordinate format at any time.
 - Dedicated python classes for representing common differential geometric structures
-- Natural LaTeX rendering for intuitive representation of mathematical objects, designed with Jupyter notebooks in mind.
+- Natural LaTeX rendering for representation of mathematical objects, designed with Jupyter notebooks in mind.
 
 ## Installation
 
 You can install **dgcv** directly from PyPI with pip, e.g.:
 
 ```bash
+pip install dgcv
+```
+
+Depending on Python install configurations, the above command can vary. The key is to have the relevant Python environment active so that the package manager pip sources from the right location (suggested to use virtual environments: [Getting started with virtual environments](https://docs.python.org/3/library/venv.html)).
+
+Please note, old versions of **dgcv** where named with capital letters and thus required
+
+```bash
 pip install DGCV
 ```
 
-Note, depending on Python install configurations, the above command can vary. The key is to have the relevant Python environment active so that the package manager pip sources from the right location (suggested to use virtual environments: [Getting started with virtual environments](https://docs.python.org/3/library/venv.html)).
+The upper case name is no longer in use, and will not install the latest version. The shift to using all lower case was to allign with accepted naming standards.
 
 ## Tutorials
 

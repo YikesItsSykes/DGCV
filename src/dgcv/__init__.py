@@ -62,18 +62,18 @@ cache_globals()
 _ = get_variable_registry()
 
 
-from ._DGCV_display import DGCV_init_printing, LaTeX, display_DGCV
+from ._dgcv_display import DGCV_init_printing, LaTeX, display_DGCV
 from .combinatorics import carProd, chooseOp, permSign
 from .complexStructures import Del, DelBar, KahlerStructure
 from .config import canonicalize
 from .coordinateMaps import coordinate_map
-from .CRGeometry import (
+from .CR_geometry import (
     findWeightedCRSymmetries,
     model2Nondegenerate,
     tangencyObstruction,
     weightedHomogeneousVF,
 )
-from .DGCVCore import (
+from .dgcv_core import (
     DFClass,
     DGCV_snapshot,
     DGCVPolyClass,
@@ -123,7 +123,7 @@ from .DGCVCore import (
     tensorField,
     variableSummary,
 )
-from .finiteDimAlgebras import (
+from .finite_dim_algebras import (
     AlgebraElement,
     FAClass,
     adjointRepresentation,
@@ -140,7 +140,7 @@ from .polynomials import (
     getWeightedTerms,
     monomialWeight,
 )
-from .RiemannianGeometry import (
+from .Riemannian_geometry import (
     LeviCivitaConnectionClass,
     metric_from_matrix,
     metricClass,
@@ -148,7 +148,7 @@ from .RiemannianGeometry import (
 from .solvers import solve_DGCV
 from .styles import get_DGCV_themes
 from .tensors import createVectorSpace, tensorProduct, vectorSpace, vectorSpaceElement
-from .vectorFieldsAndDifferentialForms import (
+from .vector_fields_and_differential_forms import (
     LieDerivative,
     annihilator,
     assembleFromAntiholVFC,
@@ -167,7 +167,7 @@ from .vectorFieldsAndDifferentialForms import (
 __all__ = [
     ############ DGCV default functions/classes ####
 
-    # From _DGCV_display
+    # From _dgcv_display
     "LaTeX",                # Custom LaTeX renderer for DGCV objects
     "display_DGCV",         # Augments IPython.display.display
                             # with support for DGCV object like
@@ -197,7 +197,7 @@ __all__ = [
     "tangencyObstruction",  # Obstruction for VF to be tangent to submanifold
     "weightedHomogeneousVF",# Produce general weighted homogeneous vector fields
 
-    # From DGCVCore
+    # From dgcv_core
     "tensorField",          # Tensor field class
     "DFClass",              # Differential form class
     "DGCVPolyClass",        # DGCV polynomial class

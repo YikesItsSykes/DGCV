@@ -17,7 +17,7 @@ from IPython.display import HTML, Latex, display
 from sympy.printing.latex import LatexPrinter
 
 ############# DGCV classes to format
-from .DGCVCore import (
+from .dgcv_core import (
     DFClass,
     DGCVPolyClass,
     STFClass,
@@ -27,8 +27,8 @@ from .DGCVCore import (
     tensorField,
 )
 from .filtered_structures import Tanaka_symbol
-from .finiteDimAlgebras import AlgebraElement, FAClass
-from .RiemannianGeometry import metricClass
+from .finite_dim_algebras import AlgebraElement, FAClass
+from .Riemannian_geometry import metricClass
 
 
 def LaTeX(obj, removeBARs=False):

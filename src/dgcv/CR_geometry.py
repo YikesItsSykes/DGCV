@@ -46,7 +46,7 @@ from .DGCVCore import (
 )
 from .polynomials import createPolynomial
 from .solvers import solve_DGCV
-from .vectorFieldsAndDifferentialForms import assembleFromHolVFC
+from .vector_fields_and_differential_forms import assembleFromHolVFC
 
 
 def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, *args):

@@ -13,10 +13,10 @@ from ._safeguards import (
     validate_label_list,
 )
 from .config import _cached_caller_globals
-from .DGCVCore import VFClass, addVF, allToReal, clearVar, listVar, variableProcedure
+from .dgcv_core import VFClass, addVF, allToReal, clearVar, listVar, variableProcedure
 from .styles import get_style
 from .tensors import tensorProduct
-from .vectorFieldsAndDifferentialForms import VF_bracket
+from .vector_fields_and_differential_forms import VF_bracket
 
 ############## Algebras
 

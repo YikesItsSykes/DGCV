@@ -3,8 +3,8 @@ from sympy import Basic, im, re, simplify
 from .complexStructures import KahlerStructure
 from .config import get_variable_registry
 from .DGCVCore import DFClass, STFClass, TFClass, VF_coeffs, addVF, allToReal, allToSym
-from .RiemannianGeometry import metricClass
-from .vectorFieldsAndDifferentialForms import get_DF, get_VF
+from .Riemannian_geometry import metricClass
+from .vector_fields_and_differential_forms import get_DF, get_VF
 
 
 class coordinate_map(Basic):

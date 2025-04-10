@@ -26,7 +26,7 @@ import warnings
 import sympy as sp
 
 from .config import get_variable_registry
-from .DGCVCore import (
+from .dgcv_core import (
     DFClass,
     STFClass,
     addDF,
@@ -37,8 +37,8 @@ from .DGCVCore import (
     symToReal,
     tensorField,
 )
-from .RiemannianGeometry import metricClass
-from .vectorFieldsAndDifferentialForms import exteriorDerivative, makeZeroForm
+from .Riemannian_geometry import metricClass
+from .vector_fields_and_differential_forms import exteriorDerivative, makeZeroForm
 
 ############## Dolbeault operators
 

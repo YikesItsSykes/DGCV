@@ -44,7 +44,7 @@ import sympy as sp
 from ._safeguards import create_key, retrieve_passkey
 from .combinatorics import chooseOp
 from .config import _cached_caller_globals, get_variable_registry
-from .DGCVCore import (
+from .dgcv_core import (
     DFClass,
     VF_bracket,
     VFClass,
