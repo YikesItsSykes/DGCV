@@ -1,10 +1,12 @@
-# DGCV: Differential Geometry with Complex Variables
+# dgcv: Differential Geometry with Complex Variables
 
-DGCV is an open-source Python package providing basic tools for differential geometry integrated with systematic organization of structures accompanying complex variables, in short, Differential Geometry with Complex Variables.
+dgcv is an open-source Python package providing basic tools for differential geometry integrated with systematic organization of structures accompanying complex variables, in short, Differential Geometry with Complex Variables.
 
-At its core are fully featured symbolic representations of standard DG objects such as vector fields and differential forms, defined relative to standard or complex coordinate systems. As systems of differential geometric objects constructed from complex variables inherit natural relationships from the underlying complex structure, DGCV objects track these relationships across the constructions. Advantages of the uniform integration arise from smooth switching between real and holomorphic coordinate representations of mathematical objects. In computations, DGCV objects dynamically manage this format switching on their own so that typical complex variables formulas can be written plainly and will simply work. Some examples of this: In coordinates $z_j = x_j + iy_j$, expressions such as $\frac{\partial}{\partial x_j}|z_j|^2$ or $d z_j \wedge d \overline{z_j} \left( \frac{\partial}{\partial z_j}, \frac{\partial}{\partial y_j} \right)$ are correctly parsed without needing to convert everything to a uniform variable format. Retrieving objects' complex structure-related attributes, like the holomorphic part of a vector field or pluriharmonic terms from a polynomial is straightforward. Complexified cotangent bundles and their exterior algebras are easily decomposed into components from the Dolbeault complex and Dolbeault operators themselves can be applied to functions and k-forms in either coordinate format.
+At its core are fully featured symbolic representations of standard DG objects such as vector fields and differential forms, defined relative to standard or complex coordinate systems. The package has a growing library for coordinate-free representations as well.
 
-DGCV was developed using Python 3.12, with dependencies on the SymPy and Pandas libraries in addition to base Python.
+As systems of differential geometric objects constructed from complex variables inherit natural relationships from the underlying complex structure, DGCV objects track these relationships across the constructions. Advantages of the uniform integration arise from smooth switching between real and holomorphic coordinate representations of mathematical objects. In computations, DGCV objects dynamically manage this format switching on their own so that typical complex variables formulas can be written plainly and will simply work. Some examples of this: In coordinates $z_j = x_j + iy_j$, expressions such as $\frac{\partial}{\partial x_j}|z_j|^2$ or $d z_j \wedge d \overline{z_j} \left( \frac{\partial}{\partial z_j}, \frac{\partial}{\partial y_j} \right)$ are correctly parsed without needing to convert everything to a uniform variable format. Retrieving objects' complex structure-related attributes, like the holomorphic part of a vector field or pluriharmonic terms from a polynomial is straightforward. Complexified cotangent bundles and their exterior algebras are easily decomposed into components from the Dolbeault complex and Dolbeault operators themselves can be applied to functions and k-forms in either coordinate format.
+
+dgcv was developed using Python 3.13, and has dependencies on the SymPy and Pandas libraries in addition to base Python.
 
 ## Features
 
@@ -21,7 +23,7 @@ You can install DGCV directly from PyPI with pip, e.g.:
 pip install DGCV
 ```
 
-Note, depending on Python install configurations, the above command can very. The key is to have the relevent Python environment active so that the package manager pip sources from the right location (suggested to use virtual environments: [Getting started with virtual environments](https://docs.python.org/3/library/venv.html)).
+Note, depending on Python install configurations, the above command can vary. The key is to have the relevent Python environment active so that the package manager pip sources from the right location (suggested to use virtual environments: [Getting started with virtual environments](https://docs.python.org/3/library/venv.html)).
 
 ## Tutorials
 
