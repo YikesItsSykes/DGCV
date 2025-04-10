@@ -1,11 +1,11 @@
 # **dgcv**: Differential Geometry with Complex Variables
 
-**dgcv** is an open-source Python package providing basic tools for differential geometry integrated with systematic organization of structures accompanying complex variables, in short, Differential Geometry with Complex Variables.
+**dgcv** is an open-source Python package providing basic tools for differential geometry integrated with systematic organization of structures naturally accompanying complex variables, in short, Differential Geometry with Complex Variables.
 
-At its core are fully featured symbolic representations of standard DG objects such as vector fields and differential forms, defined relative to coordinate system, which come in two general types:
+At its core are fully featured symbolic representations of standard DG objects such as vector fields and differential forms, defined relative to coordinate systems that fall into two broad categories:
 
-- **standard** - basic systems that can represent real or complex coordinates. These contain coordinate functions (e.g., $\\{x_1,\ldots, x_n\\}$)
-- **complex** - a dedicated format for representing complex coordinate systems. These are comprised holomorphic coordinate functions, their conjugates, and their real and imaginary parts (e.g. $\\{z_j,\overline{z_j},x_j,y_j\\}$)
+- **standard** - basic systems that can represent real or complex coordinates, sufficient for all applications that do not require DGCV's complex variable handling features.
+- **complex** - richer systems for representing complex coordinate systems, which interact with DGCV's complex variable handling features. These are comprised holomorphic coordinate functions, their conjugates, and their real and imaginary parts (e.g. $\\{z_j,\overline{z_j},x_j,y_j\\}$).
 
 **dgcv** functions account for coordinate types dynamically when oprating on objects built from coordinate systems. The package has a growing library for coordinate-free representations as well, and tools for converting between the two paradigms.
 
