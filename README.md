@@ -36,7 +36,7 @@ Please note, old versions of **dgcv** where named with capital letters and thus 
 pip install DGCV
 ```
 
-The upper case name is no longer in use, and will not install the latest version. The shift to using all lower case was to allign with accepted naming standards.
+The upper case name is no longer in use, so this old command will not install the latest version of **dgcv**. The change to using all lower case is to allign with accepted naming standards.
 
 ## Tutorials
 
