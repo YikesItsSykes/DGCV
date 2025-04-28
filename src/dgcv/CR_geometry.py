@@ -1,7 +1,7 @@
 """
-DGCV: Differential Geometry with Complex Variables
+dgcv: Differential Geometry with Complex Variables
 
-This module provides tools specific to CR (Cauchy-Riemann) geometry within the DGCV package. 
+This module provides tools specific to CR (Cauchy-Riemann) geometry within the dgcv package. 
 It includes functions for constructing CR hypersurfaces and  computing symmetries.
 
 Key Functions:
@@ -24,13 +24,12 @@ License:
 """
 
 ############## dependencies
-############## CR geometry
 from functools import reduce
 
 import sympy as sp
 
+from ._config import _cached_caller_globals, get_variable_registry
 from ._safeguards import create_key, retrieve_passkey
-from .config import _cached_caller_globals, get_variable_registry
 from .dgcv_core import (
     VFClass,
     addVF,
@@ -45,7 +44,7 @@ from .dgcv_core import (
     variableProcedure,
 )
 from .polynomials import createPolynomial
-from .solvers import solve_DGCV
+from .solvers import solve_dgcv
 from .vector_fields_and_differential_forms import assembleFromHolVFC
 
 
@@ -78,11 +77,11 @@ def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, *a
     Raises:
     -------
     TypeError
-        If the first argument is not a VFClass instance with DGCVType='complex'.
+        If the first argument is not a VFClass instance with dgcvType='complex'.
     """
-    if not (isinstance(vf, VFClass) and vf.DGCVType == "complex"):
+    if not (isinstance(vf, VFClass) and vf.dgcvType == "complex"):
         raise TypeError(
-            "`tangencyObstruction` requires its first argument to be a VFClass instance with DGCVType='complex'"
+            "`tangencyObstruction` requires its first argument to be a VFClass instance with dgcvType='complex'"
         )
     vf_real = allToReal(vf)
     real_eval = realPartOfVF(vf_real)(holToReal(graph_variable - CR_defining_expr))
@@ -345,7 +344,7 @@ def findWeightedCRSymmetries(
         if varLoc1 == set():
             varLoc1 = set(holomorphic_coordinates)
         coefList = sp.poly_from_expr(sp.expand(sp.numer(tanObst)), *varLoc1)[0].coeffs()
-        solutions = solve_DGCV(coefList, varLoc, method="auto")
+        solutions = solve_dgcv(coefList, varLoc, method="auto")
     else:
         if varLoc1 == set():
             varLoc1 = set(holomorphic_coordinates)
@@ -353,7 +352,7 @@ def findWeightedCRSymmetries(
         coefList = sp.poly_from_expr(
             sp.expand(tanObst), *varLoc1
         )[0].coeffs()
-        solutions = solve_DGCV(coefList, varLoc, method="auto")
+        solutions = solve_dgcv(coefList, varLoc, method="auto")
     if len(solutions) == 0:
         if tanObst!=0:
             clearVar(*listVar(temporary_only=True), report=False)

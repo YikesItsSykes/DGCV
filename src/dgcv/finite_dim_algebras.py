@@ -4,6 +4,7 @@ import warnings
 
 import sympy as sp
 
+from ._config import _cached_caller_globals
 from ._safeguards import (
     create_key,
     get_variable_registry,
@@ -12,7 +13,6 @@ from ._safeguards import (
     validate_label,
     validate_label_list,
 )
-from .config import _cached_caller_globals
 from .dgcv_core import VFClass, addVF, allToReal, clearVar, listVar, variableProcedure
 from .styles import get_style
 from .tensors import tensorProduct

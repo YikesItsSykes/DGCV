@@ -25,7 +25,7 @@ import warnings
 
 import sympy as sp
 
-from .config import get_variable_registry
+from ._config import get_variable_registry
 from .dgcv_core import (
     DFClass,
     STFClass,

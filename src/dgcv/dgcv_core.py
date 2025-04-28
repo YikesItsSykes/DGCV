@@ -1,7 +1,7 @@
 """
-DGCV: Differential Geometry with Complex Variables
+dgcv: Differential Geometry with Complex Variables
 
-This module defines the core classes and functions for the DGCV package, handling the creation 
+This module defines the core classes and functions for the dgcv package, handling the creation 
 and manipulation of vector fields, differential forms, tensor fields, algebras, and more. It includes 
 tools for managing relationships between real and complex coordinate systems, object creation function,
 and basic operations for its classes.
@@ -10,14 +10,14 @@ Key Classes:
     - DFClass: Represents differential forms.
     - VFClass: Represents vector fields.
     - STFClass: Represents symmetric tensor fields.
-    - TFClass: Represents general tensor fields.
-    - DGCVPolyClass: Hooks DGCV's complex variable handling into SymPy's Poly tools.
+    - tensorField: Represents general tensor fields.
+    - dgcvPolyClass: Hooks dgcv's complex variable handling into SymPy's Poly tools.
 
 Key Functions:
 
 Object Creation:
     - createVariables(): Initializes and labels coordinate systems of various types and 
-    registers them within DGCV's Variable Management Framework.
+    registers them within dgcv's Variable Management Framework.
 
 Coordinate Conversion:
     - holToReal(): Converts holomorphic coordinates to their real counterparts.
@@ -59,9 +59,9 @@ Coefficients and Decompositions:
     - realPartOfVF(): Extracts the real part of a vector field.
 
 Variable Management:
-    - listVar(): Lists the "parent names" of objects currently tracked by the DGCV VMF.
-    - clearVar(): Clears the variables from the DGCV registry and deletes them from caller's globals().
-    - DGCV_snapshot(): Takes a snapshot of the current DGCV VMF and reports a summary in a
+    - listVar(): Lists the "parent names" of objects currently tracked by the dgcv VMF.
+    - clearVar(): Clears the variables from the dgcv registry and deletes them from caller's globals().
+    - vmf_summary(): Takes a snapshot of the current dgcv VMF and reports a summary in a
     Pandas table.
 
 Author: David Sykes (https://github.com/YikesItsSykes)
@@ -85,6 +85,12 @@ from IPython.display import display
 from pandas import DataFrame
 from sympy import I
 
+from ._config import (
+    _cached_caller_globals,
+    get_dgcv_settings_registry,
+    get_variable_registry,
+    greek_letters,
+)
 from ._safeguards import (
     protected_caller_globals,
     retrieve_passkey,
@@ -93,7 +99,6 @@ from ._safeguards import (
 )
 from ._tensor_field_printers import tensor_field_latex, tensor_field_printer
 from .combinatorics import carProd, permSign
-from .config import _cached_caller_globals, get_variable_registry, greek_letters
 from .styles import get_style
 from .vmf import _coeff_dict_formatter
 
@@ -106,7 +111,7 @@ class TFClass:
 
 class tensorField(sp.Basic):
     def __new__(cls, varSpace, coeff_dict, valence=None, data_shape="general",
-                DGCVType="standard", _simplifyKW=None):
+                dgcvType="standard", _simplifyKW=None):
         varSpace = tuple(varSpace)
 
         # Validate coeff_dict
@@ -146,17 +151,17 @@ class tensorField(sp.Basic):
         processed_coeff_dict = cls._process_coeffs_dict(coeff_dict, data_shape, total_degree)
 
         # Create immutable instance and set valence as an attribute
-        obj = sp.Basic.__new__(cls, varSpace, processed_coeff_dict, valence, data_shape, DGCVType, _simplifyKW)
+        obj = sp.Basic.__new__(cls, varSpace, processed_coeff_dict, valence, data_shape, dgcvType, _simplifyKW)
         obj.valence = valence  # Now valence is set in __new__
 
         return obj
 
     def __init__(self, varSpace, coeff_dict, valence=None, data_shape="general",
-                 DGCVType="standard",
+                 dgcvType="standard",
                  _simplifyKW=None):
         self.varSpace = varSpace
         self.data_shape = data_shape
-        self.DGCVType = DGCVType
+        self.dgcvType = dgcvType
 
         self.total_degree = len(self.valence)
         self.contravariant_degree = sum(self.valence)
@@ -189,14 +194,14 @@ class tensorField(sp.Basic):
     def _set_varSpace_type(self):
         """Determine the type of variable space (real, complex, or standard)."""
         variable_registry = get_variable_registry()
-        if self.DGCVType == "complex":
+        if self.dgcvType == "complex":
             if all(var in variable_registry["conversion_dictionaries"]["realToSym"] for var in self.varSpace):
                 self._varSpace_type = "real"
             elif all(var in variable_registry["conversion_dictionaries"]["symToReal"] for var in self.varSpace):
                 self._varSpace_type = "complex"
             else:
                 raise KeyError(
-                    f"To initialize a `tensorField` instance with `DGCVType='complex'`, `varSpace` must contain only variables from DGCV's complex variable systems. All variables in `varSpace` must be either simultaneously among the real and imaginary types, or simultaneously among the holomorphic and antiholomorphic types. \n Recieved: {self.varSpace}\n Use `createVariables` to easily create DGCV\'s complex coordinate systems."
+                    f"To initialize a `tensorField` instance with `dgcvType='complex'`, `varSpace` must contain only variables from dgcv's complex variable systems. All variables in `varSpace` must be either simultaneously among the real and imaginary types, or simultaneously among the holomorphic and antiholomorphic types. \n Recieved: {self.varSpace}\n Use `createVariables` to easily create dgcv\'s complex coordinate systems."
                 )
         else:
             self._varSpace_type = "standard"
@@ -433,7 +438,7 @@ class tensorField(sp.Basic):
 
     @property
     def realVarSpace(self):
-        if self.DGCVType == "standard": # Do nothing for DGCVType == "standard"
+        if self.dgcvType == "standard": # Do nothing for dgcvType == "standard"
             return self._realVarSpace
         if self._realVarSpace is None or self._imVarSpace is None:
             self.cd_formats
@@ -442,7 +447,7 @@ class tensorField(sp.Basic):
 
     @property
     def holVarSpace(self):
-        if self.DGCVType == "standard": # Do nothing for DGCVType == "standard"
+        if self.dgcvType == "standard": # Do nothing for dgcvType == "standard"
             return self._holVarSpace
         if self._holVarSpace is None:
             self.cd_formats
@@ -451,7 +456,7 @@ class tensorField(sp.Basic):
 
     @property
     def antiholVarSpace(self):
-        if self.DGCVType == "standard": # Do nothing for DGCVType == "standard"
+        if self.dgcvType == "standard": # Do nothing for dgcvType == "standard"
             return self._antiholVarSpace
         if self._antiholVarSpace is None:
             self.cd_formats
@@ -460,7 +465,7 @@ class tensorField(sp.Basic):
 
     @property
     def compVarSpace(self):
-        if self.DGCVType == "standard": # Do nothing for DGCVType == "standard"
+        if self.dgcvType == "standard": # Do nothing for dgcvType == "standard"
             return self._holVarSpace + self._antiholVarSpace
         if self._holVarSpace is None or self._antiholVarSpace is None:
             self.cd_formats
@@ -474,7 +479,7 @@ class tensorField(sp.Basic):
         if self._cd_formats:
             return self._cd_formats
 
-        if self.DGCVType == "standard" or all(
+        if self.dgcvType == "standard" or all(
             j is not None
             for j in [
                 self._realVarSpace,
@@ -555,7 +560,7 @@ class tensorField(sp.Basic):
             simplified_coeffs,
             valence=self.valence,
             data_shape=self.data_shape,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
         )
 
@@ -567,7 +572,7 @@ class tensorField(sp.Basic):
         - They have the same variable space (`varSpace`).
         - They have the same valence.
         - They have the same data shape.
-        - They have the same DGCVType.
+        - They have the same dgcvType.
         - Their coefficient dictionaries simplify to the same values.
         """
         if not isinstance(other, tensorField):
@@ -577,7 +582,7 @@ class tensorField(sp.Basic):
             self.varSpace == other.varSpace
             and self.valence == other.valence
             and self.data_shape == other.data_shape
-            and self.DGCVType == other.DGCVType
+            and self.dgcvType == other.dgcvType
             and all(
                 sp.simplify(allToReal(self.coeff_dict[key])) == sp.simplify(allToReal(other.coeff_dict.get(key, 0)))
                 for key in set(self.coeff_dict.keys()).union(set(other.coeff_dict.keys()))
@@ -593,7 +598,7 @@ class tensorField(sp.Basic):
         - `varSpace` (tuple of variables)
         - `valence` (tuple indicating index types)
         - `data_shape` (symmetric, skew, etc.)
-        - `DGCVType` (standard, complex, etc.)
+        - `dgcvType` (standard, complex, etc.)
         - The **simplified** coefficient dictionary as a tuple of (key, value) pairs.
         """
         simplified_coeffs = tuple(
@@ -603,7 +608,7 @@ class tensorField(sp.Basic):
             )
         )
 
-        return hash((self.varSpace, self.valence, self.data_shape, self.DGCVType, simplified_coeffs))
+        return hash((self.varSpace, self.valence, self.data_shape, self.dgcvType, simplified_coeffs))
 
 
     def is_zero(self):
@@ -618,7 +623,7 @@ class tensorField(sp.Basic):
             substituted_coeff_dict,
             self.valence,
             data_shape=self.data_shape,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW
         )
 
@@ -768,7 +773,7 @@ class tensorField(sp.Basic):
 # differential form class
 class DFClass(tensorField):
     """
-    A class representing symbolic differential forms in the DGCV package, with support for standard and complex differential forms.
+    A class representing symbolic differential forms in the dgcv package, with support for standard and complex differential forms.
 
     The DFClass represents differential forms where each component is a symbolic expression (using SymPy expressions)
     corresponding to a differential form in the given variable space. It supports standard differential forms,
@@ -786,7 +791,7 @@ class DFClass(tensorField):
     degree : int
         The degree of the differential form (number of variables in each wedge product).
 
-    DGCVType : str, optional, default='standard'
+    dgcvType : str, optional, default='standard'
         The type of differential form: 'standard' for real differential forms or 'complex' for complex differential forms.
 
     holVarSpace : list, optional
@@ -799,7 +804,7 @@ class DFClass(tensorField):
 
     Examples
     --------
-    >>> from DGCV import DFClass, variableProcedure, DGCV_init_printing()
+    >>> from dgcv import DFClass, variableProcedure, DGCV_init_printing()
     >>> variableProcedure(['x', 'y'])
     >>> df = DFClass([x, y], {(0,): 1, (1,): -1}, 1)
     >>> df
@@ -807,7 +812,7 @@ class DFClass(tensorField):
 
     >>> df_latex = df._repr_latex_()  # Custom LaTeX formatting
     >>> print(df_latex) # display copy-able LaTex
-    >>> DGCV_init_printing() # Nicely formats all DGCV and sympy objects displayed in Jupyter (or an iPython shell)
+    >>> DGCV_init_printing() # Nicely formats all dgcv and sympy objects displayed in Jupyter (or an iPython shell)
     >>> display(df) # renders nicely format differential form display in Jupyter (or an iPython shell)
 
     Attributes:
@@ -821,7 +826,7 @@ class DFClass(tensorField):
     degree : int
         The degree of the differential form.
 
-    DGCVType : str
+    dgcvType : str
         Indicates whether the differential form is standard ('standard') or complex ('complex').
 
     holVarSpace : tuple
@@ -861,7 +866,7 @@ class DFClass(tensorField):
         varSpace,
         data_dict,
         degree,
-        DGCVType="standard",
+        dgcvType="standard",
         _simplifyKW={
             "simplify_rule": None,
             "simplify_ignore_list": None,
@@ -888,7 +893,7 @@ class DFClass(tensorField):
             data_dict,
             valence,
             data_shape="skew",
-            DGCVType=DGCVType,
+            dgcvType=dgcvType,
             _simplifyKW=_simplifyKW,
         )
 
@@ -897,7 +902,7 @@ class DFClass(tensorField):
         varSpace,
         data_dict,
         degree,
-        DGCVType="standard",
+        dgcvType="standard",
         _simplifyKW={
             "simplify_rule": None,
             "simplify_ignore_list": None,
@@ -910,7 +915,7 @@ class DFClass(tensorField):
             data_dict,
             (0,) * degree,
             data_shape="skew",
-            DGCVType=DGCVType,
+            dgcvType=dgcvType,
             _simplifyKW=_simplifyKW,
         )
 
@@ -954,7 +959,7 @@ class DFClass(tensorField):
             The simplification rule to apply. Options include 'real', 'holomorphic', and 'symbolic_conjugate'.
 
         skipVar : list, optional
-            A list of strings that are parent labels for DGCV variable systems to exclude from the simplification process.
+            A list of strings that are parent labels for dgcv variable systems to exclude from the simplification process.
 
         Returns
         -------
@@ -969,7 +974,7 @@ class DFClass(tensorField):
             self.varSpace,
             self.DFClassDataDict,
             self.degree,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW={"simplify_rule": format_type, "simplify_ignore_list": skipVar},
         )
 
@@ -1030,7 +1035,7 @@ class DFClass(tensorField):
             self.varSpace,
             simplified_coeffs,
             self.degree,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
         )
 
@@ -1042,7 +1047,7 @@ class DFClass(tensorField):
             self.varSpace,
             newDFData,
             self.degree,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
         )
 
@@ -1072,7 +1077,7 @@ class DFClass(tensorField):
 
         Examples
         --------
-        >>> from DGCV import DFClass, creatVariables
+        >>> from dgcv import DFClass, creatVariables
         >>> creatVariables('x1','x2')
         >>> d_x1 = DFClass([x1], {(0,): 1}, 1)
         >>> d_x2 = DFClass([x2], {(0,): 1}, 1)
@@ -1110,7 +1115,7 @@ class DFClass(tensorField):
 
         Examples
         --------
-        >>> from DGCV import DFClass, creatVariables
+        >>> from dgcv import DFClass, creatVariables
         >>> creatVariables('x1','x2')
         >>> d_x1 = DFClass([x1], {(0,): 1}, 1)
         >>> d_x2 = DFClass([x2], {(0,): 1}, 1)
@@ -1212,7 +1217,7 @@ class DFClass(tensorField):
                 return self.coeffsInKFormBasis[0]
             else:
                 if all(isinstance(var, VFClass) for var in VFArgs):
-                    if self.DGCVType == "complex":
+                    if self.dgcvType == "complex":
                         if self._varSpace_type == "complex":
                             VFArgs = [
                                 (
@@ -1231,7 +1236,7 @@ class DFClass(tensorField):
                                 )
                                 for vf in VFArgs
                             ]
-                    if self.DGCVType == "standard":
+                    if self.dgcvType == "standard":
                         VFArgs = [_remove_complex_handling(vf) for vf in VFArgs]
                     inputCoeffs = contravariantVFTensorCoeffs(self.varSpace, *VFArgs)
                     # Access the elements of coeffArray directly
@@ -1254,7 +1259,7 @@ class DFClass(tensorField):
 # vector field class
 class VFClass(tensorField):
     """
-    A class representing vector fields in the DGCV package, with support for VF defined w.r.t. standard and
+    A class representing vector fields in the dgcv package, with support for VF defined w.r.t. standard and
     complex coordinate systems.
 
     Parameters
@@ -1265,7 +1270,7 @@ class VFClass(tensorField):
     coeffs : list
         Coefficients for each variable, matching the length of `varSpace`.
 
-    DGCVType : str, optional
+    dgcvType : str, optional
         Specifies the field type: 'standard' for real vector fields or 'complex' for complex ones (default is 'standard').
 
     _simplifyKW : dict, optional
@@ -1306,7 +1311,7 @@ class VFClass(tensorField):
         cls,
         varSpace,
         coeffs,
-        DGCVType="standard",
+        dgcvType="standard",
         _simplifyKW={
             "simplify_rule": None,
             "simplify_ignore_list": None,
@@ -1330,7 +1335,7 @@ class VFClass(tensorField):
             coeff_dict=coeff_dict,
             valence=valence,
             data_shape="skew",
-            DGCVType=DGCVType,
+            dgcvType=dgcvType,
             _simplifyKW=_simplifyKW,
         )
 
@@ -1338,7 +1343,7 @@ class VFClass(tensorField):
         self,
         varSpace,
         coeffs,
-        DGCVType="standard",
+        dgcvType="standard",
         _simplifyKW={
             "simplify_rule": None,
             "simplify_ignore_list": None,
@@ -1360,7 +1365,7 @@ class VFClass(tensorField):
             coeff_dict={(i,): coeff for i, coeff in enumerate(coeffs)},
             valence=(1,),
             data_shape="skew",
-            DGCVType=DGCVType,
+            dgcvType=dgcvType,
             _simplifyKW=_simplifyKW,
         )
 
@@ -1374,7 +1379,7 @@ class VFClass(tensorField):
             The simplification rule to apply. Options include 'real', 'holomorphic', and 'symbolic_conjugate'.
 
         skipVar : list, optional
-            A list of strings that are parent labels for DGCV variable systems to exclude from the simplification process.
+            A list of strings that are parent labels for dgcv variable systems to exclude from the simplification process.
 
         Returns
         -------
@@ -1388,7 +1393,7 @@ class VFClass(tensorField):
         return VFClass(
             self.varSpace,
             self.coeffs,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW={"simplify_rule": format_type, "simplify_ignore_list": skipVar},
         )
 
@@ -1436,14 +1441,14 @@ class VFClass(tensorField):
         return VFClass(
             self.varSpace,
             simplified_coeffs,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
         )
 
     def subs(self, subsData):
         newCoeffs = [sp.sympify(j).subs(subsData) for j in self.coeffs]
         return VFClass(
-            self.varSpace, newCoeffs, DGCVType=self.DGCVType, _simplifyKW=self._simplifyKW
+            self.varSpace, newCoeffs, dgcvType=self.dgcvType, _simplifyKW=self._simplifyKW
         )
 
     def __add__(self, other):
@@ -1474,7 +1479,7 @@ class VFClass(tensorField):
             arg = args[0]
             if (
                 self._varSpace_type == "complex"
-            ):  # this implies self.DGCVType=='complex'
+            ):  # this implies self.dgcvType=='complex'
                 if isinstance(arg, DFClass) and arg.degree == 0:
                     arg = (arg.coeffsInKFormBasis[0],)
                 return sum(
@@ -1484,12 +1489,12 @@ class VFClass(tensorField):
             else:
                 if isinstance(arg, DFClass) and arg.degree == 0:
                     arg = (arg.coeffsInKFormBasis[0],)
-                if self.DGCVType == "standard" or ignore_complex_handling:
+                if self.dgcvType == "standard" or ignore_complex_handling:
                     return sum(
                         self.coeffs[j] * sp.diff(arg, self.varSpace[j])
                         for j in range(len(self.coeffs))
                     )
-                elif self.DGCVType == "complex":
+                elif self.dgcvType == "complex":
                     return sum(
                         self.coeffs[j] * sp.diff(allToReal(arg), self.varSpace[j])
                         for j in range(len(self.coeffs))
@@ -1507,7 +1512,7 @@ class STFClass(tensorField):
         varSpace,
         data_dict,
         degree,
-        DGCVType="standard",
+        dgcvType="standard",
         _simplifyKW=None,
     ):
         if _simplifyKW is None:
@@ -1528,15 +1533,15 @@ class STFClass(tensorField):
             data_dict,
             valence,
             data_shape="symmetric",
-            DGCVType=DGCVType,
+            dgcvType=dgcvType,
             _simplifyKW=_simplifyKW,
         )
 
         return obj
 
-    def __init__(self, varSpace, data_dict, degree, DGCVType="standard", _simplifyKW=None):
+    def __init__(self, varSpace, data_dict, degree, dgcvType="standard", _simplifyKW=None):
         # Call tensorField's initializer
-        super().__init__(varSpace, data_dict, (0,) * degree, "symmetric", DGCVType, _simplifyKW)
+        super().__init__(varSpace, data_dict, (0,) * degree, "symmetric", dgcvType, _simplifyKW)
 
         self.degree = degree
 
@@ -1618,7 +1623,7 @@ class STFClass(tensorField):
             The simplification rule to apply. Options include 'real', 'holomorphic', and 'symbolic_conjugate'.
 
         skipVar : list, optional
-            A list of strings that are parent labels for DGCV variable systems to exclude from the simplification process.
+            A list of strings that are parent labels for dgcv variable systems to exclude from the simplification process.
 
         Returns
         -------
@@ -1633,7 +1638,7 @@ class STFClass(tensorField):
             self.varSpace,
             self.STFClassDataDict,
             self.degree,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW={"simplify_rule": format_type, "simplify_ignore_list": skipVar},
         )
 
@@ -1693,7 +1698,7 @@ class STFClass(tensorField):
             self.varSpace,
             simplified_coeffs,
             self.degree,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
         )
 
@@ -1705,7 +1710,7 @@ class STFClass(tensorField):
             self.varSpace,
             newSTFData,
             self.degree,
-            DGCVType=self.DGCVType,
+            dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
         )
 
@@ -1770,28 +1775,36 @@ class STFClass(tensorField):
 
     def __mul__(self, other):
         if isinstance(other,(int,float,sp.Expr)):
-            return STFClass(self.varSpace, {k:other*v for k,v in self.coeff_dict.items()}, self.degree, DGCVType=self.DGCVType, _simplifyKW=self._simplifyKW)
+            return STFClass(self.varSpace, {k:other*v for k,v in self.coeff_dict.items()}, self.degree, dgcvType=self.dgcvType, _simplifyKW=self._simplifyKW)
         return super().__mul__(other)
 
     def __rmul__(self, other):
         if isinstance(other,(int,float,sp.Expr)):
-            return STFClass(self.varSpace,  {k:other*v for k,v in self.coeff_dict.items()}, self.degree, DGCVType=self.DGCVType, _simplifyKW=self._simplifyKW)
+            return STFClass(self.varSpace,  {k:other*v for k,v in self.coeff_dict.items()}, self.degree, dgcvType=self.dgcvType, _simplifyKW=self._simplifyKW)
         return super().__mul__(other)
 
 
-# DGCV polynomial class
-class DGCVPolyClass(sp.Basic):
+# dgcv polynomial class
+def DGCVPolyClass(polyExpr, varSpace=None, degreeUpperBound=None):
+    warnings.warn(
+        "`DGCVPolyClass` has been deprecated as part of a shift toward standardized naming conventions in the `dgcv` library. "
+        "It will be removed in 2026. Please use `dgcvPolyClass` instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return dgcvPolyClass(polyExpr, varSpace=varSpace, degreeUpperBound=degreeUpperBound)
+class dgcvPolyClass(sp.Basic):
     """
     A polynomial class for handling both standard and complex polynomials, integrating SymPy's polynomial tools
-    with DGCV's complex variable handling. The `DGCVPolyClass` wraps SymPy's core polynomial functionality, namely the Poly class objects, in a way that interacts well with the DGCV framework for managing complex variable systems.
+    with dgcv's complex variable handling. The `dgcvPolyClass` wraps SymPy's core polynomial functionality, namely the Poly class objects, in a way that interacts well with the dgcv framework for managing complex variable systems.
 
-    DGCVPolyClass augments the base SymPy `Poly` in a few ways:
+    dgcvPolyClass augments the base SymPy `Poly` in a few ways:
 
     - **Support for multiple variable formats**: The class allows working with polynomials in unformatted,
       real, or complex (holomorphic/antiholomorphic with symbolic conjuagtes) forms through different lazy attributes.
-      The unformatted form maintains whatever format the expression given to initialize the DGCVPolyClass was in.
+      The unformatted form maintains whatever format the expression given to initialize the dgcvPolyClass was in.
     - **Holomorphic, antiholomorphic, pluriharmonic, and mixed term extraction**: This class has built-in methods to
-      decompose polynomials based on these parts, leveraging DGCV's `allToSym` and `allToReal` functions.
+      decompose polynomials based on these parts, leveraging dgcv's `allToSym` and `allToReal` functions.
 
 
     Parameters
@@ -1814,9 +1827,9 @@ class DGCVPolyClass(sp.Basic):
     poly_obj_unformatted : sympy.Poly
         The unformatted SymPy `Poly` object constructed from the provided expression and variable space.
     poly_obj_complex : sympy.Poly
-        The `Poly` object with holomorphic and antiholomorphic variables, constructed via DGCV's complex variable transformations.
+        The `Poly` object with holomorphic and antiholomorphic variables, constructed via dgcv's complex variable transformations.
     poly_obj_real : sympy.Poly
-        The `Poly` object with real variables, constructed using DGCV's real variable transformations.
+        The `Poly` object with real variables, constructed using dgcv's real variable transformations.
 
     Methods
     -------
@@ -1836,21 +1849,21 @@ class DGCVPolyClass(sp.Basic):
         Lazily computes and returns the mixed terms (terms involving both holomorphic and antiholomorphic variables).
 
     __add__(other):
-        Adds two `DGCVPolyClass` instances, combining their variable spaces and degree bounds.
+        Adds two `dgcvPolyClass` instances, combining their variable spaces and degree bounds.
 
     __mul__(other):
-        Multiplies two `DGCVPolyClass` instances, combining their variable spaces and degree bounds.
+        Multiplies two `dgcvPolyClass` instances, combining their variable spaces and degree bounds.
 
     __subs__(substitutions):
-        Substitutes variables in the polynomial expression and returns a new `DGCVPolyClass` instance with the substitutions applied.
+        Substitutes variables in the polynomial expression and returns a new `dgcvPolyClass` instance with the substitutions applied.
 
     Example
     -------
     >>> from sympy import symbols
-    >>> from dgcv import DGCVPolyClass, complexVarProc
+    >>> from dgcv import dgcvPolyClass, complexVarProc
     >>> x, y, z, BARz = symbols('x y z BARz')
-    >>> complexVarProc('z', 'x', 'y')  # Initialize complex variables in DGCV
-    >>> poly = DGCVPolyClass(y**2 + z**2)
+    >>> complexVarProc('z', 'x', 'y')  # Initialize complex variables in dgcv
+    >>> poly = dgcvPolyClass(y**2 + z**2)
     >>> print(poly.holomorphic_part)  # Extract the holomorphic part
     -z**2
     >>> print(poly.get_monomials(format='complex'))  # Get monomials in complex format
@@ -1863,7 +1876,7 @@ class DGCVPolyClass(sp.Basic):
 
     def __init__(self, polyExpr, varSpace=None, degreeUpperBound=None):
         """
-        Initializes the DGCVPolyClass with an optional variable space.
+        Initializes the dgcvPolyClass with an optional variable space.
 
         Parameters:
         polyExpr : sympy.Expr
@@ -2110,7 +2123,7 @@ class DGCVPolyClass(sp.Basic):
 
     # Custom simplify and latex methods
     def simplify_poly(self):
-        return DGCVPolyClass(
+        return dgcvPolyClass(
             sp.simplify(self.polyExpr),
             self.varSpace,
             degreeUpperBound=self.degreeUpperBound,
@@ -2144,7 +2157,7 @@ class DGCVPolyClass(sp.Basic):
 
     def expand(self, deep=True, modulus=None, **hints):
         """
-        Expands the internal polynomial expression and returns a new DGCVPolyClass instance.
+        Expands the internal polynomial expression and returns a new dgcvPolyClass instance.
         Supports 'deep' and 'modulus' keywords, passed directly to SymPy's expand function.
 
         Parameters
@@ -2156,12 +2169,12 @@ class DGCVPolyClass(sp.Basic):
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the expanded polynomial expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the expanded polynomial expression.
         """
         # Pass 'deep', 'modulus', and any additional hints to SymPy's expand method
         expanded_expr = self.polyExpr.expand(deep=deep, modulus=modulus, **hints)
-        return DGCVPolyClass(
+        return dgcvPolyClass(
             expanded_expr,
             varSpace=self.varSpace,
             degreeUpperBound=self.degreeUpperBound,
@@ -2169,15 +2182,15 @@ class DGCVPolyClass(sp.Basic):
 
     def factor(self, **hints):
         """
-        Factors the internal polynomial expression and returns a new DGCVPolyClass instance.
+        Factors the internal polynomial expression and returns a new dgcvPolyClass instance.
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the factored polynomial expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the factored polynomial expression.
         """
         factored_expr = self.polyExpr.factor(**hints)
-        return DGCVPolyClass(
+        return dgcvPolyClass(
             factored_expr,
             varSpace=self.varSpace,
             degreeUpperBound=self.degreeUpperBound,
@@ -2189,11 +2202,11 @@ class DGCVPolyClass(sp.Basic):
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with expanded trigonometric expressions.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with expanded trigonometric expressions.
         """
         expanded_trig_expr = self.polyExpr.expand(trig=True, **hints)
-        return DGCVPolyClass(
+        return dgcvPolyClass(
             expanded_trig_expr,
             varSpace=self.varSpace,
             degreeUpperBound=self.degreeUpperBound,
@@ -2205,11 +2218,11 @@ class DGCVPolyClass(sp.Basic):
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the canceled rational expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the canceled rational expression.
         """
         canceled_expr = self.polyExpr.cancel(**hints)
-        return DGCVPolyClass(
+        return dgcvPolyClass(
             canceled_expr,
             varSpace=self.varSpace,
             degreeUpperBound=self.degreeUpperBound,
@@ -2221,11 +2234,11 @@ class DGCVPolyClass(sp.Basic):
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the differentiated expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the differentiated expression.
         """
         differentiated_expr = self.polyExpr.diff(*symbols, **hints)
-        return DGCVPolyClass(
+        return dgcvPolyClass(
             differentiated_expr,
             varSpace=self.varSpace,
             degreeUpperBound=self.degreeUpperBound,
@@ -2237,11 +2250,11 @@ class DGCVPolyClass(sp.Basic):
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the integrated expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the integrated expression.
         """
         integrated_expr = self.polyExpr.integrate(*symbols, **hints)
-        return DGCVPolyClass(
+        return dgcvPolyClass(
             integrated_expr,
             varSpace=self.varSpace,
             degreeUpperBound=self.degreeUpperBound,
@@ -2249,7 +2262,7 @@ class DGCVPolyClass(sp.Basic):
 
     def subs(self, substitutions, **hints):
         """
-        Substitutes the given variables in the polynomial expression and returns a new DGCVPolyClass instance.
+        Substitutes the given variables in the polynomial expression and returns a new dgcvPolyClass instance.
 
         Parameters
         ----------
@@ -2260,14 +2273,14 @@ class DGCVPolyClass(sp.Basic):
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the substituted polynomial expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the substituted polynomial expression.
         """
         # Perform the substitution on the internal polyExpr
         substituted_expr = self.polyExpr.subs(substitutions, **hints)
 
-        # Return a new DGCVPolyClass with the substituted expression, preserving varSpace and degreeUpperBound
-        return DGCVPolyClass(
+        # Return a new dgcvPolyClass with the substituted expression, preserving varSpace and degreeUpperBound
+        return dgcvPolyClass(
             substituted_expr,
             varSpace=self.varSpace,
             degreeUpperBound=self.degreeUpperBound,
@@ -2275,7 +2288,7 @@ class DGCVPolyClass(sp.Basic):
 
     def _apply_sympy_function(self, sympy_func, *args, **kwargs):
         """
-        Applies the given SymPy function to the internal polyExpr and returns a new DGCVPolyClass instance.
+        Applies the given SymPy function to the internal polyExpr and returns a new dgcvPolyClass instance.
 
         Parameters
         ----------
@@ -2288,13 +2301,13 @@ class DGCVPolyClass(sp.Basic):
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the transformed polynomial expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the transformed polynomial expression.
         """
         transformed_expr = sympy_func(
             self.polyExpr, *args, **kwargs
         )  # Correct function call
-        return DGCVPolyClass(
+        return dgcvPolyClass(
             transformed_expr,
             varSpace=self.varSpace,
             degreeUpperBound=self.degreeUpperBound,
@@ -2322,18 +2335,18 @@ class DGCVPolyClass(sp.Basic):
 
         Parameters
         ----------
-        other : DGCVPolyClass or sympy.Expr
+        other : dgcvPolyClass or sympy.Expr
             The object to add.
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the added expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the added expression.
         """
-        if isinstance(other, DGCVPolyClass):
+        if isinstance(other, dgcvPolyClass):
             # Combine varSpaces, preserving order and removing duplicates
             new_varSpace = tuple(dict.fromkeys(self.varSpace + other.varSpace))
-            return DGCVPolyClass(
+            return dgcvPolyClass(
                 self.polyExpr + other.polyExpr,
                 varSpace=new_varSpace,
                 degreeUpperBound=self.degreeUpperBound,
@@ -2341,7 +2354,7 @@ class DGCVPolyClass(sp.Basic):
 
         elif isinstance(other, (int, float, sp.Expr)):
             # Add directly
-            return DGCVPolyClass(
+            return dgcvPolyClass(
                 self.polyExpr + other,
                 varSpace=self.varSpace,
                 degreeUpperBound=self.degreeUpperBound,
@@ -2355,18 +2368,18 @@ class DGCVPolyClass(sp.Basic):
 
         Parameters
         ----------
-        other : DGCVPolyClass or sympy.Expr
+        other : dgcvPolyClass or sympy.Expr
             The object to subtract.
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the subtracted expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the subtracted expression.
         """
-        if isinstance(other, DGCVPolyClass):
+        if isinstance(other, dgcvPolyClass):
             # Combine varSpaces, preserving order and removing duplicates
             new_varSpace = tuple(dict.fromkeys(self.varSpace + other.varSpace))
-            return DGCVPolyClass(
+            return dgcvPolyClass(
                 self.polyExpr - other.polyExpr,
                 varSpace=new_varSpace,
                 degreeUpperBound=self.degreeUpperBound,
@@ -2374,7 +2387,7 @@ class DGCVPolyClass(sp.Basic):
 
         elif isinstance(other, (int, float, sp.Expr)):
             # Subtract directly
-            return DGCVPolyClass(
+            return dgcvPolyClass(
                 self.polyExpr - other,
                 varSpace=self.varSpace,
                 degreeUpperBound=self.degreeUpperBound,
@@ -2388,21 +2401,21 @@ class DGCVPolyClass(sp.Basic):
 
         Parameters
         ----------
-        other : DGCVPolyClass or sympy.Expr
-            The object to multiply with. This can be a DGCVPolyClass instance, a scalar, or a SymPy expression.
+        other : dgcvPolyClass or sympy.Expr
+            The object to multiply with. This can be a dgcvPolyClass instance, a scalar, or a SymPy expression.
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the multiplied polynomial expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the multiplied polynomial expression.
 
         Raises
         ------
         ValueError
             If the multiplication involves a non-polynomial or unsupported expression.
         """
-        # Case 1: Multiplying by another DGCVPolyClass instance
-        if isinstance(other, DGCVPolyClass):
+        # Case 1: Multiplying by another dgcvPolyClass instance
+        if isinstance(other, dgcvPolyClass):
             # Combine varSpaces, preserving order and removing duplicates
             new_varSpace = tuple(dict.fromkeys(self.varSpace + other.varSpace))
 
@@ -2417,7 +2430,7 @@ class DGCVPolyClass(sp.Basic):
                 ]
                 new_degreeUpperBound = min(degree_values) if degree_values else None
 
-            return DGCVPolyClass(
+            return dgcvPolyClass(
                 self.polyExpr * other.polyExpr,
                 varSpace=new_varSpace,
                 degreeUpperBound=new_degreeUpperBound,
@@ -2426,7 +2439,7 @@ class DGCVPolyClass(sp.Basic):
         # Case 2: Multiplying by a scalar (constant or polynomial)
         elif isinstance(other, (int, float, sp.Number, sp.Poly, sp.Symbol)):
             # Multiply directly
-            return DGCVPolyClass(
+            return dgcvPolyClass(
                 self.polyExpr * other,
                 varSpace=self.varSpace,
                 degreeUpperBound=self.degreeUpperBound,
@@ -2441,7 +2454,7 @@ class DGCVPolyClass(sp.Basic):
                 )
 
             # Proceed with multiplication (but warn it's non-polynomial)
-            return DGCVPolyClass(
+            return dgcvPolyClass(
                 self.polyExpr * other,
                 varSpace=self.varSpace,
                 degreeUpperBound=self.degreeUpperBound,
@@ -2461,8 +2474,8 @@ class DGCVPolyClass(sp.Basic):
 
         Returns
         -------
-        DGCVPolyClass
-            A new DGCVPolyClass instance with the multiplied expression.
+        dgcvPolyClass
+            A new dgcvPolyClass instance with the multiplied expression.
         """
         return self.__mul__(other)
 
@@ -2486,7 +2499,7 @@ def createVariables(
     default_var_format=None,
 ):
     """
-    This function serves as the default interface for creating variables within the DGCV package. It supports creating both standard variable systems and complex variable systems, with options for initializing coordinate vector fields and differential forms. Variables created through `createVariables` are automatically tracked within DGCV’s Variable Management Framework (VMF) and are assigned labels validated through a safeguards routine that prevents overwriting important labels.
+    This function serves as the default interface for creating variables within the dgcv package. It supports creating both standard variable systems and complex variable systems, with options for initializing coordinate vector fields and differential forms. Variables created through `createVariables` are automatically tracked within dgcv’s Variable Management Framework (VMF) and are assigned labels validated through a safeguards routine that prevents overwriting important labels.
 
     Parameters
     ----------
@@ -2519,7 +2532,7 @@ def createVariables(
         variable systems and is ignored for complex systems.
 
     remove_guardrails : bool, optional
-        If set to True, bypasses DGCV's safeguard system for variable labeling, allowing one to overwrite certain
+        If set to True, bypasses dgcv's safeguard system for variable labeling, allowing one to overwrite certain
         reserved labels. Use with caution, as it may overwrite important variables in the global namespace.
 
     default_var_format : {'complex', 'real'}, optional
@@ -2530,13 +2543,13 @@ def createVariables(
     Returns
     -------
     None
-        This function creates the specified variable system and registers it within DGCV’s Variable Management Framework.
+        This function creates the specified variable system and registers it within dgcv’s Variable Management Framework.
 
     Functionality
     -------------
     - Creates standard or complex variable systems.
-    - Automatically registers all created variables, vector fields, and differential forms in DGCV’s VMF.
-    - Safeguards are applied to ensure that no critical Python or DGCV internal functions are overwritten.
+    - Automatically registers all created variables, vector fields, and differential forms in dgcv’s VMF.
+    - Safeguards are applied to ensure that no critical Python or dgcv internal functions are overwritten.
 
     Notes
     -----
@@ -2568,7 +2581,7 @@ def createVariables(
     --------
     If `complex=True` is provided along with incompatible keywords, such as `withVF=False`, or `complex=False` is provided while values are also given for `real_label` and `imaginary_label`, the function will resolve conflicts internally and issue a warning about the resolution.
 
-    Use `DGCV_snapshot()` for a clear summary of the variables created and tracked within the DGCV VMF.
+    Use `vmf_summary()` for a clear summary of the variables created and tracked within the dgcv VMF.
 
     """
     if multiindex_shape is not None:
@@ -2577,7 +2590,7 @@ def createVariables(
             or default_var_format == "complex"
         ):
             warnings.warn(
-                "A value for `multiindex_shape` was provided, so a standard variable system without vector fields or differential forms was created alligned with the multiindex_shape value. Multiindex variable labeling is not yet supported by DGCV's automated variable creation with vector fields or for complex variable systems. It will be in future DGCV updates. "
+                "A value for `multiindex_shape` was provided, so a standard variable system without vector fields or differential forms was created alligned with the multiindex_shape value. Multiindex variable labeling is not yet supported by dgcv's automated variable creation with vector fields or for complex variable systems. It will be in future dgcv updates. "
             )
             real_label = None
             imaginary_label = None
@@ -2605,11 +2618,11 @@ def createVariables(
         )
     if complex and not withVF:
         warnings.warn(
-            "`createVariables` was called with `complex=True` and `withVF=False`. The latter keyword was disregarded because DGCV automatically initializes associated differential objects whenever complex variable systems are created."
+            "`createVariables` was called with `complex=True` and `withVF=False`. The latter keyword was disregarded because dgcv automatically initializes associated differential objects whenever complex variable systems are created."
         )
     if complex and assumeReal:
         warnings.warn(
-            "`createVariables` was called with `complex=True` and `assumeReal=True`. The latter keyword was disregarded because DGCV has fixed variable assumptions for elements in its complex variable systems."
+            "`createVariables` was called with `complex=True` and `assumeReal=True`. The latter keyword was disregarded because dgcv has fixed variable assumptions for elements in its complex variable systems."
         )
     if complex == False and any([real_label is not None, imaginary_label is not None]):  # noqa: E712
         warnings.warn(
@@ -2704,7 +2717,7 @@ def variableProcedure(
     _obscure=None,
 ):
     """
-    Initializes one or more standard variables (single or tuples) and integrates them into DGCV's Variable Management Framework.
+    Initializes one or more standard variables (single or tuples) and integrates them into dgcv's Variable Management Framework.
 
     Parameters:
     ----------
@@ -2721,19 +2734,19 @@ def variableProcedure(
         If provided, specifies whether to treat the variable(s) as real. If True, the variable(s) are assumed to be real.
 
     _tempVar : None
-        Intended for internal DGCV use. If set to the internal DGCV passkey, marks the variable system as temporary.
+        Intended for internal dgcv use. If set to the internal dgcv passkey, marks the variable system as temporary.
 
     _obscure : None
-        Intended for internal DGCV use. If set to the internal DGCV passkey, marks the variable system as 'obscure'.
+        Intended for internal dgcv use. If set to the internal dgcv passkey, marks the variable system as 'obscure'.
 
     _doNotUpdateVar : None
-        Intended for internal DGCV use. If set to the internal DGCV passkey, prevents the variable(s) from being cleared and reinitialized.
+        Intended for internal dgcv use. If set to the internal dgcv passkey, prevents the variable(s) from being cleared and reinitialized.
 
     _calledFromCVP : None
-        Intended for internal DGCV use. If set to the internal DGCV passkey, interfaces with the Variable Management Framework supposing this is called from complexVarProc.
+        Intended for internal dgcv use. If set to the internal dgcv passkey, interfaces with the Variable Management Framework supposing this is called from complexVarProc.
 
     remove_guardrails : bool, optional
-        If set to True, bypasses DGCV's safeguard system for variable labeling.
+        If set to True, bypasses dgcv's safeguard system for variable labeling.
 
     Updates the internal variable_registry dict accordingly.
     """
@@ -2748,7 +2761,7 @@ def variableProcedure(
         for j in (tuple(variables_label) if isinstance(variables_label, (list, tuple)) else (variables_label,)):
             if j in variable_registry.get("protected_variables", set()):
                 raise Exception(
-                    f"{variables_label} is already assigned to the real or imaginary part of a complex variable system, so DGCV variable creation functions will not reassign it as a standard variable. Instead, use the clearVar function to remove the conflicting CV system first before implementing such reassignments."
+                    f"{variables_label} is already assigned to the real or imaginary part of a complex variable system, so dgcv variable creation functions will not reassign it as a standard variable. Instead, use the clearVar function to remove the conflicting CV system first before implementing such reassignments."
                 )
 
     # Process each variable label.
@@ -2877,7 +2890,7 @@ def varProcMultiIndex(arg1, arg2, arg3):
         NA
     """
     warnings.warn(
-        "`varProcMultiIndex` is depricated and will be removed from DGCV in future updates. Use `createVariables` instead."
+        "`varProcMultiIndex` is depricated and will be removed from dgcv in future updates. Use `createVariables` instead."
     )
     _cached_caller_globals.update(
         zip(
@@ -2941,7 +2954,7 @@ def varWithVF(
         If provided, specifies whether to treat the variable(s) as real. If True, the variable(s) are assumed to be real.
 
     _calledFromCVP : None
-        Reserved for internal DGCV use when called from complexVarProc. Does not affect the behavior in this function.
+        Reserved for internal dgcv use when called from complexVarProc. Does not affect the behavior in this function.
 
     Updates the internal variable_registry dict:
     --------------------------
@@ -3128,13 +3141,13 @@ def complexVarProc(
         for label in labels:
             if label in protectedGlobals:
                 raise ValueError(
-                    f"DGCV recognizes label '{label}' as a protected global name and recommends not using it as a variable name. "
+                    f"dgcv recognizes label '{label}' as a protected global name and recommends not using it as a variable name. "
                     "Set remove_guardrails=True in the variable creation functions to force it."
                 )
             if label.startswith("BAR"):
                 reformatted_label = "anti_" + label[3:]
                 warnings.warn(
-                    f"Label '{label}' starts with 'BAR', which has special meaning in DGCV. It has been automatically reformatted to '{reformatted_label}'."
+                    f"Label '{label}' starts with 'BAR', which has special meaning in dgcv. It has been automatically reformatted to '{reformatted_label}'."
                 )
             else:
                 reformatted_label = label
@@ -3279,23 +3292,23 @@ def complexVarProc(
             def create_differential_objects_single(var_hol, var_bar, var_real, var_im, default_var_format):
                 if default_var_format == "real":
                     # Differential objects using the real/imaginary parts.
-                    vf_instance_hol = VFClass((var_real, var_im), [sp.Rational(1, 2), -I/2], DGCVType="complex")
-                    vf_instance_aHol = VFClass((var_real, var_im), [sp.Rational(1, 2), I/2], DGCVType="complex")
-                    vf_instance_real = VFClass((var_real, var_im), [1, 0], DGCVType="complex")
-                    vf_instance_im = VFClass((var_real, var_im), [0, 1], DGCVType="complex")
-                    df_instance_hol = DFClass((var_real, var_im), {(0,): 1, (1,): I}, 1, DGCVType="complex")
-                    df_instance_aHol = DFClass((var_real, var_im), {(0,): 1, (1,): -I}, 1, DGCVType="complex")
-                    df_instance_real = DFClass((var_real, var_im), {(0,): 1}, 1, DGCVType="complex")
-                    df_instance_im = DFClass((var_real, var_im), {(1,): 1}, 1, DGCVType="complex")
+                    vf_instance_hol = VFClass((var_real, var_im), [sp.Rational(1, 2), -I/2], dgcvType="complex")
+                    vf_instance_aHol = VFClass((var_real, var_im), [sp.Rational(1, 2), I/2], dgcvType="complex")
+                    vf_instance_real = VFClass((var_real, var_im), [1, 0], dgcvType="complex")
+                    vf_instance_im = VFClass((var_real, var_im), [0, 1], dgcvType="complex")
+                    df_instance_hol = DFClass((var_real, var_im), {(0,): 1, (1,): I}, 1, dgcvType="complex")
+                    df_instance_aHol = DFClass((var_real, var_im), {(0,): 1, (1,): -I}, 1, dgcvType="complex")
+                    df_instance_real = DFClass((var_real, var_im), {(0,): 1}, 1, dgcvType="complex")
+                    df_instance_im = DFClass((var_real, var_im), {(1,): 1}, 1, dgcvType="complex")
                 else:  # default_var_format == "complex"
-                    vf_instance_hol = VFClass((var_hol, var_bar), [1, 0], DGCVType="complex")
-                    vf_instance_aHol = VFClass((var_hol, var_bar), [0, 1], DGCVType="complex")
-                    vf_instance_real = VFClass((var_hol, var_bar), [1, 1], DGCVType="complex")
-                    vf_instance_im = VFClass((var_hol, var_bar), [I, -I], DGCVType="complex")
-                    df_instance_hol = DFClass((var_hol, var_bar), {(0,): 1}, 1, DGCVType="complex")
-                    df_instance_aHol = DFClass((var_hol, var_bar), {(1,): 1}, 1, DGCVType="complex")
-                    df_instance_real = DFClass((var_hol, var_bar), {(0,): sp.Rational(1,2),(1,): sp.Rational(1,2)}, 1, DGCVType="complex")
-                    df_instance_im = DFClass((var_hol, var_bar), {(0,): -I/2, (1,): I/2}, 1, DGCVType="complex")
+                    vf_instance_hol = VFClass((var_hol, var_bar), [1, 0], dgcvType="complex")
+                    vf_instance_aHol = VFClass((var_hol, var_bar), [0, 1], dgcvType="complex")
+                    vf_instance_real = VFClass((var_hol, var_bar), [1, 1], dgcvType="complex")
+                    vf_instance_im = VFClass((var_hol, var_bar), [I, -I], dgcvType="complex")
+                    df_instance_hol = DFClass((var_hol, var_bar), {(0,): 1}, 1, dgcvType="complex")
+                    df_instance_aHol = DFClass((var_hol, var_bar), {(1,): 1}, 1, dgcvType="complex")
+                    df_instance_real = DFClass((var_hol, var_bar), {(0,): sp.Rational(1,2),(1,): sp.Rational(1,2)}, 1, dgcvType="complex")
+                    df_instance_im = DFClass((var_hol, var_bar), {(0,): -I/2, (1,): I/2}, 1, dgcvType="complex")
                 return vf_instance_hol, vf_instance_aHol, vf_instance_real, vf_instance_im, df_instance_hol, df_instance_aHol, df_instance_real, df_instance_im
             # Create differential objects for single systems.
             vf_instance_hol, vf_instance_aHol, vf_instance_real, vf_instance_im, df_instance_hol, df_instance_aHol, df_instance_real, df_instance_im = create_differential_objects_single(
@@ -3631,7 +3644,7 @@ def _format_complex_coordinates(
     coordinate_tuple, default_var_format="complex", pass_error_report=None
 ):
     """
-    Format var. lists consisting of variables within DGCV complex variable systems, formatting as real or holomorphic and completeing the basis as needed (i.e., adding BARz if only z is present, adding y if only x, etc.)
+    Format var. lists consisting of variables within dgcv complex variable systems, formatting as real or holomorphic and completeing the basis as needed (i.e., adding BARz if only z is present, adding y if only x, etc.)
     """
     vr = get_variable_registry()
     exaustList = list(coordinate_tuple)
@@ -3660,7 +3673,7 @@ def _format_complex_coordinates(
                                 exaustList.remove(j)
     except KeyError:
         if pass_error_report == retrieve_passkey():
-            return "At least one element in the given variable list is not registered as part of a complex variable system in the DGCV variable management framework."
+            return "At least one element in the given variable list is not registered as part of a complex variable system in the dgcv variable management framework."
     return tuple(newList1 + newList2)
 
 
@@ -3677,22 +3690,22 @@ def _VFDF_conversion(obj, default_var_format=None, _converter=None, coeffsOnly =
             return obj.subs(coeffsOnly)
     if default_var_format == "complex":
         if isinstance(obj, VFClass):
-            if obj.DGCVType == "standard":
+            if obj.dgcvType == "standard":
                 return VFClass(
                     obj.varSpace,
                     [converter(j, _converter) for j in obj.coeffs],
-                    DGCVType=obj.DGCVType,
+                    dgcvType=obj.dgcvType,
                     _simplifyKW=obj._simplifyKW,
                 )
             varSpace = obj.cd_formats["compCoeffDataDict"][0]
             coeffsDict = obj.cd_formats["compCoeffDataDict"][1]
             coeffs = [converter(coeffsDict[(j,)], _converter) for j in range(len(varSpace))]
             return VFClass(
-                varSpace, coeffs, DGCVType=obj.DGCVType, _simplifyKW=obj._simplifyKW
+                varSpace, coeffs, dgcvType=obj.dgcvType, _simplifyKW=obj._simplifyKW
             )
         elif isinstance(obj, DFClass):
-            specialCase = obj.DGCVType == "complex" and obj._varSpace_type == "complex"
-            if obj.DGCVType == "standard" or specialCase:
+            specialCase = obj.dgcvType == "complex" and obj._varSpace_type == "complex"
+            if obj.dgcvType == "standard" or specialCase:
                 return DFClass(
                     obj.varSpace,
                     {
@@ -3700,7 +3713,7 @@ def _VFDF_conversion(obj, default_var_format=None, _converter=None, coeffsOnly =
                         for a, b in obj.DFClassDataDict.items()
                     },
                     obj.degree,
-                    DGCVType=obj.DGCVType,
+                    dgcvType=obj.dgcvType,
                     _simplifyKW=obj._simplifyKW,
                 )
             varSpace = obj.cd_formats["compCoeffDataDict"][0]
@@ -3710,27 +3723,27 @@ def _VFDF_conversion(obj, default_var_format=None, _converter=None, coeffsOnly =
                 varSpace,
                 dataDict,
                 obj.degree,
-                DGCVType=obj.DGCVType,
+                dgcvType=obj.dgcvType,
                 _simplifyKW=obj._simplifyKW,
             )
     elif default_var_format == "real":
         if isinstance(obj, VFClass):
-            if obj.DGCVType == "standard":
+            if obj.dgcvType == "standard":
                 return VFClass(
                     obj.varSpace,
                     [converter(a, _converter) for a in obj.coeffs],
-                    DGCVType=obj.DGCVType,
+                    dgcvType=obj.dgcvType,
                     _simplifyKW=obj._simplifyKW,
                 )
             varSpace = obj.cd_formats["realCoeffDataDict"][0]
             coeffsDict = obj.cd_formats["realCoeffDataDict"][1]
             coeffs = [converter(coeffsDict[(j,)], _converter) for j in range(len(varSpace))]
             return VFClass(
-                varSpace, coeffs, DGCVType=obj.DGCVType, _simplifyKW=obj._simplifyKW
+                varSpace, coeffs, dgcvType=obj.dgcvType, _simplifyKW=obj._simplifyKW
             )
         elif isinstance(obj, DFClass):
-            specialCase = obj.DGCVType == "complex" and obj._varSpace_type == "real"
-            if obj.DGCVType == "standard" or specialCase:
+            specialCase = obj.dgcvType == "complex" and obj._varSpace_type == "real"
+            if obj.dgcvType == "standard" or specialCase:
                 return DFClass(
                     obj.varSpace,
                     {
@@ -3738,7 +3751,7 @@ def _VFDF_conversion(obj, default_var_format=None, _converter=None, coeffsOnly =
                         for a, b in obj.DFClassDataDict.items()
                     },
                     obj.degree,
-                    DGCVType=obj.DGCVType,
+                    dgcvType=obj.dgcvType,
                     _simplifyKW=obj._simplifyKW,
                 )
             varSpace = obj.cd_formats["realCoeffDataDict"][0]
@@ -3748,7 +3761,7 @@ def _VFDF_conversion(obj, default_var_format=None, _converter=None, coeffsOnly =
                 varSpace,
                 dataDict,
                 obj.degree,
-                DGCVType=obj.DGCVType,
+                dgcvType=obj.dgcvType,
                 _simplifyKW=obj._simplifyKW,
             )
 
@@ -4198,7 +4211,7 @@ def _remove_complex_handling(arg):
 
 def complex_struct_op(vf):
     if isinstance(vf, VFClass):
-        if vf.DGCVType == "standard":
+        if vf.dgcvType == "standard":
             return vf
         elif vf._varSpace_type == "real":
             newVarSpace = vf.cd_formats["realCoeffDataDict"][0]
@@ -4214,7 +4227,7 @@ def complex_struct_op(vf):
             return VFClass(
                 newVarSpace,
                 coeffs1 + coeffs2,
-                DGCVType="complex",
+                dgcvType="complex",
                 _simplifyKW=vf._simplifyKW,
             )
         elif vf._varSpace_type == "complex":
@@ -4231,12 +4244,19 @@ def complex_struct_op(vf):
             return VFClass(
                 newVarSpace,
                 coeffs1 + coeffs2,
-                DGCVType="complex",
+                dgcvType="complex",
                 _simplifyKW=vf._simplifyKW,
             )
 
-
 def conjugate_DGCV(expr):
+    warnings.warn(
+        "`conjugate_DGCV` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
+        "It will be removed in 2026. Please use `conjugate_dgcv` instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return conjugate_dgcv(expr)
+def conjugate_dgcv(expr):
     if isinstance(expr, (VFClass, DFClass)):
         return _conjComplexVFDF(expr)
     else:
@@ -4344,8 +4364,15 @@ def minimalDFDataDict(df):
 
     return new_varTuple, new_DFDataDict
 
-
 def compressDGCVClass(obj):
+    warnings.warn(
+        "`compressDGCVClass` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
+        "It will be removed in 2026. Please use `compress_dgcv_class` instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return compress_dgcv_class(obj)
+def compress_dgcv_class(obj):
     """Removes superfluous variables from the variable space that a VFClass or DFClass object is defined w.r.t."""
     if isinstance(obj, DFClass):
         newVarSpace, newDFData = minimalDFDataDict(obj)
@@ -4353,7 +4380,7 @@ def compressDGCVClass(obj):
             newVarSpace,
             newDFData,
             obj.degree,
-            DGCVType=obj.DGCVType,
+            dgcvType=obj.dgcvType,
             _simplifyKW=obj._simplifyKW,
         )
     elif isinstance(obj, VFClass):
@@ -4361,7 +4388,7 @@ def compressDGCVClass(obj):
         newVarSpace = list(VFData.keys())
         newCoeffs = [VFData[j] for j in newVarSpace]
         return VFClass(
-            newVarSpace, newCoeffs, DGCVType=obj.DGCVType, _simplifyKW=obj._simplifyKW
+            newVarSpace, newCoeffs, dgcvType=obj.dgcvType, _simplifyKW=obj._simplifyKW
         )
 
 
@@ -4372,7 +4399,7 @@ def VF_coeffs(vf, var_list, sparse=False):
     It also works if var_list merely contains the minimum set of such variables needed to define the vector field,
     and returns an error if not.
 
-    Additionally, if vf has DGCVType="complex" then var_list can have variables in real or holomorphic coordinates
+    Additionally, if vf has dgcvType="complex" then var_list can have variables in real or holomorphic coordinates
     but these types cannot be mixed.
 
     Args:
@@ -4385,7 +4412,7 @@ def VF_coeffs(vf, var_list, sparse=False):
     Raises:
         TypeError if vf is not a VFClass or if the symbols in var_list are not all from one coordinate format.
     """
-    # Get the DGCV variable registry
+    # Get the dgcv variable registry
     variable_registry = get_variable_registry()
 
     # Ensure vf is a VFClass instance
@@ -4393,7 +4420,7 @@ def VF_coeffs(vf, var_list, sparse=False):
         raise TypeError(f"VF_coeffs expects the first argument to be an instance of VFClass, not type: {type(vf)}")
 
     # For complex vector fields, check that the variable list is uniformly in one coordinate format.
-    if vf.DGCVType == "complex":
+    if vf.dgcvType == "complex":
         conv_realToSym = variable_registry["conversion_dictionaries"]["realToSym"]
         conv_symToReal = variable_registry["conversion_dictionaries"]["symToReal"]
         if all(var in conv_realToSym for var in var_list):
@@ -4406,7 +4433,7 @@ def VF_coeffs(vf, var_list, sparse=False):
                 vf = allToSym(vf)
         else:
             raise TypeError(
-                "The VF_coeffs function was given a VFClass with DGCVType='complex' while the variable list contains "
+                "The VF_coeffs function was given a VFClass with dgcvType='complex' while the variable list contains "
                 "a mixture of real and holomorphic coordinates. Variables should be provided in just one coordinate format."
             )
 
@@ -4424,7 +4451,7 @@ def VF_coeffs(vf, var_list, sparse=False):
     return coeffs
 
 def changeVFBasis(arg1, arg2):
-    return VFClass(arg2, VF_coeffs(arg1, arg2), arg1.DGCVType)
+    return VFClass(arg2, VF_coeffs(arg1, arg2), arg1.dgcvType)
 
 
 def addVF(*args):
@@ -4443,7 +4470,7 @@ def addVF(*args):
     if len(args) == 0:
         return args
     if all([isinstance(j, VFClass) for j in args]):
-        typeList = list(set([j.DGCVType for j in args]))
+        typeList = list(set([j.dgcvType for j in args]))
         if len(typeList) == 1 and typeList[0] == "complex":
             typeLoc = "complex"
         else:
@@ -4481,7 +4508,7 @@ def scaleVF(scalar, vector_field):
     """
     if isinstance(vector_field, VFClass):
         new_coeffs = [scalar * coeff for coeff in vector_field.coeffs]
-        return VFClass(vector_field.varSpace, new_coeffs, vector_field.DGCVType)
+        return VFClass(vector_field.varSpace, new_coeffs, vector_field.dgcvType)
     else:
         raise TypeError(
             "Expected second argument to be an instance of the VFClass class."
@@ -4518,7 +4545,7 @@ def VF_bracket(arg1, arg2, doNotSimplify=False, fast_algorithm=True):
 
     Example:
     --------
-    >>> from DGCV import VF_bracket, complexVarProc
+    >>> from dgcv import VF_bracket, complexVarProc
     >>> complexVarProc('z','x','y',3)
     >>> print(VF_bracket(x2*D_x1 - x1*D_x2, x3*D_x1 - x1*D_x3))
     x3*D_x2 - x2*D_x3
@@ -4527,11 +4554,11 @@ def VF_bracket(arg1, arg2, doNotSimplify=False, fast_algorithm=True):
     z3/2*D_x2 - z2/2*D_x3 - I*z3/2*D_y2 + I*z2/2*D_y3
     """
     if {arg1.__class__.__name__, arg2.__class__.__name__} == {"VFClass"}:
-        # Determine the type (standard/complex) based on DGCVType attribute
-        if arg1.DGCVType == "complex" or arg2.DGCVType == "complex":
+        # Determine the type (standard/complex) based on dgcvType attribute
+        if arg1.dgcvType == "complex" or arg2.dgcvType == "complex":
             typeLoc = (
                 "standard"
-                if (arg1.DGCVType != "complex" or arg2.DGCVType != "complex")
+                if (arg1.dgcvType != "complex" or arg2.dgcvType != "complex")
                 else "complex"
             )
             fast_handling = False
@@ -4620,7 +4647,7 @@ def contravariantVFTensorCoeffs(varSpace, *vector_fields):
 
     Examples
     --------
-    >>> from DGCV import VFClass, contravariantVFTensorCoeffs, creatVariables
+    >>> from dgcv import VFClass, contravariantVFTensorCoeffs, creatVariables
     >>> creatVariables('x1','x2')
     >>> vf1 = VFClass([x, y], [1, -y])
     >>> vf2 = VFClass([x, y], [y, 1])
@@ -4656,7 +4683,7 @@ def changeDFBasis(arg1, arg2):
         arg2,
         newDFDataLoc,
         arg1.degree,
-        DGCVType=arg1.DGCVType,
+        dgcvType=arg1.dgcvType,
         _simplifyKW=arg1._simplifyKW,
     )
 
@@ -4685,14 +4712,14 @@ def changeTFBasis(tensor_field, new_varSpace):
         new_varSpace,
         new_coeff_dict,
         tensor_field.valence,
-        data_shape=tensor_field.data_shape,DGCVType=tensor_field.DGCVType,_simplifyKW=tensor_field._simplifyKW
+        data_shape=tensor_field.data_shape,dgcvType=tensor_field.dgcvType,_simplifyKW=tensor_field._simplifyKW
     )
 
 def changeTensorFieldBasis(tensor_field, new_varSpace):
     """
     Converts a tensorField to a new basis while handling complex variable transformations.
 
-    If `tensor_field` has `DGCVType='complex'`, `new_varSpace` is validated so that:
+    If `tensor_field` has `dgcvType='complex'`, `new_varSpace` is validated so that:
     - All variables belong to a complex variable system.
     - Variables are converted to match the tensor's target type (real/imaginary or hol/antihol).
 
@@ -4711,10 +4738,10 @@ def changeTensorFieldBasis(tensor_field, new_varSpace):
     Warnings
     --------
     A warning is raised if `new_varSpace` contains variables that are not part of
-    a recognized DGCV complex coordinate system.
+    a recognized dgcv complex coordinate system.
     """
 
-    new_type = tensor_field.DGCVType
+    new_type = tensor_field.dgcvType
     if new_type == 'complex':
         cd = get_variable_registry()['conversion_dictionaries']  # Retrieve conversion dictionaries
 
@@ -4725,9 +4752,9 @@ def changeTensorFieldBasis(tensor_field, new_varSpace):
         elif first_var in cd['find_parents']:
             target_type = "real"
         else:
-            raise KeyError(f"First variable {first_var} in tensor_field.varSpace is not part of complex variable system in DGCV's variable management framework.")
+            raise KeyError(f"First variable {first_var} in tensor_field.varSpace is not part of complex variable system in dgcv's variable management framework.")
 
-        # Validate that all variables in new_varSpace belong to DGCV's complex variable system
+        # Validate that all variables in new_varSpace belong to dgcv's complex variable system
         if not all(var in cd['real_part'] or var in cd['find_parents'] for var in new_varSpace):
             warnings.warn(
                 "`changeTensorFieldBasis` was given a `complex` type tensor field and `new_varSpace` "
@@ -4771,7 +4798,7 @@ def changeTensorFieldBasis(tensor_field, new_varSpace):
         coeff_dict=new_coeff_dict,
         valence=tensor_field.valence,
         data_shape=tensor_field.data_shape,
-        DGCVType=new_type,
+        dgcvType=new_type,
         _simplifyKW=tensor_field._simplifyKW
     )
 
@@ -4821,7 +4848,7 @@ def changeSTFBasis(arg1, arg2):
         arg2,
         newSTFDataLoc,
         arg1.degree,
-        DGCVType=arg1.DGCVType,
+        dgcvType=arg1.dgcvType,
         _simplifyKW=arg1._simplifyKW,
     )
 
@@ -4879,7 +4906,7 @@ def addTensorFields(*args, doNotSimplify=False):
         combined_coeffs,
         args[0].valence,
         data_shape=result_data_shape,
-        DGCVType=args[0].DGCVType,
+        dgcvType=args[0].dgcvType,
         _simplifyKW=args[0]._simplifyKW,
     )
 
@@ -4892,7 +4919,7 @@ def scaleTensorField(arg1, arg2):
             arg2.varSpace,
             {a: arg1 * b for a, b in arg2.coeff_dict.items()},
             arg2.valence,
-            arg2.DGCVType,
+            arg2.dgcvType,
             arg2._simplifyKW
         )
     else:
@@ -4930,7 +4957,7 @@ def addDF(*args, doNotSimplify=False):
     Examples
     --------
     >>> from sympy import symbols
-    >>> from DGCV import DFClass, addDF
+    >>> from dgcv import DFClass, addDF
     >>> x, y, z = symbols('x y z')
     >>> df1 = DFClass([x, y], {(0,): 1, (1,): 2}, 1)
     >>> df2 = DFClass([x, y], {(0,): 3, (1,): 4}, 1)
@@ -4950,7 +4977,7 @@ def addDF(*args, doNotSimplify=False):
         return args[0]
     if all([isinstance(j, DFClass) for j in args]):
         if len(set([j.degree for j in args])) == 1:
-            typeList = list(set([j.DGCVType for j in args]))
+            typeList = list(set([j.dgcvType for j in args]))
             if len(typeList) == 1 and typeList[0] == "complex":
                 typeLoc = "complex"
                 if args[0]._varSpace_type == "real":
@@ -4967,7 +4994,7 @@ def addDF(*args, doNotSimplify=False):
                 typeLoc = "standard"
                 if len(typeList) != 1:
                     warnings.warn(
-                        "Addition was performed between differential forms of `DGCVType` both `complex` and `standard`, so the resulting DFClass object has `DGCVType='standard'`, which disables complex variable handling. To preserve `DGCVType='complex'` make sure all DFClass objects in sum have `DGCVType='complex'`."
+                        "Addition was performed between differential forms of `dgcvType` both `complex` and `standard`, so the resulting DFClass object has `dgcvType='standard'`, which disables complex variable handling. To preserve `dgcvType='complex'` make sure all DFClass objects in sum have `dgcvType='complex'`."
                     )
 
             # Fix here: Convert varSpace to tuples
@@ -5039,7 +5066,7 @@ def scaleDF(arg1, arg2):
 
     Examples
     --------
-    >>> from DGCV import DFClass, scaleDF, creatVariables
+    >>> from dgcv import DFClass, scaleDF, creatVariables
     >>> creatVariables('x1','x2')
     >>> df = DFClass([x, y], {(0,): 1, (1,): 2}, 1)
     >>> scale = 3
@@ -5058,7 +5085,7 @@ def scaleDF(arg1, arg2):
             arg2.varSpace,
             {a: arg1 * b for a, b in arg2.DFClassDataDict.items()},
             arg2.degree,
-            arg2.DGCVType,
+            arg2.dgcvType,
         )
     else:
         raise Exception(
@@ -5094,7 +5121,7 @@ def exteriorProduct(*args, doNotSimplify=False):
 
     Examples
     --------
-    >>> from DGCV import DFClass, exteriorProduct, creatVariables
+    >>> from dgcv import DFClass, exteriorProduct, creatVariables
     >>> creatVariables('x1','x2')
     >>> df1 = DFClass([x], {0: 1}, 1)
     >>> df2 = DFClass([y], {0: 1}, 1)
@@ -5106,7 +5133,7 @@ def exteriorProduct(*args, doNotSimplify=False):
         raise Exception("Expected all arguments to be instances of DFClass")
 
     # Determine the type of the exterior product (standard or complex)
-    typeList = {j.DGCVType for j in args}
+    typeList = {j.dgcvType for j in args}
     typeLoc = "complex" if len(typeList) == 1 and "complex" in typeList else "standard"
     if typeLoc == "complex":
         if args[0]._varSpace_type == "real":
@@ -5187,7 +5214,7 @@ def sparseKFormDataNewBasis(sparseKFormData, oldBasis, newBasis):
     """
     Converts the indices of a k-form's sparse data representation from an old basis to a new basis.
 
-    This function is primarily a helper for DGCV's exterior product calculus, allowing sparse data representing
+    This function is primarily a helper for dgcv's exterior product calculus, allowing sparse data representing
     differential forms to be transformed into a new variable basis.
 
     Parameters
@@ -5255,7 +5282,7 @@ def addSTF(*args, doNotSimplify=False):
         return args[0]
     if all([isinstance(j, STFClass) for j in args]):
         if len(set([j.degree for j in args])) == 1:
-            typeList = list(set([j.DGCVType for j in args]))
+            typeList = list(set([j.dgcvType for j in args]))
             if len(typeList) == 1 and typeList[0] == "complex":
                 typeLoc = "complex"
                 if args[0]._varSpace_type == "real":
@@ -5272,7 +5299,7 @@ def addSTF(*args, doNotSimplify=False):
                 typeLoc = "standard"
                 if len(typeList) != 1:
                     warnings.warn(
-                        "Addition was performed between symmetric tensor fields of `DGCVType` both `complex` and `standard`, so the resulting STFClass object has `DGCVType='standard'`, which disables complex variable handling. To preserve `DGCVType='complex'`, use only STFClass objects in sum with `DGCVType='complex'`."
+                        "Addition was performed between symmetric tensor fields of `dgcvType` both `complex` and `standard`, so the resulting STFClass object has `dgcvType='standard'`, which disables complex variable handling. To preserve `dgcvType='complex'`, use only STFClass objects in sum with `dgcvType='complex'`."
                     )
 
             # Fix here: Convert varSpace to tuples
@@ -5324,7 +5351,7 @@ def scaleTF(arg1, arg2):
             arg2.varSpace,
             {a: arg1 * b for a, b in arg2.STFClassDataDict.items()},
             arg2.degree,
-            DGCVType=arg2.DGCVType,
+            dgcvType=arg2.dgcvType,
             _simplifyKW=arg2._simplifyKW,
         )
     else:
@@ -5366,11 +5393,11 @@ def tensor_product(*args, doNotSimplify=False):
         raise Exception(f"Expected all arguments to be instances of tensorField or scalar-like objects, not type: {bt_str}")
     non_scalars = [arg for arg in args if isinstance(arg,tensorField)]
 
-    if len(set([tf.DGCVType for tf in non_scalars]))==1:
-        target_type = non_scalars[0].DGCVType
+    if len(set([tf.dgcvType for tf in non_scalars]))==1:
+        target_type = non_scalars[0].dgcvType
     else:
         if len(non_scalars)>0:
-            warnings.warn('`tensor_product` was applied to tensorField instances with different DGCVType attributes, so a `DGCVType = \'standard\'` tensorField was returned and variable formatting specific to any particular DGCVType was ignored.')
+            warnings.warn('`tensor_product` was applied to tensorField instances with different dgcvType attributes, so a `dgcvType = \'standard\'` tensorField was returned and variable formatting specific to any particular dgcvType was ignored.')
         target_type = 'standard'
     if target_type == 'complex':
         cd = get_variable_registry()['conversion_dictionaries']  # Retrieve conversion dictionaries
@@ -5381,7 +5408,7 @@ def tensor_product(*args, doNotSimplify=False):
         elif first_var in cd['find_parents']:  # Means it is in real/imaginary set
             args = [allToReal(arg) for arg in args]
         else:
-            raise KeyError(f"First variable {first_var} in tensor_field.varSpace is not part of complex variable system in DGCV's variable management framework.")
+            raise KeyError(f"First variable {first_var} in tensor_field.varSpace is not part of complex variable system in dgcv's variable management framework.")
 
     # Helper function to multiply terms
     def TermMultiplier(coeff_dict1, coeff_dict2):
@@ -5408,7 +5435,7 @@ def tensor_product(*args, doNotSimplify=False):
         new_coeff_dict = TermMultiplier(aligned_arg1.expanded_coeff_dict, aligned_arg2.expanded_coeff_dict)
 
         # Return the new tensorField
-        return tensorField(new_varSpace, new_coeff_dict, new_valence, data_shape='general',DGCVType=arg1,_simplifyKW=arg1._simplifyKW)
+        return tensorField(new_varSpace, new_coeff_dict, new_valence, data_shape='general',dgcvType=arg1,_simplifyKW=arg1._simplifyKW)
 
     # Handle multiple tensors
     if len(args) > 1:
@@ -5458,7 +5485,7 @@ def holVF_coeffs(arg1, arg2, doNotSimplify=False):
 
     Example:
     --------
-    >>> from DGCV import complexVarProc, holVF_coeffs
+    >>> from dgcv import complexVarProc, holVF_coeffs
     >>> complexVarProc('z','x','y',3)
     >>> holVF_coeffs(D_z1 + D_BARz2, [z1, z2, z3])
     [1, 0, 0]
@@ -5499,7 +5526,7 @@ def antiholVF_coeffs(arg1, arg2, doNotSimplify=False):
 
     Example:
     --------
-    >>> from DGCV import complexVarProc, antiholVF_coeffs
+    >>> from dgcv import complexVarProc, antiholVF_coeffs
     >>> complexVarProc('z','x','y',3)
     >>> antiholVF_coeffs(D_z1 + D_BARz2, [z1, z2, z3])
     [0, 1, 0]
@@ -5541,7 +5568,7 @@ def complexVFC(arg1, arg2, doNotSimplify=False):
 
     Example:
     --------
-    >>> from DGCV import complexVarProc, complexVFC
+    >>> from dgcv import complexVarProc, complexVFC
     >>> complexVarProc('z', 'x', 'y', 3)
     >>> complexVFC(D_z1 + D_BARz2, [z1, z2, z3])
     ([1, 0, 0], [0, 1, 0])
@@ -5576,13 +5603,13 @@ def conjComplex(arg):
 
     Example:
     --------
-    >>> from DGCV import complexVarProc, conjComplexVF
+    >>> from dgcv import complexVarProc, conjComplexVF
     >>> complexVarProc('z', 'x', 'y', 3)
     >>> vf = assembleFromCompVFC((z1, z2, 0), (BARz1, BARz2, 0), [z1, z2, z3])
     >>> conjComplexVF(vf)
     VFClass instance representing the complex conjugate of *vf*
     """
-    warnings.warn("`conjComplex` has been depricated. Use conjugate_DGCV instead")
+    warnings.warn("`conjComplex` has been deprecated. Use `conjugate_dgcv` instead")
     return _conjComplexVFDF(arg)
 
 
@@ -5607,7 +5634,7 @@ def _conjComplexVFDF(arg):
 
     Example:
     --------
-    >>> from DGCV import complexVarProc, conjComplexVF
+    >>> from dgcv import complexVarProc, conjComplexVF
     >>> complexVarProc('z', 'x', 'y', 3)
     >>> vf = assembleFromCompVFC((z1, z2, 0), (BARz1, BARz2, 0), [z1, z2, z3])
     >>> conjComplexVF(vf)
@@ -5616,26 +5643,26 @@ def _conjComplexVFDF(arg):
 
     if isinstance(arg, VFClass):
         # Return the complex conjugate of the vector field
-        if arg.DGCVType == "complex":
+        if arg.dgcvType == "complex":
             if arg._varSpace_type == "complex":
                 arg = allToReal(arg)
                 return allToSym(
                     VFClass(
                         arg.varSpace,
                         [sp.conjugate(j) for j in arg.coeffs],
-                        DGCVType="complex",
+                        dgcvType="complex",
                         _simplifyKW=arg._simplifyKW,
                     )
                 )
         return VFClass(
             arg.varSpace,
             [sp.conjugate(j) for j in arg.coeffs],
-            DGCVType=arg.DGCVType,
+            dgcvType=arg.dgcvType,
             _simplifyKW=arg._simplifyKW,
         )
     elif isinstance(arg, DFClass):
         # Return the complex conjugate of the vector field
-        if arg.DGCVType == "complex":
+        if arg.dgcvType == "complex":
             if arg._varSpace_type == "complex":
                 arg = allToReal(arg)
                 return allToSym(
@@ -5643,7 +5670,7 @@ def _conjComplexVFDF(arg):
                         arg.varSpace,
                         {a: sp.conjugate(b) for a, b in arg.DFClassDataDict.items()},
                         arg.degree,
-                        DGCVType="complex",
+                        dgcvType="complex",
                         _simplifyKW=arg._simplifyKW,
                     )
                 )
@@ -5651,7 +5678,7 @@ def _conjComplexVFDF(arg):
             arg.varSpace,
             {a: sp.conjugate(b) for a, b in arg.DFClassDataDict.items()},
             arg.degree,
-            DGCVType=arg.DGCVType,
+            dgcvType=arg.dgcvType,
             _simplifyKW=arg._simplifyKW,
         )
     else:
@@ -5684,7 +5711,7 @@ def realPartOfVF(arg1, *args):
 
     Example:
     --------
-    >>> from DGCV import complexVarProc, realPartOfVF, assembleFromCompVFC
+    >>> from dgcv import complexVarProc, realPartOfVF, assembleFromCompVFC
     >>> from sympy import simplify
     >>> complexVarProc('z', 'x', 'y', 3)
     >>> vf = assembleFromCompVFC((z1, z2, 0), (BARz1, BARz2, 0), [z1, z2, z3])
@@ -5710,7 +5737,7 @@ def listVar(
     protected_only=False,
 ):
     """
-    This function lists all parent labels for objects tracked within the DGCV Variable Management Framework (VMF). In particular strings that are keys in DGCV's internal `standard_variable_systems`, `complex_variable_systems`, 'finite_algebra_systems', 'eps' dictionaries, etc. It also accepts optional keywords to filter the results, showing only temporary, protected, or "obscure" object system labels.
+    This function lists all parent labels for objects tracked within the dgcv Variable Management Framework (VMF). In particular strings that are keys in dgcv's internal `standard_variable_systems`, `complex_variable_systems`, 'finite_algebra_systems', 'eps' dictionaries, etc. It also accepts optional keywords to filter the results, showing only temporary, protected, or "obscure" object system labels.
 
     Parameters
     ----------
@@ -5777,7 +5804,7 @@ def listVar(
 def _clearVar_single(label):
     """
     Helper function that clears a single variable system (standard, complex, or finite algebra)
-    from the DGCV variable management framework. Instead of printing a report, it returns
+    from the dgcv variable management framework. Instead of printing a report, it returns
     a tuple (system_type, label) indicating what was cleared.
     """
     registry = get_variable_registry()
@@ -5928,7 +5955,7 @@ def clearVar(*labels, report=True):
 
     This function takes one or more variable system labels (strings) and clears all
     associated variables, vector fields, differential forms, and metadata from the
-    DGCV system. Variable system refers to object systems created by the DGCV
+    dgcv system. Variable system refers to object systems created by the dgcv
     variable creation functions `variableProcedure`, `varWithVF`, and
     `complexVarProc`. Use `listVar()` to retriev a list of existed variable system
     labels. The function handles both standard and complex variable systems,
@@ -5975,13 +6002,13 @@ def clearVar(*labels, report=True):
 
     Notes
     -----
-    - Comprehensively clears variables and their associated metadata from the DGCV
+    - Comprehensively clears variables and their associated metadata from the dgcv
       system.
     - Use with `listVar` to expediantly clear everything, e.g., `clearVar(*listVar())`.
 
     Examples
     --------
-    >>> clearVar('x') # removes any DGCV variable system labeled as x, such as
+    >>> clearVar('x') # removes any dgcv variable system labeled as x, such as
                       # (x, D_x, d_x), (x=(x1, x2), x1, x2, D_x1, d_x1,...), etc.
     >>> clearVar('z', 'y', 'w')
 
@@ -6015,33 +6042,41 @@ def clearVar(*labels, report=True):
     if report:
         if cleared_standard:
             print(
-                f"Cleared standard variable systems from the DGCV variable management framework: {', '.join(cleared_standard)}"
+                f"Cleared standard variable systems from the dgcv variable management framework: {', '.join(cleared_standard)}"
             )
         if cleared_complex:
             print(
-                f"Cleared complex variable systems from the DGCV variable management framework: {', '.join(cleared_complex)}"
+                f"Cleared complex variable systems from the dgcv variable management framework: {', '.join(cleared_complex)}"
             )
         if cleared_algebras:
             print(
-                f"Cleared finite algebra systems from the DGCV variable management framework: {', '.join(cleared_algebras)}"
+                f"Cleared finite algebra systems from the dgcv variable management framework: {', '.join(cleared_algebras)}"
             )
         if cleared_diffFormAtoms:
             print(
-                f"Cleared differential form systems from the DGCV variable management framework: {', '.join(cleared_diffFormAtoms)}"
+                f"Cleared differential form systems from the dgcv variable management framework: {', '.join(cleared_diffFormAtoms)}"
             )
         if cleared_coframes:
             for cf_label, cp_label in cleared_coframes:
                 print(f"Cleared coframe '{cf_label}' along with associated zero form atom system '{cp_label}'")
 
-def DGCV_snapshot(style="default", use_latex=False, complete_report = None):
+def DGCV_snapshot(style=None, use_latex=None, complete_report = None):
+    warnings.warn(
+        "`DGCV_snapshot` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
+        "It will be removed in 2026. Please use `vmf_summary` instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return vmf_summary(style=style, use_latex=use_latex, complete_report = complete_report)
+
+def vmf_summary(style=None, use_latex=None, complete_report = None):
     """
-    Generate a comprehensive snapshot of DGCV's variable management framework (VMF), including variables,
-    algebras, coordinate systems, vector fields, and differential forms.
+    Generate a comprehensive snapshot of dgcv's variable management framework (VMF), such as coordinate systems, algebras, coframes, and more.
 
     Parameters
     ----------
     style : str, optional
-        The style options to apply to the summary table. Default theme is 'chalkboard_green'. Use the DGCV function `get_DGCV_themes()` to display a list of other available themes.
+        The style options to apply to the summary table. Default theme is 'chalkboard_green'. Use the dgcv function `get_DGCV_themes()` to display a list of other available themes.
     use_latex : bool, optional
         If True, the table will format text using LaTeX for better
         mathematical display. Default is False.
@@ -6049,9 +6084,13 @@ def DGCV_snapshot(style="default", use_latex=False, complete_report = None):
     Returns
     -------
     DataFrame
-        A formatted snapshot displaying the initialized variables, algebras, coordinate systems,
-        vector fields, and differential forms.
+        A formatted summary table displaying the initialized objects, such as coordinate systems, algebras, coframes, etc.
     """
+    if style is None:
+        style = get_dgcv_settings_registry()['theme']
+    if use_latex is None:
+        use_latex = get_dgcv_settings_registry()['use_latex']
+
     if complete_report is True:
         force_report = True
     else:
@@ -6072,7 +6111,7 @@ def DGCV_snapshot(style="default", use_latex=False, complete_report = None):
         outputs.append(_snapshot_coframes_(style=style, use_latex=use_latex))
 
     if not outputs and not force_report:
-        print("There are no objects currently registered in the DGCV VMF.")
+        print("There are no objects currently registered in the dgcv VMF.")
     else:
         for table in outputs:
             display(table)
@@ -6082,15 +6121,15 @@ def DGCV_snapshot(style="default", use_latex=False, complete_report = None):
 def variableSummary(*args, **kwargs):
     warnings.warn(
         "variableSummary() is deprecated and will be removed in a future version. "
-        "Please use DGCV_snapshot() instead.",
+        "Please use vmf_summary() instead.",
         DeprecationWarning,
         stacklevel=2,
     )
-    return DGCV_snapshot(*args, **kwargs)
+    return vmf_summary(*args, **kwargs)
 
-def _snapshot_coor_(style="default", use_latex=False):
+def _snapshot_coor_(style=None, use_latex=None):
     """
-    Returns a Pandas DataFrame summarizing the coordinate systems in DGCV.
+    Returns a Pandas DataFrame summarizing the coordinate systems in dgcv.
 
     This snapshot includes both complex and standard variable systems.
     For each system, the summary includes:
@@ -6109,6 +6148,11 @@ def _snapshot_coor_(style="default", use_latex=False):
     Returns:
         A styled Pandas DataFrame summarizing the coordinate systems and finite algebras.
     """
+    if style is None:
+        style = get_dgcv_settings_registry()['theme']
+    if use_latex is None:
+        use_latex = get_dgcv_settings_registry()['use_latex']
+
     def wrap_in_dollars(content):
         return f"${content}$"
 
@@ -6261,10 +6305,8 @@ def _snapshot_coor_(style="default", use_latex=False):
         family_names = system.get("family_names", ())
         if isinstance(family_names, (list, tuple)):
             num_basis = len(family_names)
-            basis_str = f"{family_names[0]}, ..., {family_names[-1]}" if num_basis > 5 else ", ".join(str(x) for x in family_names)
         else:
             num_basis = 1
-            basis_str = str(family_names)
         formatted_label = format_variable_name(var_name, "algebra", use_latex=use_latex)
         algebra_labels.append(formatted_label)
         # For finite algebras, we place placeholders for other columns.
@@ -6289,9 +6331,9 @@ def _snapshot_coor_(style="default", use_latex=False):
     )
     return styled_table
 
-def _snapshot_algebras_(style="default", use_latex=False):
+def _snapshot_algebras_(style=None, use_latex=None):
     """
-    Returns a Pandas DataFrame summarizing the finite algebra systems in DGCV's VMF.
+    Returns a Pandas DataFrame summarizing the finite algebra systems in dgcv's VMF.
 
     For each finite algebra system, the snapshot includes:
       - The formatted algebra label.
@@ -6306,12 +6348,14 @@ def _snapshot_algebras_(style="default", use_latex=False):
     Returns:
         A styled Pandas DataFrame.
     """
+    if style is None:
+        style = get_dgcv_settings_registry()['theme']
+    if use_latex is None:
+        use_latex = get_dgcv_settings_registry()['use_latex']
 
-    # Helper: wrap content in dollars for LaTeX
     def wrap_in_dollars(content):
         return f"${content}$"
 
-    # Helper: convert variable name to Greek if applicable.
     def convert_to_greek(var_name):
         # Assume greek_letters is defined module-wide as a dict mapping strings to LaTeX-valid Greek strings.
         # Example: {'alpha': '\\alpha', 'beta': '\\beta', ...}
@@ -6320,7 +6364,6 @@ def _snapshot_algebras_(style="default", use_latex=False):
                 return var_name.replace(name, greek, 1)
         return var_name
 
-    # Helper: process a basis label into a LaTeX string.
     def process_basis_label(label):
         # Use regex to separate alphabetic and numeric parts.
         match = re.match(r"(.*?)(\d+)?$", label)
@@ -6336,7 +6379,6 @@ def _snapshot_algebras_(style="default", use_latex=False):
         else:
             return label
 
-    # Retrieve the variable registry.
     registry = get_variable_registry()
     data = []
 
@@ -6365,7 +6407,6 @@ def _snapshot_algebras_(style="default", use_latex=False):
     columns = ["Algebra Label", "Basis", "Dimension"]
     df = pd.DataFrame(data, columns=columns)
 
-    # Apply styling using get_style().
     table_styles = get_style(style)+[{'selector': 'td', 'props': [('text-align', 'left')]}]+[{'selector': 'th', 'props': [('text-align', 'left')]}]
     styled_df = df.style.set_table_styles(table_styles)
     styled_df = (
@@ -6376,7 +6417,7 @@ def _snapshot_algebras_(style="default", use_latex=False):
     )
     return styled_df
 
-def _snapshot_eds_atoms_(style="default", use_latex=False):
+def _snapshot_eds_atoms_(style=None, use_latex=None):
     """
     Returns a summary table listing abstract differential form atoms in the VMF scope
 
@@ -6392,6 +6433,10 @@ def _snapshot_eds_atoms_(style="default", use_latex=False):
     pandas.DataFrame
         A summary table listing abstract differential form atoms in the VMF scope
     """
+    if style is None:
+        style = get_dgcv_settings_registry()['theme']
+    if use_latex is None:
+        use_latex = get_dgcv_settings_registry()['use_latex']
     variable_registry = get_variable_registry()
     eds_atoms_registry = variable_registry["eds"]["atoms"]
 
@@ -6463,9 +6508,7 @@ def _snapshot_eds_atoms_(style="default", use_latex=False):
 
     return styled_df
 
-
-
-def _snapshot_coframes_(style="default", use_latex=False):
+def _snapshot_coframes_(style=None, use_latex=None):
     """
     Returns a summary table listing coframes in the VMF scope
 
@@ -6482,6 +6525,10 @@ def _snapshot_coframes_(style="default", use_latex=False):
     Returns a summary table listing coframes in the VMF scope
     """
 
+    if style is None:
+        style = get_dgcv_settings_registry()['theme']
+    if use_latex is None:
+        use_latex = get_dgcv_settings_registry()['use_latex']
     variable_registry = get_variable_registry()
     coframes_registry = variable_registry["eds"].get("coframes", {})
 

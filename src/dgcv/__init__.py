@@ -1,46 +1,15 @@
 """
-DGCV: Package Initialization
+dgcv: Package Initialization
 
-The DGCV package integrates tools for differential geometry with a framework for conveniently working with complex variables. The `__init__.py` module initializes core components of the package.
-
-Initialization:
-    - Global Cache and Variable Management Framework: Automatically sets up the global cache and variable registry
-      systems that underly DGCV's Variable Management Framework (VMF). The VMF tracks and caches 
-      relationships between variables (of coordinate systems) and related objects, and it is fundamental
-      in much of the library's functionalities.
-    - Warnings Configuration: Configures DGCV-specific warning behaviors.
-
-Usage Notes:
-    - To start using DGCV, simply import the package:
-    ```python
-    import DGCV
-
-DGCV: Package Initialization
-
-The DGCV package integrates tools for differential geometry with a framework for conveniently working with complex variables. The `__init__.py` module initializes core components of the package.
-
+The dgcv package integrates tools for differential geometry with a framework for conveniently working with complex variables. The `__init__.py` module initializes core components of the package.
 
 Initialization:
-    - Global Cache and Variable Management: Automatically sets up the global cache and variable registry
-      systems that underly DGCV's Variable Management Framework (VMF). The VMF tracks and caches 
-      relationships between variables (of coordinate systems) and related objects, and it is fundamental
-      in much of the library's functionalities.
-    - Warnings Configuration: Configures DGCV-specific warning behaviors.
-
-Usage Notes:
-- To start using DGCV, simply import the package:
-  ```python
-  import DGCV
-  ```
-- SymPy utilities frequently used with DGCV (e.g., `I`, `conjugate`, `im`, `re`, `simplify`) should be imported 
-  directly from SymPy:
-  ```python
-  from sympy import I, conjugate, im, re, simplify
-  ```
-- The package initialization automatically configures the VMF and integrates DGCV-specific warnings.
+    - Global Cache and Variable Management Framework: Automatically sets up the global cache and variable registry systems that underly dgcv's Variable Management Framework (VMF). The VMF tracks and caches relationships between variables (of coordinate systems) and related objects, and it is fundamental in much of the library's functionalities.
+    - Warnings Configuration: Configures dgcv-specific warning behaviors.
 
 Dependencies:
     - sympy: Provides foundational symbolic computation tools.
+    - pandas: Used for displaying tables of data
     - IPython: Supports enhanced output display for Jupyter notebooks.
 
 Author: David Sykes (https://www.realandimaginary.com/dgcv/)
@@ -52,20 +21,38 @@ License:
 
 # Imports
 
-from .config import cache_globals, configure_warnings, get_variable_registry
+# getting current version for dgcv settings defaults
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("dgcv")
+except PackageNotFoundError:
+    __version__ = "unknown"
+
+
+
+
+from ._config import cache_globals, configure_warnings, get_variable_registry
 
 ############# Variable Management Framework (VMF) tools
-# Initialize the globals pointer cache when DGCV is imported
+# Initialize the globals pointer cache when dgcv is imported
 cache_globals()
 
-# Initialize variable_registry when DGCV is imported
+# Initialize variable_registry when dgcv is imported
 _ = get_variable_registry()
 
 
-from ._dgcv_display import DGCV_init_printing, LaTeX, display_DGCV
+from ._config import canonicalize
+from ._dgcv_display import (
+    DGCV_init_printing,
+    LaTeX,
+    LaTeX_eqn_system,
+    display_DGCV,
+    show,
+)
+from ._settings import set_dgcv_settings
 from .combinatorics import carProd, chooseOp, permSign
 from .complex_structures import Del, DelBar, KahlerStructure
-from .config import canonicalize
 from .coordinate_maps import coordinate_map
 from .CR_geometry import (
     findWeightedCRSymmetries,
@@ -75,8 +62,8 @@ from .CR_geometry import (
 )
 from .dgcv_core import (
     DFClass,
-    DGCV_snapshot,
-    DGCVPolyClass,
+    DGCV_snapshot,  # deprecated
+    DGCVPolyClass,  # deprecated
     STFClass,
     VF_bracket,
     VF_coeffs,
@@ -96,12 +83,15 @@ from .dgcv_core import (
     clearVar,
     complex_struct_op,
     complexVFC,
-    compressDGCVClass,
+    compress_dgcv_class,
+    compressDGCVClass,  # deprecated
     conj_with_hol_coor,
     conj_with_real_coor,
     conjComplex,
-    conjugate_DGCV,
+    conjugate_DGCV,  # deprecated
+    conjugate_dgcv,
     createVariables,
+    dgcvPolyClass,
     exteriorProduct,
     holToReal,
     holToSym,
@@ -122,6 +112,25 @@ from .dgcv_core import (
     tensor_product,
     tensorField,
     variableSummary,
+    vmf_summary,
+)
+
+# EDS imports exposed at the top level
+from .eds import (
+    DF_representation,
+    abst_coframe,
+    abstract_DF,
+    abstract_ZF,
+    coframe_derivative,
+    createCoframe,
+    createDiffForm,
+    createZeroForm,
+    expand_dgcv,
+    extDer,
+    factor_dgcv,
+    simplify_with_PDEs,
+    transform_coframe,
+    zeroFormAtom,
 )
 from .finite_dim_algebras import (
     AlgebraElement,
@@ -145,8 +154,8 @@ from .Riemannian_geometry import (
     metric_from_matrix,
     metricClass,
 )
-from .solvers import solve_DGCV
-from .styles import get_DGCV_themes
+from .solvers import solve_dgcv
+from .styles import get_DGCV_themes, get_dgcv_themes  # get_DGCV_themes is deprecated
 from .tensors import createVectorSpace, tensorProduct, vectorSpace, vectorSpaceElement
 from .vector_fields_and_differential_forms import (
     LieDerivative,
@@ -169,11 +178,17 @@ __all__ = [
 
     # From _dgcv_display
     "LaTeX",                # Custom LaTeX renderer for DGCV objects
-    "display_DGCV",         # Augments IPython.display.display
+    "LaTeX_eqn_system",     # Custom LaTeX renderer for dictionaries 
+                            # or lists representing equation systems       
+    "display_DGCV",         # deprecated
+    "show",                 # Augments IPython.display.display
                             # with support for DGCV object like
                             # custom latex rendering
-    "DGCV_init_printing",    # Augments SymPy.init_printing for DGCV
+    "DGCV_init_printing",   # Augments SymPy.init_printing for DGCV
                             # objects
+
+    # From _settings
+    "set_dgcv_settings",
 
     # From combinatorics
     "carProd",              # Cartesian product
@@ -185,7 +200,7 @@ __all__ = [
     "DelBar",               # Anti-holomorphic derivative operator
     "KahlerStructure",      # Represents a Kähler structure
 
-    # From config
+    # From _config
     "canonicalize",         # Reformat supported objects canonically
 
     # From coordinateMaps
@@ -200,8 +215,10 @@ __all__ = [
     # From dgcv_core
     "tensorField",          # Tensor field class
     "DFClass",              # Differential form class
-    "DGCVPolyClass",        # DGCV polynomial class
-    "DGCV_snapshot",        # Summarize initialized DGCV objects
+    "DGCVPolyClass",        # deprecated 
+    "dgcvPolyClass",        # dgcv polynomial class
+    "DGCV_snapshot",        # deprecated
+    "vmf_summary",          # Summarize initialized dgcv objects
     "STFClass",             # Symmetric tensor field class
     "VFClass",              # Vector field class
     "VF_bracket",           # Lie bracket of vector fields
@@ -224,11 +241,13 @@ __all__ = [
     "clearVar",             # Clear DGCV objects from globals()
     "complexVFC",           # Complex coordingate vector field coefficients
     "complex_struct_op",    # Complex structure operator
-    "compressDGCVClass",    # 
+    "compressDGCVClass",    # deprecated
+    "compress_dgcv_class",  # Removes superfluous variables from tensorField variable spaces
     "conjComplex",          # Conjugate complex variables
     "conj_with_hol_coor",   # Conjugate with holomorphic coordinate formatting
     "conj_with_real_coor",  # Conjugate with real coordinate formatting
-    "conjugate_DGCV",       # Conjugate DGCV objects
+    "conjugate_DGCV",       # deprecated
+    "conjugate_dgcv",       # Conjugate DGCV objects
     "createVariables",      # Initialize variables in DGCV's VMF
     "exteriorProduct",      # Compute exterior product
     "holToReal",            # Convert holomorphic to real format
@@ -249,6 +268,22 @@ __all__ = [
     "symToReal",            # Convert symbolic conjugates to real format
     "tensor_product",        # Compute tensor product of tensorField instances
     "variableSummary",      # Depricated - use DGCV_snapshot instead
+
+    # From eds
+    "zeroFormAtom",
+    "factor_dgcv",
+    "expand_dgcv",
+    "createZeroForm",
+    "createDiffForm",
+    "abst_coframe",
+    "createCoframe",
+    "abstract_DF",
+    "abstract_ZF",
+    "extDer",
+    "simplify_with_PDEs",
+    "coframe_derivative",
+    "DF_representation",
+    "transform_coframe",
 
     # From finiteDimAlgebras
     "AlgebraElement",       # Algebra element class
@@ -273,10 +308,11 @@ __all__ = [
     "metricClass",          # Metric class
 
     # From styles
-    "get_DGCV_themes",      # Get DGCV themes for various output styles
+    "get_DGCV_themes",      # deprecated
+    "get_dgcv_themes",       # Get DGCV themes for various output styles
 
     # From solvers
-    "solve_DGCV",           # supports solving equations with various DGCV types
+    "solve_dgcv",           # supports solving equations with various DGCV types
 
     # From tensors
     "vectorSpace",          # Class representing vector spaces

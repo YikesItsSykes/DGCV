@@ -2,6 +2,7 @@ import warnings
 
 import sympy as sp
 
+from ._config import _cached_caller_globals, get_variable_registry
 from ._safeguards import (
     create_key,
     retrieve_passkey,
@@ -13,7 +14,6 @@ from ._tensor_field_printers import (
     tensor_VS_printer,
 )
 from .combinatorics import shufflings
-from .config import _cached_caller_globals, get_variable_registry
 from .dgcv_core import clearVar, listVar
 
 
@@ -155,7 +155,7 @@ class vectorSpace(sp.Basic):
         if not self._registered:
             warnings.warn(
                 "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
         return (
@@ -171,7 +171,7 @@ class vectorSpace(sp.Basic):
         if not self._registered:
             warnings.warn(
                 "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -191,15 +191,15 @@ class vectorSpace(sp.Basic):
             f"Basis: {formatted_basis_labels}"
         )
 
-    def _display_DGCV_hook(self):
+    def _display_dgcv_hook(self):
         """
-        Hook for DGCV-specific display customization.
+        Hook for dgcv-specific display customization.
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
             warnings.warn(
                 "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -225,7 +225,7 @@ class vectorSpace(sp.Basic):
         if not self._registered:
             warnings.warn(
                 "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -296,7 +296,7 @@ class vectorSpace(sp.Basic):
         if not self._registered:
             warnings.warn(
                 "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -376,7 +376,7 @@ class vectorSpaceElement(sp.Basic):
         if not self.vectorSpace._registered:
             warnings.warn(
                 "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -426,7 +426,7 @@ class vectorSpaceElement(sp.Basic):
         if not self.vectorSpace._registered:
             warnings.warn(
                 "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -494,7 +494,7 @@ class vectorSpaceElement(sp.Basic):
         if not self.vectorSpace._registered:
             warnings.warn(
                 "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -1074,7 +1074,7 @@ class tensorProduct(sp.Basic):
 
             if other.max_degree==1 and other.min_degree==1:
                 if self.max_degree==1 and self.min_degree==1:
-                    from DGCV.finiteDimAlgebras import AlgebraElement #local import  # noqa: I001
+                    from dgcv.finite_dim_algebras import AlgebraElement #local import  # noqa: I001
                     if self.prolongation_type == other.prolongation_type:
                         if isinstance(self.vector_space,vectorSpace):
                             return 0*self

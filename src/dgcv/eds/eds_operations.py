@@ -46,10 +46,10 @@ def transform_coframe(original_coframe:abst_coframe, transformations:list|tuple|
     new_structure_eqns = dict()
 
     for df_atom, df in zip(new_coframe_basis,new_basis):
-        from ..solvers import solve_DGCV
+        from ..solvers import solve_dgcv
         new_extD = extDer(df,original_coframe)
         eqns = [new_extD - general_elem]
-        solution = solve_DGCV(eqns,cVars)
+        solution = solve_dgcv(eqns,cVars)
         if len(solution)>1:
             raise ValueError('The given coframe transformation rule is not invertible')
         if len(solution)<1:

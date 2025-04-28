@@ -2,7 +2,7 @@ import random
 import string
 import warnings
 
-from .config import _cached_caller_globals, get_variable_registry
+from ._config import _cached_caller_globals, get_variable_registry
 
 # Generate a dynamic passkey using random
 _passkey = "".join(random.choices(string.ascii_letters + string.digits, k=16))
@@ -50,7 +50,7 @@ def create_key(prefix=None, avoid_caller_globals=False, key_length = 8):
 
 def retrieve_passkey():
     """
-    Returns the internal passkey for use within DGCV functions.
+    Returns the internal passkey for use within dgcv functions.
     """
     return _passkey
 
@@ -148,9 +148,9 @@ def validate_label_list(basis_labels):
                             "_variable_systems", ""
                         ).replace("_", " ")
                         detailed_message += (
-                            f"\n`validate_basis_labels` detected '{label}' within the DGCV Variable Management Framework "
+                            f"\n`validate_basis_labels` detected '{label}' within the dgcv Variable Management Framework "
                             f"assigned as the label for a {system_name} system.\n"
-                            f"Apply the DGCV function `clearVar('{label}')` to clear the obstructing objects."
+                            f"Apply the dgcv function `clearVar('{label}')` to clear the obstructing objects."
                         )
                     else:
                         # Check if the label is a child variable
@@ -166,9 +166,9 @@ def validate_label_list(basis_labels):
                                     "_variable_systems", ""
                                 ).replace("_", " ")
                                 detailed_message += (
-                                    f"\n`validate_basis_labels` detected '{label}' within the DGCV Variable Management Framework "
+                                    f"\n`validate_basis_labels` detected '{label}' within the dgcv Variable Management Framework "
                                     f"associated with the {system_name} system '{parent_label}'.\n"
-                                    f"Apply the DGCV function `clearVar('{parent_label}')` to clear the obstructing objects."
+                                    f"Apply the dgcv function `clearVar('{parent_label}')` to clear the obstructing objects."
                                 )
 
     if existing_labels:
@@ -227,7 +227,7 @@ def validate_label(label, remove_guardrails=False):
     if not remove_guardrails:
         if label in protected_caller_globals():
             raise ValueError(
-                f"DGCV recognizes label '{label}' as a protected global name and recommends not using it as a variable name. Set remove_guardrails=True to force it."
+                f"dgcv recognizes label '{label}' as a protected global name and recommends not using it as a variable name. Set remove_guardrails=True to force it."
             )
 
         # Check if the label is a child of a parent in 'protected_variables' in the variable_registry
@@ -243,11 +243,11 @@ def validate_label(label, remove_guardrails=False):
                     ):
                         # Found the parent label associated with the protected variable
                         raise ValueError(
-                            f"Label '{label}' is protected within the current DGCV Variable Management Framework, "
+                            f"Label '{label}' is protected within the current dgcv Variable Management Framework, "
                             f"as it is associated with the complex variable system '{parent_label}'.\n"
-                            f"It is recommended to use the DGCV function `clearVar('{parent_label}')` to clear the protected variable "
-                            f"from the DGCV Variable Management Framework (VMF) before reassigning this label.\n"
-                            f"Or set remove_guardrails=True in the relevant DGCV object creator to force the use of this label, "
+                            f"It is recommended to use the dgcv function `clearVar('{parent_label}')` to clear the protected variable "
+                            f"from the dgcv Variable Management Framework (VMF) before reassigning this label.\n"
+                            f"Or set remove_guardrails=True in the relevant dgcv object creator to force the use of this label, "
                             f"but note this can limit available features from the VMF."
                         )
 
@@ -267,11 +267,11 @@ def validate_label(label, remove_guardrails=False):
                     ):
                         # Found the parent label associated with the protected variable
                         raise ValueError(
-                            f"Label '{label}' is protected within the current DGCV Variable Management Framework, "
+                            f"Label '{label}' is protected within the current dgcv Variable Management Framework, "
                             f"as it is associated with the complex variable system '{parent_label}'.\n"
-                            f"It is recommended to use the DGCV function `clearVar('{parent_label}')` to clear the protected variable "
-                            f"from the DGCV Variable Management Framework (VMF) before reassigning this label.\n"
-                            f"Or set remove_guardrails=True in the relevant DGCV object creator to force the use of this label, "
+                            f"It is recommended to use the dgcv function `clearVar('{parent_label}')` to clear the protected variable "
+                            f"from the dgcv Variable Management Framework (VMF) before reassigning this label.\n"
+                            f"Or set remove_guardrails=True in the relevant dgcv object creator to force the use of this label, "
                             f"but note this can limit available features from the VMF."
                         )
 
@@ -279,7 +279,7 @@ def validate_label(label, remove_guardrails=False):
     if label.startswith("BAR"):
         reformatted_label = "anti_" + label[3:]
         warnings.warn(
-            f"Label '{label}' starts with 'BAR', which has special meaning in DGCV. It has been automatically reformatted to '{reformatted_label}'."
+            f"Label '{label}' starts with 'BAR', which has special meaning in dgcv. It has been automatically reformatted to '{reformatted_label}'."
         )
     else:
         reformatted_label = label

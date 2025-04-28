@@ -1,5 +1,5 @@
 """
-config.py
+_config.py
 
 This module provides utility functions for managing the `variable_registry` 
 and caching/retrieving the caller's global namespace in the DGCV package. 
@@ -22,7 +22,8 @@ import collections.abc
 import inspect
 import warnings
 
-# Cached caller globals
+from dgcv import __version__
+
 _cached_caller_globals = None
 
 greek_letters = {
@@ -92,13 +93,11 @@ def get_caller_globals():
     if _cached_caller_globals is not None:
         return _cached_caller_globals
 
-    # Perform the search to find the caller's globals
     for frame_info in inspect.stack():
         if frame_info.frame.f_globals["__name__"] == "__main__":
             _cached_caller_globals = frame_info.frame.f_globals
             return _cached_caller_globals
 
-    # If no '__main__' is found, raise an error
     raise RuntimeError("Could not find the '__main__' module in the call stack.")
 
 
@@ -106,16 +105,14 @@ def cache_globals():
     """
     Initialize the global namespace cache.
 
-    This function should be called at package import to initialize and cache the
-    global namespace for later use.
+    This function is intended to be called at package import to initialize and cache the
+    global namespace for use with the VMF.
     """
     if _cached_caller_globals is None:
         get_caller_globals()
 
 
 # warning format
-
-
 def configure_warnings():
     warnings.simplefilter("once")  # Only show each warning once
 
@@ -165,7 +162,7 @@ class StringifiedSymbolsDict(collections.abc.MutableMapping):
     def __repr__(self):
         return f"StringifiedSymbolsDict({self._data})"
 
-# Initialize variable_registry in the DGCV module's scope
+# Initialize variable_registry and settings registry
 variable_registry = {
     "standard_variable_systems": {},
     "complex_variable_systems": {},
@@ -187,10 +184,18 @@ variable_registry = {
         "im_part": StringifiedSymbolsDict(),
     },
 }
-
-# Getter and Setter functions for accessing variable_registry
+dgcv_settings_registry = {
+    'use_latex':False,
+    'theme':'default',
+    'format_displays':False,
+    'version_specific_defaults':f'v{__version__}'
+}
+# retrieval function for accessing variable_registry
 def get_variable_registry():
     return variable_registry
+
+def get_dgcv_settings_registry():
+    return dgcv_settings_registry
 
 def clear_variable_registry():
     # Optional: function to reset variable_registry if needed

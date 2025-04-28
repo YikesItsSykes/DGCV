@@ -48,8 +48,8 @@ import warnings
 
 import sympy as sp
 
+from ._config import _cached_caller_globals
 from .combinatorics import chooseOp
-from .config import _cached_caller_globals
 from .dgcv_core import DGCVPolyClass, clearVar, variableProcedure
 
 ############## creating polynomials (monomialsOfPoly is in classesAndVariables.py)

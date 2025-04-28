@@ -1,5 +1,5 @@
 """
-DGCV EDS Subpackage
+dgcv EDS Subpackage
 
 This subpackage provides functionality for abstract exterior differential systems (EDS).
 
@@ -15,7 +15,7 @@ from .eds import (
     abstract_DF,
     abstract_ZF,
     coframe_derivative,
-    create_coframe,
+    createCoframe,
     createDiffForm,
     createZeroForm,
     expand_dgcv,
@@ -34,7 +34,7 @@ __all__ = [
     "createZeroForm",
     "createDiffForm",
     "abst_coframe",
-    "create_coframe",
+    "createCoframe",
     "abstract_DF",
     "abstract_ZF",
     "extDer",

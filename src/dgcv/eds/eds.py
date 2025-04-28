@@ -7,15 +7,15 @@ from math import prod  # requires python >=3.8
 
 import sympy as sp
 
+from .._config import _cached_caller_globals, get_variable_registry
 from .._safeguards import create_key, retrieve_passkey, validate_label
 from ..combinatorics import carProd, weightedPermSign
-from ..config import _cached_caller_globals, get_variable_registry
 from ..dgcv_core import clearVar
 from ..dgcv_formatter import process_basis_label
 
 
 def factor_dgcv(expr, **kw):
-    """Apply custom .factor() method once to DGCV classes, and then try SymPy.factor."""
+    """Apply custom .factor() method once to dgcv classes, and then try SymPy.factor."""
 
     dgcv_classes = (zeroFormAtom, abstract_ZF,abstract_DF, abstDFAtom,abstDFMonom)  
 
@@ -25,7 +25,7 @@ def factor_dgcv(expr, **kw):
     return sp.factor(expr, **kw) if isinstance(expr, sp.Basic) else expr
 
 def expand_dgcv(expr, **kw):
-    """Apply custom .factor() method once to DGCV classes, and then try SymPy.factor."""
+    """Apply custom .factor() method once to dgcv classes, and then try SymPy.factor."""
 
     dgcv_classes = (zeroFormAtom, abstract_ZF,abstract_DF, abstDFAtom,abstDFMonom)  
 
@@ -360,7 +360,7 @@ class zeroFormAtom(sp.Basic):
     def as_ordered_factors(self):
         return (self,)
 
-    def _subs_DGCV(self,data,with_diff_corollaries = False):
+    def _subs_dgcv(self,data,with_diff_corollaries = False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
         return self.subs(data, with_diff_corollaries = with_diff_corollaries)
 
@@ -965,7 +965,7 @@ class abstract_ZF(sp.Basic):
     def sort_key(self, order=None):     # for the sympy sorting.py default_sort_key
         return (4, self.base)       # 4 is to group with function-like objects
 
-    def _subs_DGCV(self, data, with_diff_corollaries=False):
+    def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
         return self.subs(data, with_diff_corollaries = with_diff_corollaries)
 
@@ -1008,7 +1008,7 @@ class abstract_ZF(sp.Basic):
                         if newArg.degree==0:
                             newArg = newArg.coeff
                         else:
-                            raise ValueError('DGCV subs methods do not support replacing 0-forms with higher degree forms.')
+                            raise ValueError('dgcv subs methods do not support replacing 0-forms with higher degree forms.')
                     return newArg
                 if isinstance(arg,sp.Expr):
                     new_subs = dict()
@@ -1027,7 +1027,7 @@ class abstract_ZF(sp.Basic):
                         if arg.degree==0:
                             arg = arg.coeff
                         else:
-                            raise ValueError('DGCV subs methods do not support replacing 0-forms with higher degree forms.')
+                            raise ValueError('dgcv subs methods do not support replacing 0-forms with higher degree forms.')
                     return arg
                 if isinstance(arg, abstDFAtom) and arg.degree==0:   ###!!!
                     arg += [arg.coeff]
@@ -1591,6 +1591,18 @@ class abstDFAtom(sp.Basic):
             coeff_str = f"({coeff_sympy})" if len(coeff_sympy.as_ordered_terms()) > 1 else str(coeff_sympy)
             return extDerFormat(f"{coeff_str}{self.label}") if self.label else extDerFormat(coeff_str)
 
+    def to_sympy(self):
+        if self.degree == 0:
+            if self.label is not None:
+                warnings.warn('`abstDFAtom.to_sympy()` was called for an instance with nontrivial basis label, and that label is not encoded in the method\'s output.')
+            if hasattr(self.coeff, 'to_sympy'):
+                return self.coeff.to_sympy()
+            else:
+                return sp.sympify(self.coeff)
+        else:
+            warnings.warn('`abstDFAtom.to_sympy()` was called for an instance with positive degree, so `None` was returned.')
+
+
     def has_common_factor(self, other):
         if not isinstance(other, (abstDFAtom, abstDFMonom)):
             return False
@@ -1622,7 +1634,7 @@ class abstDFAtom(sp.Basic):
         new_coeff = getattr(self.coeff, method_name)(**kwargs) if hasattr(self.coeff, method_name) else self.coeff
         return abstDFAtom(new_coeff, self.degree, self.label, ext_deriv_order=self.ext_deriv_order, _markers=self._markers)
 
-    def _subs_DGCV(self, data, with_diff_corollaries=False):
+    def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
         return self.subs(data, with_diff_corollaries = with_diff_corollaries)
 
@@ -1999,12 +2011,12 @@ class abstDFMonom(sp.Basic):
             return obj
         return abstDFMonom([_canon(j) for j in self.factors])
 
-    def _subs_DGCV(self, data, with_diff_corollaries=False):
+    def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
         return self.subs(data, with_diff_corollaries = with_diff_corollaries)
 
     def subs(self,subs_data,with_diff_corollaries=False):
-        return abstDFMonom([j._subs_DGCV(subs_data,with_diff_corollaries = with_diff_corollaries) for j in self.factors_sorted])
+        return abstDFMonom([j._subs_dgcv(subs_data,with_diff_corollaries = with_diff_corollaries) for j in self.factors_sorted])
 
     def _induce_method_from_descending(self, method_name, **kwargs):
         new_factors = [getattr(j, method_name)(**kwargs) if hasattr(j, method_name) else j for j in self.factors_sorted]
@@ -2312,12 +2324,12 @@ class abstract_DF(sp.Basic):
             return obj
         return abstract_DF([_canon(j) for j in self.terms])
 
-    def _subs_DGCV(self, data, with_diff_corollaries=False):
+    def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
         return self.subs(data, with_diff_corollaries = with_diff_corollaries)
 
     def subs(self,subs_data,with_diff_corollaries=False):
-        return abstract_DF([j._subs_DGCV(subs_data,with_diff_corollaries=with_diff_corollaries) for j in self.terms])
+        return abstract_DF([j._subs_dgcv(subs_data,with_diff_corollaries=with_diff_corollaries) for j in self.terms])
 
     def _induce_method_from_descending(self, method_name, **kwargs):
         new_terms = [getattr(j, method_name)(**kwargs) if hasattr(j, method_name) else j for j in self.terms]
@@ -2613,7 +2625,7 @@ class abst_coframe(sp.Basic):
                 else:
                     self.structure_equations[key]=sp.simplify(value)
 
-def create_coframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, complete_to_complex_cf = None,  integrable_complex_struct=False, markers=dict(),remove_guardrails=False):
+def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, complete_to_complex_cf = None,  integrable_complex_struct=False, markers=dict(),remove_guardrails=False):
     """
     Create a coframe with specified 1-forms and structure equations.
 
@@ -2642,13 +2654,13 @@ def create_coframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, c
             if 'holomorphic' in markers.get(coVec,{}):
                 complete_to_complex_cf += ['holomorphic']
                 if 'antiholomorphic' in markers.get(coVec,{}):
-                    warnings.warn('A coframe label was given to `create_coframe` with conflicting property markers \"holomorphic\" and \"antiholomorphic\". The coframe was created assuming \"holomorphic\" is correct')
+                    warnings.warn('A coframe label was given to `createCoframe` with conflicting property markers \"holomorphic\" and \"antiholomorphic\". The coframe was created assuming \"holomorphic\" is correct')
                 if 'real' in markers.get(coVec,{}):
-                    warnings.warn('A coframe label was given to `create_coframe` with conflicting property markers \"holomorphic\" and \"real\". The coframe was created assuming \"holomorphic\" is correct')
+                    warnings.warn('A coframe label was given to `createCoframe` with conflicting property markers \"holomorphic\" and \"real\". The coframe was created assuming \"holomorphic\" is correct')
             elif 'antiholomorphic' in markers.get(coVec,{}):
                 complete_to_complex_cf += ['antiholomorphic']
                 if 'real' in markers.get(coVec,{}):
-                    warnings.warn('A coframe label was given to `create_coframe` with conflicting property markers \"antiholomorphic\" and \"real\". The coframe was created assuming \"antiholomorphic\" is correct')
+                    warnings.warn('A coframe label was given to `createCoframe` with conflicting property markers \"antiholomorphic\" and \"real\". The coframe was created assuming \"antiholomorphic\" is correct')
             elif 'real' in markers.get(coVec,{}):
                 complete_to_complex_cf += ['real']
             else:
@@ -2658,7 +2670,7 @@ def create_coframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, c
     elif complete_to_complex_cf=="fromAntihol":
         complete_to_complex_cf = ['antiholomorphic']*len(coframe_labels)
     elif not isinstance(complete_to_complex_cf,(list,tuple)) or len(complete_to_complex_cf)!=len(coframe_labels):
-        warnings.warn('`create_coframe` was given an unexpected value for `complete_to_complex_cf`. Proceeding as if `complete_to_complex_cf=None`.')
+        warnings.warn('`createCoframe` was given an unexpected value for `complete_to_complex_cf`. Proceeding as if `complete_to_complex_cf=None`.')
         complete_to_complex_cf = ['standard']*len(coframe_labels)
 
     closed_assumptions = [next(iter(markers[j].intersection({'closed'})),None) if j in markers else None for j in coframe_labels]
@@ -3079,7 +3091,7 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
 
 def simplify_with_PDEs(expr,PDEs:dict,tryLess=False, iterations = 1):
     """
-    Simplifies expressions under quasilinear PDE constraints. Given `PDEs` should be a dictionary whose key is either a sympy.Symbol or a DGCV.zeroFormAtom. For zeroFormAtom keys if their differential order is nonzero, then their corresponding key value must represent an expression whose differential order is not higher. The algorithm is optimized for the case where such key values has strictly lower order, and edge case optimizations for the genearl case will be implemented later.
+    Simplifies expressions under quasilinear PDE constraints. Given `PDEs` should be a dictionary whose key is either a sympy.Symbol or a dgcv.zeroFormAtom. For zeroFormAtom keys if their differential order is nonzero, then their corresponding key value must represent an expression whose differential order is not higher. The algorithm is optimized for the case where such key values has strictly lower order, and edge case optimizations for the genearl case will be implemented later.
     """
     if iterations>1:
         return simplify_with_PDEs(simplify_with_PDEs(expr,PDEs,tryLess=tryLess, iterations = iterations - 1),PDEs,tryLess=tryLess, iterations = 1)
@@ -3108,10 +3120,10 @@ def simplify_with_PDEs(expr,PDEs:dict,tryLess=False, iterations = 1):
                         raise ValueError('`simplify_with_PDEs` recieved `PDEs` dictionary in an unsupported format. All PDEs should be solved for a variable whose higher order partials do not appear elsewhere in the expression.')
             if kOrder == vOrder and kOrder>0:
                 trip = False
-    standardEQs = {v:k for v,k in PDEs.items() if isinstance(v,sp.Expr) and not hasattr(v,'_subs_DGCV')}
+    standardEQs = {v:k for v,k in PDEs.items() if isinstance(v,sp.Expr) and not hasattr(v,'_subs_dgcv')}
     def _custom_subs(elem):
-        if hasattr(elem,'_subs_DGCV'):
-            return elem._subs_DGCV(PDEs,with_diff_corollaries=True)
+        if hasattr(elem,'_subs_dgcv'):
+            return elem._subs_dgcv(PDEs,with_diff_corollaries=True)
         elif hasattr(elem,'subs'):
             return elem.subs(standardEQs)
         else:
@@ -3120,7 +3132,7 @@ def simplify_with_PDEs(expr,PDEs:dict,tryLess=False, iterations = 1):
     if trip or not tryLess or not regular_handling:
         for _ in range(ex_order-1):
             new_expr = _custom_subs(new_expr)
-    if hasattr(new_expr,'_subs_DGCV'):
+    if hasattr(new_expr,'_subs_dgcv'):
         if hasattr(new_expr,'_eval_simplify'):
             return new_expr._eval_simplify()
         else:
@@ -3228,7 +3240,7 @@ def _sympy_to_abstract_ZF(expr, subs_rules={}):
 
     # Raise error for unsupported operations
     if isinstance(expr, sp.Function):
-        raise ValueError(f"Unsupported operation: {expr.func.__name__} is not yet supported for the DGCV 0-form classes. Error for type: {type(expr)}")
+        raise ValueError(f"Unsupported operation: {expr.func.__name__} is not yet supported for the dgcv 0-form classes. Error for type: {type(expr)}")
 
     if isinstance(expr, sp.Rational):
         return ('div', expr.p, expr.q)  # Handle rational numbers explicitly

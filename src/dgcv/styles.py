@@ -1,4 +1,5 @@
 import random
+import warnings
 
 # Base styles shared across all themes
 base_style = {
@@ -1841,11 +1842,23 @@ style_guide = {
     },
 }
 
-
 def get_DGCV_themes():
+    warnings.warn(
+        "`get_DGCV_themes` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
+        "It will be removed in 2026. Please use `get_dgcv_themes` instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return get_dgcv_themes()
+def get_dgcv_themes():
     """Returns a list of available theme names (keys) from the style_guide dictionary."""
     return sorted(style_guide.keys())
 
+
+dgcv_display_theme = 'dark'
+def _set_dgcv_default_theme(theme:str):
+    global dgcv_display_theme
+    dgcv_display_theme = theme
 
 def get_style(theme_name):
     """
@@ -1853,7 +1866,7 @@ def get_style(theme_name):
     """
     if theme_name == 'random':
         theme_name = random.choice(list(style_guide.keys()))
-    if theme_name == 'chalckboard':
+    if theme_name == 'chalkboard':
         theme_name = random.choice(["chalkboard_green","chalkboard_blue","chalkboard_red","chalkboard_black","chalkboard_teal","chalkboard_yellow"])
     if theme_name == 'gruv':
         theme_name = random.choice(["gruvbox_dark","gruvbox_colorful","gruvbox_light"])

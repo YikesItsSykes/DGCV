@@ -29,9 +29,9 @@ import warnings
 import sympy as sp
 from sympy import ImmutableSparseNDimArray, Matrix
 
+from ._config import greek_letters
 from ._safeguards import get_variable_registry
 from .combinatorics import carProd_with_weights_without_R, permSign
-from .config import greek_letters
 from .dgcv_core import (
     STFClass,
     VFClass,

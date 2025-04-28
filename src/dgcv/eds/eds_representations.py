@@ -190,14 +190,14 @@ class DF_representation(sp.Basic):
         return self.applyfunc(_canon)
 
 
-    def _subs_DGCV(self, data, with_diff_corollaries=False):
+    def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
         return self.subs(data, with_diff_corollaries = with_diff_corollaries)
 
     def subs(self,subs_data,with_diff_corollaries=False):
         def _custom_subs(expr):
-            if hasattr(expr,'_subs_DGCV'):
-                return expr._subs_DGCV(subs_data,with_diff_corollaries=with_diff_corollaries)
+            if hasattr(expr,'_subs_dgcv'):
+                return expr._subs_dgcv(subs_data,with_diff_corollaries=with_diff_corollaries)
             if hasattr(expr,'subs'):
                 return expr.subs(subs_data)
             else:

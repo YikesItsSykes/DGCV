@@ -2,7 +2,7 @@ import re
 
 import sympy as sp
 
-from .config import greek_letters
+from ._config import greek_letters
 
 joinders = {'symmetric':{'latex':'\\odot ','plain':'&'},'skew':{'latex':'\\wedge ','plain':'*'}}
 def _shape_joinders(shape,format):

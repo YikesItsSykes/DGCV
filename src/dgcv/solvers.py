@@ -69,9 +69,9 @@ def solve_carefully(eqns, vars_to_solve, dict=True):
     # If no subset worked, raise the error
     raise NotImplementedError(f"No valid subset found for variables {vars_to_solve}")
 
-def solve_DGCV(eqns, vars_to_solve=None, verbose=False, method="solve", simplify_result=True):
+def solve_dgcv(eqns, vars_to_solve=None, verbose=False, method="solve", simplify_result=True):
     """
-    Solve a DGCV-compatible system of equations.
+    Solve a dgcv-compatible system of equations.
 
     Parameters:
         eqns: One or more SymPy equations.
@@ -118,7 +118,7 @@ def solve_DGCV(eqns, vars_to_solve=None, verbose=False, method="solve", simplify
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'auto', 'linsolve', or 'solve'.")
 
-    # Reformat solutions back into DGCV form
+    # Reformat solutions back into dgcv form
     solutions_formatted = []
 
     for solution in preformatted_solutions:
@@ -128,10 +128,10 @@ def solve_DGCV(eqns, vars_to_solve=None, verbose=False, method="solve", simplify
         def expr_reformatting(expr):
             if isinstance(expr, (int, float)) or not hasattr(expr, 'subs'):
                 return expr
-            DGCV_var_dict = {v[1][0]: v[0] for _, v in variables_dict.items()}
+            dgcv_var_dict = {v[1][0]: v[0] for _, v in variables_dict.items()}
             if not isinstance(expr, sp.Expr) or isinstance(expr, zeroFormAtom):
-                return expr.subs(DGCV_var_dict)
-            regular_var_dict = {k: v for k, v in DGCV_var_dict.items() if isinstance(k, sp.Symbol)}
+                return expr.subs(dgcv_var_dict)
+            regular_var_dict = {k: v for k, v in dgcv_var_dict.items() if isinstance(k, sp.Symbol)}
             if not all(isinstance(v, (int, float, sp.Expr)) for v in regular_var_dict.values()):
                 return abstract_ZF(_sympy_to_abstract_ZF(expr, regular_var_dict))
             return expr.subs(regular_var_dict)
@@ -145,44 +145,6 @@ def solve_DGCV(eqns, vars_to_solve=None, verbose=False, method="solve", simplify
         return solutions_formatted, system_vars, extra_vars
     else:
         return solutions_formatted
-
-# def solve_DGCV(eqns, vars_to_solve = None, verbose = False):
-#     if not isinstance(eqns,(list,tuple)):
-#         eqns = [eqns]
-#     if vars_to_solve is None:
-#         vars_to_solve = set()
-#         for eqn in eqns:
-#             if hasattr(eqn,'free_symbols'):
-#                 vars_to_solve |= eqn.free_symbols
-#     if isinstance(vars_to_solve,set):
-#         vars_to_solve = list(vars_to_solve)
-#     if not isinstance(vars_to_solve,(list,tuple)):
-#         vars_to_solve = [vars_to_solve]
-#     processed_eqns, system_vars, extra_vars, variables_dict = _equations_preprocessing(eqns,vars_to_solve)
-#     solutions = sp.solve(processed_eqns, system_vars, dict=True)
-#     solutions_formatted = []
-#     for solution in solutions:
-#         def extract_reformatting(var):
-#             if str(var) in variables_dict:
-#                 return variables_dict[str(var)][0]
-#             else:
-#                 return var
-#         def expr_reformatting(expr):
-#             if isinstance(expr,(int,float)) or not hasattr(expr,'subs'):
-#                 return expr
-#             DGCV_var_dict = {v[1][0]:v[0] for _,v in variables_dict.items()}
-#             if not isinstance(expr,(sp.Expr)) or isinstance(expr,zeroFormAtom):
-#                 return expr.subs(DGCV_var_dict)
-#             regular_var_dict = {k:v for k,v in DGCV_var_dict.items() if isinstance(k,sp.Symbol)}
-#             if not all(isinstance(v,(int,float,sp.Expr)) for v in regular_var_dict.values()):
-#                 return abstract_ZF(_sympy_to_abstract_ZF(expr,regular_var_dict))
-#             return expr.subs(regular_var_dict)
-
-#         solutions_formatted += [{extract_reformatting(var):expr_reformatting(solution[var]) for var in solution}]
-#     if verbose:
-#         return solutions_formatted, system_vars, extra_vars
-#     else:
-#         return solutions_formatted
 
 def _equations_preprocessing(eqns:tuple|list,vars:tuple|list):
     processed_eqns = []

@@ -12,16 +12,18 @@ Functions
 
 
 ############# for printing
+import warnings
+
 import sympy as sp
 from IPython.display import HTML, Latex, display
 from sympy.printing.latex import LatexPrinter
 
-############# DGCV classes to format
+############# dgcv classes to format
 from .dgcv_core import (
     DFClass,
-    DGCVPolyClass,
     STFClass,
     VFClass,
+    dgcvPolyClass,
     symToHol,
     symToReal,
     tensorField,
@@ -33,12 +35,12 @@ from .Riemannian_geometry import metricClass
 
 def LaTeX(obj, removeBARs=False):
     """
-    Custom LaTeX function for DGCV. Extends sympy.latex() to support application to DGCV classes.
+    Custom LaTeX function for dgcv. Extends sympy.latex() to support application to dgcv classes.
 
     Parameters
     ----------
     obj : any
-        The object to convert to LaTeX. Can be a SymPy expression, DGCV object, or a list/tuple of such objects.
+        The object to convert to LaTeX. Can be a SymPy expression, dgcv object, or a list/tuple of such objects.
 
     Returns
     -------
@@ -49,7 +51,7 @@ def LaTeX(obj, removeBARs=False):
     def filter(term):
         if removeBARs:
             return sp.latex(term)
-        if isinstance(term, (DFClass, VFClass, STFClass,tensorField, DGCVPolyClass)):
+        if isinstance(term, (DFClass, VFClass, STFClass, tensorField, dgcvPolyClass)):
             if term._varSpace_type == "real":
                 return sp.latex(symToReal(term))
             elif term._varSpace_type == "complex":
@@ -91,8 +93,62 @@ def LaTeX(obj, removeBARs=False):
         # Apply sympy.latex() for non-list/tuple objects
         return strip_dollar_signs(filter(obj))
 
+def LaTeX_eqn_system(eqn_dict, math_mode = '$$', left_prefix = "", left_suffix = "", right_prefix = "", right_suffix = "", one_line = False, bare_latex = False, add_period = False):
+    if isinstance(eqn_dict,(list,tuple)):
+        eqn_dict = {k:0 for k in eqn_dict}
+        list_format = True
+    else:
+        list_format = False
+    if add_period is True:
+        period = '.'
+    else:
+        period = ''
+    if bare_latex is True:
+        joiner = r', '
+        boundary = ''
+        penultim = r',\quad\text{and}\quad '
+    elif math_mode == '$':
+        joiner = '$, $'
+        boundary = '$'
+        penultim = '$, and $'
+
+    elif one_line is True:
+        joiner = r', \quad '
+        boundary = '$$'
+        penultim = r',\quad\text{and}\quad '
+    else:
+        joiner = r',$$ $$ '
+        boundary = '$$'
+        penultim = r',$$ and $$'
+
+    if list_format is True:
+        kv_pairs = [f'0={right_prefix}{LaTeX(k)}{right_suffix}' for k in eqn_dict.keys()]
+    else:
+        kv_pairs = [f'{left_prefix}{LaTeX(k)}{left_suffix}={right_prefix}{LaTeX(v)}{right_suffix}' for k,v in eqn_dict.items()]
+    if len(kv_pairs)==0:
+        return period
+    elif len(kv_pairs)==1:
+        return boundary + kv_pairs[0] + period + boundary
+    elif len(kv_pairs)==2:
+        if bare_latex is True:
+            return boundary + kv_pairs[0] + r'\quad\text{and}\quad ' + kv_pairs[1] + period + boundary
+        if math_mode == '$':
+            return boundary + kv_pairs[0] + boundary + 'and' + boundary + kv_pairs[1] + period + boundary
+        if one_line is True:
+            return boundary + kv_pairs[0] + r' \quad \text{ and }\quad' + kv_pairs[1] + period + boundary
+        return boundary + kv_pairs[0] + boundary + 'and' + boundary + kv_pairs[1] + period + boundary
+    return boundary+joiner.join(kv_pairs[:-1])+penultim + kv_pairs[-1] + period + boundary
 
 def display_DGCV(*args):
+    warnings.warn(
+        "`display_DGCV` has been deprecated as part of a shift toward standardizing naming styles in the dgcv library."
+        "`It` will be removed in 2026. Use the command `show` instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return show(*args)
+
+def show(*args):
     for j in args:
         _display_DGCV_single(j)
 
@@ -102,7 +158,7 @@ def _display_DGCV_single(arg):
         display(Latex(arg))
     elif isinstance(
         arg,
-        (sp.Expr, metricClass, DFClass, VFClass, STFClass,tensorField, DGCVPolyClass,Tanaka_symbol),
+        (sp.Expr, metricClass, DFClass, VFClass, STFClass, tensorField, dgcvPolyClass, Tanaka_symbol),
     ):
         _complexDisplay(arg)
     elif isinstance(arg, FAClass):
@@ -115,7 +171,7 @@ def _display_DGCV_single(arg):
 
 def _complexDisplay(*args):
     """
-    Taking DGCV expressions in *args* written in terms of symbolic conjugate variables, displays them with actual complex conjugates
+    Taking dgcv expressions in *args* written in terms of symbolic conjugate variables, displays them with actual complex conjugates
     """
     display(*[symToHol(j, simplify_everything=False) for j in args])
 
@@ -199,7 +255,7 @@ def load_fonts():
 
 
 
-# DGCV-specific SymPy LatexPrinter for VFClass and DFClass
+# dgcv-specific SymPy LatexPrinter for VFClass and DFClass
 class DGCVLatexPrinter(LatexPrinter):
     def _print_VFClass(self, expr):
         return expr._repr_latex_()
@@ -228,7 +284,7 @@ def DGCV_collection_latex_printer(obj):
 #             metricClass,
 #             FAClass,
 #             AlgebraElement,
-#             DGCVPolyClass,
+#             dgcvPolyClass,
 #             Tanaka_symbol
 #         ),
 #     ):
@@ -247,6 +303,15 @@ def DGCV_latex_printer(obj, **kwargs):
     return LaTeX(obj).strip("$")
 
 def DGCV_init_printing(*args, **kwargs):
+    warnings.warn(
+        "`DGCV_init_printing` has been deprecated, as its functionality has been consolidated into the `set_dgcv_settings` function."
+        "`It` will be removed in 2026. Run `update_dgcv_settings(format_displays=True)` instead to apply dgcv formatting in Jupyter notebooks.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return dgcv_init_printing(*args, **kwargs)
+
+def dgcv_init_printing(*args, **kwargs):
     from sympy import init_printing
 
     kwargs["latex_printer"] = DGCV_latex_printer
