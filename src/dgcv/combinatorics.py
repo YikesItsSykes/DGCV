@@ -1,7 +1,7 @@
 """
-DGCV: Differential Geometry with Complex Variables
+dgcv: Differential Geometry with Complex Variables
 
-This module provides various combinatorial functions used throughout the DGCV package, 
+This module provides various combinatorial functions used throughout the dgcv package, 
 primarily focusing on efficient computation of Cartesian products, permutations, and 
 related operations. These functions are optimized for performance and designed to 
 handle large inputs by utilizing generators where possible.
@@ -24,7 +24,7 @@ Dependencies
 
 Notes
 -----
-This module minimizes dependencies and is critical for handling combinatorics within the DGCV package's computationally intensive operations.
+This module minimizes dependencies and is critical for handling combinatorics within the dgcv package's computationally intensive operations.
 
 """
 

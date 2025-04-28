@@ -140,6 +140,7 @@ def weightedHomogeneousVF(
                 weightedHomogeneity=arg3,
                 _tempVar=_tempVar,
                 assumeReal=assumeReal,
+                report=False
             )
         )
     return reduce(
@@ -194,13 +195,14 @@ def findWeightedCRSymmetries_old(
     """
     def extractRIVar(arg1):
         return sum([list(holToReal(j).atoms(sp.Symbol)) for j in arg1], [])
-
+    Akey = create_key(prefix='A',key_length=5)
+    Bkey = create_key(prefix='B',key_length=5)
     VFLoc = addVF(
         weightedHomogeneousVF(
             arg2,
             arg4,
             arg3,
-            "ALoc",
+            "Akey",
             _tempVar=retrieve_passkey(),
             degreeCap=degreeCap,
             assumeReal=True,
@@ -209,7 +211,7 @@ def findWeightedCRSymmetries_old(
                 arg2,
                 arg4,
                 arg3,
-                "BLoc",
+                "Bkey",
                 _tempVar=retrieve_passkey(),
                 degreeCap=degreeCap,
                 assumeReal=True,

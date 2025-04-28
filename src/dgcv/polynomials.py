@@ -66,6 +66,7 @@ def createPolynomial(
     returnMonomialList=False,
     assumeReal=None,
     remove_guardrails=False,
+    report = True
 ):
     """
     Constructs a polynomial in the variables specified by *arg3* of degree *arg2*, with coefficients labeled by *arg1*.
@@ -121,7 +122,7 @@ def createPolynomial(
     >>> createPolynomial('alpha', 4, (x1, x2, x3), weightedHomogeneity=[1, 2, 3])
     alpha1*x2**2 + alpha2*x1*x3 + alpha3*x1**2*x2 + alpha4*x1**4
     """
-    clearVar(arg1)
+    clearVar(arg1,report=report)
 
     var_symbols = arg3
     num_vars = len(var_symbols)
@@ -202,6 +203,7 @@ def createBigradPolynomial(
     _tempVar=None,
     returnMonomialList=False,
     remove_guardrails=False,
+    report = True
 ):
     """
     Creates a bigraded polynomial in the variables specified by *arg3* with coefficients labeled by *arg1*,
@@ -249,7 +251,7 @@ def createBigradPolynomial(
     """
 
     # Clear any previous variables with the same label prefix
-    clearVar(arg1)
+    clearVar(arg1,report=report)
 
     # Generate indices that satisfy the two weight system conditions
     indicesLoc = list(

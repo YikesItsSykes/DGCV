@@ -1,7 +1,7 @@
 """
-DGCV: Differential Geometry with Complex Variables
+dgcv: Differential Geometry with Complex Variables
 
-This module provides tools uniquely relevant for complex differential geometry within the DGCV package. It includes Dolbeault operators (Del and DelBar) and a class for constructing and analyzing Kähler structures.
+This module provides tools uniquely relevant for complex differential geometry within the dgcv package. It includes Dolbeault operators (Del and DelBar) and a class for constructing and analyzing Kähler structures.
 
 Key Functions:
     - Del(): Applies the holomorphic Dolbeault operator ∂ to a differential form or scalar.
@@ -53,7 +53,7 @@ def Del(arg1):
     Parameters:
     -----------
     arg1 : DFClass or sympy.Expr
-        A differential form (DFClass) with DGCVType='complex', or a scalar (interpreted as a zero-form).
+        A differential form (DFClass) with dgcvType='complex', or a scalar (interpreted as a zero-form).
 
     Returns:
     --------
@@ -63,7 +63,7 @@ def Del(arg1):
     Raises:
     -------
     TypeError
-        If the input is not a DFClass or scalar (sympy.Expr), or if the DFClass has DGCVType='standard'.
+        If the input is not a DFClass or scalar (sympy.Expr), or if the DFClass has dgcvType='standard'.
     """
     variable_registry = get_variable_registry()
     # Ensure arg1 is a DFClass or convert it into a zero-form
@@ -77,19 +77,19 @@ def Del(arg1):
             ]
         )
         intermediateDF = makeZeroForm(
-            arg1, varSpace=varSpace, DGCVType="complex", default_var_format="complex"
+            arg1, varSpace=varSpace, dgcvType="complex", default_var_format="complex"
         )
         arg1 = makeZeroForm(
             arg1,
             intermediateDF.compVarSpace,
-            DGCVType="complex",
+            dgcvType="complex",
             default_var_format="complex",
         )
 
     elif isinstance(arg1, DFClass):
-        if arg1.DGCVType == "standard":
+        if arg1.dgcvType == "standard":
             raise TypeError(
-                "`Del` only operates on DFClass differential forms with DGCVType='complex' (and scalars like sympy.Expr, which it interprets as 0-forms). Tip: set 'complex=True' in the `createVariables` variable creation function to initialize a coframe with `DGCVType='complex'.`"
+                "`Del` only operates on DFClass differential forms with dgcvType='complex' (and scalars like sympy.Expr, which it interprets as 0-forms). Tip: set 'complex=True' in the `createVariables` variable creation function to initialize a coframe with `dgcvType='complex'.`"
             )
         else:
             arg1 = realToSym(symToReal(arg1))
@@ -105,7 +105,7 @@ def Del(arg1):
             (j,): sp.diff(allToSym(arg1.coeffsInKFormBasis[0]), HVSpace[j])
             for j in range(len(HVSpace))
         }
-        return DFClass(arg1.varSpace, sparseDataLoc, 1, DGCVType="complex")
+        return DFClass(arg1.varSpace, sparseDataLoc, 1, dgcvType="complex")
 
     # Handle zero-forms
     if arg1.degree == 0:
@@ -114,12 +114,12 @@ def Del(arg1):
     # Handle higher-degree forms
     minDataLoc = arg1.DFClassDataMinimal
     coeffsTo1Forms = [
-        DelOfZeroForm(makeZeroForm(j[1], varSpace=arg1.varSpace, DGCVType="complex"))
+        DelOfZeroForm(makeZeroForm(j[1], varSpace=arg1.varSpace, dgcvType="complex"))
         for j in minDataLoc
     ]
     # Construct the corresponding basis k-forms
     basisOfCoeffs = [
-        DFClass(arg1.varSpace, {tuple(j[0]): 1}, arg1.degree, DGCVType="complex")
+        DFClass(arg1.varSpace, {tuple(j[0]): 1}, arg1.degree, dgcvType="complex")
         for j in minDataLoc
     ]
     # Multiply the one-forms by the basis and sum them
@@ -138,7 +138,7 @@ def DelBar(arg1):
     Parameters:
     -----------
     arg1 : DFClass or sympy.Expr
-        A differential form (DFClass) with DGCVType='complex', or a scalar (interpreted as a zero-form).
+        A differential form (DFClass) with dgcvType='complex', or a scalar (interpreted as a zero-form).
 
     Returns:
     --------
@@ -148,7 +148,7 @@ def DelBar(arg1):
     Raises:
     -------
     TypeError
-        If the input is not a DFClass or scalar (sympy.Expr), or if the DFClass has DGCVType='standard'.
+        If the input is not a DFClass or scalar (sympy.Expr), or if the DFClass has dgcvType='standard'.
     """
     variable_registry = get_variable_registry()
     # Ensure arg1 is a DFClass or convert it into a zero-form
@@ -162,19 +162,19 @@ def DelBar(arg1):
             ]
         )
         intermediateDF = makeZeroForm(
-            arg1, varSpace=varSpace, DGCVType="complex", default_var_format="complex"
+            arg1, varSpace=varSpace, dgcvType="complex", default_var_format="complex"
         )
         arg1 = makeZeroForm(
             arg1,
             intermediateDF.compVarSpace,
-            DGCVType="complex",
+            dgcvType="complex",
             default_var_format="complex",
         )
 
     if isinstance(arg1, DFClass):
-        if arg1.DGCVType == "standard":
+        if arg1.dgcvType == "standard":
             raise TypeError(
-                "`DelBar` only operates on DFClass differential forms with DGCVType='complex' (and scalars like sympy.Expr, which it interprets as 0-forms). Tip: set 'complex=True' in the `createVariables` variable creation function to initialize a coframe with `DGCVType='complex'.`"
+                "`DelBar` only operates on DFClass differential forms with dgcvType='complex' (and scalars like sympy.Expr, which it interprets as 0-forms). Tip: set 'complex=True' in the `createVariables` variable creation function to initialize a coframe with `dgcvType='complex'.`"
             )
         else:
             arg1 = allToSym(symToReal(arg1))
@@ -191,7 +191,7 @@ def DelBar(arg1):
             (j + CDim,): sp.diff(allToSym(arg1.coeffsInKFormBasis[0]), AHVspace[j])
             for j in range(CDim)
         }
-        return DFClass(arg1.varSpace, sparseDataLoc, 1, DGCVType="complex")
+        return DFClass(arg1.varSpace, sparseDataLoc, 1, dgcvType="complex")
 
     # Handle zero-forms
     if arg1.degree == 0:
@@ -200,12 +200,12 @@ def DelBar(arg1):
     # Handle higher-degree forms
     minDataLoc = arg1.DFClassDataMinimal
     coeffsTo1Forms = [
-        DelBarOfZeroForm(makeZeroForm(j[1], varSpace=arg1.varSpace, DGCVType="complex"))
+        DelBarOfZeroForm(makeZeroForm(j[1], varSpace=arg1.varSpace, dgcvType="complex"))
         for j in minDataLoc
     ]
     # Construct the corresponding basis k-forms
     basisOfCoeffs = [
-        DFClass(arg1.varSpace, {tuple(j[0]): 1}, arg1.degree, DGCVType="complex")
+        DFClass(arg1.varSpace, {tuple(j[0]): 1}, arg1.degree, dgcvType="complex")
         for j in minDataLoc
     ]
 
@@ -229,7 +229,7 @@ class KahlerStructure(sp.Basic):
     Parameters:
     -----------
     varSpace : tuple of sympy.Symbol
-        A tuple of variables from DGCV's complex coordinate systems representing the coordinate space of the manifold.
+        A tuple of variables from dgcv's complex coordinate systems representing the coordinate space of the manifold.
     kahlerForm : DFClass
         A Kähler form representing the symplectic structure.
 
@@ -480,7 +480,7 @@ class KahlerStructure(sp.Basic):
                 for k in range(j, len(self.coor_frame))
             }
             self._metric = metricClass(
-                STFClass(self.varSpace, coeffData, 2, DGCVType="complex")
+                STFClass(self.varSpace, coeffData, 2, dgcvType="complex")
             )
         return self._metric
 
@@ -506,7 +506,7 @@ class KahlerStructure(sp.Basic):
                 for L in range(dim)
                 for m in range(dim)
             }
-            self._holRiemann = tensorField(self.varSpace, coeffData, valence=(0,0,0,0), DGCVType="complex")
+            self._holRiemann = tensorField(self.varSpace, coeffData, valence=(0,0,0,0), dgcvType="complex")
         return self._holRiemann
 
     @property
@@ -529,7 +529,7 @@ class KahlerStructure(sp.Basic):
                 for j in range(dim)
                 for k in range(j, dim)
             }
-            self._holRicci = tensorField(self.varSpace, coeffData, valence=(0,0), DGCVType="complex")
+            self._holRicci = tensorField(self.varSpace, coeffData, valence=(0,0), dgcvType="complex")
         return self._holRicci
 
     @property
@@ -574,7 +574,7 @@ class KahlerStructure(sp.Basic):
                 self.varSpace,
                 coeffData,
                 valence=(0,0,0,0),
-                DGCVType="complex",
+                dgcvType="complex",
                 _simplifyKW={
                     "simplify_rule": None,
                     "simplify_ignore_list": None,

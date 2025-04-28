@@ -254,7 +254,7 @@ class FAClass(sp.Basic):
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
+                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
                 UserWarning,
             )
         return (
@@ -281,7 +281,7 @@ class FAClass(sp.Basic):
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
+                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
                 UserWarning,
             )
 
@@ -303,13 +303,13 @@ class FAClass(sp.Basic):
 
     def _display_DGCV_hook(self):
         """
-        Hook for DGCV-specific display customization.
+        Hook for dgcv-specific display customization.
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
+                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
                 UserWarning,
             )
 
@@ -335,7 +335,7 @@ class FAClass(sp.Basic):
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
+                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
                 UserWarning,
             )
 
@@ -406,7 +406,7 @@ class FAClass(sp.Basic):
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
+                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
                 UserWarning,
             )
 
@@ -1306,7 +1306,7 @@ class AlgebraElement(sp.Basic):
         if not self.algebra._registered:
             warnings.warn(
                 "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -1359,7 +1359,7 @@ class AlgebraElement(sp.Basic):
         if not self.algebra._registered:
             warnings.warn(
                 "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with DGCV creator functions like `createVectorSpace` instead.",
+                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -1430,7 +1430,7 @@ class AlgebraElement(sp.Basic):
         if not self.algebra._registered:
             warnings.warn(
                 "This AlgebraElement's parent algebra (FAClass) was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
+                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
                 UserWarning,
             )
 
@@ -1448,7 +1448,7 @@ class AlgebraElement(sp.Basic):
         if not self.algebra._registered:
             warnings.warn(
                 "This AlgebraElement's parent vector space (FAClass) was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
+                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
                 UserWarning,
             )
 
@@ -1496,7 +1496,7 @@ class AlgebraElement(sp.Basic):
         if not self.algebra._registered:
             warnings.warn(
                 "This AlgebraElement's parent vector space (FAClass) was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with DGCV creator functions like `createFiniteAlg` instead.",
+                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
                 UserWarning,
             )
 
@@ -2093,7 +2093,7 @@ def algebraDataFromVF(vector_fields):
             "algebraDataFromVF requires vector fields defined with respect to a common basis."
         )
 
-    complexHandling = any(vf.DGCVType == "complex" for vf in vector_fields)
+    complexHandling = any(vf.dgcvType == "complex" for vf in vector_fields)
     if complexHandling:
         vector_fields = [allToReal(j) for j in vector_fields]
     varSpaceLoc = vector_fields[0].varSpace

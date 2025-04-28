@@ -152,7 +152,6 @@ def show(*args):
     for j in args:
         _display_DGCV_single(j)
 
-
 def _display_DGCV_single(arg):
     if isinstance(arg, str):
         display(Latex(arg))
@@ -168,13 +167,11 @@ def _display_DGCV_single(arg):
     else:
         display(arg)
 
-
 def _complexDisplay(*args):
     """
     Taking dgcv expressions in *args* written in terms of symbolic conjugate variables, displays them with actual complex conjugates
     """
     display(*[symToHol(j, simplify_everything=False) for j in args])
-
 
 class _alglabeldisplayclass(sp.Basic):
 
@@ -241,7 +238,6 @@ class _alglabeldisplayclass(sp.Basic):
     def __str__(self):
         return self.label
 
-
 def load_fonts():
     font_links = """
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Press+Start+2P&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
@@ -253,9 +249,6 @@ def load_fonts():
     """
     display(HTML(font_links))
 
-
-
-# dgcv-specific SymPy LatexPrinter for VFClass and DFClass
 class DGCVLatexPrinter(LatexPrinter):
     def _print_VFClass(self, expr):
         return expr._repr_latex_()
@@ -272,28 +265,6 @@ def DGCV_collection_latex_printer(obj):
         )
     return None
 
-
-# def DGCV_latex_printer(obj, **kwargs):
-#     if isinstance(
-#         obj,
-#         (
-#             VFClass,
-#             DFClass,
-#             STFClass,
-#             tensorField,
-#             metricClass,
-#             FAClass,
-#             AlgebraElement,
-#             dgcvPolyClass,
-#             Tanaka_symbol
-#         ),
-#     ):
-#         latex_str = obj._repr_latex_()
-#         return latex_str.strip("$")
-#     elif isinstance(obj, (list, tuple)):
-#         latex_elements = [DGCV_latex_printer(elem) for elem in obj]
-#         return r"\left( " + r" , ".join(latex_elements) + r" \right)"
-#     return latex(obj, **kwargs)
 
 def DGCV_latex_printer(obj, **kwargs):
     if obj is None:

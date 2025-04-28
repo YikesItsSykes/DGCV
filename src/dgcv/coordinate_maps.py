@@ -63,7 +63,7 @@ class coordinate_map(Basic):
                 ] + [simplify(im(allToReal(j))) for j in coordinate_formulas]
             else:
                 raise TypeError(
-                    "When setting `holomorphic=True`, `coordinate_map` expects the variables given for the domain and range to be all holomorphic parts of DGCV complex variable systems. It will infer the appropriate action of antiholomophic/real/imaginary parts using holomorphicity."
+                    "When setting `holomorphic=True`, `coordinate_map` expects the variables given for the domain and range to be all holomorphic parts of dgcv complex variable systems. It will infer the appropriate action of antiholomophic/real/imaginary parts using holomorphicity."
                 )
         self.domain_varSpace_type, self.domain_frame, self.domain_coframe = (
             coordinate_map.validate_coordinates(self.domain)
@@ -140,7 +140,7 @@ class coordinate_map(Basic):
             return "standard", get_VF(*varSpace), get_DF(*varSpace)
         elif not all(checkRegistered(var) for var in varSpace):
             raise TypeError(
-                "`coordinate_map` was given coordinates containing variables that were not initialized in the DGCV variable management framework (VMF). Use variable creation functions like `createVariables` to initialize variables while automatically registering them in the VMF."
+                "`coordinate_map` was given coordinates containing variables that were not initialized in the dgcv variable management framework (VMF). Use variable creation functions like `createVariables` to initialize variables while automatically registering them in the VMF."
             )
         else:
 
@@ -212,7 +212,7 @@ class coordinate_map(Basic):
                     self.domain,
                     sparse_data,
                     deg,
-                    DGCVType=tf.DGCVType,
+                    dgcvType=tf.dgcvType,
                     _simplifyKW=tf._simplifyKW,
                 )
 
@@ -257,7 +257,7 @@ class coordinate_map(Basic):
                     self.domain,
                     sparse_data,
                     deg,
-                    DGCVType=tf.DGCVType,
+                    dgcvType=tf.dgcvType,
                     _simplifyKW=tf._simplifyKW,
                 )
 
@@ -313,7 +313,7 @@ class coordinate_map(Basic):
                     self.domain,
                     sparse_data,
                     deg,
-                    DGCVType=tf.DGCVType,
+                    dgcvType=tf.dgcvType,
                     _simplifyKW=tf._simplifyKW,
                 )
 

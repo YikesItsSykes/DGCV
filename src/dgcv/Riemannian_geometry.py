@@ -1,7 +1,7 @@
 """
-DGCV: Differential Geometry with Complex Variables
+dgcv: Differential Geometry with Complex Variables
 
-This module provides tools for Riemannian geometry within the DGCV package. It includes 
+This module provides tools for Riemannian geometry within the dgcv package. It includes 
 functions and classes for defining and manipulating metrics, Christoffel symbols, curvature tensors, 
 and Levi-Civita connections.
 
@@ -63,7 +63,7 @@ class metricClass(sp.Basic):
         self.varSpace = STF.varSpace
         self.degree = STF.degree
         self._simplifyKW = STF._simplifyKW
-        self.DGCVType = STF.DGCVType
+        self.dgcvType = STF.dgcvType
         self.SymTensorField = STF
         self._varSpace_type = STF._varSpace_type
 
@@ -94,7 +94,7 @@ class metricClass(sp.Basic):
 
     @property
     def realVarSpace(self):
-        if self.DGCVType == "standard":
+        if self.dgcvType == "standard":
             return self._realVarSpace
         if self._realVarSpace is None or self._imVarSpace is None:
             self.coeff_dicts
@@ -103,7 +103,7 @@ class metricClass(sp.Basic):
 
     @property
     def holVarSpace(self):
-        if self.DGCVType == "standard":
+        if self.dgcvType == "standard":
             return self._holVarSpace
         if self._holVarSpace is None:
             self.coeff_dicts
@@ -112,7 +112,7 @@ class metricClass(sp.Basic):
 
     @property
     def antiholVarSpace(self):
-        if self.DGCVType == "standard":
+        if self.dgcvType == "standard":
             return self._antiholVarSpace
         if self._antiholVarSpace is None:
             self.coeff_dicts
@@ -121,7 +121,7 @@ class metricClass(sp.Basic):
 
     @property
     def compVarSpace(self):
-        if self.DGCVType == "standard":
+        if self.dgcvType == "standard":
             return self._holVarSpace + self._antiholVarSpace
         if self._holVarSpace is None or self._antiholVarSpace is None:
             self.coeff_dicts
@@ -132,7 +132,7 @@ class metricClass(sp.Basic):
     def coeff_dicts(
         self,
     ):  # Retrieves coeffs in different variable formats and updates *VarSpace and _coeff_dicts caches if needed
-        if self.DGCVType == "standard" or all(
+        if self.dgcvType == "standard" or all(
             j is not None
             for j in [
                 self._realVarSpace,
@@ -593,7 +593,7 @@ class metricClass(sp.Basic):
             sparse_data = {
                 indices: entry_rule(indices) for indices in generate_indices(shape)
             }
-            self._RCT04 = tensorField(self.varSpace, sparse_data, valence=(0,0,0,0), DGCVType=self.DGCVType)
+            self._RCT04 = tensorField(self.varSpace, sparse_data, valence=(0,0,0,0), dgcvType=self.dgcvType)
         return self._RCT04
 
     @property
@@ -634,7 +634,7 @@ class metricClass(sp.Basic):
                 self.varSpace,
                 sparse_data,
                 self.degree,
-                DGCVType=self.DGCVType,
+                dgcvType=self.dgcvType,
                 _simplifyKW=self._simplifyKW,
             )
         return self._Ricci
@@ -707,7 +707,7 @@ class metricClass(sp.Basic):
             sparse_data = {
                 indices: entry_rule(indices) for indices in generate_indices(shape)
             }
-            self._Weyl = tensorField(self.varSpace, sparse_data, valence=(0,0,0,0), DGCVType=self.DGCVType)
+            self._Weyl = tensorField(self.varSpace, sparse_data, valence=(0,0,0,0), dgcvType=self.dgcvType)
         return self._Weyl
 
     @property
@@ -775,7 +775,7 @@ class metricClass(sp.Basic):
             The simplification rule to apply. Options include 'real', 'holomorphic', and 'symbolic_conjugate'.
 
         skipVar : list, optional
-            A list of strings that are parent labels for DGCV variable systems to exclude from the simplification process.
+            A list of strings that are parent labels for dgcv variable systems to exclude from the simplification process.
 
         Returns
         -------
@@ -849,7 +849,7 @@ class metricClass(sp.Basic):
                 self.varSpace,
                 simplified_coeffs,
                 self.degree,
-                DGCVType=self.DGCVType,
+                dgcvType=self.dgcvType,
                 _simplifyKW=self._simplifyKW,
             )
         )
@@ -1013,9 +1013,9 @@ class LeviCivitaConnectionClass(sp.Basic):
             else:
                 raise KeyError(
                     "To initialize a `LeviCivitaConnectionClass` instance with variable_handling_default='complex', "
-                    "`varSpace` must contain only variables from DGCV's complex variables systems, and all variables in "
+                    "`varSpace` must contain only variables from dgcv's complex variables systems, and all variables in "
                     "`varSpace` must be simultaneously among the real and imaginary types, or simultaneously among the "
-                    "holomorphic and antiholomorphic types. Use `complexVarProc` to easily create DGCV complex variable systems."
+                    "holomorphic and antiholomorphic types. Use `complexVarProc` to easily create dgcv complex variable systems."
                 )
         else:
             self._varSpace_type = "standard"
@@ -1056,12 +1056,12 @@ class LeviCivitaConnectionClass(sp.Basic):
             vf1 = changeVFBasis(allToReal(vf1), self.varSpace)
             vf2 = changeVFBasis(allToReal(vf2), self.varSpace)
             newCoeffs = [_coeff(vf1, vf2, L) for L in range(dimLoc)]
-            return VFClass(self.varSpace, newCoeffs, DGCVType="complex")
+            return VFClass(self.varSpace, newCoeffs, dgcvType="complex")
         elif self._varSpace_type == "complex":
             vf1 = changeVFBasis(allToSym(vf1), self.varSpace)
             vf2 = changeVFBasis(allToSym(vf2), self.varSpace)
             newCoeffs = [_coeff(vf1, vf2, L) for L in range(dimLoc)]
-            return VFClass(self.varSpace, newCoeffs, DGCVType="complex")
+            return VFClass(self.varSpace, newCoeffs, dgcvType="complex")
 
 
 def metric_from_matrix(coordinates, matrix):

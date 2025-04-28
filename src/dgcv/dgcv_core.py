@@ -4412,38 +4412,87 @@ def VF_coeffs(vf, var_list, sparse=False):
     Raises:
         TypeError if vf is not a VFClass or if the symbols in var_list are not all from one coordinate format.
     """
-    # Get the dgcv variable registry
     variable_registry = get_variable_registry()
 
-    # Ensure vf is a VFClass instance
     if not isinstance(vf, VFClass):
         raise TypeError(f"VF_coeffs expects the first argument to be an instance of VFClass, not type: {type(vf)}")
 
+    def validate_varspace(vs):
+        vs = list(vs)
+        final_vs = []
+        warn = False
+        while len(vs)>0:
+            var = vs[0]
+            if any([(var in j['family_values']) for j in variable_registry['standard_variable_systems'].values()]):
+                final_vs += vs[:1]
+                vs = vs[1:]
+            else:
+                startLen = len(vs)
+                relatives = []
+                for parent in variable_registry['complex_variable_systems'].values():
+                    if relatives == []:
+                        idx = None
+                        family_sets = parent['family_values']
+                        for fSet in family_sets:
+                            if idx is None and (var in fSet):
+                                idx = fSet.index(var)
+                        if idx is not None:
+                            relatives = [fSet[idx] for fSet in family_sets]
+                if len(relatives)==0:
+                    final_vs += vs[:1]
+                    vs = vs[1:]
+                else:
+                    new_vs = []
+                    extra_vs = []
+                    for iterVar in vs:
+                        if iterVar in relatives:
+                            extra_vs += [iterVar]
+                        else:
+                            new_vs += [iterVar]
+                    vs = new_vs
+                    if len(extra_vs)>2:
+                        final_vs += extra_vs[:2]
+                        warn = True
+                    else:
+                        final_vs += extra_vs
+        return final_vs, warn
+
     # For complex vector fields, check that the variable list is uniformly in one coordinate format.
+    special_handling = False
     if vf.dgcvType == "complex":
         conv_realToSym = variable_registry["conversion_dictionaries"]["realToSym"]
         conv_symToReal = variable_registry["conversion_dictionaries"]["symToReal"]
         if all(var in conv_realToSym for var in var_list):
-            # All variables are in real coordinates.
             if vf._varSpace_type == "complex":
                 vf = allToReal(vf)
         elif all(var in conv_symToReal for var in var_list):
-            # All variables are in holomorphic coordinates.
             if vf._varSpace_type == "real":
                 vf = allToSym(vf)
         else:
-            raise TypeError(
-                "The VF_coeffs function was given a VFClass with dgcvType='complex' while the variable list contains "
-                "a mixture of real and holomorphic coordinates. Variables should be provided in just one coordinate format."
-            )
+            special_handling = True
 
-    # Get a minimal vector field data dictionary mapping basis variables to their coefficients.
+    if special_handling:
+        validated_vs, warning = validate_varspace(var_list)
+        if warning:
+            warnings.warn(
+                "The VF_coeffs function was given a non-independent list of coordinate functions for the variable space w.r.t. which it should decompose the VF. The maximal subset of independent coordinates selected from the given list in order was used instead. This issue is caused by providing redundant real and holomorphic coordinates simultaneously. "
+        )
+        vfR = allToReal(vf)
+        vfH = allToSym(vf)
+        MVFDR = minimalVFDataDict(vfR)
+        MVFDH = minimalVFDataDict(vfH)
+        coeffs = []
+        for var in validated_vs:
+            coef = MVFDR.get(var, 0)
+            if MVFDR == 0:
+                coeffs += [MVFDH.get(var, 0)]
+            else:
+                coeffs += [coef]
+
     MVFD = minimalVFDataDict(vf)
-
-
     coeffs = [MVFD.get(var, 0) for var in var_list]
 
-    # Return sparse or full result
+
     if sparse:
         return [((i,), coeffs[i]) for i in range(len(coeffs)) if coeffs[i] != 0] or [
             ((0,), 0)
@@ -4865,10 +4914,10 @@ def addTensorFields(*args, doNotSimplify=False):
     if not all(isinstance(arg, tensorField) for arg in args):
         raise TypeError("addTensorFields expected all arguments to be tensorField instances.")
 
-    # Check that all tensorFields have the same valence
-    degrees = {tuple(arg.valence) for arg in args}
-    if len(degrees) != 1:
-        raise ValueError("Adding tensorFields with different valences is not supported.")
+    # # Check that all tensorFields have the same valence
+    # degrees = {tuple(arg.valence) for arg in args}
+    # if len(degrees) != 1:
+    #     raise ValueError("Adding tensorFields with different valences is not supported.")
 
     # Determine `data_shape` for the resulting tensorField
     data_shapes = {arg.data_shape for arg in args}
@@ -4918,9 +4967,10 @@ def scaleTensorField(arg1, arg2):
         return tensorField(
             arg2.varSpace,
             {a: arg1 * b for a, b in arg2.coeff_dict.items()},
-            arg2.valence,
-            arg2.dgcvType,
-            arg2._simplifyKW
+            valence = arg2.valence,
+            data_shape = arg2.data_shape,
+            dgcvType = arg2.dgcvType,
+            _simplifyKW = arg2._simplifyKW
         )
     else:
         raise Exception(

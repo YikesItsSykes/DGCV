@@ -1,8 +1,8 @@
 """
-DGCV: Differential Geometry with Complex Variables
+dgcv: Differential Geometry with Complex Variables
 
 This module provides tools for creating, manipulating, and decomposing vector fields and 
-differential forms within the DGCV package. It includes methods for Cartan calculus like 
+differential forms within the dgcv package. It includes methods for Cartan calculus like 
 the exterior derivative and Lie derivative. There are some complex structure specific
 functions as well, e.g., assembling holomorphic vector fields from holomorphic coefficients.
 
@@ -56,7 +56,7 @@ from .dgcv_core import (
     allToSym,
     changeDFBasis,
     clearVar,
-    compressDGCVClass,
+    compress_dgcv_class,
     listVar,
     minimalVFDataDict,
     variableProcedure,
@@ -85,7 +85,7 @@ def get_VF(*coordinates):
                     VFList += [parents[parent]["variable_relatives"][varStr]["VFClass"]]
                 else:
                     raise TypeError(
-                        f"`get_VF` recieved a variable {j} that was not initialized with coordinate vector fields registered in DGCV's variable management framework. Use functions like `createVariables(--,withVF=True)` and `createVariables(--,complex=True)` to initialize variables with VF and DF."
+                        f"`get_VF` recieved a variable {j} that was not initialized with coordinate vector fields registered in dgcv's variable management framework. Use functions like `createVariables(--,withVF=True)` and `createVariables(--,complex=True)` to initialize variables with VF and DF."
                     )
     return VFList
 
@@ -111,7 +111,7 @@ def get_DF(*coordinates):
                     DFList += [parents[parent]["variable_relatives"][varStr]["DFClass"]]
                 else:
                     raise TypeError(
-                        "`get_DF` recieved variables that were not initialized with coordinate vector fields and dual 1-forms registered in DGCV's variable management framework. Use functions like `createVariables(--,withVF=True)` and `createVariables(--,complex=True)` to initialize variables with VF and DF."
+                        "`get_DF` recieved variables that were not initialized with coordinate vector fields and dual 1-forms registered in dgcv's variable management framework. Use functions like `createVariables(--,withVF=True)` and `createVariables(--,complex=True)` to initialize variables with VF and DF."
                     )
     return DFList
 
@@ -131,7 +131,7 @@ def assembleFromHolVFC(coeffs, holVars):
     coeffs : tuple of sympy expressions
         Coefficients for the vector field in terms of the holomorphic variables.
     holVars : list or tuple
-        A list or tuple containing Symbol objects that were initialized as holomorphic variables via DGCV variable creation functions.
+        A list or tuple containing Symbol objects that were initialized as holomorphic variables via dgcv variable creation functions.
 
     Returns:
     --------
@@ -147,7 +147,7 @@ def assembleFromHolVFC(coeffs, holVars):
 
     Example:
     --------
-    >>> from DGCV import createVariables, assembleFromHolVFC
+    >>> from dgcv import createVariables, assembleFromHolVFC
     >>> createVariables('z', 'x', 'y', 3)
     >>> print(assembleFromHolVFC((z1 + z2, z3, 0), [z1, z2, z3]))
     (z1/2 + z2/2)*D_x1+z3/2*D_x2+(-I*(z1 + z2)/2)*D_y1-I*z3/2*D_y2
@@ -188,7 +188,7 @@ def assembleFromAntiholVFC(coeffs, holVars):
     arg1 : tuple of sympy expressions
         Coefficients for the vector field in terms of the antiholomorphic variables.
     arg2 : list or tuple
-        A list or tuple containing Symbol objects that were initialized as holomorphic variables via DGCV variable creation functions.
+        A list or tuple containing Symbol objects that were initialized as holomorphic variables via dgcv variable creation functions.
 
     Returns:
     --------
@@ -204,7 +204,7 @@ def assembleFromAntiholVFC(coeffs, holVars):
 
     Example:
     --------
-    >>> from DGCV import createVariables, assembleFromAntiholVFC
+    >>> from dgcv import createVariables, assembleFromAntiholVFC
     >>> createVariables('z', 'x', 'y', 3)
     >>> print(assembleFromAntiholVFC((z1 + z2, z3, 0), [z1, z2, z3]))
     (z1/2 + z2/2)*D_x1+z3/2*D_x2+(I*(z1 + z2)/2)*D_y1+I*z3/2*D_y2
@@ -250,7 +250,7 @@ def assembleFromCompVFC(arg1, arg2, arg3):
     arg2 : tuple of sympy expressions
         Coefficients for the antiholomorphic part of the vector field.
     arg3 : list or tuple
-        A list or tuple containing Symbol objects that were initialized as holomorphic variables via DGCV variable creation functions.
+        A list or tuple containing Symbol objects that were initialized as holomorphic variables via dgcv variable creation functions.
 
     Returns:
     --------
@@ -266,7 +266,7 @@ def assembleFromCompVFC(arg1, arg2, arg3):
 
     Example:
     --------
-    >>> from DGCV import createVariables, assembleFromCompVFC
+    >>> from dgcv import createVariables, assembleFromCompVFC
     >>> createVariables('z', 'x', 'y', 3)
     >>> assembleFromCompVFC((z1 + z2, z3, 0), (z1, z2, z3), [z1, z2, z3])
     VFClass instance representing the complex vector field with holomorphic and antiholomorphic parts
@@ -288,11 +288,11 @@ def assembleFromCompVFC(arg1, arg2, arg3):
 ############## differential forms
 
 
-def makeZeroForm(arg1, varSpace=None, DGCVType=None, default_var_format=None):
+def makeZeroForm(arg1, varSpace=None, dgcvType=None, default_var_format=None):
     """
     Constructs a 0-form (a differential form of degree 0) based on the provided input.
 
-    If *varSpace* is not provided, the variables will be inferred from the real parts of *arg1*. If *DGCVType* is
+    If *varSpace* is not provided, the variables will be inferred from the real parts of *arg1*. If *dgcvType* is
     not provided, the function checks if the variables belong to the complex variable system (via the variable registry)
     to determine the differential form type.
 
@@ -302,7 +302,7 @@ def makeZeroForm(arg1, varSpace=None, DGCVType=None, default_var_format=None):
         The scalar expression or value for the 0-form.
     varSpace : list or tuple, optional
         The variable space associated with the form. If not provided, the real free symbols of *arg1* will be used.
-    DGCVType : str, optional
+    dgcvType : str, optional
         The differential form type ('complex' or 'standard'). If not provided, the type will be inferred from the
         variable space.
 
@@ -313,7 +313,7 @@ def makeZeroForm(arg1, varSpace=None, DGCVType=None, default_var_format=None):
 
     Example:
     --------
-    >>> from DGCV import makeZeroForm, createVariables
+    >>> from dgcv import makeZeroForm, createVariables
     >>> createVariables('a b')
     >>> createVariables('z', 'x', 'y')
     >>> df1 = makeZeroForm(5)  # constant coeff DF form with trivial varSpace
@@ -327,7 +327,7 @@ def makeZeroForm(arg1, varSpace=None, DGCVType=None, default_var_format=None):
         if isinstance(arg1, (int, float)):
             varLoc = tuple()
         elif isinstance(arg1, sp.Expr):
-            if DGCVType == "complex":
+            if dgcvType == "complex":
                 if default_var_format == "real":
                     varLoc = tuple(
                         [
@@ -350,7 +350,7 @@ def makeZeroForm(arg1, varSpace=None, DGCVType=None, default_var_format=None):
             else:
                 varLoc = tuple(allToReal(arg1).free_symbols)
     else:
-        if DGCVType == "complex":
+        if dgcvType == "complex":
             if (
                 all(
                     var in variable_registry["conversion_dictionaries"]["realToSym"]
@@ -375,7 +375,7 @@ def makeZeroForm(arg1, varSpace=None, DGCVType=None, default_var_format=None):
             varLoc = tuple(varSpace)
 
     # Determine the differential form type
-    if DGCVType is None:
+    if dgcvType is None:
         if all(
             var in variable_registry["conversion_dictionaries"]["realToSym"]
             for var in varLoc
@@ -389,10 +389,10 @@ def makeZeroForm(arg1, varSpace=None, DGCVType=None, default_var_format=None):
         else:
             typeLoc = "standard"  # default to standard unless found in complex variable system
     else:
-        typeLoc = DGCVType
+        typeLoc = dgcvType
 
     # Return the 0-form as a DFClass instance
-    return DFClass(varLoc, {tuple(): arg1}, 0, DGCVType=typeLoc)
+    return DFClass(varLoc, {tuple(): arg1}, 0, dgcvType=typeLoc)
 
 
 def exteriorDerivative(arg1, forceComplexType=None):
@@ -417,16 +417,16 @@ def exteriorDerivative(arg1, forceComplexType=None):
 
     Example:
     --------
-    >>> from DGCV import createVariables, makeZeroForm, exteriorDerivative
+    >>> from dgcv import createVariables, makeZeroForm, exteriorDerivative
     >>> createVariables('z', 'x', 'y', withVF=True)
-    >>> f_Form = makeZeroForm(z,DGCVType='complex')
+    >>> f_Form = makeZeroForm(z,dgcvType='complex')
     >>> exteriorDerivative(f_Form)
     I*d_y+d_x
     """
     # Check that arg1 is a DFClass or convert it into a zero-form
     if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sp.Expr)):
-        arg1 = makeZeroForm(arg1, DGCVType="complex" if forceComplexType else None)
-    elif arg1.DGCVType == "complex":
+        arg1 = makeZeroForm(arg1, dgcvType="complex" if forceComplexType else None)
+    elif arg1.dgcvType == "complex":
         forceComplexType = True
 
     if isinstance(arg1, DFClass):
@@ -438,7 +438,7 @@ def exteriorDerivative(arg1, forceComplexType=None):
 
     # Helper function to compute the exterior derivative of a zero-form
     def extDerOfZeroForm(arg1, typeSet=None):
-        if arg1.DGCVType == "complex" or forceComplexType:
+        if arg1.dgcvType == "complex" or forceComplexType:
             if typeSet == "real":
                 sparseDataLoc = {
                     (j,): sp.diff(allToReal(arg1.coeffsInKFormBasis[0]), arg1.varSpace[j])
@@ -459,7 +459,7 @@ def exteriorDerivative(arg1, forceComplexType=None):
             arg1.varSpace,
             sparseDataLoc,
             1,
-            DGCVType="complex" if forceComplexType else arg1.DGCVType,
+            dgcvType="complex" if forceComplexType else arg1.dgcvType,
         )
 
     # Handle zero-forms
@@ -478,7 +478,7 @@ def exteriorDerivative(arg1, forceComplexType=None):
             arg1.varSpace,
             {tuple(j[0]): 1},
             arg1.degree,
-            DGCVType="complex" if forceComplexType else arg1.DGCVType,
+            dgcvType="complex" if forceComplexType else arg1.dgcvType,
         )
         for j in minDataLoc
     ]
@@ -535,7 +535,7 @@ def interiorProductOf1Form(vf, oneForm):
         A 0-form representing the result of the interior product of *vf* and *oneForm*.
     """
     varSpaceLoc = tuple(dict.fromkeys(vf.varSpace + oneForm.varSpace))
-    return makeZeroForm(oneForm(vf), varSpace=varSpaceLoc, DGCVType=oneForm.DGCVType)
+    return makeZeroForm(oneForm(vf), varSpace=varSpaceLoc, dgcvType=oneForm.dgcvType)
 
 
 def interiorProductOf2Form(vf, twoForm):
@@ -594,7 +594,7 @@ def interiorProduct(vf, kForm):
 
     Example:
     --------
-    >>> from DGCV import createVariables, makeZeroForm, interiorProduct
+    >>> from dgcv import createVariables, makeZeroForm, interiorProduct
     >>> from sympy import latex
     >>> createVariables('z', 'x', 'y')
     >>> createVariables('v')
@@ -634,7 +634,7 @@ def interiorProduct(vf, kForm):
 
     # Return a differential form using the sparse dictionary
     return DFClass(
-        kForm.varSpace, sparse_array_loc, kForm.degree - 1, DGCVType=kForm.DGCVType
+        kForm.varSpace, sparse_array_loc, kForm.degree - 1, dgcvType=kForm.dgcvType
     )
 
 
@@ -667,7 +667,7 @@ def LieDerivative(vf, arg):
 
     Example:
     --------
-    >>> from DGCV import createVariables, LieDerivative
+    >>> from dgcv import createVariables, LieDerivative
     >>> from sympy import latex
     >>> createVariables('z', 'x', 'y')
     >>> createVariables('v', withVF=True)
@@ -743,10 +743,10 @@ def decompose(
     This function attempts to express the input `obj` (a VFClass or DFClass object) as a linear combination
     of the elements in the provided `basis` list. The `basis` list does not need to be linearly independent,
     and if the decomposition is not unique, the function will parameterize the solution space. Any parameters
-    needed are automatically initialized and registered in DGCV's variable management framework (VMF).
+    needed are automatically initialized and registered in dgcv's variable management framework (VMF).
 
-    The function carefully handles variable types based on the `DGCVType` attribute of the objects. For objects
-    with `DGCVType='complex'`, it dynamically selects whether to perform real coordinate computations or complex
+    The function carefully handles variable types based on the `dgcvType` attribute of the objects. For objects
+    with `dgcvType='complex'`, it dynamically selects whether to perform real coordinate computations or complex
     coordinate computations, depending on the input data. If a canonical variable formatting decision cannot be
     made naturally from the input, the function will return warnings with explanations.
 
@@ -776,7 +776,7 @@ def decompose(
     ------
     TypeError
         If the class of `obj` does not match the class of elements in the `basis` list (i.e., both must
-        be either VFClass or DFClass), or if objects in the `basis` list have inconsistent `DGCVType` attributes.
+        be either VFClass or DFClass), or if objects in the `basis` list have inconsistent `dgcvType` attributes.
 
     Warnings
     --------
@@ -786,7 +786,7 @@ def decompose(
 
     Remarks
     -------
-    - The function dynamically handles objects based on their `DGCVType` attribute. For `DGCVType='complex'`,
+    - The function dynamically handles objects based on their `dgcvType` attribute. For `dgcvType='complex'`,
     it distinguishes between real and complex coordinate computations, converting the input as needed
     to ensure consistency in formatting. If this decision cannot be determined from the input data,
     the function issues warnings explaining the necessary canonical formatting.
@@ -818,22 +818,22 @@ def decompose(
             "`decompose` needs all objects to be of the same class (i.e., all vector fields VFClass or add diff. forms DFClass)"
         )
 
-    if len(set([j.DGCVType for j in basis])) > 1:
+    if len(set([j.dgcvType for j in basis])) > 1:
         raise TypeError(
-            "`decompose` was given vector fields or differential forms with different `DGCVType` attribute values. Reformat them to all have `DGCVType` 'standard' or 'complex'. The descision whether or not to track complex variable systems in this computation affects the outcome, so `decompose` will not automate attribute homogenization here by design."
+            "`decompose` was given vector fields or differential forms with different `dgcvType` attribute values. Reformat them to all have `dgcvType` 'standard' or 'complex'. The descision whether or not to track complex variable systems in this computation affects the outcome, so `decompose` will not automate attribute homogenization here by design."
         )
 
     # make _varSpace_type uniform and strip unnecessary variables from varSpace attributes
-    if obj.DGCVType == "complex":
+    if obj.dgcvType == "complex":
         if obj._varSpace_type == "real":
-            obj = compressDGCVClass(allToReal(obj))
-            basis = [compressDGCVClass(allToReal(j)) for j in basis]
+            obj = compress_dgcv_class(allToReal(obj))
+            basis = [compress_dgcv_class(allToReal(j)) for j in basis]
         elif obj._varSpace_type == "complex":
-            obj = compressDGCVClass(allToSym(obj))
-            basis = [compressDGCVClass(allToSym(j)) for j in basis]
+            obj = compress_dgcv_class(allToSym(obj))
+            basis = [compress_dgcv_class(allToSym(j)) for j in basis]
     else:
-        obj = compressDGCVClass(obj)
-        basis = [compressDGCVClass(j) for j in basis]
+        obj = compress_dgcv_class(obj)
+        basis = [compress_dgcv_class(j) for j in basis]
 
     dimLoc = len(basis)
     if dimLoc == 0:
@@ -842,7 +842,7 @@ def decompose(
     variableProcedure(tempLabel, dimLoc, initialIndex=0, _tempVar=retrieve_passkey())
     tempVars = _cached_caller_globals[tempLabel]
     if isinstance(obj, VFClass):
-        solObj = compressDGCVClass(
+        solObj = compress_dgcv_class(
             addVF(
                 *[
                     _cached_caller_globals[tempLabel + str(j)] * basis[j]
@@ -853,9 +853,9 @@ def decompose(
         if not all([j in solObj.varSpace for j in obj.varSpace]):
             warnings.warn(f"The vector field {obj} is not in the span of {basis}")
             return []
-        eqns = (compressDGCVClass(obj - solObj)).coeffs
+        eqns = (compress_dgcv_class(obj - solObj)).coeffs
     if isinstance(obj, DFClass):
-        solObj = compressDGCVClass(
+        solObj = compress_dgcv_class(
             addDF(
                 *[
                     _cached_caller_globals[tempLabel + str(j)] * basis[j]
@@ -867,7 +867,7 @@ def decompose(
             warnings.warn(f"The differential form {obj} is not in the span of {basis}. Variable space mis-alignment: {solObj.varSpace} and {obj.varSpace}")
             obj = changeDFBasis(obj, solObj.varSpace)
             return []
-        eqns = [j[1] for j in (compressDGCVClass(obj - solObj)).DFClassDataMinimal]
+        eqns = [j[1] for j in (compress_dgcv_class(obj - solObj)).DFClassDataMinimal]
 
     sol = sp.linsolve(eqns, tempVars)
     if len(list(sol)) == 0:
@@ -912,7 +912,7 @@ def get_coframe(VFList):
     to 0 when applied to all other vector fields in the list. The function dynamically handles both real and
     holomorphic coordinate systems for vector fields.
 
-    For vector fields with `DGCVType='complex'`, `get_coframe` determines whether evaluations should default
+    For vector fields with `dgcvType='complex'`, `get_coframe` determines whether evaluations should default
     to real or holomorphic coordinates based on the first vector field in the list, and all other vector fields
     are converted accordingly. If such conversions occur, `get_coframe` issues warnings
     explaining its formatting choice.
@@ -921,7 +921,7 @@ def get_coframe(VFList):
     ----------
     VFList : list of VFClass
         A list of vector fields for which the coframe will be constructed. All vector fields in the list must
-        have the same `DGCVType` attribute (i.e., 'standard' or 'complex'), and for the `DGCVType='complex'`
+        have the same `dgcvType` attribute (i.e., 'standard' or 'complex'), and for the `dgcvType='complex'`
         case coordinate systems used in their definitions should be consistent (real or holomorphic).
 
     Returns
@@ -933,7 +933,7 @@ def get_coframe(VFList):
     Raises
     ------
     TypeError
-        If the vector fields in `VFList` have inconsistent `DGCVType` attributes or if the list contains
+        If the vector fields in `VFList` have inconsistent `dgcvType` attributes or if the list contains
         linearly dependent vector fields that prevent the construction of a coframe.
 
     Warnings
@@ -947,7 +947,7 @@ def get_coframe(VFList):
 
     Example
     -------
-    >>> from DGCV import createVariables, get_coframe
+    >>> from dgcv import createVariables, get_coframe
     >>> createVariables('z', 'x', 'y', 3, default_var_format='real')
     >>> vfList = [D_z1 + z1**3 * D_BARz1, D_BARz1 + BARz1**3 * D_z1]
     >>> coframe = get_coframe(vfList)
@@ -960,23 +960,23 @@ def get_coframe(VFList):
     """
     dimLoc = len(VFList)
     vr = get_variable_registry()
-    if len(set([j.DGCVType for j in VFList])) > 1:
+    if len(set([j.dgcvType for j in VFList])) > 1:
         raise TypeError(
-            "`coframe` was given a set of vector fields with different `DGCVType` attribute values. Reformat the vector fields to all have `DGCVType` 'standard' or 'complex'"
+            "`coframe` was given a set of vector fields with different `dgcvType` attribute values. Reformat the vector fields to all have `dgcvType` 'standard' or 'complex'"
         )
     elif VFList[0]._varSpace_type == "real":
         varFormat = "real"
         VFList = [allToReal(j) for j in VFList]
         if any([j._varSpace_type == "complex" for j in VFList[1:]]):
             warnings.warn(
-                "`coframe` was given a list of `DGCVType='complex'` vector fields in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `coframe` converted everything to the coordinate type of the first provided VF, which is `real`. Tip: if holomorphic coordinates were prefered then convert the provided VF to holom. format before giving them to `coframe` (it is even enough to do this for just the first VF in the list). Use functions like `allToHol` and `allToSym` to achieve this."
+                "`coframe` was given a list of `dgcvType='complex'` vector fields in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `coframe` converted everything to the coordinate type of the first provided VF, which is `real`. Tip: if holomorphic coordinates were prefered then convert the provided VF to holom. format before giving them to `coframe` (it is even enough to do this for just the first VF in the list). Use functions like `allToHol` and `allToSym` to achieve this."
             )
     elif VFList[0]._varSpace_type == "complex":
         varFormat = "complex"
         VFList = [allToSym(j) for j in VFList]
         if any([j._varSpace_type == "real" for j in VFList[1:]]):
             warnings.warn(
-                "`coframe` was given a list of `DGCVType='complex'` vector fields in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `coframe` converted everything to the coordinate type of the first provided VF, which is `holomorphic`. Tip: if real coordinates were prefered then convert the provided VF to real format before giving them to `coframe` (it is even enough to do this for just the first VF in the list). The function `allToReal` is one way to do such conversion."
+                "`coframe` was given a list of `dgcvType='complex'` vector fields in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `coframe` converted everything to the coordinate type of the first provided VF, which is `holomorphic`. Tip: if real coordinates were prefered then convert the provided VF to real format before giving them to `coframe` (it is even enough to do this for just the first VF in the list). The function `allToReal` is one way to do such conversion."
             )
     else:
         varFormat = "standard"
@@ -998,7 +998,7 @@ def get_coframe(VFList):
             if keyStr in parentsDict[var]["variable_relatives"]:
                 if parentsDict[var]["variable_relatives"][keyStr]["DFClass"] is None:
                     raise TypeError(
-                        "One of the provided vector fields was defined over coordinates including at least one variable that was initialized without a corresponding coordinate vector field registered in the DGCV variable management framework. Suggestion: use DGCV variable creation functions to initialize variables. Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables that the vector fields are defined w.r.t."
+                        "One of the provided vector fields was defined over coordinates including at least one variable that was initialized without a corresponding coordinate vector field registered in the dgcv variable management framework. Suggestion: use dgcv variable creation functions to initialize variables. Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables that the vector fields are defined w.r.t."
                     )
                 else:
                     return parentsDict[var]["variable_relatives"][keyStr]["DFClass"]
@@ -1088,7 +1088,7 @@ def annihilator(
     objList : list of VFClass or DFClass
         A list of vector fields or differential forms for which the annihilator will be computed. All objects
         in the list must be of the same class (either all vector fields or all differential forms) and have
-        consistent `DGCVType` attributes (i.e., 'standard' or 'complex').
+        consistent `dgcvType` attributes (i.e., 'standard' or 'complex').
     coordinate_Space : list, tuple, or set
         A collection of variables that define the coordinate system in which the annihilator is to be computed.
     allow_div_by_zero : bool, optional
@@ -1116,7 +1116,7 @@ def annihilator(
 
     Example
     -------
-    >>> from DGCV import createVariables, annihilator, exteriorDerivative, complex_struct_op, Del, DelBar, allToReal
+    >>> from dgcv import createVariables, annihilator, exteriorDerivative, complex_struct_op, Del, DelBar, allToReal
     >>> createVariables('z', 'x', 'y', 4, initialIndex=0)
     >>> rho = (x1*x2 + x1**2*x3 - x0)  # A defining equation for a real hypersurface M in C^4
     >>> d_rho = exteriorDerivative(rho)  # Its differential will annihilate TM
@@ -1198,9 +1198,9 @@ def annihilator(
     vr = get_variable_registry()
 
     if condition1:
-        if len(set([j.DGCVType for j in objList + control_distribution])) > 1:
+        if len(set([j.dgcvType for j in objList + control_distribution])) > 1:
             raise TypeError(
-                "`annihilator` was given a set of vector fields (and possibly DFClass controls) with different `DGCVType` attribute values. Reformat the vector fields (and controls if provided) to all have `DGCVType` 'standard' or 'complex'"
+                "`annihilator` was given a set of vector fields (and possibly DFClass controls) with different `dgcvType` attribute values. Reformat the vector fields (and controls if provided) to all have `dgcvType` 'standard' or 'complex'"
             )
         elif objList[0]._varSpace_type == "real":
             varFormat = "real"
@@ -1211,7 +1211,7 @@ def annihilator(
             control_distribution = [allToReal(j) for j in control_distribution]
             if any([j._varSpace_type == "complex" for j in objList[1:]]):
                 warnings.warn(
-                    "`annihilator` was given a list of `DGCVType='complex'` vector fields or DFClass controls in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `annihilator` converted everything to the coordinate type of the first provided VF, which is `real`. Tip: if holomorphic coordinates were prefered then convert the provided VF to holom. format before giving them to `annihilator` (it is even enough to do this for just the first VF in the list). Use functions like `allToHol` and `allToSym` to achieve this."
+                    "`annihilator` was given a list of `dgcvType='complex'` vector fields or DFClass controls in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `annihilator` converted everything to the coordinate type of the first provided VF, which is `real`. Tip: if holomorphic coordinates were prefered then convert the provided VF to holom. format before giving them to `annihilator` (it is even enough to do this for just the first VF in the list). Use functions like `allToHol` and `allToSym` to achieve this."
                 )
         elif objList[0]._varSpace_type == "complex":
             varFormat = "complex"
@@ -1222,7 +1222,7 @@ def annihilator(
             control_distribution = [allToSym(j) for j in control_distribution]
             if any([j._varSpace_type == "real" for j in objList[1:]]):
                 warnings.warn(
-                    "`annihilator` was given a list of `DGCVType='complex'` vector fields or DFClass controls in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `annihilator` converted everything to the coordinate type of the first provided VF, which is `holomorphic`. Tip: if real coordinates were prefered then convert the provided VF to real format before giving them to `annihilator` (it is even enough to do this for just the first VF in the list). The function `allToReal` is one way to do such conversion."
+                    "`annihilator` was given a list of `dgcvType='complex'` vector fields or DFClass controls in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `annihilator` converted everything to the coordinate type of the first provided VF, which is `holomorphic`. Tip: if real coordinates were prefered then convert the provided VF to real format before giving them to `annihilator` (it is even enough to do this for just the first VF in the list). The function `allToReal` is one way to do such conversion."
                 )
         else:
             varFormat = "standard"
@@ -1239,7 +1239,7 @@ def annihilator(
                             is None
                         ):
                             raise TypeError(
-                                "One of the provided vector fields was defined over coordinates including at least one variable that was initialized without a corresponding coordinate vector field registered in the DGCV variable management framework. Suggestion: use DGCV variable creation functions to initialize variables. Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables that the vector fields are defined w.r.t."
+                                "One of the provided vector fields was defined over coordinates including at least one variable that was initialized without a corresponding coordinate vector field registered in the dgcv variable management framework. Suggestion: use dgcv variable creation functions to initialize variables. Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables that the vector fields are defined w.r.t."
                             )
                         else:
                             return parentsDict[var]["variable_relatives"][keyStr][
@@ -1313,9 +1313,9 @@ def annihilator(
             return [rescaleCD(df) for df in solDFs]
 
     if condition2:
-        if len(set([j.DGCVType for j in objList + control_distribution])) > 1:
+        if len(set([j.dgcvType for j in objList + control_distribution])) > 1:
             raise TypeError(
-                "`annihilator` was given a set of differential forms (and possibly VFClass controls) with different `DGCVType` attribute values. Reformat them to all have `DGCVType` 'standard' or 'complex'"
+                "`annihilator` was given a set of differential forms (and possibly VFClass controls) with different `dgcvType` attribute values. Reformat them to all have `dgcvType` 'standard' or 'complex'"
             )
         elif objList[0]._varSpace_type == "real":
             varFormat = "real"
@@ -1325,7 +1325,7 @@ def annihilator(
             control_distribution = [allToReal(j) for j in control_distribution]
             if any([j._varSpace_type == "complex" for j in objList[1:]]):
                 warnings.warn(
-                    "`annihilator` was given a list of `DGCVType='complex'` differential forms or VFClass controls in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `annihilator` converted everything to the coordinate type of the first provided DF, which is `real`. Tip: if holomorphic coordinates were prefered then convert the provided DF to holom. format before giving them to `annihilator` (it is even enough to do this for just the first DF in the list). Use functions like `allToHol` and `allToSym` to achieve this."
+                    "`annihilator` was given a list of `dgcvType='complex'` differential forms or VFClass controls in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `annihilator` converted everything to the coordinate type of the first provided DF, which is `real`. Tip: if holomorphic coordinates were prefered then convert the provided DF to holom. format before giving them to `annihilator` (it is even enough to do this for just the first DF in the list). Use functions like `allToHol` and `allToSym` to achieve this."
                 )
                 objList = [allToReal(j) for j in objList]
         elif objList[0]._varSpace_type == "complex":
@@ -1336,7 +1336,7 @@ def annihilator(
             control_distribution = [allToSym(j) for j in control_distribution]
             if any([j._varSpace_type == "real" for j in objList[1:]]):
                 warnings.warn(
-                    "`annihilator` was given a list of `DGCVType='complex'` differential forms or VFClass controls in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `annihilator` converted everything to the coordinate type of the first provided DF, which is `holomorphic`. Tip: if real coordinates were prefered then convert the provided DF to real format before giving them to `annihilator` (it is even enough to do this for just the first DF in the list). The function `allToReal` is one way to do such conversion."
+                    "`annihilator` was given a list of `dgcvType='complex'` differential forms or VFClass controls in which some are defined w.r.t. to real coordinates and others w.r.t. holomorphic coordinates. To find a common coordinate system `annihilator` converted everything to the coordinate type of the first provided DF, which is `holomorphic`. Tip: if real coordinates were prefered then convert the provided DF to real format before giving them to `annihilator` (it is even enough to do this for just the first DF in the list). The function `allToReal` is one way to do such conversion."
                 )
                 objList = [allToSym(j) for j in objList]
         else:
@@ -1355,7 +1355,7 @@ def annihilator(
                             is None
                         ):
                             raise TypeError(
-                                "One of the provided differential forms was defined over coordinates including at least one variable that was initialized without a corresponding coordinate 1-form registered in the DGCV variable management framework. Suggestion: use DGCV variable creation functions to initialize variables. Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables that the differential forms are defined w.r.t."
+                                "One of the provided differential forms was defined over coordinates including at least one variable that was initialized without a corresponding coordinate 1-form registered in the dgcv variable management framework. Suggestion: use dgcv variable creation functions to initialize variables. Use `createVariables(--,withVF=True)` or `createVariables(--,complex=True)` to initialize all variables that the differential forms are defined w.r.t."
                             )
                         else:
                             return parentsDict[var]["variable_relatives"][keyStr][
@@ -1528,15 +1528,15 @@ def annihilator(
 #     dfList = list(dfList)
 #     Torsion = list(Torsion)
 
-#     if len(set([j.DGCVType for j in dfList]))>1:
-#         raise TypeError('`get_structureEquations` was given differential forms with different `DGCVType` attribute values. Reformat them to all have `DGCVType` \'standard\' or \'complex\'. The descision whether or not to track complex variable systems in this computation affects the outcome, so `get_structureEquations` will not automate attribute homogenization here by design.')
+#     if len(set([j.dgcvType for j in dfList]))>1:
+#         raise TypeError('`get_structureEquations` was given differential forms with different `dgcvType` attribute values. Reformat them to all have `dgcvType` \'standard\' or \'complex\'. The descision whether or not to track complex variable systems in this computation affects the outcome, so `get_structureEquations` will not automate attribute homogenization here by design.')
 
 #     if Torsion != None:
-#         if len(set([j.DGCVType for j in dfList+Torsion]))>1:
-#             raise TypeError('`get_structureEquations` was given differential forms with different `DGCVType` attribute values. Reformat them to all have `DGCVType` \'standard\' or \'complex\'. The descision whether or not to track complex variable systems in this computation affects the outcome, so `get_structureEquations` will not automate attribute homogenization here by design.')
+#         if len(set([j.dgcvType for j in dfList+Torsion]))>1:
+#             raise TypeError('`get_structureEquations` was given differential forms with different `dgcvType` attribute values. Reformat them to all have `dgcvType` \'standard\' or \'complex\'. The descision whether or not to track complex variable systems in this computation affects the outcome, so `get_structureEquations` will not automate attribute homogenization here by design.')
 
 #     # make _varSpace_type uniform
-#     if dfList[0].DGCVType=='complex':
+#     if dfList[0].dgcvType=='complex':
 #         if dfList[0]._varSpace_type=='real':
 #             Torsion = [allToReal(j) for j in Torsion]
 #             if any([j._varSpace_type!='real' for j in dfList]):
@@ -1564,7 +1564,7 @@ def annihilator(
 #         extdf = Torsion[j]-exteriorDerivative(df)
 #         fetchSol = decompose(extdf,twoForms,_hand_off = retrieve_passkey())
 #         if isinstance(fetchSol,str):
-#             raise ValueError(f'`structureEquations` failed. It appears the exterior derivative of {df} is not in the span of the provided 1-forms\' wedge products. The related error report from DGCV `decompose` is as follows:\n {fetchSol}')
+#             raise ValueError(f'`structureEquations` failed. It appears the exterior derivative of {df} is not in the span of the provided 1-forms\' wedge products. The related error report from dgcv `decompose` is as follows:\n {fetchSol}')
 #         else:
 #             structureFunctions[j] = {unraveler[k]:fetchSol[0][k] for k in range(len(fetchSol[0]))}
 

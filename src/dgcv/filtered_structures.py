@@ -12,7 +12,7 @@ from .tensors import tensorProduct
 
 class Tanaka_symbol(sp.Basic):
     """
-    DGCV class representing a symbol-like object for Tanaka prolongation.
+    dgcv class representing a symbol-like object for Tanaka prolongation.
 
     Parameters
     ----------
