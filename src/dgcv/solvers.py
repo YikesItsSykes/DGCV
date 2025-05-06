@@ -9,9 +9,12 @@ from .eds.eds import (
     abstract_ZF,
     zeroFormAtom,
 )
+from .eds.eds_representations import DF_representation
 
 
 def normalize_equations_and_vars(eqns, vars_to_solve):
+    if isinstance(eqns,DF_representation):
+        eqns = eqns.flatten()
     if not isinstance(eqns, (list, tuple)):
         eqns = [eqns]
     if vars_to_solve is None:

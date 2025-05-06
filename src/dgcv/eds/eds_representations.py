@@ -134,13 +134,21 @@ class DF_representation(sp.Basic):
     def flatten(self):
         return [entry for entry in self]
 
+    @property
+    def free_symbols(self):
+        fs_set = set()
+        for entry in self:
+            if hasattr(entry,'free_symbols'):
+                fs_set = fs_set | entry.free_symbols
+        return fs_set
+
     def _latex(self,printer=None):
         rows = []
         for row in self.array:
             rendered_row = []
             for entry in row:
                 if hasattr(entry, "_latex"):
-                    latex = entry._latex()
+                    latex = sp.latex(entry)
                 else:
                     latex = str(entry)
                 rendered_row.append(latex)
@@ -153,7 +161,7 @@ class DF_representation(sp.Basic):
             rendered_row = []
             for entry in row:
                 if hasattr(entry, "_latex"):
-                    latex = entry._latex()
+                    latex = sp.latex(entry)
                 else:
                     latex = str(entry)
                 rendered_row.append(latex)

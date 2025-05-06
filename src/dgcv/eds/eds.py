@@ -34,7 +34,6 @@ def expand_dgcv(expr, **kw):
 
     return sp.expand(expr, **kw) if isinstance(expr, sp.Basic) else expr
 
-
 @total_ordering
 class SortableObj:
     def __init__(self, pair: tuple):
@@ -256,12 +255,21 @@ class zeroFormAtom(sp.Basic):
 
     def __truediv__(self, other):
         """
-        Division of zeroFormAtom:
-        - Returns a structured `abstract_ZF` division.
+        Division with zeroFormAtom
         """
         if isinstance(other, (zeroFormAtom, int, float, sp.Expr)):
             return abstract_ZF(("div", self, other))
         return NotImplemented
+
+    def __rtruediv__(self, other):
+        """
+        Division with zeroFormAtom instances
+        """
+        if isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+            return abstract_ZF(("div", other, self))
+
+        return NotImplemented
+
 
     def __pow__(self, exp):
         """
@@ -269,13 +277,25 @@ class zeroFormAtom(sp.Basic):
         - Returns a structured `abstract_ZF` exponentiation.
         """
         if isinstance(exp, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
-            return abstract_ZF(('pow',self,exp))
+            return abstract_ZF(('pow', self, exp))
+        return NotImplemented
+
+    def __rpow__(self, other):
+        if isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+            return abstract_ZF(("pow", other, self))
+
         return NotImplemented
 
     def __add__(self, other):
         """
-        Addition of zeroFormAtom:
-        - Returns a structured `abstract_ZF` addition.
+        Addition with zeroFormAtom
+        """
+        if isinstance(other, (zeroFormAtom, int, float, sp.Expr, abstract_ZF)):
+            return abstract_ZF(("add", self, other))
+        return NotImplemented
+    def __radd__(self, other):
+        """
+        Addition with zeroFormAtom
         """
         if isinstance(other, (zeroFormAtom, int, float, sp.Expr, abstract_ZF)):
             return abstract_ZF(("add", self, other))
@@ -284,10 +304,16 @@ class zeroFormAtom(sp.Basic):
     def __sub__(self, other):
         """
         Subtraction of zeroFormAtom:
-        - Returns a structured `abstract_ZF` subtraction.
         """
         if isinstance(other, (zeroFormAtom, int, float, sp.Expr, abstract_ZF)):
             return abstract_ZF(("sub", self, other))
+        return NotImplemented
+    def __rsub__(self, other):
+        """
+        Subtraction of zeroFormAtom
+        """
+        if isinstance(other, (zeroFormAtom, int, float, sp.Expr, abstract_ZF)):
+            return abstract_ZF(("sub", other, self))
         return NotImplemented
 
     def _canonicalize_step(self):
@@ -754,7 +780,6 @@ class abstract_ZF(sp.Basic):
                 return (th,obj.label)
             else:
                 return (th,th)
-
         def is_zero_check(x):
             """Helper function to check if x is zero."""
             return x == 0 or x == 0.0 or (hasattr(x, "is_zero") and x.is_zero)
@@ -1002,6 +1027,9 @@ class abstract_ZF(sp.Basic):
             def sub_process(arg,sub_data):
                 if isinstance(arg,tuple):
                     arg = abstract_ZF(arg)
+                if isinstance(arg, abstDFAtom) and arg.degree==0:   ###!!!
+                    arg = arg.coeff
+                    warnings.warn('DEGUB8493')
                 if isinstance(arg, (zeroFormAtom,abstract_ZF)):
                     newArg = arg.subs(sub_data,with_diff_corollaries=with_diff_corollaries)
                     if isinstance(newArg,abstDFAtom):
@@ -1029,9 +1057,6 @@ class abstract_ZF(sp.Basic):
                         else:
                             raise ValueError('dgcv subs methods do not support replacing 0-forms with higher degree forms.')
                     return arg
-                if isinstance(arg, abstDFAtom) and arg.degree==0:   ###!!!
-                    arg += [arg.coeff]
-                    warnings.warn('DEGUB8493')
                 return arg
             new_base = tuple([op]+[sub_process(arg,data) for arg in args])     
             return _loop_ZF_format_conversions(abstract_ZF(new_base))
@@ -1144,10 +1169,9 @@ class abstract_ZF(sp.Basic):
     def __rpow__(self, other):
         """
         Exponentiation of abstract_ZF instances.
-        Supports exponentiation with int, float, and sympy.Expr.
         """
         if isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
-            return abstract_ZF(("pow", self, other))
+            return abstract_ZF(("pow", other, self))
 
         return NotImplemented
 
@@ -1790,29 +1814,65 @@ def createDiffForm(labels, degree, number_of_variables=None, initialIndex=1, ass
     - assumeReal (bool, optional): If True, marks instances as real and skips conjugate handling.
     - remove_guardrails (None, optional): If set, bypasses safeguards for label validation.
     """
-    if not isinstance(labels, str):
-        raise TypeError(
-            "`createDiffForm` requires its first argument to be a string, which will be used in lables for the created DF."
-        )
-    def reformat_string(input_string: str):
-        # Replace commas with spaces, then split on spaces
-        substrings = input_string.replace(",", " ").split()
-        # Return the list of non-empty substrings
-        return [s for s in substrings if len(s) > 0]
-
-    if isinstance(labels, str):
-        labels = reformat_string(labels)
-    if return_obj is True:
-        returnList = [] 
-    for label in labels:
-        if return_obj is True:
-            returnList.append(_DFFactory(label,degree, number_of_variables=number_of_variables, initialIndex=initialIndex, assumeReal=assumeReal, remove_guardrails=remove_guardrails,return_obj=True))
+    if isinstance(labels,(list,tuple)):
+        if len(set(labels))<len(labels):
+            raise NameError('`createDiffForm` was given the same label repeatedly. Labels need to be distinct.')
+        if isinstance(degree,(list,tuple)):
+            if len(degree)<len(labels):
+                degree = list(degree)+([degree[-1]]*(len(labels)-len(degree)))
         else:
-            _DFFactory(label,degree, number_of_variables=number_of_variables, initialIndex=initialIndex, assumeReal=assumeReal, remove_guardrails=remove_guardrails)
-    if return_obj is True:
-        if len(returnList)==1:
-            return returnList[0]
-        return returnList
+            degree = [degree]*len(labels)
+        if isinstance(number_of_variables,(list,tuple)):
+            if len(number_of_variables)<len(labels):
+                number_of_variables = list(number_of_variables)+([number_of_variables[-1]]*(len(labels)-len(number_of_variables)))
+        else:
+            number_of_variables = [number_of_variables]*len(labels)
+        if isinstance(initialIndex,(list,tuple)):
+            if len(initialIndex)<len(labels):
+                initialIndex = list(initialIndex)+([initialIndex[-1]]*(len(labels)-len(initialIndex)))
+        else:
+            initialIndex = [initialIndex]*len(labels)
+        if isinstance(assumeReal,(list,tuple)):
+            if len(assumeReal)<len(labels):
+                assumeReal = list(assumeReal)+([assumeReal[-1]]*(len(labels)-len(assumeReal)))
+        else:
+            assumeReal = [assumeReal]*len(labels)
+        if isinstance(remove_guardrails,(list,tuple)):
+            if len(remove_guardrails)<len(labels):
+                remove_guardrails = list(remove_guardrails)+([remove_guardrails[-1]]*(len(labels)-len(remove_guardrails)))
+        else:
+            remove_guardrails = [remove_guardrails]*len(labels)
+        if isinstance(return_obj,(list,tuple)):
+            if len(return_obj)<len(labels):
+                return_obj = list(return_obj)+([return_obj[-1]]*(len(labels)-len(return_obj)))
+        else:
+            return_obj = [return_obj]*len(labels)
+        for idx in range(len(labels)):
+            createDiffForm(labels[idx],degree[idx],number_of_variables[idx],initialIndex[idx],assumeReal[idx],remove_guardrails[idx],return_obj[idx])
+    else:
+        if not isinstance(labels, str):
+            raise TypeError(
+                "`createDiffForm` requires its first argument to be a string, which will be used in lables for the created DF."
+            )
+        def reformat_string(input_string: str):
+            # Replace commas with spaces, then split on spaces
+            substrings = input_string.replace(",", " ").split()
+            # Return the list of non-empty substrings
+            return [s for s in substrings if len(s) > 0]
+
+        if isinstance(labels, str):
+            labels = reformat_string(labels)
+        if return_obj is True:
+            returnList = [] 
+        for label in labels:
+            if return_obj is True:
+                returnList.append(_DFFactory(label,degree, number_of_variables=number_of_variables, initialIndex=initialIndex, assumeReal=assumeReal, remove_guardrails=remove_guardrails,return_obj=True))
+            else:
+                _DFFactory(label,degree, number_of_variables=number_of_variables, initialIndex=initialIndex, assumeReal=assumeReal, remove_guardrails=remove_guardrails)
+        if return_obj is True:
+            if len(returnList)==1:
+                return returnList[0]
+            return returnList
 
 def _DFFactory(label,degree, number_of_variables=None, initialIndex=1, assumeReal=False, _tempVar=None, _doNotUpdateVar=None, remove_guardrails=None,return_obj = False):
     """
