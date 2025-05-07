@@ -43,7 +43,7 @@ from .dgcv_core import (
     symToReal,
     variableProcedure,
 )
-from .polynomials import createPolynomial
+from .polynomials import createMultigradedPolynomial
 from .solvers import solve_dgcv
 from .vector_fields_and_differential_forms import assembleFromHolVFC
 
@@ -130,14 +130,20 @@ def weightedHomogeneousVF(
     NA
     """
     pListLoc = []
-    for j in range(len(arg3)):
+    if not isinstance(arg2, (list,tuple)):
+        arg2 = [arg2]
+    if not isinstance(arg3[0],(list,tuple)):
+        arg3 = [arg3]
+    if not all(len(weightList)==len(arg1) for weightList in arg3):
+        raise KeyError('weight systems given to weightedHomogeneousVF must be lists whose length is the number of variables given.')
+    for j in range(len(arg1)):
         pListLoc.append(
-            createPolynomial(
+            createMultigradedPolynomial(
                 arg4 + "_" + str(j) + "_",
-                arg2 + arg3[j],
+                [d + L[j] for d,L in zip(arg2,arg3)],
                 arg1,
+                arg3,
                 degreeCap=degreeCap,
-                weightedHomogeneity=arg3,
                 _tempVar=_tempVar,
                 assumeReal=assumeReal,
                 report=False
@@ -303,6 +309,12 @@ def findWeightedCRSymmetries(
 ):
     """
     """
+    if not isinstance(coordinate_weights[0],(list,tuple)):
+        coordinate_weights = [coordinate_weights]
+    if not isinstance(symmetry_weight,(list,tuple)):
+        symmetry_weight = [symmetry_weight]
+    if not len(symmetry_weight)==len(coordinate_weights):
+        raise KeyError('`findWeightedCRSymmetries` was given a tuple of weight systems whose length does not match the length of given symmetry weights to test for.')
     if returnAllformats:
         returnVectorFieldBasis = True
     vr = get_variable_registry()
@@ -369,13 +381,13 @@ def findWeightedCRSymmetries(
 
     subVar = set()
     for term in VFCLoc:
-        subVar |= term.atoms(sp.Symbol)
+        if hasattr(term, 'atoms'):
+            subVar |= term.atoms(sp.Symbol)
     subVar.difference_update(set(holomorphic_coordinates))
     variableProcedure(coeff_label, len(subVar), assumeReal=True)
     coeff_vars = _cached_caller_globals[coeff_label]
     VFCLoc = [
-        j.subs(dict(zip(subVar, coeff_vars)))
-        for j in VFCLoc
+        j.subs(dict(zip(subVar, coeff_vars))) if hasattr(j,'subs') else j for j in VFCLoc
     ]
     clearVar(*listVar(temporary_only=True), report=False)
     if returnVectorFieldBasis:

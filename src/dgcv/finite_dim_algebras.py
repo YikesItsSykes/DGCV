@@ -1,10 +1,12 @@
 ############## dependencies
 import random
+import re
 import warnings
 
+import pandas as pd
 import sympy as sp
 
-from ._config import _cached_caller_globals
+from ._config import _cached_caller_globals, get_dgcv_settings_registry
 from ._safeguards import (
     create_key,
     get_variable_registry,
@@ -24,16 +26,13 @@ from .vector_fields_and_differential_forms import VF_bracket
 # finite dimensional algebra class
 class FAClass(sp.Basic):
     def __new__(cls, structure_data, *args, **kwargs):
-        # Validate structure data
         validated_structure_data = cls.validate_structure_data(
             structure_data, process_matrix_rep=kwargs.get("process_matrix_rep", False)
         )
         validated_structure_data = tuple(map(tuple, validated_structure_data))
 
-        # Create the new instance
         obj = sp.Basic.__new__(cls, validated_structure_data)
 
-        # Attach structureData directly for use in __init__
         obj.structureData = validated_structure_data
 
         return obj
@@ -48,50 +47,27 @@ class FAClass(sp.Basic):
         _basis_labels=None,
         _calledFromCreator=None,
     ):
-        # Handle structure_data in __init__
         self.structureData = structure_data
-
-        # Detect if initialized from creator (using the passkey)
         if _calledFromCreator == retrieve_passkey():
             self.label = _label
             self.basis_labels = _basis_labels
             self._registered = True
         else:
-            self.label = "Alg_" + create_key()  # Assign a random label
+            self.label = "Alg_" + create_key()
             self.basis_labels = None
             self._registered = False
-
-        # Other attributes
         self.is_sparse = format_sparse
         self.dimension = len(self.structureData)
         self._built_from_matrices = process_matrix_rep
 
         def validate_and_adjust_grading_vector(vector, dimension):
-            """
-            Validates and adjusts a grading vector to match the algebra's dimension.
-
-            Parameters
-            ----------
-            vector : list, tuple, or sympy.Tuple
-                The grading vector to validate and adjust.
-            dimension : int
-                The dimension of the algebra.
-
-            Returns
-            -------
-            sympy.Tuple
-                The validated and adjusted grading vector.
-            """
-            # Check that vector is a list, tuple, or SymPy Tuple
-            if not isinstance(vector, (list, tuple, sp.Tuple)):
+            if not isinstance(vector, (list, tuple)):
                 raise ValueError(
-                    "Grading vector must be a list, tuple, or SymPy Tuple."
+                    "Grading vector must be a list or tuple."
                 )
 
-            # Convert to list for uniform handling
             vector = list(vector)
 
-            # Adjust length to match dimension
             if len(vector) < dimension:
                 warnings.warn(
                     f"Grading vector is shorter than the dimension ({len(vector)} < {dimension}). "
@@ -107,7 +83,6 @@ class FAClass(sp.Basic):
                 )
                 vector = vector[:dimension]
 
-            # Validate components
             for i, component in enumerate(vector):
                 if not isinstance(component, (int, float, sp.Basic)):
                     raise ValueError(
@@ -115,32 +90,25 @@ class FAClass(sp.Basic):
                         f"Expected int, float, or sympy.Expr."
                     )
 
-            return sp.Tuple(*vector)
+            return tuple(vector)
 
-        # Process grading
         if grading is None:
-            # Default to a single grading vector [0, 0, ..., 0]
-            self.grading = [sp.Tuple(*([0] * self.dimension))]
+            self.grading = [tuple([0] * self.dimension)]
         else:
-            # Handle single or multiple grading vectors
             if isinstance(grading, (list, tuple)) and all(
-                isinstance(g, (list, tuple, sp.Tuple)) for g in grading
+                isinstance(g, (list, tuple)) for g in grading
             ):
-                # Multiple grading vectors provided
                 self.grading = [
                     validate_and_adjust_grading_vector(vector, self.dimension)
                     for vector in grading
                 ]
             else:
-                # Single grading vector provided
                 self.grading = [
                     validate_and_adjust_grading_vector(grading, self.dimension)
                 ]
 
-        # Set the number of grading vectors
         self._gradingNumber = len(self.grading)
 
-        # Initialize basis
         self.basis = tuple([
             AlgebraElement(
                 self,
@@ -150,7 +118,6 @@ class FAClass(sp.Basic):
             )
             for i in range(self.dimension)
         ])
-
         #immutables
         self._structureData = tuple(map(tuple, structure_data))
         self._basis_labels = tuple(_basis_labels) if _basis_labels else None
@@ -166,34 +133,10 @@ class FAClass(sp.Basic):
         self._grading_compatible = None
         self._grading_report = None
 
+
+
     @staticmethod
     def validate_structure_data(data, process_matrix_rep=False):
-        """
-        Validates the structure data and converts it to a list of lists of lists.
-
-        Parameters
-        ----------
-        data : list or array-like
-            The structure data to be validated. Can be:
-            - A 3D list of structure constants (list of lists of lists)
-            - A list of VFClass objects
-            - A list of square matrices
-
-        process_matrix_rep : bool, optional
-            If True, the function will interpret the data as a list of square matrices
-            and pass them to algebraDataFromMatRep to compute the structure data.
-
-        Returns
-        -------
-        list
-            The validated structure data as a list of lists of lists.
-
-        Raises
-        ------
-        ValueError
-            If the structure data is invalid or cannot be processed into a valid 3D list.
-        """
-        # Case 1: If process_matrix_rep is True, handle matrix representation
         if process_matrix_rep:
             if all(
                 isinstance(sp.Matrix(obj), sp.Matrix)
@@ -206,11 +149,9 @@ class FAClass(sp.Basic):
                     "sp.Matrix representation requires a list of square matrices."
                 )
 
-        # Case 2: If the input is a list of VFClass objects, handle vector fields
         if all(isinstance(obj, VFClass) for obj in data):
             return algebraDataFromVF(data)
 
-        # Case 3: Validate and return the data as a list of lists of lists
         try:
             # Check that the data is a 3D list-like structure
             if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
@@ -235,7 +176,7 @@ class FAClass(sp.Basic):
         )
 
     def __hash__(self):
-        return hash((self._structureData, self._label, self._basis_labels, self._grading, self.basis))
+        return hash((self.label, self._basis_labels, self._grading))        #!!! add hashable structure data
 
     def __contains__(self, item):
         return item in self.basis
@@ -247,10 +188,6 @@ class FAClass(sp.Basic):
         return self.structureData[indices[0]][indices[1]][indices[2]]
 
     def __repr__(self):
-        """
-        Provides a detailed representation of the FAClass object.
-        Raises a warning if the instance is unregistered.
-        """
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
@@ -264,9 +201,6 @@ class FAClass(sp.Basic):
         )
 
     def _structure_data_summary(self):
-        """
-        Provides a summary of the structure data to avoid printing large matrices.
-        """
         if self.dimension <= 3:
             return self.structureData
         return (
@@ -274,10 +208,6 @@ class FAClass(sp.Basic):
         )
 
     def __str__(self):
-        """
-        Provides a string representation of the FAClass object.
-        Raises a warning if the instance is unregistered.
-        """
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
@@ -285,8 +215,8 @@ class FAClass(sp.Basic):
                 UserWarning,
             )
 
-        def format_basis_label(label):
-            return label
+        def format_basis_label(label_to_format):
+            return label_to_format
 
         formatted_label = self.label if self.label else "Unnamed Algebra"
         formatted_basis_labels = (
@@ -302,10 +232,6 @@ class FAClass(sp.Basic):
         )
 
     def _display_DGCV_hook(self):
-        """
-        Hook for dgcv-specific display customization.
-        Raises a warning if the instance is unregistered.
-        """
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
@@ -328,10 +254,6 @@ class FAClass(sp.Basic):
         return format_algebra_label(self.label)
 
     def _repr_latex_(self):
-        """
-        Provides a LaTeX representation of the FAClass object for Jupyter notebooks.
-        Raises a warning if the instance is unregistered.
-        """
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
@@ -399,10 +321,6 @@ class FAClass(sp.Basic):
         )
 
     def _sympystr(self):
-        """
-        SymPy string representation for FAClass.
-        Raises a warning if the instance is unregistered.
-        """
         if not self._registered:
             warnings.warn(
                 "This FAClass instance was initialized without an assigned label. "
@@ -416,10 +334,6 @@ class FAClass(sp.Basic):
             return f"FAClass(dim={self.dimension})"
 
     def _structure_data_summary_latex(self):
-        """
-        Provides a LaTeX summary of the structure data.
-        Converts only numerical/symbolic elements to a matrix when possible.
-        """
         try:
             # Check if structureData contains only symbolic or numeric elements
             if self._is_symbolic_matrix(self.structureData):
@@ -655,7 +569,8 @@ class FAClass(sp.Basic):
         """
 
         # Perform linear independence check
-        span_matrix = sp.Matrix.hstack(*[el.coeffs for el in elements])
+        span_matrix = sp.Matrix([list(el.coeffs) for el in elements]).transpose()
+
         linearly_independent = span_matrix.rank() == len(elements)
 
         if not linearly_independent:
@@ -677,7 +592,7 @@ class FAClass(sp.Basic):
         for i, el1 in enumerate(elements):
             for j, el2 in enumerate(elements):
                 product = el1 * el2
-                solution = span_matrix.solve_least_squares(product.coeffs)
+                solution = span_matrix.solve_least_squares(sp.Matrix(product.coeffs))
 
                 for k, coeff in enumerate(solution):
                     # Apply nsimplify to enforce exact representation
@@ -1247,7 +1162,7 @@ class FAClass(sp.Basic):
             True if the element is in the span of subspace_elements, False otherwise.
         """
         # Build a matrix where columns are the coefficients of subspace_elements
-        span_matrix = sp.Matrix.hstack(*[el.coeffs for el in subspace_elements])
+        span_matrix = sp.Matrix([list(el.coeffs) for el in subspace_elements]).transpose()
 
         # Solve for the coefficients that express `element` as a linear combination
         product_vector = sp.Matrix(element.coeffs)
@@ -1255,6 +1170,98 @@ class FAClass(sp.Basic):
 
         # Check if the solution satisfies the equation
         return span_matrix * solution == product_vector
+
+    def multiplication_table(self, elements=None, restrict_to_subspace=False, style=None, use_latex=None):
+        """
+        Generates a multiplication table for the FAClass and the given elements.
+
+        Parameters:
+        -----------
+        elements : list[AlgebraElement]
+            A list of AlgebraElement instances to include in the multiplication table.
+        restrict_to_subspace : bool, optional
+            If True, restricts the multiplication table to the given elements as basis.
+        style : str, optional
+            A key to retrieve a pandas style via `get_style()`. If None, defaults to the current theme from DGCV settings.
+        use_latex : bool, optional
+            If True, wraps table contents in `$…$`. If None, defaults from DGCV settings.
+
+        Returns:
+        --------
+        pandas.DataFrame
+            A DataFrame representing the multiplication table.
+
+        style : str, optional
+            A key to retrieve a pandas style via `get_style()`. If None, defaults to the current theme from DGCV settings.
+        use_latex : bool, optional
+            If True, wraps table contents in `$…$`. If None, defaults from DGCV settings.
+        """
+        if elements is None:
+            elements = self.basis
+        elif not all(isinstance(elem, AlgebraElement) and elem.algebra == self for elem in elements):
+            raise ValueError("All elements must be instances of algebraElement.")
+        if restrict_to_subspace is True:
+            basis_elements = elements
+        else:
+            basis_elements = self.basis
+
+        # Determine LaTeX formatting
+        if use_latex is None:
+            use_latex = get_dgcv_settings_registry()['use_latex']
+        def _to_string(element, ul=False):
+            if ul:
+                latex_str = element._repr_latex_(verbose=False)
+                if latex_str.startswith('$') and latex_str.endswith('$'):
+                    latex_str = latex_str[1:-1]
+                latex_str = latex_str.replace(r'\\displaystyle', '').replace(r'\displaystyle', '').strip()
+                return f'${latex_str}$'
+            else:
+                return str(element)
+        # Create the table headers and initialize an empty data list
+        headers = [_to_string(elem,ul=use_latex) for elem in elements]
+        index_headers = [_to_string(elem,ul=use_latex) for elem in basis_elements]
+        data = []
+
+        # Populate the multiplication table
+        for left_element in basis_elements:
+            row = [_to_string(left_element * right_element, ul=use_latex) for right_element in elements]
+            data.append(row)
+
+        # Create a DataFrame for the multiplication table
+        df = pd.DataFrame(data, columns=headers, index=index_headers)
+
+        # Determine style key
+        style_key = style or get_dgcv_settings_registry()['theme']
+        pandas_style = get_style(style_key)
+
+        # Determine outer border style from theme (fallback to 1px solid #ccc)
+        border_style = "1px solid #ccc"
+        for sd in pandas_style:
+            if sd.get("selector") == "table":
+                for prop_name, prop_value in sd.get("props", []):
+                    if prop_name == "border":
+                        border_style = prop_value
+                        break
+                break
+
+        # Define additional styles: outer border, header bottom, index-column right border
+        additional_styles = [
+            {"selector": "",          "props": [("border-collapse", "collapse"), ("border", border_style)]},
+            {"selector": "thead th",  "props": [("border-bottom", border_style)]},
+            {"selector": "tbody th",  "props": [("border-right", border_style)]},
+        ]
+
+        table_styles = pandas_style + additional_styles
+
+        # Build styled DataFrame
+        styled = (
+            df.style
+            .set_caption("Multiplication Table")
+            .set_table_styles(table_styles)
+        )
+
+        return styled
+
 
 # algebra element class
 class AlgebraElement(sp.Basic):
@@ -1351,7 +1358,7 @@ class AlgebraElement(sp.Basic):
     def _class_builder(self,coeffs,valence,format_sparse=False):
         return AlgebraElement(self.algebra,coeffs,valence,format_sparse=False)
 
-    def _repr_latex_(self):
+    def _repr_latex_(self,verbose=False):
         """
         Provides a LaTeX representation of vectorSpaceElement for Jupyter notebooks.
         Handles unregistered parent vector space by raising a warning.
@@ -1367,8 +1374,13 @@ class AlgebraElement(sp.Basic):
         for coeff, basis_label in zip(
             self.coeffs,
             self.algebra.basis_labels
-            or [f"e_{i+1}" for i in range(self.algebra.dimension)],
+            or [f"e_{{{i+1}}}" for i in range(self.algebra.dimension)],
         ):
+            if "_" not in basis_label:
+                m = re.match(r"^([A-Za-z]+)(\d+)$", basis_label)
+                if m:
+                    head, num = m.groups()
+                    basis_label = f"{head}_{{{num}}}"
             if coeff == 0:
                 continue
             elif coeff == 1:
@@ -1394,32 +1406,16 @@ class AlgebraElement(sp.Basic):
                         terms.append(rf"{sp.latex(coeff)} \cdot {basis_label}^*")
 
         if not terms:
-            return rf"$0 \cdot {self.algebra.basis_labels[0] if self.algebra.basis_labels else 'e_1'}$"
+            if verbose:
+                return rf"$0 \cdot {self.algebra.basis_labels[0] if self.algebra.basis_labels else 'e_1'}$"
+            else:
+                return "$0$"
 
         result = " + ".join(terms).replace("+ -", "- ")
 
-        def format_algebra_label(label):
-            r"""
-            Wrap the vector space label in \mathfrak{} if lowercase, and add subscripts for numeric suffixes or parts.
-            """
-            if "_" in label:
-                main_part, subscript_part = label.split("_", 1)
-                if main_part.islower():
-                    return rf"\mathfrak{{{main_part}}}_{{{subscript_part}}}"
-                return rf"{main_part}_{{{subscript_part}}}"
-            elif label[-1].isdigit():
-                label_text = "".join(filter(str.isalpha, label))
-                label_number = "".join(filter(str.isdigit, label))
-                if label_text.islower():
-                    return rf"\mathfrak{{{label_text}}}_{{{label_number}}}"
-                return rf"{label_text}_{{{label_number}}}"
-            elif label.islower():
-                return rf"\mathfrak{{{label}}}"
-            return label
+        return rf"$\displaystyle {result}$"
 
-        return rf"$\text{{Element of }} {format_algebra_label(self.algebra.label)}: {result}$"
-
-    def _latex(self):
+    def _latex(self,printer=None):
         return self._repr_latex_()
 
     def _sympystr(self):
@@ -1440,55 +1436,7 @@ class AlgebraElement(sp.Basic):
         else:
             return f"AlgebraElement(coeffs=[{coeffs_str}])"
 
-    def _latex(self, printer):
-        """
-        Provides a LaTeX representation of AlgebraElement for SymPy's latex() function.
-        Displays only the element itself without the algebra label text.
-        """
-        if not self.algebra._registered:
-            warnings.warn(
-                "This AlgebraElement's parent vector space (FAClass) was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
-                UserWarning,
-            )
-
-        terms = []
-        for coeff, basis_label in zip(
-            self.coeffs,
-            self.algebra.basis_labels
-            or [f"e_{i+1}" for i in range(self.algebra.dimension)],
-        ):
-            if coeff == 0:
-                continue
-            elif coeff == 1:
-                if self.valence == 1:
-                    terms.append(rf"{basis_label}")
-                else:
-                    terms.append(rf"{basis_label}^*")
-            elif coeff == -1:
-                if self.valence == 1:
-                    terms.append(rf"-{basis_label}")
-                else:
-                    terms.append(rf"-{basis_label}^*")
-            else:
-                if isinstance(coeff, sp.Expr) and len(coeff.args) > 1:
-                    if self.valence == 1:
-                        terms.append(rf"({sp.latex(coeff)}) \cdot {basis_label}")
-                    else:
-                        terms.append(rf"({sp.latex(coeff)}) \cdot {basis_label}^*")
-                else:
-                    if self.valence == 1:
-                        terms.append(rf"{sp.latex(coeff)} \cdot {basis_label}")
-                    else:
-                        terms.append(rf"{sp.latex(coeff)} \cdot {basis_label}^*")
-
-        if not terms:
-            return rf"0 \cdot {self.algebra.basis_labels[0] if self.algebra.basis_labels else 'e_1'}"
-
-        result = " + ".join(terms).replace("+ -", "- ")
-        return result
-
-    def _latex_verbose(self, printer):
+    def _latex_verbose(self, printer=None):
         """
         Provides a LaTeX representation of AlgebraElement for SymPy's latex() function.
         Handles unregistered parent vector space by raising a warning.
@@ -1782,6 +1730,7 @@ class AlgebraElement(sp.Basic):
 
         return self.algebra.check_element_weight(self)
 
+
 # subspaces in FAClass
 class algebraSubspace(sp.Basic):
     def __new__(cls,basis,alg, test_weights=None):
@@ -1988,7 +1937,7 @@ def createFiniteAlg(
 
     # Process grading
     if grading is None:
-        grading = [sp.Tuple(*([0] * dimension))]  # Default grading: all zeros
+        grading = [tuple([0] * dimension)]
     elif isinstance(grading, (list, tuple)) and all(
         isinstance(w, (int, sp.Expr)) for w in grading
     ):
@@ -1997,7 +1946,7 @@ def createFiniteAlg(
             raise ValueError(
                 f"Grading vector length ({len(grading)}) must match the algebra dimension ({dimension})."
             )
-        grading = [sp.Tuple(*grading)]  # Wrap single vector in a list
+        grading = [tuple(grading)]
     elif isinstance(grading, list) and all(
         isinstance(vec, (list, tuple)) for vec in grading
     ):
@@ -2007,11 +1956,10 @@ def createFiniteAlg(
                 raise ValueError(
                     f"Grading vector length ({len(vec)}) must match the algebra dimension ({dimension})."
                 )
-        grading = [sp.Tuple(*vec) for vec in grading]  # Convert each vector to Tuple
+        grading = [tuple(vec) for vec in grading]
     else:
         raise ValueError("Grading must be a single vector or a list of vectors.")
 
-    # Create the FAClass object
     passkey = retrieve_passkey()
     algebra_obj = FAClass(
         structure_data=structure_data,
@@ -2023,16 +1971,13 @@ def createFiniteAlg(
         _calledFromCreator=passkey,
     )
 
-    # Make sure algebra object and its basis are fully initialized
     assert (
         algebra_obj.basis is not None
     ), "Algebra object basis elements must be initialized."
 
-    # Register in _cached_caller_globals
     _cached_caller_globals.update({label: algebra_obj})
     _cached_caller_globals.update(zip(basis_labels, algebra_obj.basis))
 
-    # Register in the variable registry
     variable_registry = get_variable_registry()
     variable_registry["finite_algebra_systems"][label] = {
         "family_type": "algebra",
@@ -2049,8 +1994,6 @@ def createFiniteAlg(
         print(
             f"Dimension: {dimension}, Grading: {grading}, Basis Labels: {basis_labels}"
         )
-
-    return algebra_obj
 
 
 def algebraDataFromVF(vector_fields):

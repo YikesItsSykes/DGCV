@@ -1478,6 +1478,8 @@ class abstract_ZF(sp.Basic):
             count += 1
         return zf
 
+
+
 class abstDFAtom(sp.Basic):
 
     def __new__(cls, coeff, degree, label=None, ext_deriv_order=0, _markers=frozenset()):

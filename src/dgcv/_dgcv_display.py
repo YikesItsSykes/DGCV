@@ -231,9 +231,9 @@ class _alglabeldisplayclass(sp.Basic):
 
     def _repr_latex_(self):
         if self.ae:
-            return _alglabeldisplayclass.format_algebra_label(self.label)
-        else:
             return _alglabeldisplayclass.format_ae(self.ae)
+        else:
+            return _alglabeldisplayclass.format_algebra_label(self.label)
 
     def __str__(self):
         return self.label

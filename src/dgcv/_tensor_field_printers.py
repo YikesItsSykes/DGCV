@@ -138,9 +138,9 @@ def tensor_VS_printer(tp):
         vec = vec[:len(vec)//2]
         if scalar != 0:
             basis_elements = [
-                f"{_process_var_label(basis_labels[vec[j]])}"
+                f"{basis_labels[vec[j]]}"
                 if valence[j] == 1
-                else f"{_process_var_label(basis_labels[vec[j]])}^''"
+                else f"{basis_labels[vec[j]]}^''"
                 for j in range(len(valence))
             ]
             basis_element = '@'.join(basis_elements)
@@ -148,7 +148,7 @@ def tensor_VS_printer(tp):
 
     if not formatted_terms:  # If all scalars are zero
         basis_elements = [
-            f"{_process_var_label(basis_labels[vec[j]])}"
+            f"{basis_labels[vec[j]]}"
             for j in range(tp.max_degree)
         ]
         formatted_terms.append(f"0{'@'.join(basis_elements)}")

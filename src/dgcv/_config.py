@@ -186,7 +186,7 @@ variable_registry = {
 }
 dgcv_settings_registry = {
     'use_latex':False,
-    'theme':'default',
+    'theme':'blue',
     'format_displays':False,
     'version_specific_defaults':f'v{__version__}'
 }

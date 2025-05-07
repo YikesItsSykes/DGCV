@@ -1840,6 +1840,52 @@ style_guide = {
             ]
         },
     },
+    "blue": {
+        "table": {"props": [("border", "2px solid #a9b1d6")]},  # light gray borders
+        "header": {
+            "props": [
+                ("background-color", "#24283b"),  # dark blue background
+                ("color", "#a9b1d6"),  # accent blue for header text
+                ("font-family", "Georgia, serif"),
+                ("font-size", "18px"),
+            ]
+        },
+        "col_heading": {
+            "props": [
+                ("background-color", "#2f3549"),  # medium-dark blue background
+                ("color", "#a9b1d6"),  # aqua column headings
+                ("font-size", "16px"),
+            ]
+        },
+        "row_heading": {
+            "props": [("background-color", "#24283b"), ("color", "#a9b1d6")],  # accent blue
+        },
+        "row": {
+            "props": [
+                ("background-color", "#24283b"),  # dark background for rows
+                ("color", "#a9b1d6"),  # light gray for text
+            ]
+        },
+        "alt_row": {
+            "props": [
+                ("background-color", "#2f3549"),  # medium-dark blue background
+                ("color", "#c0caf5"),  # lighter gray for alternate text
+            ]
+        },
+        "hover": {
+            "props": [
+                ("background-color", "#2f3549"),  # medium-dark blue for hover
+                ("color", "#7dcfff"),  # blue/cyan for brighter text on hover
+                ("box-shadow", "0 0 10px rgba(125, 207, 255, 0.5)"),  # Blue shadow to match text color
+                ("transform", "scale(1.005)")
+            ]
+        },
+        "inner": {
+            "props": [
+                ("border-right", "1px solid #c0caf5")
+            ]
+        },
+    },
 }
 
 def get_DGCV_themes():
@@ -1867,25 +1913,38 @@ def get_style(theme_name):
     if theme_name == 'random':
         theme_name = random.choice(list(style_guide.keys()))
     if theme_name == 'chalkboard':
-        theme_name = random.choice(["chalkboard_green","chalkboard_blue","chalkboard_red","chalkboard_black","chalkboard_teal","chalkboard_yellow"])
+        theme_name = random.choice([
+            "chalkboard_green", "chalkboard_blue", "chalkboard_red",
+            "chalkboard_black", "chalkboard_teal", "chalkboard_yellow"
+        ])
     if theme_name == 'gruv':
-        theme_name = random.choice(["gruvbox_dark","gruvbox_colorful","gruvbox_light"])
+        theme_name = random.choice([
+            "gruvbox_dark", "gruvbox_colorful", "gruvbox_light"
+        ])
     if theme_name == 'dark':
-        theme_name = random.choice(["gruvbox_dark","dark_high_contrast_bright",'dark_blue','dark_high_contrast','dark_high_contrast_bright','dark_modern','dark_moody','dark_purple'])
+        theme_name = random.choice([
+            "gruvbox_dark", "dark_high_contrast_bright", 'dark_blue',
+            'dark_high_contrast', 'dark_high_contrast_bright',
+            'dark_modern', 'dark_moody', 'dark_purple'
+        ])
     if theme_name not in style_guide:
-        theme_name = random.choice(["gruvbox_dark","gruvbox_colorful","chalkboard_teal","chalkboard_black","blueprint"])
+        theme_name = random.choice([
+            "gruvbox_dark", "gruvbox_colorful", "chalkboard_teal",
+            "chalkboard_black", "blueprint"
+        ])
 
     theme = style_guide[theme_name]
 
     # Map the refactored keys back to selectors
     selector_mapping = {
-        "table": "",  # Empty selector for table-wide styles
+        "table": "table",
         "header": "th",
         "col_heading": "th.col_heading.level0",
         "row_heading": "th.row_heading",
         "row": "tbody tr:nth-child(odd)",
         "alt_row": "tbody tr:nth-child(even)",
         "hover": "tbody tr:hover",
+        "inner": "th:not(:last-child), td:not(:last-child)",
     }
 
     # Convert to the correct structure

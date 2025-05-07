@@ -1322,13 +1322,11 @@ class VFClass(tensorField):
         if len(varSpace) != len(coeffs):
             raise ValueError("`varSpace` and `coeffs` must have the same length.")
 
-        # Convert coeffs to coeff_dict
         coeff_dict = {(i,): coeff for i, coeff in enumerate(coeffs)}
 
-        # Set valence for vector field (degree 1 contravariant tensor)
+        # Set valence degree 1 for contravariant tensor
         valence = (1,)
 
-        # Call the parent class's __new__ with data_shape="skew"
         return super().__new__(
             cls,
             varSpace=varSpace,
@@ -1468,6 +1466,16 @@ class VFClass(tensorField):
 
     def __mul__(self, scalar):
         return scaleVF(scalar, self)
+
+    def __truediv__(self, scalar):
+        if isinstance(scalar, float):
+            inverse = 1 / scalar
+        elif isinstance(scalar, (int,sp.Expr)):
+            inverse = sp.Rational(1, scalar)
+        else:
+            return NotImplemented
+
+        return scaleVF(inverse, self)
 
     def __rmul__(self, scalar):
         return scaleVF(scalar, self)
@@ -4427,7 +4435,6 @@ def VF_coeffs(vf, var_list, sparse=False):
                 final_vs += vs[:1]
                 vs = vs[1:]
             else:
-                startLen = len(vs)
                 relatives = []
                 for parent in variable_registry['complex_variable_systems'].values():
                     if relatives == []:

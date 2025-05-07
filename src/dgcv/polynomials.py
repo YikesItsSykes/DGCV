@@ -280,6 +280,98 @@ def createBigradPolynomial(
     else:
         return sum(monomials)
 
+def createMultigradedPolynomial(
+    coeff_label,             # coefficient‐prefix
+    degrees,                 # tuple/list of length m: the required degree in each grading
+    vars,                    # tuple/list of variables
+    weight_systems,          # list of m weight‐lists, each the same length as vars
+    _tempVar=None,
+    returnMonomialList=False,
+    remove_guardrails=False,
+    assumeReal=False,
+    report=True,
+    degreeCap=10
+):
+    """
+    Constructs a multiply-weighted-homogeneous polynomial whose monomials have all have the assigned weight w.r.t. respective weighting systems.  If the weighting systems involved do not narrow the number of such monomials to a finite dimensional space then the  degreeCap parameter is applied to limit the created polynomial to that degree.
+
+    Parameters
+    ----------
+    coeff_label : str
+        Prefix for the coefficient variables.
+    degrees : sequence of int
+        Required degrees in each grading.
+    vars : sequence of symbols
+        Variables of the polynomial.
+    weight_systems : sequence of sequences of int
+        Weight vectors for each grading (must match len(vars)).
+    degreeCap : int, optional
+        Global bound on exponents when weight systems are not all same-sign.
+        Ensures finite candidate generation. Default is 10.
+    _tempVar : bool, optional
+        Temporary variable flag (as in other create functions).
+    returnMonomialList : bool, optional
+        If True, return monomial list instead of summed expression.
+    remove_guardrails : bool, optional
+        If True, disable DGCV guardrails.
+    report : bool, optional
+        Enable or suppress variable clearing reports.
+
+    Returns
+    -------
+    sympy.Expr or list
+        The resulting polynomial expression or list of monomials.
+    """
+    clearVar(coeff_label, report=report)
+    if not isinstance(degrees,(list,tuple)):
+        degrees = [degrees]
+    if not isinstance(weight_systems[0],(list,tuple)):
+        weight_systems = [weight_systems]
+
+    max_deg = 0
+    if len(degrees)!=len(weight_systems):
+        raise KeyError('`createMultigradedPolynomial` was given a list of degrees and list of weight systems of different length.')
+    for d, ws in zip(degrees,weight_systems):
+        if all(j>0 for j in ws) or all(j<0 for j in ws):
+            if max_deg==0 or abs(d) < max_deg:
+                max_deg=abs(d)
+    if not isinstance(max_deg,int):
+        max_deg = int(abs(max_deg))
+    if max_deg==0:
+        max_deg = max(int(abs(d)) for d in degrees)
+        max_deg = max(max_deg, degreeCap)
+
+    candidates = chooseOp(range(max_deg+1), len(vars))
+
+    indicesLoc = [
+        exp_tuple for exp_tuple in candidates
+        if all(
+            sum(e * w for e, w in zip(exp_tuple, weight_systems[k])) == degrees[k]
+            for k in range(len(degrees))
+        )
+    ]
+
+    variableProcedure(
+        coeff_label,
+        len(indicesLoc),
+        _tempVar=_tempVar,
+        assumeReal=assumeReal,
+        remove_guardrails=remove_guardrails
+    )
+
+    monomials = []
+    for idx, exps in enumerate(indicesLoc):
+        coeff = eval(coeff_label, _cached_caller_globals)[idx]
+        mono  = functools.reduce(operator.mul,
+                                 (v**e for v, e in zip(vars, exps)),
+                                 1)
+        monomials.append(coeff * mono)
+
+    if returnMonomialList:
+        return monomials
+    else:
+        return sum(monomials)
+
 
 def monomialWeight(arg1, arg2, arg3):
     """
