@@ -15,7 +15,7 @@ As systems of differential geometric objects constructed from complex variables 
 
 ## Features
 
-- Fully featured symbolic representations of various tensor fields (vector fields, differential forms, etc.), and dedicated python classes for representing many other common differential geometric structures
+- Symbolic representations of various tensor fields (vector fields, differential forms, etc.) and dedicated python classes for representing many other common differential geometric structures
 - Intuitive interactions with complex structures from holomorphic coordinate systems: **dgcv** objects dynamically manage coordinate transformations between real and holomorphic coordinates during computation as necessary, so objects can be represented in and freely converted between either coordinate format at any time.
 - Natural LaTeX rendering for representation of mathematical objects, designed with Jupyter notebooks in mind.
 
