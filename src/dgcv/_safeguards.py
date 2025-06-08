@@ -2,16 +2,26 @@ import random
 import string
 import warnings
 
-from ._config import _cached_caller_globals, get_variable_registry
+from ._config import (
+    _cached_caller_globals,
+    get_dgcv_settings_registry,
+    get_variable_registry,
+)
+from .vmf import clearVar
 
-# Generate a dynamic passkey using random
 _passkey = "".join(random.choices(string.ascii_letters + string.digits, k=16))
-
-# Generate a dynamic public key using random
 public_key = "".join(random.choices(string.ascii_letters + string.digits, k=8))
 
-DGCV_types = {'standard','complex'}
-simplify_formats = {None, "holomorphic", "real", "symbolic_conjugate"}
+def get_dgcv_category(obj):
+    try:
+        if getattr(obj, '_dgcv_class_check', None) == _passkey:
+            return getattr(obj, '_dgcv_category', None)
+    except Exception:
+        pass
+    return None
+
+def check_dgcv_category(obj):
+    return getattr(obj, '_dgcv_class_check', None) == _passkey
 
 def create_key(prefix=None, avoid_caller_globals=False, key_length = 8):
     """
@@ -47,20 +57,17 @@ def create_key(prefix=None, avoid_caller_globals=False, key_length = 8):
         if not avoid_caller_globals or key not in caller_globals:
             return key
 
-
 def retrieve_passkey():
     """
     Returns the internal passkey for use within dgcv functions.
     """
     return _passkey
 
-
 def retrieve_public_key():
     """
     Returns the public key for use in function and variable names.
     """
     return public_key
-
 
 def protected_caller_globals():
     """
@@ -108,7 +115,6 @@ def protected_caller_globals():
         "__package__",
     }
 
-
 def validate_label_list(basis_labels):
     """
     Validates a list of basis labels by checking if they are already present in _cached_caller_globals.
@@ -125,7 +131,12 @@ def validate_label_list(basis_labels):
         If any label in basis_labels is already present in _cached_caller_globals, with additional info if found in the variable_registry.
     """
     existing_labels = []
+    to_clear = []
     detailed_message = ""
+    if get_dgcv_settings_registry()['ask_before_overwriting_objects_in_vmf'] is False:
+        overwritePermissionGranted = True
+    else:
+        overwritePermissionGranted = False
 
     # Loop through each label to check if it exists in _cached_caller_globals
     for label in basis_labels:
@@ -136,56 +147,78 @@ def validate_label_list(basis_labels):
             variable_registry = get_variable_registry()
 
             # Check standard, complex, and finite algebra systems
-            for system_type in [
-                "standard_variable_systems",
-                "complex_variable_systems",
-                "finite_algebra_systems",
+            for system_type, sub_type, system_type_name, family_names_address in [
+                ("standard_variable_systems","","standard coordinate","variable_relatives"),
+                ("complex_variable_systems","","complex coordinate","variable_relatives"),
+                ("finite_algebra_systems","","finite-dimensional algebra","family_names"),
+                ("eds","atoms","atomic differential forms","family_relatives"),
+                ("eds","coframes","exterior differential","family_relatives"),
             ]:
                 if system_type in variable_registry:
-                    if label in variable_registry[system_type]:
+                    if sub_type!="" and sub_type in variable_registry[system_type]:
+                        innerVR = variable_registry[system_type][sub_type]
+                    else:
+                        innerVR = variable_registry[system_type]
+                    if label in innerVR:
                         # The label is a parent variable
-                        system_name = system_type.replace(
-                            "_variable_systems", ""
-                        ).replace("_", " ")
-                        detailed_message += (
-                            f"\n`validate_basis_labels` detected '{label}' within the dgcv Variable Management Framework "
-                            f"assigned as the label for a {system_name} system.\n"
-                            f"Apply the dgcv function `clearVar('{label}')` to clear the obstructing objects."
-                        )
+                        if overwritePermissionGranted is True:
+                            detailed_message += (
+                                f"\n •Label'{label}' was already assigned as the label for a {system_type_name} system.\n"
+                                rf"    The old object (and all of its dependant relatives) was deleted from the VMF ( and"
+                                f"the global namespace) to resolve the environment for re-assignments."
+                            )
+                            to_clear.append(label)
+                        else:
+                            detailed_message += (
+                                f"\n`validate_basis_labels` detected '{label}' within the dgcv Variable Management Framework "
+                                f"assigned as the label for a {system_type_name} system.\n"
+                                f"Apply the dgcv function `clearVar('{label}')` to clear the obstructing objects."
+                            )
                     else:
                         # Check if the label is a child variable
-                        for parent_label, parent_data in variable_registry[
-                            system_type
-                        ].items():
-                            if (
-                                "variable_relatives" in parent_data
-                                and label in parent_data["variable_relatives"]
-                            ):
+                        for parent_label, parent_data in innerVR.items():
+                            if (family_names_address in parent_data and label in parent_data[family_names_address]):
                                 # The label is a child variable
-                                system_name = system_type.replace(
-                                    "_variable_systems", ""
-                                ).replace("_", " ")
-                                detailed_message += (
-                                    f"\n`validate_basis_labels` detected '{label}' within the dgcv Variable Management Framework "
-                                    f"associated with the {system_name} system '{parent_label}'.\n"
-                                    f"Apply the dgcv function `clearVar('{parent_label}')` to clear the obstructing objects."
-                                )
+                                if overwritePermissionGranted is True:
+                                    detailed_message += (
+                                        f"\n • Label '{label}' was already assigned as the label for an object in a {system_type_name} system.\n"
+                                        r"    The old object (and all of its dependant relatives) was deleted from the "
+                                        f"VMF (and the global namespace) to resolve the environment for re-assignments. "
+                                    )
+                                    to_clear.append(parent_label)
+                                else:
+                                    detailed_message += (
+                                        f"\n`validate_basis_labels` detected '{label}' within the dgcv Variable Management Framework "
+                                        f"associated with the {system_type_name} system '{parent_label}'.\n Apply"
+                                        f"the dgcv function `clearVar('{parent_label}')` to first clear the obstructing objects."
+                                    )
 
-    if existing_labels:
-        # Include a detailed warning before raising the error
-        warning_message = (
-            f"Warning: The following basis labels are already defined in the current namespace: {existing_labels}. "
-            "These labels may be associated with existing objects, and `validate_basis_labels` was not designed to overwrite such objects. "
-            "Please clear them from the namespace before using `validate_basis_labels` to reassign the label."
-        )
+    if len(existing_labels)>0:
+        if overwritePermissionGranted is True:
+            warning_message = (
+                f"The following basis labels were already defined in the current namespace: {existing_labels}. "
+                "Since `set_dgcv_settings(ask_before_overwriting_objects_in_vmf=True)` was run during the current session, "
+                "these previously used labels have been re-assigned to new objects."
+            )
+        else:
+            warning_message = (
+                f"Warning: The following basis labels are already defined in the current namespace: {existing_labels}. "
+                "By default, `dgcv` creator functions will not overwrite such objects.  Either clear them from the "
+                " global namespace before attempting label re-assignment or set the over-riding setting "
+                "`set_dgcv_settings(ask_before_overwriting_objects_in_vmf=True)`."
+            )
 
-        # Combine the warning message with any detailed information about variable registry involvement
         if detailed_message:
             warning_message += detailed_message
 
-        # Raise the error with the combined message
-        raise ValueError(warning_message)
-
+        if overwritePermissionGranted is True:
+            if get_dgcv_settings_registry()['forgo_warnings'] is not True:
+                warnings.warn(warning_message+"\n To suppress warnings such as this, set `set_dgcv_settings(forgo_warnings=True)`.",UserWarning)
+                clearVar(*to_clear)
+            else:
+                clearVar(*to_clear,report=False)
+        else:
+            raise ValueError(warning_message)
 
 def protect_variable_relatives():
     variable_registry = get_variable_registry()
@@ -197,7 +230,6 @@ def protect_variable_relatives():
         ],
         (),
     )
-
 
 def validate_label(label, remove_guardrails=False):
     """

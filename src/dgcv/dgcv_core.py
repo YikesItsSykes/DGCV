@@ -58,12 +58,6 @@ Coefficients and Decompositions:
     field w.r.t. given coordinate vector fields.
     - realPartOfVF(): Extracts the real part of a vector field.
 
-Variable Management:
-    - listVar(): Lists the "parent names" of objects currently tracked by the dgcv VMF.
-    - clearVar(): Clears the variables from the dgcv registry and deletes them from caller's globals().
-    - vmf_summary(): Takes a snapshot of the current dgcv VMF and reports a summary in a
-    Pandas table.
-
 Author: David Sykes (https://github.com/YikesItsSykes)
 
 Dependencies:
@@ -76,20 +70,14 @@ License:
 
 ############## dependencies
 import itertools
-import re
 import warnings
 
-import pandas as pd
 import sympy as sp
-from IPython.display import display
-from pandas import DataFrame
 from sympy import I
 
 from ._config import (
     _cached_caller_globals,
-    get_dgcv_settings_registry,
     get_variable_registry,
-    greek_letters,
 )
 from ._safeguards import (
     protected_caller_globals,
@@ -99,8 +87,7 @@ from ._safeguards import (
 )
 from ._tensor_field_printers import tensor_field_latex, tensor_field_printer
 from .combinatorics import carProd, permSign
-from .styles import get_style
-from .vmf import _coeff_dict_formatter
+from .vmf import _coeff_dict_formatter, clearVar
 
 ############## classes
 
@@ -114,11 +101,9 @@ class tensorField(sp.Basic):
                 dgcvType="standard", _simplifyKW=None):
         varSpace = tuple(varSpace)
 
-        # Validate coeff_dict
         if not isinstance(coeff_dict, dict):
             raise TypeError("`coeff_dict` must be a dictionary.")
 
-        # Determine valence if not provided
         if valence is None:
             if not coeff_dict:
                 valence = tuple()
@@ -130,15 +115,12 @@ class tensorField(sp.Basic):
 
         valence = tuple(valence)
 
-        # Validate valence structure
         if not all(v in (0, 1) for v in valence):
             raise ValueError("`valence` must contain only 0s and 1s.")
 
-        # Validate data_shape compatibility
         if len(set(valence)) > 1 and data_shape in ['symmetric', 'skew']:
             raise ValueError(f"Mixed type/valence and `data_shape={data_shape}` is not supported.")
 
-        # Default handling for _simplifyKW
         if _simplifyKW is None:
             _simplifyKW = {
                 "simplify_rule": None,
@@ -146,13 +128,11 @@ class tensorField(sp.Basic):
                 "preferred_basis_element": None,
             }
 
-        # Process coefficient dictionary
         total_degree = len(valence)
         processed_coeff_dict = cls._process_coeffs_dict(coeff_dict, data_shape, total_degree)
 
-        # Create immutable instance and set valence as an attribute
         obj = sp.Basic.__new__(cls, varSpace, processed_coeff_dict, valence, data_shape, dgcvType, _simplifyKW)
-        obj.valence = valence  # Now valence is set in __new__
+        obj.valence = valence
 
         return obj
 
@@ -179,7 +159,6 @@ class tensorField(sp.Basic):
 
         self._preferred_basis_element = self._compute_preferred_basis_element()
 
-        # Determine variable space type for complex cases
         self._set_varSpace_type()
 
         # Initialize caches
@@ -476,7 +455,7 @@ class tensorField(sp.Basic):
     def cd_formats(
         self,
     ):  # Retrieves coeffs in different variable formats and updates *VarSpace and _cd_formats caches if needed
-        if self._cd_formats:
+        if self._cd_formats is not None:
             return self._cd_formats
 
         if self.dgcvType == "standard" or all(
@@ -2821,6 +2800,10 @@ def variableProcedure(
                         for var_name in var_names
                     },
                 }
+                variable_registry["_labels"][labelLoc] = {
+                    "path": ("standard_variable_systems", labelLoc),
+                    "children": set(var_names)
+                }
 
         # Handle lone (single) variable.
         elif number_of_variables is None:
@@ -2840,6 +2823,10 @@ def variableProcedure(
                     "variable_relatives": {
                         labelLoc: {"VFClass": None, "DFClass": None, "assumeReal": assumeReal}
                     },
+                }
+                variable_registry["_labels"][labelLoc] = {
+                    "path": ("standard_variable_systems", labelLoc),
+                    "children": set()
                 }
 
         # Handle tuple of variables.
@@ -2876,6 +2863,10 @@ def variableProcedure(
                         var_name: {"VFClass": vf_instances[i], "DFClass": df_instances[i], "assumeReal": assumeReal}
                         for i, var_name in enumerate(var_names)
                     },
+                }
+                variable_registry["_labels"][labelLoc] = {
+                    "path": ("standard_variable_systems", labelLoc),
+                    "children": set(var_names)
                 }
         else:
             raise ValueError(
@@ -3033,6 +3024,10 @@ def varWithVF(
                         }
                     },
                 }
+                variable_registry["_labels"][labelLoc] = {
+                    "path": ("standard_variable_systems", labelLoc),
+                    "children": {f"D_{labelLoc}", f"d_{labelLoc}"}
+                }
 
         # Handle the tuple case
         elif isinstance(number_of_variables, int) and number_of_variables >= 0:
@@ -3085,6 +3080,10 @@ def varWithVF(
                         }
                         for i, var_name in enumerate(var_names)
                     },
+                }
+                variable_registry["_labels"][labelLoc] = {
+                    "path": ("standard_variable_systems", labelLoc),
+                    "children": set(var_names + [f"D_{v}" for v in var_names] + [f"d_{v}" for v in var_names])
                 }
         else:
             raise ValueError(
@@ -3252,16 +3251,15 @@ def complexVarProc(
             conv["real_part"].update(real_part_updates)
             conv["im_part"].update(im_part_updates)
 
-
             # Register this single variable system in the registry.
             variable_registry['complex_variable_systems'][labelLoc1] = {
-                    "family_type": "single",
-                    "family_names": ((labelLoc1,), (labelLocBAR,), (labelLoc2,), (labelLoc3,)),
-                    "family_values": (var_hol, var_bar, var_real, var_im),
-                    "family_houses": (labelLoc1, labelLocBAR, labelLoc2, labelLoc3),
-                    "differential_system": True,
-                    "initial_index": None,
-                    "variable_relatives": {
+                "family_type": "single",
+                "family_names": ((labelLoc1,), (labelLocBAR,), (labelLoc2,), (labelLoc3,)),
+                "family_values": (var_hol, var_bar, var_real, var_im),
+                "family_houses": (labelLoc1, labelLocBAR, labelLoc2, labelLoc3),
+                "differential_system": True,
+                "initial_index": None,
+                "variable_relatives": {
                     labelLoc1: {
                         "complex_positioning": "holomorphic",
                         "complex_family": (var_hol, var_bar, var_real, var_im),
@@ -3294,6 +3292,17 @@ def complexVarProc(
                         "DFClass": None,
                         "assumeReal": True,
                     }
+                }
+            }
+
+            variable_registry["_labels"][labelLoc1] = {
+                "path": ("complex_variable_systems", labelLoc1),
+                "children": {
+                    labelLocBAR, labelLoc2, labelLoc3,
+                    f"D_{labelLoc1}", f"d_{labelLoc1}",
+                    f"D_{labelLocBAR}", f"d_{labelLocBAR}",
+                    f"D_{labelLoc2}", f"d_{labelLoc2}",
+                    f"D_{labelLoc3}", f"d_{labelLoc3}",
                 }
             }
 
@@ -3415,6 +3424,16 @@ def complexVarProc(
                 "differential_system": True,
                 "initial_index": initialIndex,
                 "variable_relatives": {},
+            }
+
+            all_var_strs = list(var_str1 + var_strBAR + var_str2 + var_str3)
+            variable_registry["_labels"][labelLoc1] = {
+                "path": ("complex_variable_systems", labelLoc1),
+                "children": set(
+                    all_var_strs +
+                    [f"D_{v}" for v in all_var_strs] +
+                    [f"d_{v}" for v in all_var_strs]
+                )
             }
 
             # Accumulate conversion updates for each tuple element.
@@ -3954,7 +3973,6 @@ def symToHol(expr, skipVar=None, simplify_everything=True):
     if hasattr(expr, "applyfunc"):
         return expr.applyfunc(lambda e: symToHol(e, skipVar=skipVar, simplify_everything=simplify_everything))
     return expr
-
 
 def holToSym(expr, skipVar=None, simplify_everything=True):
     """
@@ -5780,864 +5798,3 @@ def realPartOfVF(arg1, *args):
         return addVF(arg1, _conjComplexVFDF(arg1))
     else:
         raise Exception("Expected the input to be of type VFClass.")
-
-
-############## variable management
-def listVar(
-    standard_only=False,
-    complex_only=False,
-    algebras_only=False,
-    zeroForms_only=False,
-    coframes_only=False,
-    temporary_only=False,
-    obscure_only=False,
-    protected_only=False,
-):
-    """
-    This function lists all parent labels for objects tracked within the dgcv Variable Management Framework (VMF). In particular strings that are keys in dgcv's internal `standard_variable_systems`, `complex_variable_systems`, 'finite_algebra_systems', 'eps' dictionaries, etc. It also accepts optional keywords to filter the results, showing only temporary, protected, or "obscure" object system labels.
-
-    Parameters
-    ----------
-    standard_only : bool, optional
-        If True, only standard variable system labels will be listed.
-    complex_only : bool, optional
-        If True, only complex variable system labels will be listed.
-    algebras_only : bool, optional
-        If True, only finite algebra system labels will be listed.
-    zeroForms_only : bool, optional
-        If True, only zeroFormAtom system labels will be listed.
-    coframes_only : bool, optional
-        If True, only coframe system labels will be listed.
-    temporary_only : bool, optional
-        If True, only variable system labels marked as temporary will be listed.
-    protected_only : bool, optional
-        If True, only variable system labels marked as protected will be listed.
-
-    Returns
-    -------
-    list
-        A list of object system labels matching the provided filters.
-
-    Notes
-    -----
-    - If no filters are specified, the function returns all labels tracked in the VMF.
-    - If multiple filters are specified, the function combines them, displaying
-      labels that meet any of the selected criteria.
-    """
-    variable_registry = get_variable_registry()
-
-    # Collect all labels
-    standard_labels = set(variable_registry["standard_variable_systems"].keys())
-    complex_labels = set(variable_registry["complex_variable_systems"].keys())
-    algebra_labels = set(variable_registry["finite_algebra_systems"].keys())
-    zeroForm_labels = set(variable_registry["eds"]["atoms"].keys())  # New zeroFormAtom labels
-    coframe_labels = set(variable_registry["eds"]["coframes"].keys())
-
-    selected_labels = set()
-    if standard_only:
-        selected_labels |= standard_labels
-    if complex_only:
-        selected_labels |= complex_labels
-    if algebras_only:
-        selected_labels |= algebra_labels
-    if zeroForms_only:
-        selected_labels |= zeroForm_labels
-    if coframes_only:
-        selected_labels |= coframe_labels
-
-    all_labels = selected_labels if selected_labels else standard_labels | complex_labels | algebra_labels | zeroForm_labels | coframe_labels
-
-    # Apply additional property filters
-    if temporary_only:
-        all_labels = all_labels & variable_registry["temporary_variables"]
-    if obscure_only:
-        all_labels = all_labels & variable_registry["obscure_variables"]
-    if protected_only:
-        all_labels = all_labels & variable_registry["protected_variables"]
-
-    # Return the filtered labels list
-    return list(all_labels)
-
-def _clearVar_single(label):
-    """
-    Helper function that clears a single variable system (standard, complex, or finite algebra)
-    from the dgcv variable management framework. Instead of printing a report, it returns
-    a tuple (system_type, label) indicating what was cleared.
-    """
-    registry = get_variable_registry()
-    global_vars = _cached_caller_globals
-    cleared_info = None
-
-    # Handle standard variable systems
-    if label in registry["standard_variable_systems"]:
-        system_dict = registry["standard_variable_systems"][label]
-        family_names = system_dict["family_names"]
-        if isinstance(family_names, str):
-            family_names = (family_names,)
-        # Remove all family members from globals
-        for var in family_names:
-            if var in global_vars:
-                del global_vars[var]
-        if label in global_vars:
-            del global_vars[label]
-        # Remove differential objects if present
-        if system_dict.get("differential_system", None):
-            for var in family_names:
-                if f"D_{var}" in global_vars:
-                    del global_vars[f"D_{var}"]
-                if f"d_{var}" in global_vars:
-                    del global_vars[f"d_{var}"]
-            if f"D_{label}" in global_vars:
-                del global_vars[f"D_{label}"]
-            if f"d_{label}" in global_vars:
-                del global_vars[f"d_{label}"]
-        # Remove temporary and obscure markers
-        if system_dict.get("tempVar", None):
-            registry["temporary_variables"].discard(label)
-        if system_dict.get("obsVar", None):
-            registry["obscure_variables"].discard(label)
-        # Remove the system from the registry
-        del registry["standard_variable_systems"][label]
-        cleared_info = ("standard", label)
-
-    # Handle complex variable systems
-    elif label in registry["complex_variable_systems"]:
-        system_dict = registry["complex_variable_systems"][label]
-        family_houses = system_dict["family_houses"]
-
-        # Remove real and imaginary parent labels from protected_variables
-        real_parent = family_houses[-2]
-        imag_parent = family_houses[-1]
-        registry["protected_variables"].discard(real_parent)
-        registry["protected_variables"].discard(imag_parent)
-
-        # For tuple or multi_index systems, remove all parent labels from globals
-        if system_dict["family_type"] in ("tuple", "multi_index"):
-            for house in family_houses:
-                if house in global_vars:
-                    del global_vars[house]
-
-        # Remove variables and associated DFClass/VFClass objects from globals
-        variable_relatives = system_dict["variable_relatives"]
-        for var_label, var_data in variable_relatives.items():
-            if var_label in global_vars:
-                del global_vars[var_label]
-            if var_data.get("DFClass") and f"D_{var_label}" in global_vars:
-                del global_vars[f"D_{var_label}"]
-            if var_data.get("VFClass") and f"d_{var_label}" in global_vars:
-                del global_vars[f"d_{var_label}"]
-
-        # Clean up conversion dictionaries
-        conversion_dictionaries = registry["conversion_dictionaries"]
-        for var_label, var_data in variable_relatives.items():
-            position = var_data.get("complex_positioning")
-            value_pointer = var_data.get("variable_value")
-            if position == "holomorphic":
-                conversion_dictionaries["conjugation"].pop(value_pointer, None)
-                conversion_dictionaries["holToReal"].pop(value_pointer, None)
-                conversion_dictionaries["symToReal"].pop(value_pointer, None)
-            elif position == "antiholomorphic":
-                conversion_dictionaries["symToHol"].pop(value_pointer, None)
-                conversion_dictionaries["symToReal"].pop(value_pointer, None)
-            elif position in ["real", "imaginary"]:
-                conversion_dictionaries["realToHol"].pop(value_pointer, None)
-                conversion_dictionaries["realToSym"].pop(value_pointer, None)
-                conversion_dictionaries["find_parents"].pop(value_pointer, None)
-
-        # Remove temporary marker
-        registry["temporary_variables"].discard(label)
-        # Remove the system from the registry
-        del registry["complex_variable_systems"][label]
-        cleared_info = ("complex", label)
-
-    # Handle finite algebra systems
-    elif label in registry["finite_algebra_systems"]:
-        family_names = registry["finite_algebra_systems"][label].get("family_names", {})
-        for family_member in family_names:
-            if family_member in global_vars:
-                del global_vars[family_member]
-        if label in global_vars:
-            del global_vars[label]
-        del registry["finite_algebra_systems"][label]
-        cleared_info = ("algebra", label)
-
-    # Handle zeroFormAtom systems
-    elif label in registry["eds"]["atoms"]:
-        system_dict = registry["eds"]["atoms"][label]
-
-        # Remove family names from globals()
-        family_names = system_dict["family_names"]
-        if isinstance(family_names, str):
-            family_names = (family_names,)
-        for var in family_names:
-            if var in global_vars:
-                del global_vars[var]
-
-        # Remove conjugates if they exist
-        family_relatives = system_dict.get("family_relatives", {})
-        for var in family_relatives:
-            if var in global_vars:
-                del global_vars[var]
-
-        # Remove parent label from globals()
-        if label in global_vars:
-            del global_vars[label]
-
-        # Remove from registry
-        del registry["eds"]["atoms"][label]
-
-        # for reporting
-        cleared_info = ("DFAtom", label)
-
-    # Handle coframes
-    elif label in registry["eds"]["coframes"]:
-        coframe_info = registry["eds"]["coframes"][label]
-        cousins_parent = coframe_info.get("cousins_parent", None)
-
-        # Remove coframe label from globals()
-        if label in global_vars:
-            del global_vars[label]
-
-        # Remove from registry
-        del registry["eds"]["coframes"][label]
-
-        # Report coframe and cousins_parent separately
-        cleared_info = ("coframe", (label, cousins_parent))
-
-    return cleared_info
-
-def clearVar(*labels, report=True):
-    """
-    Clears variables from the registry and global namespace. Because sometimes, we all need a fresh start.
-
-    This function takes one or more variable system labels (strings) and clears all
-    associated variables, vector fields, differential forms, and metadata from the
-    dgcv system. Variable system refers to object systems created by the dgcv
-    variable creation functions `variableProcedure`, `varWithVF`, and
-    `complexVarProc`. Use `listVar()` to retriev a list of existed variable system
-    labels. The function handles both standard and complex variable systems,
-    ensuring that all related objects are removed from the caller's globals()
-    namespace, `variable_registry`, and the conversion dictionaries.
-
-    Parameters
-    ----------
-    *labels : str
-        One or more string labels representing variable systems (either
-        standard or complex). These labels will be removed along with all
-        associated components.
-    report : bool (optional)
-        Set True to report about any variable systems cleared from the VMF
-
-    Functionality
-    -------------
-    - For standard variable systems:
-        1. All family members associated with the variable label will be
-           removed from the caller's globals() namespace.
-        2. If the variable system has associated differential forms (DFClass)
-           or vector fields (VFClass), these objects will also be removed.
-        3. The label will be removed from `temporary_variables`, if applicable.
-        4. Finally, the label will be deleted from `standard_variable_systems`
-           in `variable_registry`.
-
-    - For complex variable systems:
-        1. For each complex variable system:
-            - Labels for the real and imaginary parts will be removed
-              from `variable_registry['protected_variables']`.
-            - If the system is a tuple, the parent labels for holomorphic,
-              antiholomorphic, real, and imaginary variable tuples will be
-              removed from the caller's globals() namespace.
-            - The `variable_relatives` dictionary will be traversed to remove
-              all associated variables, vector fields, and differential forms
-              from the caller's globals() namespace.
-            - The function will also clean up the corresponding entries in
-              `conversion_dictionaries`, depending on the `complex_positioning`
-              (holomorphic, antiholomorphic, real, or imaginary).
-        2. The complex variable label will be removed from `temporary_variables`,
-           if applicable.
-        3. Finally, the label will be deleted from `complex_variable_systems`
-           in `variable_registry`.
-
-    Notes
-    -----
-    - Comprehensively clears variables and their associated metadata from the dgcv
-      system.
-    - Use with `listVar` to expediantly clear everything, e.g., `clearVar(*listVar())`.
-
-    Examples
-    --------
-    >>> clearVar('x') # removes any dgcv variable system labeled as x, such as
-                      # (x, D_x, d_x), (x=(x1, x2), x1, x2, D_x1, d_x1,...), etc.
-    >>> clearVar('z', 'y', 'w')
-
-    This will remove all variables, vector fields, and differential forms
-    associated with the labels 'z', 'y', and 'w'.
-
-    """
-    cleared_standard = []
-    cleared_complex = []
-    cleared_algebras = []
-    cleared_diffFormAtoms = []
-    cleared_coframes = []
-
-    for label in labels:
-        info = _clearVar_single(label)
-        if info:
-            system_type, cleared_label = info
-            if system_type == "standard":
-                cleared_standard.append(cleared_label)
-            elif system_type == "complex":
-                cleared_complex.append(cleared_label)
-            elif system_type == "algebra":
-                cleared_algebras.append(cleared_label)
-            elif system_type == "DFAtom":
-                cleared_diffFormAtoms.append(cleared_label)
-            elif system_type == "coframe":
-                coframe_label, cousins_parent_label = cleared_label
-                cleared_coframes.append((coframe_label, cousins_parent_label))
-                clearVar(cousins_parent_label, report=False)
-
-    if report:
-        if cleared_standard:
-            print(
-                f"Cleared standard variable systems from the dgcv variable management framework: {', '.join(cleared_standard)}"
-            )
-        if cleared_complex:
-            print(
-                f"Cleared complex variable systems from the dgcv variable management framework: {', '.join(cleared_complex)}"
-            )
-        if cleared_algebras:
-            print(
-                f"Cleared finite algebra systems from the dgcv variable management framework: {', '.join(cleared_algebras)}"
-            )
-        if cleared_diffFormAtoms:
-            print(
-                f"Cleared differential form systems from the dgcv variable management framework: {', '.join(cleared_diffFormAtoms)}"
-            )
-        if cleared_coframes:
-            for cf_label, cp_label in cleared_coframes:
-                print(f"Cleared coframe '{cf_label}' along with associated zero form atom system '{cp_label}'")
-
-def DGCV_snapshot(style=None, use_latex=None, complete_report = None):
-    warnings.warn(
-        "`DGCV_snapshot` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
-        "It will be removed in 2026. Please use `vmf_summary` instead.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    return vmf_summary(style=style, use_latex=use_latex, complete_report = complete_report)
-
-def vmf_summary(style=None, use_latex=None, complete_report = None):
-    """
-    Generate a comprehensive snapshot of dgcv's variable management framework (VMF), such as coordinate systems, algebras, coframes, and more.
-
-    Parameters
-    ----------
-    style : str, optional
-        The style options to apply to the summary table. Default theme is 'chalkboard_green'. Use the dgcv function `get_DGCV_themes()` to display a list of other available themes.
-    use_latex : bool, optional
-        If True, the table will format text using LaTeX for better
-        mathematical display. Default is False.
-
-    Returns
-    -------
-    DataFrame
-        A formatted summary table displaying the initialized objects, such as coordinate systems, algebras, coframes, etc.
-    """
-    if style is None:
-        style = get_dgcv_settings_registry()['theme']
-    if use_latex is None:
-        use_latex = get_dgcv_settings_registry()['use_latex']
-
-    if complete_report is True:
-        force_report = True
-    else:
-        force_report = False
-    if complete_report is None:
-        complete_report = True
-
-    vr = get_variable_registry()
-    outputs = []
-
-    if vr['standard_variable_systems'] or vr['complex_variable_systems'] or force_report:
-        outputs.append(_snapshot_coor_(style=style, use_latex=use_latex))
-    if vr['finite_algebra_systems'] or force_report:
-        outputs.append(_snapshot_algebras_(style=style, use_latex=use_latex))
-    if vr['eds']['atoms'] or force_report:
-        outputs.append(_snapshot_eds_atoms_(style=style, use_latex=use_latex))
-    if vr['eds']['coframes'] or force_report:
-        outputs.append(_snapshot_coframes_(style=style, use_latex=use_latex))
-
-    if not outputs and not force_report:
-        print("There are no objects currently registered in the dgcv VMF.")
-    else:
-        for table in outputs:
-            display(table)
-
-
-
-def variableSummary(*args, **kwargs):
-    warnings.warn(
-        "variableSummary() is deprecated and will be removed in a future version. "
-        "Please use vmf_summary() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return vmf_summary(*args, **kwargs)
-
-def _snapshot_coor_(style=None, use_latex=None):
-    """
-    Returns a Pandas DataFrame summarizing the coordinate systems in dgcv.
-
-    This snapshot includes both complex and standard variable systems.
-    For each system, the summary includes:
-      - The number of variables (tuple length)
-      - The initial index
-      - For complex systems, the labels used for the real and imaginary parts,
-        as well as formatted representations of the vector fields and differential forms.
-      - For standard systems, the corresponding formatted vector fields and differential forms.
-
-    Parameters:
-        use_latex : bool, optional
-            If True, formatting is applied using LaTeX.
-        style : str, optional
-            A style theme to apply to the summary table.
-
-    Returns:
-        A styled Pandas DataFrame summarizing the coordinate systems and finite algebras.
-    """
-    if style is None:
-        style = get_dgcv_settings_registry()['theme']
-    if use_latex is None:
-        use_latex = get_dgcv_settings_registry()['use_latex']
-
-    def wrap_in_dollars(content):
-        return f"${content}$"
-
-    def convert_to_greek(var_name):
-        # Assume greek_letters is defined module-wide; its values are LaTeX-valid strings.
-        for name, greek in greek_letters.items():
-            if var_name.lower().startswith(name):
-                return var_name.replace(name, greek, 1)
-        return var_name
-
-    def format_variable_name(var_name, system_type, use_latex=False):
-        # Look up system info from the registry.
-        if system_type == "standard":
-            info = variable_registry["standard_variable_systems"].get(var_name, {})
-            family_names = info.get("family_names", var_name)
-            initial_index = info.get("initial_index", 1)
-        elif system_type == "complex":
-            info = variable_registry["complex_variable_systems"].get(var_name, {})
-            # For complex systems, assume family_names is a 4-tuple; we use its first element (holomorphic names)
-            family_names = info.get("family_names", ())
-            if family_names and isinstance(family_names, (list, tuple)) and len(family_names) > 0:
-                family_names = family_names[0]
-            else:
-                family_names = var_name
-            initial_index = info.get("initial_index", 1)
-        elif system_type == "algebra":
-            info = variable_registry["finite_algebra_systems"].get(var_name, {})
-            family_names = info.get("family_names", var_name)
-            initial_index = None
-        else:
-            family_names, initial_index = var_name, None
-
-        # If family_names is a sequence with more than one element, format with an ellipsis.
-        if isinstance(family_names, (list, tuple)) and len(family_names) > 1:
-            if use_latex:
-                if initial_index:
-                    content = (f"{convert_to_greek(var_name)} = \\left( {convert_to_greek(var_name)}_{{{initial_index}}}, "
-                            f"\\ldots, {convert_to_greek(var_name)}_{{{initial_index + len(family_names) - 1}}} \\right)")
-                else:
-                    content = (f"{convert_to_greek(var_name)} = {convert_to_greek(var_name)}")
-            else:
-                content = f"{var_name} = ({family_names[0]}, ..., {family_names[-1]})"
-        else:
-            content = f"{var_name}"
-        if use_latex:
-            content = wrap_in_dollars(content)
-        return content
-
-    def build_object_string(obj_type, var_name, start_index, tuple_len, system_type, use_latex=False):
-        # For standard systems, if there's only one variable, return a simple label;
-        # otherwise, show the range of indices.
-        if tuple_len == 1:
-            content = f"{obj_type}_{var_name}"
-        else:
-            content = f"{obj_type}_{var_name}{start_index},...,{obj_type}_{var_name}{start_index + tuple_len - 1}"
-        if use_latex:
-            content = wrap_in_dollars(content)
-        return content
-
-    def build_object_string_for_complex(obj_type, family_houses, family_names, start_index, use_latex=False):
-        """
-        For a complex variable system, family_houses is expected to be a 4-tuple of labels
-        (e.g. (hol, anti, real, imag)) and family_names is a 4-tuple of sequences, one for each part.
-        This function formats each part (only if the corresponding list has more than one element)
-        using an ellipsis; otherwise, it shows the single variable.
-        """
-        parts = []
-        # Expect family_names to be a 4-tuple: (hol_names, anti_names, real_names, imag_names)
-        if isinstance(family_names, (list, tuple)) and len(family_names) == 4:
-            for i, part in enumerate(family_houses):
-                part_names = family_names[i]  # list of names for this part
-                if isinstance(part_names, (list, tuple)) and len(part_names) > 1:
-                    if use_latex:
-                        part_str = f"\\frac{{\\partial}}{{\\partial {convert_to_greek(part)}_{{{start_index}}}}}, \\ldots, \\frac{{\\partial}}{{\\partial {convert_to_greek(part)}_{{{start_index + len(part_names) - 1}}}}}" if obj_type=="D" else f"d {convert_to_greek(part)}_{{{start_index}}}, \\ldots, d {convert_to_greek(part)}_{{{start_index + len(part_names) - 1}}}"
-                        part_str = wrap_in_dollars(part_str)
-                    else:
-                        part_str = f"{obj_type}_{part}{start_index},...,{obj_type}_{part}{start_index + len(part_names) - 1}"
-                else:
-                    if use_latex:
-                        part_str = wrap_in_dollars(f"{obj_type}_{convert_to_greek(part)}")
-                    else:
-                        part_str = f"{obj_type}_{part}"
-                parts.append(part_str)
-        else:
-            # Fallback: if family_names is not the expected 4-tuple, treat as a single list.
-            if isinstance(family_names, (list, tuple)) and len(family_names) > 1:
-                if use_latex:
-                    part_str = wrap_in_dollars(f"{obj_type}_{convert_to_greek(family_houses[0])}{start_index},...,{obj_type}_{convert_to_greek(family_houses[0])}{start_index + len(family_names) - 1}")
-                else:
-                    part_str = f"{obj_type}_{family_houses[0]}{start_index},...,{obj_type}_{family_houses[0]}{start_index + len(family_names) - 1}"
-                parts.append(part_str)
-            else:
-                if use_latex:
-                    parts.append(wrap_in_dollars(f"{obj_type}_{convert_to_greek(family_houses[0])}"))
-                else:
-                    parts.append(f"{obj_type}_{family_houses[0]}")
-        return ", ".join(parts)
-
-    variable_registry = get_variable_registry()
-    data = []          # Each row is: [# Variables, Initial Index, Real Part, Imaginary Part, Vector Fields, Differential Forms]
-    var_system_labels = []  # Regular column for variable system labels
-
-    # Process complex variable systems
-    for var_name in sorted(variable_registry.get("complex_variable_systems", {}).keys()):
-        system = variable_registry["complex_variable_systems"][var_name]
-        # For complex systems, family_names should be a 4-tuple.
-        fn = system.get("family_names", ())
-        if fn and isinstance(fn, (list, tuple)) and len(fn) == 4:
-            hol_names = fn[0]
-        else:
-            hol_names = []
-        tuple_len = len(hol_names) if isinstance(hol_names, (list, tuple)) else 1
-        start_index = system.get("initial_index", 1)
-        formatted_label = format_variable_name(var_name, "complex", use_latex=use_latex)
-        var_system_labels.append(formatted_label)
-        family_houses = system.get("family_houses", ("N/A", "N/A", "N/A", "N/A"))
-        # For complex systems, display real and imaginary parts from the 3rd and 4th entries.
-        if isinstance(fn, (list, tuple)) and len(fn)==4:
-            real_names = fn[2]
-            imag_names = fn[3]
-        else:
-            real_names, imag_names = "N/A", "N/A"
-        if use_latex:
-            real_part = wrap_in_dollars(f"{convert_to_greek(family_houses[2])} = \\left( {convert_to_greek(family_houses[2])}_{{{start_index}}}, \\ldots, {convert_to_greek(family_houses[2])}_{{{start_index + len(real_names) - 1}}} \\right)") if isinstance(real_names, (list, tuple)) and len(real_names)>1 else wrap_in_dollars(f"{convert_to_greek(family_houses[2])}")
-            imag_part = wrap_in_dollars(f"{convert_to_greek(family_houses[3])} = \\left( {convert_to_greek(family_houses[3])}_{{{start_index}}}, \\ldots, {convert_to_greek(family_houses[3])}_{{{start_index + len(imag_names) - 1}}} \\right)") if isinstance(imag_names, (list, tuple)) and len(imag_names)>1 else wrap_in_dollars(f"{convert_to_greek(family_houses[3])}")
-        else:
-            real_part = f"{family_houses[2]} = ({real_names[0]}, ..., {real_names[-1]})" if isinstance(real_names, (list, tuple)) and len(real_names)>1 else f"{family_houses[2]}"
-            imag_part = f"{family_houses[3]} = ({imag_names[0]}, ..., {imag_names[-1]})" if isinstance(imag_names, (list, tuple)) and len(imag_names)>1 else f"{family_houses[3]}"
-        vf_str = build_object_string_for_complex("D", family_houses, fn, start_index, use_latex)
-        df_str = build_object_string_for_complex("d", family_houses, fn, start_index, use_latex)
-        data.append([tuple_len, real_part, imag_part, vf_str, df_str])
-
-    # Process standard variable systems
-    for var_name in sorted(variable_registry.get("standard_variable_systems", {}).keys()):
-        system = variable_registry["standard_variable_systems"][var_name]
-        family_names = system.get("family_names", ())
-        tuple_len = len(family_names) if isinstance(family_names, (list, tuple)) else 1
-        start_index = system.get("initial_index", 1)
-        formatted_label = format_variable_name(var_name, "standard", use_latex=use_latex)
-        var_system_labels.append(formatted_label)
-        vf_str = build_object_string("D", var_name, start_index, tuple_len, "standard", use_latex)
-        df_str = build_object_string("d", var_name, start_index, tuple_len, "standard", use_latex)
-        data.append([tuple_len, "----", "----", vf_str, df_str])
-
-    # Process finite algebra systems
-    finite_algebra_vars = sorted(variable_registry.get("finite_algebra_systems", {}).keys())
-    algebra_labels = []
-    for var_name in finite_algebra_vars:
-        system = variable_registry["finite_algebra_systems"][var_name]
-        family_names = system.get("family_names", ())
-        if isinstance(family_names, (list, tuple)):
-            num_basis = len(family_names)
-        else:
-            num_basis = 1
-        formatted_label = format_variable_name(var_name, "algebra", use_latex=use_latex)
-        algebra_labels.append(formatted_label)
-        # For finite algebras, we place placeholders for other columns.
-        data.append([num_basis, "----", "----", "----", "----"])
-
-    # Combine labels from coordinate systems and algebras.
-    all_labels = var_system_labels + algebra_labels
-    # Prepend the label to each data row.
-    combined_data = []
-    for label, row in zip(all_labels, data):
-        combined_data.append([label] + row)
-
-    columns = ["Coordinate System", "# of Variables", "Real Part", "Imaginary Part", "Vector Fields", "Differential Forms"]
-    table = DataFrame(combined_data, columns=columns)
-    table_header = "Initialized Coordinate Systems"
-    table_styles = get_style(style)+[{'selector': 'td', 'props': [('text-align', 'left')]}]+[{'selector': 'th', 'props': [('text-align', 'left')]}]
-    styled_table = (
-        table.style
-        .set_table_styles(table_styles)
-        .set_caption(f"{table_header}")
-        .hide(axis="index")
-    )
-    return styled_table
-
-def _snapshot_algebras_(style=None, use_latex=None):
-    """
-    Returns a Pandas DataFrame summarizing the finite algebra systems in dgcv's VMF.
-
-    For each finite algebra system, the snapshot includes:
-      - The formatted algebra label.
-      - The family type.
-      - The basis (family_names), formatted as a comma‑separated string (with ellipsis if there are too many elements).
-      - The number of basis elements.
-
-    Args:
-        use_latex (bool, optional): If True, formats labels using LaTeX.
-        style (str, optional): A style theme name to retrieve table styles.
-
-    Returns:
-        A styled Pandas DataFrame.
-    """
-    if style is None:
-        style = get_dgcv_settings_registry()['theme']
-    if use_latex is None:
-        use_latex = get_dgcv_settings_registry()['use_latex']
-
-    def wrap_in_dollars(content):
-        return f"${content}$"
-
-    def convert_to_greek(var_name):
-        # Assume greek_letters is defined module-wide as a dict mapping strings to LaTeX-valid Greek strings.
-        # Example: {'alpha': '\\alpha', 'beta': '\\beta', ...}
-        for name, greek in greek_letters.items():
-            if var_name.lower().startswith(name):
-                return var_name.replace(name, greek, 1)
-        return var_name
-
-    def process_basis_label(label):
-        # Use regex to separate alphabetic and numeric parts.
-        match = re.match(r"(.*?)(\d+)?$", label)
-        if match:
-            basis_elem_name = match.group(1).rstrip("_")
-            basis_elem_number = match.group(2)
-            # Convert the alphabetic part to Greek if applicable.
-            basis_elem_name = convert_to_greek(basis_elem_name)
-            if basis_elem_number:
-                return f"{basis_elem_name}_{{{basis_elem_number}}}"
-            else:
-                return f"{basis_elem_name}"
-        else:
-            return label
-
-    registry = get_variable_registry()
-    data = []
-
-    finite_algebras = registry.get("finite_algebra_systems", {})
-    for label in sorted(finite_algebras.keys()):
-        system = finite_algebras[label]
-        family_names = system.get("family_names", ())
-        if isinstance(family_names, (list, tuple)):
-            num_basis = len(family_names)
-            if num_basis > 5:
-                basis_str = f"{process_basis_label(family_names[0])}, ..., {process_basis_label(family_names[-1])}"
-            else:
-                basis_str = ", ".join(process_basis_label(x) for x in family_names)
-        else:
-            num_basis = 1
-            basis_str = process_basis_label(family_names)
-        # For the algebra label, use the module-wide format_variable_name with system_type "algebra".
-        # Here, we simply assume the formatted label is the label itself wrapped in LaTeX if needed.
-        if use_latex:
-            formatted_label = wrap_in_dollars(convert_to_greek(label))
-        else:
-            formatted_label = label
-
-        data.append([formatted_label, basis_str, num_basis])
-
-    columns = ["Algebra Label", "Basis", "Dimension"]
-    df = pd.DataFrame(data, columns=columns)
-
-    table_styles = get_style(style)+[{'selector': 'td', 'props': [('text-align', 'left')]}]+[{'selector': 'th', 'props': [('text-align', 'left')]}]
-    styled_df = df.style.set_table_styles(table_styles)
-    styled_df = (
-        df.style
-        .set_table_styles(table_styles)
-        .set_caption("Initialized Finite Algebra Systems")
-        .hide(axis="index")
-    )
-    return styled_df
-
-def _snapshot_eds_atoms_(style=None, use_latex=None):
-    """
-    Returns a summary table listing abstract differential form atoms in the VMF scope
-
-    Parameters:
-    ----------
-    style : str, optional
-        A style theme to apply to the summary table.
-    use_latex : bool, optional
-        If True, formats text using LaTeX
-
-    Returns:
-    -------
-    pandas.DataFrame
-        A summary table listing abstract differential form atoms in the VMF scope
-    """
-    if style is None:
-        style = get_dgcv_settings_registry()['theme']
-    if use_latex is None:
-        use_latex = get_dgcv_settings_registry()['use_latex']
-    variable_registry = get_variable_registry()
-    eds_atoms_registry = variable_registry["eds"]["atoms"]
-
-    if not eds_atoms_registry:
-        return pd.DataFrame(columns=["DF System", "Degree", "# Elements", "Differential Forms", "Conjugate Forms", "Primary Coframe"])
-
-    data = []
-    for label, system in sorted(eds_atoms_registry.items()):
-        df_system = label
-        degree = system.get("degree", "----")
-        family_values = system.get("family_values", ())
-        num_elements = len(family_values) if isinstance(family_values, tuple) else 1
-
-        # Format Differential Forms
-        if isinstance(family_values, tuple):
-            if len(family_values) > 3:
-                diff_forms = f"{family_values[0]}, ..., {family_values[-1]}"
-            else:
-                diff_forms = ", ".join(str(x) for x in family_values)
-        else:
-            diff_forms = str(family_values)
-
-        # Apply LaTeX formatting for Differential Forms if required
-        if use_latex and family_values:
-            if isinstance(family_values, tuple) and len(family_values) > 3:
-                diff_forms = f"$ {family_values[0]._latex()}, ..., {family_values[-1]._latex()} $"
-            elif isinstance(family_values, tuple):
-                diff_forms = ", ".join(f"{x._latex()}" if hasattr(x, "_latex") else str(x) for x in family_values)
-                diff_forms = f"$ {diff_forms} $"
-
-        # Format Conjugate Forms
-        real_status = system.get("real", False)
-        if real_status:
-            conjugate_forms = "----"
-        else:
-            conjugates = system.get("conjugates", {})
-            if conjugates:
-                conjugate_list = list(conjugates.values())
-                if len(conjugate_list) > 3:
-                    conjugate_forms = f"{conjugate_list[0]}, ..., {conjugate_list[-1]}"
-                else:
-                    conjugate_forms = ", ".join(str(x) for x in conjugate_list)
-                if use_latex and conjugate_list and hasattr(conjugate_list[0], "_latex"):
-                    if len(conjugate_list) > 3:
-                        conjugate_forms = f"$ {conjugate_list[0]._latex()}, ..., {conjugate_list[-1]._latex()} $"
-                    else:
-                        conjugate_forms = ", ".join(x._latex() for x in conjugate_list)
-                        conjugate_forms = f"$ {conjugate_forms} $"
-            else:
-                conjugate_forms = "----"
-
-        # Format Primary Coframe
-        primary_coframe = system.get("primary_coframe", None)
-        if primary_coframe is None:
-            primary_coframe_str = "----"
-        else:
-            primary_coframe_str = primary_coframe._latex() if use_latex and hasattr(primary_coframe, "_latex") else repr(primary_coframe)
-
-        data.append([df_system, degree, num_elements, diff_forms, conjugate_forms, primary_coframe_str])
-
-    columns = ["DF System", "Degree", "# Elements", "Differential Forms", "Conjugate Forms", "Primary Coframe"]
-    df = pd.DataFrame(data, columns=columns)
-
-    table_styles = get_style(style) + [
-        {'selector': 'th', 'props': [('text-align', 'left')]},
-        {'selector': 'td', 'props': [('text-align', 'left')]}
-    ]
-    styled_df = df.style.set_table_styles(table_styles).set_caption("Initialized abstract differential forms in the VMF scope").hide(axis="index")
-
-    return styled_df
-
-def _snapshot_coframes_(style=None, use_latex=None):
-    """
-    Returns a summary table listing coframes in the VMF scope
-
-    Parameters:
-    ----------
-    style : str, optional
-        A style theme to apply to the summary table.
-    use_latex : bool, optional
-        If True, formats text using LaTeX
-
-    Returns:
-    -------
-    pandas.DataFrame
-    Returns a summary table listing coframes in the VMF scope
-    """
-
-    if style is None:
-        style = get_dgcv_settings_registry()['theme']
-    if use_latex is None:
-        use_latex = get_dgcv_settings_registry()['use_latex']
-    variable_registry = get_variable_registry()
-    coframes_registry = variable_registry["eds"].get("coframes", {})
-
-    if not coframes_registry:
-        return pd.DataFrame(columns=["Coframe Label", "Coframe 1-Forms", "Structure Coefficients"])
-
-    data = []
-    for label, system in sorted(coframes_registry.items()):
-        # Retrieve coframe object
-        coframe_obj = _cached_caller_globals.get(label, label)
-        coframe_label = label
-
-        # Process Coframe 1-Forms
-        if isinstance(coframe_obj,str):
-            children = system.get("children", [])
-            if len(children)>0:
-                if any(child not in _cached_caller_globals for child in children):
-                    children = []
-                else:
-                    children = [_cached_caller_globals[child] for child in children]
-        else:
-            children = coframe_obj.forms
-        if len(children) > 3:
-            coframe_1_forms = f"{children[0]._latex()}, ..., {children[-1]._latex()}"
-        else:
-            coframe_1_forms = ", ".join(
-                child._latex() if use_latex and hasattr(child, "_latex") else repr(child)
-                for child in children
-            )
-        coframe_1_forms = f"$ {coframe_1_forms} $" if use_latex else coframe_1_forms
-
-        # Process Structure Coefficients
-        cousins = system.get("cousins_vals", [])
-        if len(cousins) > 3:
-            structure_coeffs = f"{cousins[0]._latex()}, ..., {cousins[-1]._latex()}"
-        else:
-            structure_coeffs = ", ".join(
-                cousin._latex() if use_latex and hasattr(cousin, "_latex") else repr(cousin)
-                for cousin in cousins
-            )
-        structure_coeffs = f"$ {structure_coeffs} $" if use_latex else structure_coeffs
-
-        data.append([coframe_label, coframe_1_forms, structure_coeffs])
-
-    columns = ["Coframe Label", "Coframe 1-Forms", "Structure Coefficients"]
-    df = pd.DataFrame(data, columns=columns)
-
-    # Apply styling
-    table_styles = get_style(style) + [
-        {'selector': 'th', 'props': [('text-align', 'left')]},
-        {'selector': 'td', 'props': [('text-align', 'left')]}
-    ]
-    styled_df = df.style.set_table_styles(table_styles).set_caption("Initialized Abstract Coframes").hide(axis="index")
-
-    return styled_df

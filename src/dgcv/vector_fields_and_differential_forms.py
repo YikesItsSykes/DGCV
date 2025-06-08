@@ -55,12 +55,11 @@ from .dgcv_core import (
     allToReal,
     allToSym,
     changeDFBasis,
-    clearVar,
     compress_dgcv_class,
-    listVar,
     minimalVFDataDict,
     variableProcedure,
 )
+from .vmf import clearVar, listVar
 
 
 ############## retrieval
@@ -117,7 +116,6 @@ def get_DF(*coordinates):
 
 
 ############## complex vector fields
-
 
 def assembleFromHolVFC(coeffs, holVars):
     """
@@ -286,7 +284,6 @@ def assembleFromCompVFC(arg1, arg2, arg3):
 
 
 ############## differential forms
-
 
 def makeZeroForm(arg1, varSpace=None, dgcvType=None, default_var_format=None):
     """
@@ -728,14 +725,14 @@ def LieDerivative(vf, arg):
 
 ############## vector field and differential forms operations with linsolve computations
 
-
 def decompose(
     obj,
     basis,
     return_parameters=False,
     new_parameters_label=None,
+    only_check_decomposability = False,
     _pass_error_report=None,
-    _hand_off=None,
+    _hand_off=None
 ):
     """
     Decomposes a vector field or differential form as a linear combination of a given `basis` list.
@@ -837,6 +834,8 @@ def decompose(
 
     dimLoc = len(basis)
     if dimLoc == 0:
+        if only_check_decomposability is True:
+            return False
         return [tuple(), tuple()]
     tempLabel = "deco" + create_key()
     variableProcedure(tempLabel, dimLoc, initialIndex=0, _tempVar=retrieve_passkey())
@@ -850,10 +849,14 @@ def decompose(
                 ]
             )
         )
-        if not all([j in solObj.varSpace for j in obj.varSpace]):
-            warnings.warn(f"The vector field {obj} is not in the span of {basis}")
-            return []
         eqns = (compress_dgcv_class(obj - solObj)).coeffs
+        if not all([j in solObj.varSpace for j in obj.varSpace]):
+            if only_check_decomposability is True:
+                clearVar(*listVar(temporary_only=True), report=False)
+                return False
+            warnings.warn(f"The vector field {obj} is not in the span of {basis}")
+            clearVar(*listVar(temporary_only=True), report=False)
+            return []
     if isinstance(obj, DFClass):
         solObj = compress_dgcv_class(
             addDF(
@@ -864,8 +867,12 @@ def decompose(
             )
         )
         if not all([j in solObj.varSpace for j in obj.varSpace]):
+            if only_check_decomposability is True:
+                clearVar(*listVar(temporary_only=True), report=False)
+                return False
             warnings.warn(f"The differential form {obj} is not in the span of {basis}. Variable space mis-alignment: {solObj.varSpace} and {obj.varSpace}")
             obj = changeDFBasis(obj, solObj.varSpace)
+            clearVar(*listVar(temporary_only=True), report=False)
             return []
         eqns = [j[1] for j in (compress_dgcv_class(obj - solObj)).DFClassDataMinimal]
 
@@ -873,12 +880,17 @@ def decompose(
     if len(list(sol)) == 0:
         printStr = f"`decompose` rolled back its algorithm because `linsolve` failed to solve the equations {eqns} w.r.t. the variables {tempVars}"
         clearVar(*listVar(temporary_only=True), report=False)
+        if only_check_decomposability is True:
+            return False
         if _pass_error_report == retrieve_passkey():
             return printStr
         else:
             raise Exception(printStr)
     solDict = dict(zip(tempVars, list(sol)[0]))
     freeVar = [t for t in tempVars if t == solDict[t]]
+    if only_check_decomposability is True:
+        clearVar(*listVar(temporary_only=True), report=False)
+        return True
     if return_parameters and len(freeVar) > 0:
         if isinstance(new_parameters_label, str):
             newLabel = new_parameters_label
@@ -1431,153 +1443,3 @@ def annihilator(
 
             return [rescaleCD(vf) for vf in solVFs]
 
-
-# class structureEquations(Basic):
-
-#     def __new__(cls, basis, structureFunctionsDict, connectionFormsDict, torsion = None):
-#         # Call Basic.__new__ with only the positional arguments
-#         obj = Basic.__new__(cls, basis, structureFunctionsDict)
-#         return obj
-
-#     def __init__(self, basis, structureFunctionsDict, connectionFormsDict, torsion = None):
-#         self.basis = basis
-#         self.structureFunctionsDict = structureFunctionsDict
-#         self.connectionFormsDict = connectionFormsDict
-#         self.torsion = torsion
-
-#     def __str__(self):
-#         result = "Structure Functions:\n"
-#         for basis_elem, inner_dict in self.structureFunctionsDict.items():
-#             result += f"{basis_elem} : {inner_dict}\n"
-#         return result
-
-#     def _repr_latex_(self):
-#         latex_result = r"\begin{align*}"
-#         dummy_labels = [f"\\_e_{{{i+1}}}" for i in range(len(self.basis))]  # Create dummy labels for the 1-forms
-
-#         # Loop through the structure functions dict
-#         for i, (basis_elem, two_form_dict) in enumerate(self.structureFunctionsDict.items()):
-#             latex_result += f"d ({dummy_labels[i]}) &= "  # Start the equation with the 1-form dummy label
-
-#             # Build the 2-form sum
-#             two_form_sum = []
-#             for (j, k), coeff in two_form_dict.items():
-#                 two_form_label = f"{dummy_labels[j]} \\wedge {dummy_labels[k]}"
-#                 term = f"{LaTeX(coeff)} \\cdot {two_form_label}"
-#                 two_form_sum.append(term)
-
-#             # Join the terms in the sum
-#             latex_result += " + ".join(two_form_sum) + r" \\"
-
-#         latex_result += r"\end{align*}"
-#         return latex_result
-
-#     def _eval_simplify(self, **kwargs):
-#         # Loop through the structure functions and apply simplify to each coefficient
-#         simplified_structureFunctions = {}
-
-#         for basis_elem, two_form_dict in self.structureFunctionsDict.items():
-#             simplified_inner_dict = {}
-#             for key, val in two_form_dict.items():
-#                 # Apply SymPy's simplify to the value
-#                 simplified_val = simplify(val, **kwargs)
-#                 simplified_inner_dict[key] = simplified_val
-#             simplified_structureFunctions[basis_elem] = simplified_inner_dict
-
-#         # Return a new instance of structureEquations with the simplified data
-#         return structureEquations(self.basis, simplified_structureFunctions)
-
-#     def subs(self, *args, **kwargs):
-#         # Create a new dictionary to hold the substituted structure functions
-#         substituted_structureFunctions = {}
-
-#         # Iterate over the structure functions dictionary
-#         for basis_elem, two_form_dict in self.structureFunctionsDict.items():
-#             # Initialize an inner dictionary for the new substituted values
-#             substituted_inner_dict = {}
-
-#             # Iterate over the inner dictionary (2-form indices and their coefficients)
-#             for key, val in two_form_dict.items():
-#                 # Apply sympy's substitution method
-#                 substituted_val = sp.sympify(val).subs(*args, **kwargs)
-#                 substituted_inner_dict[key] = substituted_val
-
-#             # Store the substituted inner dictionary in the outer dictionary
-#             substituted_structureFunctions[basis_elem] = substituted_inner_dict
-
-#         # Return a new instance of the structureEquations class with the substituted data
-#         return structureEquations(self.basis, substituted_structureFunctions)
-
-
-# def get_structureEquations(dfList, torsion = None):
-#     if not isinstance(dfList,(list,tuple)):
-#         raise TypeError('`structureEquations needs the coframe to be a list/tuple of DFClass objects.')
-#     elif not all([isinstance(j,DFClass) for j in dfList]):
-#         raise TypeError('`structureEquations needs the coframe to be a list/tuple of DFClass objects.')
-#     elif not all([j.degree==1 for j in dfList]):
-#         raise TypeError('`structureEquations was given a list/tuple k-forms for the coframe whose degrees are not all one.')
-#     if torsion == None:
-#         df = get_DF(dfList[0].varSpace[0])[0]
-#         Torsion = [0*df*df]*len(dfList)
-#     elif not isinstance(torsion,(list,tuple)):
-#         raise TypeError('If providing torsion `structureEquations` needs it to be a list of 2-forms.')
-#     elif not all([isinstance(j,DFClass) for j in Torsion]):
-#         raise TypeError('If providing torsion `structureEquations` needs it to be a list of 2-forms.')
-#     elif not all([j.degree==2 for j in Torsion]):
-#         raise TypeError('If providing torsion `structureEquations` needs it to be a list of 2-forms.')
-#     dfList = list(dfList)
-#     Torsion = list(Torsion)
-
-#     if len(set([j.dgcvType for j in dfList]))>1:
-#         raise TypeError('`get_structureEquations` was given differential forms with different `dgcvType` attribute values. Reformat them to all have `dgcvType` \'standard\' or \'complex\'. The descision whether or not to track complex variable systems in this computation affects the outcome, so `get_structureEquations` will not automate attribute homogenization here by design.')
-
-#     if Torsion != None:
-#         if len(set([j.dgcvType for j in dfList+Torsion]))>1:
-#             raise TypeError('`get_structureEquations` was given differential forms with different `dgcvType` attribute values. Reformat them to all have `dgcvType` \'standard\' or \'complex\'. The descision whether or not to track complex variable systems in this computation affects the outcome, so `get_structureEquations` will not automate attribute homogenization here by design.')
-
-#     # make _varSpace_type uniform
-#     if dfList[0].dgcvType=='complex':
-#         if dfList[0]._varSpace_type=='real':
-#             Torsion = [allToReal(j) for j in Torsion]
-#             if any([j._varSpace_type!='real' for j in dfList]):
-#                 dfList = [allToReal(j) for j in dfList]
-#         elif dfList[0]._varSpace_type=='complex':
-#             Torsion = [allToSym(j) for j in Torsion]
-#             if any([j._varSpace_type!='complex' for j in dfList]):
-#                 dfList = [allToSym(j) for j in dfList]
-
-#     unraveler = dict()
-#     twoForms = []
-#     count = 0
-#     if len(dfList)>1:
-#         indexList=[(j,k) for j in range(len(dfList)) for k in range(len(dfList))]
-#     else:
-#         indexList=[(0,0)]
-#     for index in indexList:
-#         unraveler[count] = index
-#         count = count+1
-#         twoForms = twoForms +[dfList[index[0]]*dfList[index[1]]]
-
-#     structureFunctions=dict()
-#     for j in range(len(dfList)):
-#         df=dfList[j]
-#         extdf = Torsion[j]-exteriorDerivative(df)
-#         fetchSol = decompose(extdf,twoForms,_hand_off = retrieve_passkey())
-#         if isinstance(fetchSol,str):
-#             raise ValueError(f'`structureEquations` failed. It appears the exterior derivative of {df} is not in the span of the provided 1-forms\' wedge products. The related error report from dgcv `decompose` is as follows:\n {fetchSol}')
-#         else:
-#             structureFunctions[j] = {unraveler[k]:fetchSol[0][k] for k in range(len(fetchSol[0]))}
-
-#     connectionForms=dict()
-#     for j in structureFunctions:
-#         for k in range(len(dfList)):
-#             omega = addDF([structureFunctions[j][l]*dfList[l[0]] for l in structureFunctions[j] if l[1]==k])
-#             connectionForms[(j,k)] = omega
-
-
-#     if torsion==None:
-#         tval=None
-#     else:
-#         tval = Torsion
-
-#     return structureEquations(dfList,structureFunctions, connectionForms, torsion = Torsion)

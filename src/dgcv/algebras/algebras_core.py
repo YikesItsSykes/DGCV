@@ -1,34 +1,36 @@
 ############## dependencies
-import random
 import re
 import warnings
 
 import pandas as pd
 import sympy as sp
 
-from ._config import _cached_caller_globals, get_dgcv_settings_registry
-from ._safeguards import (
+from .._config import _cached_caller_globals, get_dgcv_settings_registry, greek_letters
+from .._safeguards import (
     create_key,
-    get_variable_registry,
+    get_dgcv_category,
     retrieve_passkey,
     retrieve_public_key,
-    validate_label,
-    validate_label_list,
 )
-from .dgcv_core import VFClass, addVF, allToReal, clearVar, listVar, variableProcedure
-from .styles import get_style
-from .tensors import tensorProduct
-from .vector_fields_and_differential_forms import VF_bracket
+from ..dgcv_core import variableProcedure
+from ..solvers import solve_dgcv
+from ..styles import get_style
+from ..tensors import tensorProduct
+from ..vmf import clearVar, listVar
+from .algebras_aux import _validate_structure_data
 
 ############## Algebras
 
 
 # finite dimensional algebra class
-class FAClass(sp.Basic):
+class algebra_class(sp.Basic):
     def __new__(cls, structure_data, *args, **kwargs):
-        validated_structure_data = cls.validate_structure_data(
-            structure_data, process_matrix_rep=kwargs.get("process_matrix_rep", False)
-        )
+        if kwargs.get("_calledFromCreator", False) == retrieve_passkey():
+            validated_structure_data = structure_data
+        else:
+            validated_structure_data = _validate_structure_data(
+                structure_data, process_matrix_rep=kwargs.get("process_matrix_rep", False), assume_skew=kwargs.get("assume_skew", False), assume_Lie_alg=kwargs.get("assume_Lie_alg", False),basis_order_for_supplied_str_eqns=kwargs.get("basis_order_for_supplied_str_eqns", False)
+            )
         validated_structure_data = tuple(map(tuple, validated_structure_data))
 
         obj = sp.Basic.__new__(cls, validated_structure_data)
@@ -43,11 +45,15 @@ class FAClass(sp.Basic):
         grading=None,
         format_sparse=False,
         process_matrix_rep=False,
+        preferred_representation=None,
         _label=None,
         _basis_labels=None,
         _calledFromCreator=None,
+        _callLock=None,
+        _print_warning=None,
+        _child_print_warning=None,
+        _exclude_from_VMF=None,
     ):
-        self.structureData = structure_data
         if _calledFromCreator == retrieve_passkey():
             self.label = _label
             self.basis_labels = _basis_labels
@@ -56,15 +62,21 @@ class FAClass(sp.Basic):
             self.label = "Alg_" + create_key()
             self.basis_labels = None
             self._registered = False
+        self._callLock = _callLock
+        self._print_warning = _print_warning
+        self._child_print_warning = _child_print_warning
+        self._exclude_from_VMF = _exclude_from_VMF
         self.is_sparse = format_sparse
         self.dimension = len(self.structureData)
         self._built_from_matrices = process_matrix_rep
+        self._dgcv_class_check=retrieve_passkey()
+        self._dgcv_category='algebra'
 
         def validate_and_adjust_grading_vector(vector, dimension):
             if not isinstance(vector, (list, tuple)):
                 raise ValueError(
                     "Grading vector must be a list or tuple."
-                )
+                ) from None
 
             vector = list(vector)
 
@@ -88,7 +100,7 @@ class FAClass(sp.Basic):
                     raise ValueError(
                         f"Invalid component in grading vector at index {i}: {component}. "
                         f"Expected int, float, or sympy.Expr."
-                    )
+                    ) from None
 
             return tuple(vector)
 
@@ -109,8 +121,22 @@ class FAClass(sp.Basic):
 
         self._gradingNumber = len(self.grading)
 
+        if preferred_representation is not None and (not isinstance(preferred_representation,(list,tuple)) or len(preferred_representation)!=self.dimension):
+            raise TypeError('unsupported format for `preferred_representation`.') from None
+        if preferred_representation is not None and all(isinstance(elem,sp.Matrix) for elem in preferred_representation):
+            self._preferred_rep_type = 'matrix'
+            self._preferred_representation = preferred_representation
+        elif preferred_representation is not None and all(isinstance(elem,tensorProduct) for elem in preferred_representation):
+            self._preferred_rep_type = 'tensor'
+            self._preferred_representation = preferred_representation
+        elif preferred_representation is not None and all(isinstance(elem,(list,tuple)) for elem in preferred_representation):
+            self._preferred_rep_type = 'matrix'
+            self._preferred_representation = [sp.Matrix(elem) for elem in preferred_representation]
+        elif preferred_representation is not None:
+            raise TypeError('unsupported format for `preferred_representation`.') from None
+
         self.basis = tuple([
-            AlgebraElement(
+            algebra_element_class(
                 self,
                 [1 if i == j else 0 for j in range(self.dimension)],
                 1,
@@ -133,39 +159,19 @@ class FAClass(sp.Basic):
         self._grading_compatible = None
         self._grading_report = None
 
+    def _class_builder(self,coeffs,valence,format_sparse=False):
+        return algebra_element_class(self,coeffs,valence,format_sparse=format_sparse)
 
-
-    @staticmethod
-    def validate_structure_data(data, process_matrix_rep=False):
-        if process_matrix_rep:
-            if all(
-                isinstance(sp.Matrix(obj), sp.Matrix)
-                and sp.Matrix(obj).shape[0] == sp.Matrix(obj).shape[1]
-                for obj in data
-            ):
-                return algebraDataFromMatRep(data)
-            else:
-                raise ValueError(
-                    "sp.Matrix representation requires a list of square matrices."
-                )
-
-        if all(isinstance(obj, VFClass) for obj in data):
-            return algebraDataFromVF(data)
-
-        try:
-            # Check that the data is a 3D list-like structure
-            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-                if len(data) == len(data[0]) == len(data[0][0]):
-                    return data  # Return as a validated 3D list
-                else:
-                    raise ValueError("Structure data must have 3D shape (x, x, x).")
-            else:
-                raise ValueError("Structure data format must be a 3D list of lists.")
-        except Exception as e:
-            raise ValueError(f"Invalid structure data format: {type(data)} - {e}")
+    @property
+    def preferred_representation(self):
+        if self._preferred_representation is None:
+            warnings.warn('A preferred representation format for this algebra was not specified, to it has been converted to its adjoint representation.')
+            self._preferred_rep_type = 'matrix'
+            self._preferred_representation = adjointRepresentation(self)
+        return self._preferred_representation
 
     def __eq__(self, other):
-        if not isinstance(other, FAClass):
+        if not isinstance(other, algebra_class):
             return NotImplemented
         return (
             self._structureData == other._structureData and
@@ -185,17 +191,35 @@ class FAClass(sp.Basic):
         return iter(self.basis) 
 
     def __getitem__(self, indices):
-        return self.structureData[indices[0]][indices[1]][indices[2]]
+        if isinstance(indices,int):
+            return self.basis[indices]
+        elif isinstance(indices,list): 
+            if len(indices)==1:
+                return self.basis[indices[0]]
+            elif isinstance(indices,list) and len(indices)==2:
+                return self.structureData[indices[0]][indices[1]]
+            elif isinstance(indices,list) and len(indices)==3:
+                return self.structureData[indices[0]][indices[1]][indices[2]]
+        else:
+            raise TypeError(f'To access an algebra element or structure data component, provide one index for an element from the basis, two indices for a list of coefficients from the product  of two basis elements, or 3 indices for the corresponding entry in the structure array. Instead of an integer of list of integers, the following was given: {indices}') from None
 
     def __repr__(self):
         if not self._registered:
-            warnings.warn(
-                "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
-                UserWarning,
-            )
+            if self._exclude_from_VMF == retrieve_passkey() or get_dgcv_settings_registry()['forgo_warnings'] is True:
+                pass
+            elif self._callLock == retrieve_passkey() and isinstance(self._print_warning,str):
+                warnings.warn(
+                    self._print_warning,
+                    UserWarning,
+                )
+            else:
+                warnings.warn(
+                    "This algebra instance was initialized without an assigned label. "
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    UserWarning,
+                )
         return (
-            f"FAClass(dim={self.dimension}, grading={self.grading}, "
+            f"algebra_class(dim={self.dimension}, grading={self.grading}, "
             f"label={self.label}, basis_labels={self.basis_labels}, "
             f"struct_data={self.structureData})"
         )
@@ -209,18 +233,23 @@ class FAClass(sp.Basic):
 
     def __str__(self):
         if not self._registered:
-            warnings.warn(
-                "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
-                UserWarning,
-            )
-
-        def format_basis_label(label_to_format):
-            return label_to_format
+            if self._exclude_from_VMF == retrieve_passkey() or get_dgcv_settings_registry()['forgo_warnings'] is True:
+                pass
+            elif self._callLock == retrieve_passkey() and isinstance(self._print_warning,str):
+                warnings.warn(
+                    self._print_warning,
+                    UserWarning,
+                )
+            else:
+                warnings.warn(
+                    "This algebra instance was initialized without an assigned label. "
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    UserWarning,
+                )
 
         formatted_label = self.label if self.label else "Unnamed Algebra"
         formatted_basis_labels = (
-            ", ".join([format_basis_label(bl) for bl in self.basis_labels])
+            ", ".join(list(self.basis_labels))
             if self.basis_labels
             else "No basis labels assigned"
         )
@@ -233,11 +262,19 @@ class FAClass(sp.Basic):
 
     def _display_DGCV_hook(self):
         if not self._registered:
-            warnings.warn(
-                "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
-                UserWarning,
-            )
+            if self._exclude_from_VMF == retrieve_passkey() or get_dgcv_settings_registry()['forgo_warnings'] is True:
+                pass
+            elif self._callLock == retrieve_passkey() and isinstance(self._print_warning,str):
+                warnings.warn(
+                    self._print_warning,
+                    UserWarning,
+                )
+            else:
+                warnings.warn(
+                    "This algebra instance was initialized without an assigned label. "
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    UserWarning,
+                )
 
         def format_algebra_label(label):
             r"""Wrap the algebra label in \mathfrak{} if all characters are lowercase, and subscript any numeric suffix."""
@@ -253,13 +290,21 @@ class FAClass(sp.Basic):
 
         return format_algebra_label(self.label)
 
-    def _repr_latex_(self):
+    def _repr_latex_(self,verbose=False,abbrev=False):
         if not self._registered:
-            warnings.warn(
-                "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
-                UserWarning,
-            )
+            if self._exclude_from_VMF == retrieve_passkey() or get_dgcv_settings_registry()['forgo_warnings'] is True:
+                pass
+            elif self._callLock == retrieve_passkey() and isinstance(self._print_warning,str):
+                warnings.warn(
+                    self._print_warning,
+                    UserWarning,
+                )
+            else:
+                warnings.warn(
+                    "This algebra instance was initialized without an assigned label. "
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    UserWarning,
+                )
 
         def format_algebra_label(label):
             r"""
@@ -282,7 +327,7 @@ class FAClass(sp.Basic):
                 A LaTeX-formatted algebra label.
             """
             if not label:
-                return "Unnamed Algebra"
+                return "\\text{{Unnamed Algebra}}"
 
             if "_" in label:
                 # Split the label at the first underscore
@@ -306,32 +351,52 @@ class FAClass(sp.Basic):
             # Return the label as-is if no special conditions apply
             return label
 
-        def format_basis_label(label):
-            return rf"{label}" if label else "e_i"
+        if abbrev is True:
+            return f'${format_algebra_label(self.label)}$'
 
-        formatted_label = format_algebra_label(self.label)
-        formatted_basis_labels = (
-            ", ".join([format_basis_label(bl) for bl in self.basis_labels])
-            if self.basis_labels
-            else "No basis labels assigned"
-        )
-        return (
-            f"Algebra: ${formatted_label}$, Basis: ${formatted_basis_labels}$, "
-            f"Dimension: ${self.dimension}$, Grading: ${sp.latex(self.grading)}$"
-        )
+        def format_basis_label(label, idx):
+            return rf"{label}" if label else f"e_{idx}"
+        if verbose is True:
+            formatted_label = format_algebra_label(self.label)
+            formatted_basis_labels = (
+                ", ".join([format_basis_label(bl,idx) for idx,bl in enumerate(self.basis_labels)])
+                if self.basis_labels
+                else "No basis labels assigned"
+            )
+            return (
+                f"Algebra: ${formatted_label}$, Basis: ${formatted_basis_labels}$, "
+                f"Dimension: ${self.dimension}$, Grading: ${sp.latex(self.grading)}$"
+            )
+        else:
+            formatted_str = f'\\langle{', '.join(elem._repr_latex_() for elem in self.basis)}\\rangle'.replace('$','').replace('\\displaystyle','')
+            if self.label:
+                return f'$\\displaystyle {format_algebra_label(self.label)}={formatted_str}$'
+            else:
+                return f'$\\displaystyle {formatted_str}$'
+
+    def _latex(self, printer=None):
+        return self._repr_latex_().replace('$','').replace('\\displaystyle','')
 
     def _sympystr(self):
         if not self._registered:
-            warnings.warn(
-                "This FAClass instance was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
-                UserWarning,
-            )
+            if self._exclude_from_VMF == retrieve_passkey() or get_dgcv_settings_registry()['forgo_warnings'] is True:
+                pass
+            elif self._callLock == retrieve_passkey() and isinstance(self._print_warning,str):
+                warnings.warn(
+                    self._print_warning,
+                    UserWarning,
+                )
+            else:
+                warnings.warn(
+                    "This algebra instance was initialized without an assigned label. "
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    UserWarning,
+                )
 
         if self.label:
-            return f"FAClass({self.label}, dim={self.dimension})"
+            return f"algebra_class({self.label}, dim={self.dimension})"
         else:
-            return f"FAClass(dim={self.dimension})"
+            return f"algebra_class(dim={self.dimension})"
 
     def _structure_data_summary_latex(self):
         try:
@@ -359,9 +424,12 @@ class FAClass(sp.Basic):
         Includes a warning for unregistered instances only if verbose=True.
         """
         if not self._registered and verbose:
-            print(
-                "Warning: This FAClass instance is unregistered. Use createFiniteAlg to register it."
-            )
+            if self._callLock == retrieve_passkey() and isinstance(self._print_warning,str):
+                print(self._print_warning)
+            else:
+                print(
+                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
+                )
 
         if self._skew_symmetric_cache is None:
             result, failure = self._check_skew_symmetric()
@@ -371,7 +439,10 @@ class FAClass(sp.Basic):
 
         if verbose:
             if result:
-                print("The algebra is skew-symmetric.")
+                if self.label is None:
+                    print("The algebra is skew-symmetric.")
+                else:
+                    print(f"{self.label} is skew-symmetric.")
             else:
                 i, j, k = failure
                 print(
@@ -397,9 +468,12 @@ class FAClass(sp.Basic):
         Includes a warning for unregistered instances only if verbose=True.
         """
         if not self._registered and verbose:
-            print(
-                "Warning: This FAClass instance is unregistered. Use createFiniteAlg to register it."
-            )
+            if self._callLock == retrieve_passkey() and isinstance(self._print_warning,str):
+                print(self._print_warning)
+            else:
+                print(
+                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
+                )
 
         if self._jacobi_identity_cache is None:
             result, fail_list = self._check_jacobi_identity()
@@ -409,7 +483,10 @@ class FAClass(sp.Basic):
 
         if verbose:
             if result:
-                print("The algebra satisfies the Jacobi identity.")
+                if self.label is None:
+                    print("The algebra satisfies the Jacobi identity.")
+                else:
+                    print(f"{self.label} satisfies the Jacobi identity.")
             else:
                 print(f"Jacobi identity fails for the following triples: {fail_list}")
 
@@ -452,7 +529,7 @@ class FAClass(sp.Basic):
             UserWarning,
         )
 
-    def is_lie_algebra(self, verbose=False):
+    def is_lie_algebra(self, verbose=False, return_bool=True):
         """
         Checks if the algebra is a Lie algebra.
         Includes a warning for unregistered instances only if verbose=True.
@@ -461,16 +538,21 @@ class FAClass(sp.Basic):
         ----------
         verbose : bool, optional
             If True, prints detailed information about the check.
+        return_bool : bool, optional
+            Affects whether or not a boolian value is returned. If False, nothing is returned, which may be used in combination with verbose=True to have the function simply print a report.
 
         Returns
         -------
-        bool
-            True if the algebra is a Lie algebra, False otherwise.
+        bool or nothing
+            True if the algebra is a Lie algebra, False otherwise. Nothing is returned if return_bool=False is set.
         """
         if not self._registered and verbose:
-            print(
-                "Warning: This FAClass instance is unregistered. Use createFiniteAlg to register it."
-            )
+            if self._callLock == retrieve_passkey() and isinstance(self._print_warning,str):
+                print(self._print_warning)
+            else:
+                print(
+                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
+                )
 
         # Check the cache
         if self._lie_algebra_cache is not None:
@@ -483,10 +565,12 @@ class FAClass(sp.Basic):
         # Perform the checks
         if not self.is_skew_symmetric(verbose=verbose):
             self._lie_algebra_cache = False
-            return False
+            if return_bool is True:
+                return False
         if not self.satisfies_jacobi_identity(verbose=verbose):
             self._lie_algebra_cache = False
-            return False
+            if return_bool is True:
+                return False
 
         # If both checks pass, cache the result and return True
         self._lie_algebra_cache = True
@@ -497,7 +581,8 @@ class FAClass(sp.Basic):
             else:
                 print(f"{self.label} is a Lie algebra.")
 
-        return True
+        if return_bool is True:
+            return True
 
     def _require_lie_algebra(self, method_name):
         """
@@ -514,23 +599,32 @@ class FAClass(sp.Basic):
             If the algebra is not a Lie algebra.
         """
         if not self.is_lie_algebra():
-            raise ValueError(f"{method_name} can only be applied to Lie algebras.")
+            raise ValueError(f"{method_name} can only be applied to Lie algebras.") from None
 
-    def is_semisimple(self, verbose=False):
+    def is_semisimple(self, verbose=False, return_bool=True):
         """
         Checks if the algebra is semisimple.
         Includes a warning for unregistered instances only if verbose=True.
+        Nothing is returned if return_bool=False is set.
         """
         if not self._registered and verbose:
-            print(
-                "Warning: This FAClass instance is unregistered. Use createFiniteAlg to register it."
-            )
+            if self._callLock == retrieve_passkey() and isinstance(self._print_warning,str):
+                print(self._print_warning)
+            else:
+                print(
+                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
+                )
 
         # Check if the algebra is a Lie algebra first
-        if not self.is_lie_algebra(verbose=False):
-            return False
+        if not self.is_lie_algebra(verbose=verbose):
+            if return_bool is True:
+                return False
+            else:
+                return
 
         # Compute the determinant of the Killing form
+        if verbose is True:
+            print('Progress update: computing determinant of the Killing form...')
         det = sp.simplify(killingForm(self).det())
 
         if verbose:
@@ -544,19 +638,22 @@ class FAClass(sp.Basic):
                     print("The algebra is not semisimple.")
                 else:
                     print(f"{self.label} is not semisimple.")
+        if return_bool is True:
+            return det != 0
 
-        return det != 0
-
-    def is_subspace_subalgebra(self, elements, return_structure_data=False):
+    def is_subspace_subalgebra(self, elements, return_structure_data=False, check_linear_independence=False):
         """
-        Checks if a set of elements is a subspace subalgebra.
+        Checks if a set of elements is a subspace is a subalgebra. `check_linear_independence` will additional verify if provided spanning elements are a basis.
 
         Parameters
         ----------
         elements : list
-            A list of AlgebraElement instances.
+            A list of algebra_element_class instances.
         return_structure_data : bool, optional
-            If True, returns the structure constants for the subalgebra.
+            If True, returns the structure constants for the subalgebra. Returned
+            data becomes a dictionary
+        check_linear_independence : bool, optional
+            If True, a check of linear independence of basis elements is also performed
 
         Returns
         -------
@@ -569,33 +666,30 @@ class FAClass(sp.Basic):
         """
 
         # Perform linear independence check
-        span_matrix = sp.Matrix([list(el.coeffs) for el in elements]).transpose()
+        filtered_elem = self.filter_independent_elements(elements)
+        span_matrix = sp.Matrix([list(el.coeffs) for el in filtered_elem]).transpose()
 
-        linearly_independent = span_matrix.rank() == len(elements)
-
-        if not linearly_independent:
-            if return_structure_data:
-                return {
-                    "linearly_independent": False,
-                    "closed_under_product": False,
-                    "structure_data": None,
-                }
-            return False
+        linearly_independent = len(elements)==len(filtered_elem)
 
         # Check closure under product and build structure data
-        dim = len(elements)
+        dim = len(filtered_elem)
         structure_data = [
             [[0 for _ in range(dim)] for _ in range(dim)] for _ in range(dim)
         ]
         closed_under_product = True
 
-        for i, el1 in enumerate(elements):
-            for j, el2 in enumerate(elements):
+        for i, el1 in enumerate(filtered_elem):
+            if closed_under_product is False:
+                break
+            for j, el2 in enumerate(filtered_elem):
                 product = el1 * el2
+                prodVec = sp.Matrix(product.coeffs)
                 solution = span_matrix.solve_least_squares(sp.Matrix(product.coeffs))
-
+                if any(entry!=0 for entry in span_matrix*solution-prodVec):
+                    closed_under_product = False
+                    structure_data = None
+                    break
                 for k, coeff in enumerate(solution):
-                    # Apply nsimplify to enforce exact representation
                     coeff_simplified = sp.nsimplify(coeff)
                     structure_data[i][j][k] = coeff_simplified
 
@@ -605,23 +699,25 @@ class FAClass(sp.Basic):
                 "closed_under_product": closed_under_product,
                 "structure_data": structure_data,
             }
-
-        return linearly_independent and closed_under_product
+        if check_linear_independence:
+            return linearly_independent and closed_under_product
+        else:
+            return closed_under_product
 
     def check_element_weight(self, element, test_weights = None):
         """
-        Determines the weight vector of an AlgebraElement with respect to the grading vectors. Weight can be instead computed against another grading vector passed a list of weights as the keyword `test_weights`.
+        Determines the weight vector of an algebra_element_class with respect to the grading vectors. Weight can be instead computed against another grading vector passed a list of weights as the keyword `test_weights`.
 
         Parameters
         ----------
-        element : AlgebraElement
-            The AlgebraElement to analyze.
+        element : algebra_element_class
+            The algebra_element_class to analyze.
         test_weights : list of int or sympy.Expr, optional (default: None)
 
         Returns
         -------
         list
-            A list of weights corresponding to the grading vectors of this FAClass (or test_weights if provided).
+            A list of weights corresponding to the grading vectors of this algebra (or test_weights if provided).
             Each entry is either an integer, sympy.Expr (weight), the string 'AllW' (i.e., All Weights) if the element is the zero element,
             or 'NoW' (i.e., No Weights) if the element is not homogeneous.
 
@@ -630,40 +726,32 @@ class FAClass(sp.Basic):
         - 'AllW' (meaning, All Weights) is returned for zero elements, which are compatible with all weights.
         - 'NoW' (meaning, No Weights) is returned for non-homogeneous elements that do not satisfy the grading constraints.
         """
-        if not isinstance(element, AlgebraElement):
-            raise TypeError("Input must be an instance of AlgebraElement.")
-
+        if not isinstance(element, algebra_element_class) or element.algebra!=self:
+            raise TypeError("Input in `algebra_class.check_element_weight` must be an `algebra_element_class` instance belonging to the `algebra` instance whose `check_element_weight` is being called.") from None
         if not test_weights:
             if not hasattr(self, "grading") or self._gradingNumber == 0:
-                raise ValueError("This FAClass instance has no assigned grading vectors.")
-
-        # Detect zero element
+                raise ValueError("This algebra instance has no assigned grading vectors.") from None
         if all(coeff == 0 for coeff in element.coeffs):
             return ["AllW"] * self._gradingNumber
-
         if test_weights:
             if not isinstance(test_weights,(list,tuple)):
-                raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a list/tuple of weight values (int,float, or sp.Expr).')
-            if len(self.dimension) != len(test_weights) or not all([isinstance(j,(int,float,sp.Expr)) for j in test_weights]):
-                raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a length {self.dimension} list/tuple of weight values (int,float, or sp.Expr).')
-            GVs = [test_weights]
+                raise TypeError('`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or sp.Expr).') from None
+            for weight in test_weights:
+                if not isinstance(weight,(list,tuple)):
+                    raise TypeError('`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or sp.Expr).') from None
+                if self.dimension != len(weight) or not all([isinstance(j,(int,float,sp.Expr)) for j in weight]):
+                    raise TypeError('`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or sp.Expr).') from None
+            GVs = test_weights
         else:
             GVs = self.grading
-
         weights = []
-        for g, grading_vector in enumerate(GVs):
-            # Compute contributions of the element's basis components
-            non_zero_indices = [
-                i for i, coeff in enumerate(element.coeffs) if coeff != 0
-            ]
-
-            # Check homogeneity
+        for grading_vector in GVs:
+            non_zero_indices = [i for i, coeff in enumerate(element.coeffs) if coeff != 0]
             basis_weights = [grading_vector[i] for i in non_zero_indices]
             if len(set(basis_weights)) == 1:
                 weights.append(basis_weights[0])
             else:
                 weights.append("NoW")
-
         return weights
 
     def check_grading_compatibility(self, verbose=False):
@@ -687,8 +775,8 @@ class FAClass(sp.Basic):
         """
         if not self._gradingNumber:
             raise ValueError(
-                "No grading vectors are assigned to this FAClass instance."
-            )
+                "No grading vectors are assigned to this algebra instance."
+            ) from None
         if isinstance(self._grading_compatible,bool) and self._grading_report:
             compatible = self._grading_compatible
             failure_details = self._grading_report
@@ -749,7 +837,7 @@ class FAClass(sp.Basic):
         Returns
         -------
         list
-            A list of AlgebraElement instances that span the center of the algebra.
+            A list of algebra_element_class instances that span the center of the algebra.
 
         Raises
         ------
@@ -765,7 +853,7 @@ class FAClass(sp.Basic):
         if not for_associative_alg and not self.is_lie_algebra():
             raise ValueError(
                 "This algebra is not a Lie algebra. To compute the center for an associative algebra, set for_associative_alg=True."
-            )
+            ) from None
 
         temp_label = create_key(prefix="center_var")
         variableProcedure(temp_label, self.dimension, _tempVar=retrieve_passkey())
@@ -783,7 +871,7 @@ class FAClass(sp.Basic):
         else:
             eqns = sum([list((el * other).coeffs) for other in self.basis], [])
 
-        solutions = sp.solve(eqns, temp_vars, dict=True)
+        solutions = solve_dgcv(eqns, temp_vars)
         if not solutions:
             warnings.warn(
                 'Using sympy.solve returned no solutions, indicating that this computation of the center failed, as solutions do exist.'
@@ -811,8 +899,8 @@ class FAClass(sp.Basic):
 
         Returns
         -------
-        FAClass
-            A new FAClass instance representing the derived algebra.
+        algebra
+            A new algebra instance representing the derived algebra.
 
         Raises
         ------
@@ -841,11 +929,11 @@ class FAClass(sp.Basic):
         if not subalgebra_data["linearly_independent"]:
             raise ValueError(
                 "Failed to compute the derived algebra: commutators are not linearly independent."
-            )
+            ) from None
         if not subalgebra_data["closed_under_product"]:
             raise ValueError(
                 "Failed to compute the derived algebra: commutators are not closed under the product."
-            )
+            ) from None
 
         # Extract independent generators and structure data
         independent_generators = subalgebra_data.get(
@@ -854,7 +942,7 @@ class FAClass(sp.Basic):
         structure_data = subalgebra_data["structure_data"]
 
         # Create the derived algebra
-        return FAClass(
+        return algebra_class(
             structure_data=structure_data,
             grading=self.grading,
             format_sparse=self.is_sparse,
@@ -869,14 +957,32 @@ class FAClass(sp.Basic):
 
         Parameters
         ----------
-        elements : list of AlgebraElement
+        elements : list of algebra_element_class
             The set of elements to filter.
 
         Returns
         -------
-        list of AlgebraElement
+        list of algebra_element_class
             A subset of the input elements that are linearly independent and unique.
         """
+        warning_message = ""
+        if not isinstance(elements,(list,tuple)):
+            warning_message += "\n The given value for `elements` is not a list or tuple"
+        else:
+            nonAE = []
+            wrongAlgebra = []
+            for elem in elements:
+                if not isinstance(elem, algebra_element_class):
+                    nonAE.append(elem)
+                elif elem.algebra!=self:
+                    wrongAlgebra.append(elem)
+            if len(nonAE)>0 or len(wrongAlgebra)>0:
+                if len(nonAE)>0:
+                    warning_message += f"\n • These list elements are not `algebra_element_class` type: {nonAE}"
+                if len(wrongAlgebra)>0:
+                    warning_message += f"\n • These list elements are `algebra_element_class` type, but belong to a different algebra: {wrongAlgebra}"
+        if warning_message:
+            raise ValueError("The `algebra` method `filter_independent_elements` can only be applied to lists of elements belonging to the parent algebra the method is called from. Given data has the following problems:"+warning_message) from None
 
         # Remove duplicate elements based on their coefficients
         unique_elements = []
@@ -888,7 +994,7 @@ class FAClass(sp.Basic):
                 unique_elements.append(el)
 
         # Create a matrix where each column is the coefficients of an element
-        coeff_matrix = sp.Matrix.hstack(*[el.coeffs for el in unique_elements])
+        coeff_matrix = sp.Matrix([list(el.coeffs) for el in unique_elements]).transpose()
 
         # Get the column space (linearly independent vectors)
         independent_vectors = coeff_matrix.columnspace()
@@ -1118,7 +1224,7 @@ class FAClass(sp.Basic):
         Parameters
         ----------
         subspace_elements : list
-            A list of AlgebraElement instances representing the subspace
+            A list of algebra_element_class instances representing the subspace
             they span.
 
         Returns
@@ -1133,8 +1239,8 @@ class FAClass(sp.Basic):
         """
         # Checks that all subspace elements belong to this algebra
         for el in subspace_elements:
-            if not isinstance(el, AlgebraElement) or el.algebra != self:
-                raise ValueError("All elements in subspace_elements must belong to this algebra.")
+            if not isinstance(el, algebra_element_class) or el.algebra != self:
+                raise ValueError("All elements in subspace_elements must belong to this algebra.") from None
 
         # Check the ideal condition
         for el in subspace_elements:
@@ -1147,14 +1253,14 @@ class FAClass(sp.Basic):
 
     def is_in_span(self, element, subspace_elements):
         """
-        Checks if a given AlgebraElement is in the span of subspace_elements.
+        Checks if a given algebra_element_class is in the span of subspace_elements.
 
         Parameters
         ----------
-        element : AlgebraElement
+        element : algebra_element_class
             The element to check.
         subspace_elements : list
-            A list of AlgebraElement instances representing the subspace they span.
+            A list of algebra_element_class instances representing the subspace they span.
 
         Returns
         -------
@@ -1171,14 +1277,29 @@ class FAClass(sp.Basic):
         # Check if the solution satisfies the equation
         return span_matrix * solution == product_vector
 
-    def multiplication_table(self, elements=None, restrict_to_subspace=False, style=None, use_latex=None):
+    def weighted_component(self, weights):
+        if isinstance(weights, (list,tuple)):
+            if all(isinstance(weight, (int,float,sp.Expr)) for weight in weights):
+                weights = [[weight] for weight in weights]
+            elif not all(isinstance(weight, (list, tuple)) for weight in weights):
+                raise ValueError('The `weights` parameter in `algebra_class.weighted_component` must be a list/tuple of weights/multi-weights. If giving a single multi-weight, it should be a length-1 list/tuple of lists/tuples, as otherwise a bare mult-weight tuple will be interpreted as a list of singleton weights.') from None
+        else:
+            raise ValueError('The `weights` parameter in `algebra_class.weighted_component` must be a list/tuple of weights/multi-weights. If giving a single multi-weight, it should be a length-1 list/tuple of lists/tuples, as otherwise a bare mult-weight tuple will be interpreted as a list of singleton weights.') from None
+        component = []
+        weights = [list(weight) for weight in weights]
+        for elem in self.basis:
+            if list(elem.check_element_weight()) in weights:
+                component.append(elem)
+        return algebra_subspace_class(component,self,self.grading)
+
+    def multiplication_table(self, elements=None, restrict_to_subspace=False, style=None, use_latex=None, _called_from_subalgebra = None):
         """
-        Generates a multiplication table for the FAClass and the given elements.
+        Generates a multiplication table for the algebra and the given elements.
 
         Parameters:
         -----------
-        elements : list[AlgebraElement]
-            A list of AlgebraElement instances to include in the multiplication table.
+        elements : list[algebra_element_class]
+            A list of algebra_element_class instances to include in the multiplication table.
         restrict_to_subspace : bool, optional
             If True, restricts the multiplication table to the given elements as basis.
         style : str, optional
@@ -1198,10 +1319,12 @@ class FAClass(sp.Basic):
         """
         if elements is None:
             elements = self.basis
-        elif not all(isinstance(elem, AlgebraElement) and elem.algebra == self for elem in elements):
-            raise ValueError("All elements must be instances of algebraElement.")
+        elif not all(isinstance(elem, algebra_element_class) and elem.algebra == self for elem in elements):
+            raise ValueError("All elements must be instances of algebraElement.") from None
         if restrict_to_subspace is True:
             basis_elements = elements
+        elif isinstance(_called_from_subalgebra,dict) and _called_from_subalgebra.get('internalLock',None)==retrieve_passkey():
+            basis_elements=_called_from_subalgebra['basis']
         else:
             basis_elements = self.basis
 
@@ -1262,38 +1385,81 @@ class FAClass(sp.Basic):
 
         return styled
 
+    def subalgebra(self,basis,grading=None):
+        from .algebras_secondary import subalgebra_class
+        basis_set = set(basis)
+        newBasis = []
+        for elem in self.basis:
+            if elem in basis_set:
+                newBasis.append(elem)
+            if len(newBasis) == len(basis):
+                break
+        if len(newBasis) == len(basis):
+            basis = newBasis
+            subIndices = []
+            for count, elem in enumerate(self.basis):
+                if elem in basis:
+                    subIndices.append(count)
+            def truncateBySubInd(li,check_compl=False):
+                if check_compl is True:
+                    new_li = []
+                    for count, elem in enumerate(li):
+                        if count in subIndices:
+                            new_li.append(elem)
+                        elif elem!=0:
+                            raise TypeError('The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead.') from None
+                    return new_li
+                return [li[j] for j in subIndices]
+            if isinstance(grading,(list,tuple)) and all(isinstance(elem,(list,tuple)) for elem in grading):
+                gradings = grading
+            else:
+                if grading is not None:
+                    warnings.warn('The `gradings` keyword given to `algebra_class.subalgebra` was in an unsupported format (i.e., not list of lists), so a valid alternate gradings vector was computed instead.')
+                gradings = [truncateBySubInd(grading) for grading in self.grading]
+            structureData = truncateBySubInd(self._structureData)
+            structureData = [truncateBySubInd(plane) for plane in structureData]
+            structureData = [[truncateBySubInd(li,check_compl=True) for li in plane] for plane in structureData]
+            return subalgebra_class(basis,self,grading=gradings,_compressed_structure_data=structureData,_internal_lock=retrieve_passkey())
+        testStruct = self.is_subspace_subalgebra(basis,return_structure_data=True)
+        if testStruct['closed_under_product'] is not True:
+            raise TypeError('The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead.') from None
+        return subalgebra_class(basis,self,grading=gradings,_compressed_structure_data=testStruct['structure_data'],_internal_lock=retrieve_passkey())
 
-# algebra element class
-class AlgebraElement(sp.Basic):
-    def __new__(cls, algebra, coeffs, valence, format_sparse=False):
+    def subspace(self,basis,grading=None):
+        return algebra_subspace_class(self,basis,parent_algebra=self,test_weights=grading)
 
-        if not isinstance(algebra, FAClass):
+
+
+class algebra_element_class(sp.Basic):
+    def __new__(cls, alg, coeffs, valence, format_sparse=False):
+
+        if not isinstance(alg, algebra_class):
             raise TypeError(
-                "AlgebraElement expects the first argument to be an instance of FAClass."
-            )
-
+                "`algebra_element_class` expects the first argument to be an instance of the `algebra` class."
+            ) from None
         if valence not in {0, 1}:
-            raise TypeError("AlgebraElement expects valence to be 0 or 1.")
+            raise TypeError("vector_space_element expects third argument to be 0 or 1.") from None
 
         coeffs = tuple(coeffs)
 
-        obj = sp.Basic.__new__(cls, algebra, coeffs, valence, format_sparse)
+        obj = sp.Basic.__new__(cls, alg, coeffs, valence, format_sparse)
         return obj
 
-    def __init__(self, algebra, coeffs, valence, format_sparse=False):
-        self.algebra = algebra
-        self.vectorSpace = algebra
+    def __init__(self, alg, coeffs, valence, format_sparse=False):
+        self.algebra = alg
+        self.vectorSpace = alg
         self.valence = valence
         self.is_sparse = format_sparse
-
+        self._dgcv_class_check=retrieve_passkey()
+        self._dgcv_category='algebra_element'
         # Store coeffs as an immutable tuple of tuples
         if isinstance(coeffs, (list, tuple)):  
             self.coeffs = tuple(coeffs)
         else:
-            raise TypeError("AlgebraElement expects coeffs to be a list or tuple.")
+            raise TypeError("algebra_element_class expects coeffs to be a list or tuple.") from None
 
     def __eq__(self, other):
-        if not isinstance(other, AlgebraElement):
+        if not isinstance(other, algebra_element_class):
             return NotImplemented
         return (
             self.algebra == other.algebra and
@@ -1305,24 +1471,12 @@ class AlgebraElement(sp.Basic):
     def __hash__(self):
         return hash((self.algebra, self.coeffs, self.valence, self.is_sparse))
     def __str__(self):
-        """
-        Custom string representation for vectorSpaceElement.
-        Displays the linear combination of basis elements with coefficients.
-        Handles unregistered parent vector space by raising a warning.
-        """
-        if not self.algebra._registered:
-            warnings.warn(
-                "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
-                UserWarning,
-            )
+        if self.algebra.basis_labels is None:
+            # Fallback to __str__ when basis_labels is None
+            return str(self)
 
         terms = []
-        for coeff, basis_label in zip(
-            self.coeffs,
-            self.algebra.basis_labels
-            or [f"e_{i+1}" for i in range(self.algebra.dimension)],
-        ):
+        for coeff, basis_label in zip(self.coeffs, self.algebra.basis_labels):
             if coeff == 0:
                 continue
             elif coeff == 1:
@@ -1346,29 +1500,26 @@ class AlgebraElement(sp.Basic):
                         terms.append(f"{coeff} * {basis_label}")
                     else:
                         terms.append(f"{coeff} * {basis_label}^\'\'")
-
         if not terms:
-            if self.valence==1:
-                return f"0 * {self.algebra.basis_labels[0] if self.algebra.basis_labels else 'e_1'}"
-            else:
-                return f"0 * {self.algebra.basis_labels[0] if self.algebra.basis_labels else 'e_1'}^\'\'"
-
+            return '0'
         return " + ".join(terms).replace("+ -", "- ")
 
+
     def _class_builder(self,coeffs,valence,format_sparse=False):
-        return AlgebraElement(self.algebra,coeffs,valence,format_sparse=False)
+        return algebra_element_class(self.algebra,coeffs,valence,format_sparse=format_sparse)
 
     def _repr_latex_(self,verbose=False):
-        """
-        Provides a LaTeX representation of vectorSpaceElement for Jupyter notebooks.
-        Handles unregistered parent vector space by raising a warning.
-        """
         if not self.algebra._registered:
-            warnings.warn(
-                "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
-                UserWarning,
-            )
+            if self.algebra._exclude_from_VMF == retrieve_passkey() or get_dgcv_settings_registry()['forgo_warnings'] is True:
+                pass
+            elif self.algebra._callLock == retrieve_passkey() and isinstance(self.algebra._child_print_warning,str):
+                warnings.warn(self.algebra._child_print_warning,UserWarning)
+            else:
+                warnings.warn(
+                    "This algebra_element_class's parent vector space (vectorSpace) was initialized without an assigned label. "
+                    "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                    UserWarning,
+                )
 
         terms = []
         for coeff, basis_label in zip(
@@ -1376,11 +1527,10 @@ class AlgebraElement(sp.Basic):
             self.algebra.basis_labels
             or [f"e_{{{i+1}}}" for i in range(self.algebra.dimension)],
         ):
-            if "_" not in basis_label:
-                m = re.match(r"^([A-Za-z]+)(\d+)$", basis_label)
-                if m:
-                    head, num = m.groups()
-                    basis_label = f"{head}_{{{num}}}"
+            if "_" not in basis_label and basis_label and basis_label[-1].isdigit():
+                basis_label = re.sub(r"^(.+?)(\d+)$", r"\1_\2", basis_label)
+            basis_label = format_latex_subscripts(basis_label)
+
             if coeff == 0:
                 continue
             elif coeff == 1:
@@ -1420,33 +1570,45 @@ class AlgebraElement(sp.Basic):
 
     def _sympystr(self):
         """
-        SymPy string representation for AlgebraElement.
+        SymPy string representation for algebra_element_class.
         Handles unregistered parent algebra by raising a warning.
         """
         if not self.algebra._registered:
-            warnings.warn(
-                "This AlgebraElement's parent algebra (FAClass) was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
-                UserWarning,
-            )
+            if self.algebra._exclude_from_VMF == retrieve_passkey() or get_dgcv_settings_registry()['forgo_warnings'] is True:
+                pass
+            elif self.algebra._callLock == retrieve_passkey() and isinstance(self.algebra._child_print_warning,str):
+                warnings.warn(
+                    self.algebra._child_print_warning,
+                    UserWarning,
+                )
+            else:
+                warnings.warn(
+                    "This algebra_element_class's parent algebra (`algebra` class) was initialized without an assigned label. "
+                    "It is recommended to initialize `algebra` class objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    UserWarning,
+                )
 
         coeffs_str = ", ".join(map(str, self.coeffs))
         if self.algebra.label:
-            return f"AlgebraElement({self.algebra.label}, coeffs=[{coeffs_str}])"
+            return f"algebra_element_class({self.algebra.label}, coeffs=[{coeffs_str}])"
         else:
-            return f"AlgebraElement(coeffs=[{coeffs_str}])"
+            return f"algebra_element_class(coeffs=[{coeffs_str}])"
 
     def _latex_verbose(self, printer=None):
-        """
-        Provides a LaTeX representation of AlgebraElement for SymPy's latex() function.
-        Handles unregistered parent vector space by raising a warning.
-        """
         if not self.algebra._registered:
-            warnings.warn(
-                "This AlgebraElement's parent vector space (FAClass) was initialized without an assigned label. "
-                "It is recommended to initialize FAClass objects with dgcv creator functions like `createFiniteAlg` instead.",
-                UserWarning,
-            )
+            if self.algebra._exclude_from_VMF == retrieve_passkey() or get_dgcv_settings_registry()['forgo_warnings'] is True:
+                pass
+            elif self.algebra._callLock == retrieve_passkey() and isinstance(self.algebra._child_print_warning,str):
+                warnings.warn(
+                    self.algebra._child_print_warning,
+                    UserWarning,
+                )
+            else:
+                warnings.warn(
+                    "This algebra_element_class's parent vector space (an `algebra` class instance) was initialized without an assigned label. "
+                    "It is recommended to initialize `algebra` class objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    UserWarning,
+                )
 
         terms = []
         for coeff, basis_label in zip(
@@ -1505,11 +1667,6 @@ class AlgebraElement(sp.Basic):
         return rf"\text{{Element of }} {format_algebra_label(self.algebra.label)}: {result}"
 
     def __repr__(self):
-        """
-        Representation of vectorSpaceElement.
-        Shows the linear combination of basis elements with coefficients.
-        Falls back to __str__ if basis_labels is None.
-        """
         if self.algebra.basis_labels is None:
             # Fallback to __str__ when basis_labels is None
             return str(self)
@@ -1557,10 +1714,10 @@ class AlgebraElement(sp.Basic):
 
     def subs(self, subsData):
         newCoeffs = [sp.sympify(j).subs(subsData) for j in self.coeffs]
-        return AlgebraElement(self.algebra, newCoeffs, format_sparse=self.is_sparse)
+        return algebra_element_class(self.algebra, newCoeffs, self.valence, format_sparse=self.is_sparse)
 
     def dual(self):
-        return AlgebraElement(self.algebra, self.coeffs, (self.valence+1)%2,format_sparse=self.is_sparse)
+        return algebra_element_class(self.algebra, self.coeffs, (self.valence+1)%2,format_sparse=self.is_sparse)
 
     def _convert_to_tp(self):
         return tensorProduct(self.algebra,{(j,self.valence):self.coeffs[j] for j in range(self.algebra.dimension)})
@@ -1571,9 +1728,11 @@ class AlgebraElement(sp.Basic):
     def __add__(self, other):
         if hasattr(other,"is_zero") and other.is_zero():
             return self
-        if isinstance(other, AlgebraElement):
+        if get_dgcv_category(other)=='subalgebra_element':
+            other = other.ambiant_rep
+        if isinstance(other, algebra_element_class):
             if self.algebra == other.algebra and self.valence==other.valence:
-                return AlgebraElement(
+                return algebra_element_class(
                     self.algebra,
                     [self.coeffs[j] + other.coeffs[j] for j in range(len(self.coeffs))],
                     self.valence,
@@ -1581,24 +1740,29 @@ class AlgebraElement(sp.Basic):
                 )
             else:
                 raise TypeError(
-                    "AlgebraElement operands for + must belong to the same FAClass."
-                )
-        if isinstance(other,tensorProduct) and other.max_degree==1 and other.min_degree==1 and other.vector_space==self.algebra:
-            pt = other.prolongation_type
-            coeffs = [other.coeff_dict[(j,pt)] if (j,pt) in other.coeff_dict else 0 for j in range(other.vector_space.dimension)]
-            LA_elem = other._class_builder(coeffs,pt,format_sparse=False)
-            return self+LA_elem
+                    "algebra_element_class operands for + must belong to the same algebra."
+                ) from None
+        if isinstance(other,tensorProduct):
+            if other.max_degree==1 and other.min_degree==1 and other.vector_space==self.algebra:
+                pt = other.prolongation_type
+                coeffs = [other.coeff_dict[(j,pt)] if (j,pt) in other.coeff_dict else 0 for j in range(other.vector_space.dimension)]
+                LA_elem = other.vector_space._class_builder(coeffs,pt,format_sparse=False)
+                return self+LA_elem
+            else:
+                return self._convert_to_tp()+other
         else:
             raise TypeError(
-                "Unsupported operand type(s) for + with the AlgebraElement class"
-            )
+                "Unsupported operand type(s) for + with the algebra_element_class"
+            ) from None
 
     def __sub__(self, other):
         if hasattr(other,"is_zero") and other.is_zero():
             return self
-        if isinstance(other, AlgebraElement):
+        if get_dgcv_category(other)=='subalgebra_element':
+            other = other.ambiant_rep
+        if isinstance(other, algebra_element_class):
             if self.algebra == other.algebra and self.valence==other.valence:
-                return AlgebraElement(
+                return algebra_element_class(
                     self.algebra,
                     [self.coeffs[j] - other.coeffs[j] for j in range(len(self.coeffs))],
                     self.valence,
@@ -1606,1029 +1770,285 @@ class AlgebraElement(sp.Basic):
                 )
             else:
                 raise TypeError(
-                    "AlgebraElement operands for - must belong to the same FAClass."
-                )
+                    "algebra_element_class operands for - must belong to the same algebra."
+                ) from None
         if isinstance(other,tensorProduct):
             if other.max_degree==1 and other.min_degree==1:
                 if other.vector_space==self.algebra:
                     pt = other.prolongation_type
                     coeffs = [other.coeff_dict[(j,pt)] if (j,pt) in other.coeff_dict else 0 for j in range(other.vector_space.dimension)]
-                    LA_elem = other._class_builder(coeffs,pt,format_sparse=False)
+                    LA_elem = other.vector_space._class_builder(coeffs,pt,format_sparse=False)
                     return self-LA_elem
         else:
             raise TypeError(
-                f"Unsupported operand type(s) {type(other)} for - with the AlgebraElement class"
-            )
+                f"Unsupported operand type(s) {type(other)} for - with the algebra_element_class"
+            ) from None
 
     def __mul__(self, other):
-        """
-        Multiplies two AlgebraElement objects by multiplying their coefficients
-        and summing the results based on the algebra's structure constants. Also handles
-        multiplication with scalars.
-
-        Args:
-            other (AlgebraElement) or (scalar): The algebra element or scalar to multiply with.
-
-        Returns:
-            AlgebraElement: The result of the multiplication.
-        """
-        if isinstance(other, AlgebraElement):
+        if get_dgcv_category(other)=='subalgebra_element':
+            other = other.ambiant_rep
+        if isinstance(other, algebra_element_class):
             if self.algebra == other.algebra and self.valence==other.valence:
-                # Initialize result coefficients as a list of zeros
                 result_coeffs = [0] * self.algebra.dimension
-
-                # Loop over each pair of basis element coefficients
                 for i in range(self.algebra.dimension):
                     for j in range(self.algebra.dimension):
-                        # Compute the scalar product of the current coefficients
                         scalar_product = self.coeffs[i] * other.coeffs[j]
-
-                        # Multiply scalar_product with the corresponding vector from structureData
-                        structure_vector_product = [
-                            scalar_product * element
-                            for element in self.algebra.structureData[i][j]
-                        ]
-
-                        # Sum the resulting vector into result_coeffs element-wise
+                        structure_vector_product = [scalar_product * element for element in self.algebra.structureData[i][j]]
                         result_coeffs = [
                             sp.sympify(result_coeffs[k] + structure_vector_product[k])
                             for k in range(len(result_coeffs))
                         ]
-
-                # Return a new AlgebraElement with the updated coefficients
-                return AlgebraElement(
-                    self.algebra, result_coeffs, self.valence, format_sparse=self.is_sparse
-                )
+                return algebra_element_class(self.algebra, result_coeffs, self.valence, format_sparse=self.is_sparse)
             else:
                 raise TypeError(
-                    "Both operands for * must be AlgebraElement instances from the same FAClass."
-                )
+                    "Both operands for * must be algebra_element_class instances from the same algebra."
+                ) from None
         elif isinstance(other, tensorProduct):
             return (self._convert_to_tp())*other
         elif isinstance(other, (int, float, sp.Expr)):
             # Scalar multiplication case
             new_coeffs = [coeff * other for coeff in self.coeffs]
-            # Return a new AlgebraElement with the updated coefficients
-            return AlgebraElement(
+            # Return a new algebra_element_class with the updated coefficients
+            return algebra_element_class(
                 self.algebra, new_coeffs, self.valence, format_sparse=self.is_sparse
             )
         else:
             raise TypeError(
                 f"Multiplication is only supported for scalars and the AlegebraElement class, not {type(other)}"
-            )
+            ) from None
 
     def __rmul__(self, other):
-        # If other is a scalar, treat it as commutative
-        if isinstance(
-            other, (int, float, sp.Expr)
-        ):
-            return self * other  # Calls __mul__ (which is already implemented)
-        elif isinstance(other, AlgebraElement):
-            -1 * other * self
+        if get_dgcv_category(other)=='subalgebra_element':
+            other = other.ambiant_rep
+        if isinstance(other, (int, float, sp.Expr)):
+            return self * other
+        elif isinstance(other, algebra_element_class):
+            other * self
         elif isinstance(other, tensorProduct):
             return other*(self._convert_to_tp())
         else:
             raise TypeError(
                 f"Right multiplication is only supported for scalars and the AlegebraElement class, not {type(other)}"
-            )
+            ) from None
 
     def __matmul__(self, other):
         """Overload @ operator for tensor product."""
-        if not isinstance(other, AlgebraElement) or other.algebra!=self.algebra:
-            raise TypeError('`@` only supports tensor products between AlgebraElement instances with the same algebra attribute')
+        if get_dgcv_category(other)=='subalgebra_element':
+            other = other.ambiant_rep
+        if not isinstance(other, algebra_element_class) or other.algebra!=self.algebra:
+            raise TypeError('`@` only supports tensor products between algebra_element_class instances with the same `algebra` attribute') from None
         new_dict = {(j,k,self.valence,other.valence):self.coeffs[j]*other.coeffs[k] for j in range(self.algebra.dimension) for k in range(self.algebra.dimension)}
         return tensorProduct(self.algebra, new_dict)
 
+    def __neg__(self):
+        return -1*self
 
     def __xor__(self, other):
         if other == '':
             return self.dual()
-            raise ValueError("Invalid operation. Use `^ ''` to denote the dual.")
+        raise ValueError("Invalid operation. Use `^''` to denote the dual.") from None
 
 
     def check_element_weight(self):
         """
-        Determines the weight vector of this AlgebraElement with respect to its FAClass' grading vectors.
+        Determines the weight vector of this algebra_element_class with respect to its algebra' grading vectors.
 
         Returns
         -------
         list
-            A list of weights corresponding to the grading vectors of the parent FAClass.
+            A list of weights corresponding to the grading vectors of the parent algebra.
             Each entry is either an integer, sympy.Expr (weight), the string 'AllW' if the element is the zero element,
             or 'NoW' if the element is not homogeneous.
 
         Notes
         -----
-        - This method calls the parentt FAClass' check_element_weight method.
+        - This method calls the parentt algebra' check_element_weight method.
         - 'AllW' is returned for zero elements, which are compaible with all weights.
         - 'NoW' is returned for non-homogeneous elements that do not satisfy the grading constraints.
         """
-        if not hasattr(self, "algebra") or not isinstance(self.algebra, FAClass):
+        if not hasattr(self, "algebra") or not isinstance(self.algebra, algebra_class):
             raise ValueError(
-                "This AlgebraElement is not associated with a valid FAClass."
-            )
+                "This algebra_element_class is not associated with a valid algebra."
+            ) from None
 
         return self.algebra.check_element_weight(self)
 
-
-# subspaces in FAClass
-class algebraSubspace(sp.Basic):
-    def __new__(cls,basis,alg, test_weights=None):
-        if not isinstance(alg, FAClass):
-            raise TypeError('algebraSubspace expects second argument to an FAClass instance.')
+class algebra_subspace_class(sp.Basic):
+    def __new__(cls, basis, parent_algebra=None, test_weights=None,_grading=None,_internal_lock=None,**kwargs):
         if not isinstance(basis,(list,tuple)):
-            raise TypeError('algebraSubspace expects first argument to a be a list or tuple of AlgebraElement instances')
-        if not all(isinstance(j,AlgebraElement) for j in basis):
-            raise TypeError('algebraSubspace expects first argument to a be a list or tuple of AlgebraElement instances')
-        if not all([j.algebra == alg for j in basis]):
-            raise TypeError('algebraSubspace expects all AlgebraElement instances given in the first argument to have the same `AlgebraElement.algebra` value as the second argument.')
-        if test_weights:
+            raise TypeError('algebra_subspace_class expects first argument to a be a list or tuple of algebra_element_class instances') from None
+        if not all(isinstance(j,algebra_element_class) for j in basis):
+            raise TypeError('algebra_subspace_class expects first argument to a be a list or tuple of algebra_element_class instances') from None
+        if parent_algebra is None:
+            if len(basis)>0:
+                parent_algebra=basis[0].algebra
+        elif not isinstance(parent_algebra, algebra_class):
+            raise TypeError('algebra_subspace_class expects second argument to an algebra instance.') from None
+        if not all([j.algebra == parent_algebra for j in basis]):
+            raise TypeError('algebra_subspace_class expects all algebra_element_class instances given in the first argument to have the same `algebra_element_class.algebra` value as the second argument.') from None
+        if test_weights and not(_internal_lock==retrieve_passkey() and _grading is not None):
             if not isinstance(test_weights,(list,tuple)):
-                raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a list/tuple of weight values (int,float, or sp.Expr).')
-            if len(alg.dimension) != len(test_weights) or not all([isinstance(j,(int,float,sp.Expr)) for j in test_weights]):
-                raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a length {alg.dimension} list/tuple of weight values (int,float, or sp.Expr).')
-        filtered_basis = alg.filter_independent_elements(basis)
+                raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a list/tuple of lists of weight values (int,float, or sp.Expr).') from None
+            for tw in test_weights:
+                if not isinstance(tw,(list,tuple)):
+                    raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a list/tuple of lists of weight values (int,float, or sp.Expr).') from None
+                if parent_algebra.dimension != len(tw) or not all([isinstance(j,(int,float,sp.Expr)) for j in tw]):
+                    raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a length {alg.dimension} list/tuple of weight values (int,float, or sp.Expr).') from None
+        filtered_basis = parent_algebra.filter_independent_elements(basis)
         if len(filtered_basis)<len(basis):
             basis = filtered_basis
-            warnings.warn('The given list for `basis` was not linearly independent, so the algebraSubspace initializer computed a basis for its span to use instead.')
+            warnings.warn('The given list for `basis` was not linearly independent, so the algebra_subspace_class initializer computed a basis for its span to use instead.')
 
         # Create the new instance
-        obj = sp.Basic.__new__(cls, basis, alg, test_weights)
-
+        obj = sp.Basic.__new__(cls, basis, parent_algebra, test_weights)
+        obj.filtered_basis = filtered_basis
         return obj
 
-    def __init__(self, basis, alg, test_weights=None):
-        self.ambiant = alg
-        self.basis = tuple(basis)
-        grading = []
-        for elem in basis:
-            weight = alg.check_element_weight(elem,test_weights=test_weights)
-            if weight == 'NoW':
-                raise ValueError('`algebraSubspace` was given a basis that is not compatible with the given weights in `test_weights`.')
-            grading.append(weight)
-        self.grading = grading
+    def __init__(self, basis, parent_algebra=None, test_weights=None,_grading=None,_internal_lock=None):
+        if parent_algebra is None:
+            if len(basis)>0:
+                parent_algebra=basis[0].algebra
+        self.ambiant = parent_algebra
+        self.basis = tuple(self.filtered_basis)
+        self.original_basis = basis
+        self.dimension = len(self.basis)
+        grading_per_elem = []
+        if test_weights is None and _internal_lock==retrieve_passkey() and _grading is not None:
+            self.grading=_grading
+        else:
+            for elem in self.basis:
+                weight = parent_algebra.check_element_weight(elem,test_weights=test_weights)
+                grading_per_elem.append(weight)
+            self.grading = list(zip(*grading_per_elem))
+            self.grading = [elem for elem in self.grading if 'NoW' not in elem]
+        self._dgcv_class_check=retrieve_passkey()
+        self._dgcv_category='algebra_subspace'
 
         # immutables
-        self._grading = tuple(grading)
-        self._test_weights = tuple(test_weights) if test_weights else None
+        self._grading = tuple(self.grading)
+
+        # attribute caches
+        self._is_subalgebra = None
+
     def __eq__(self, other):
-        if not isinstance(other, algebraSubspace):
+        if not isinstance(other, algebra_subspace_class):
             return NotImplemented
         return (
             self.ambiant == other.ambiant and
             self.basis == other.basis and
-            self._grading == other._grading and
-            self._test_weights == other._test_weights
+            self._grading == other._grading
         )
     def __hash__(self):
-        return hash((self.ambiant, self.basis, self._grading, self._test_weights))
-############## finite algebra creation 
-
-
-def createFiniteAlg(
-    obj,
-    label,
-    basis_labels=None,
-    grading=None,
-    format_sparse=False,
-    process_matrix_rep=False,
-    verbose=False,
-):
-    """
-    Registers an algebra object and its basis elements in the caller's global namespace,
-    and adds them to the variable_registry for tracking in the Variable Management Framework.
-
-    Parameters
-    ----------
-    obj : FAClass, structure data, or list of AlgebraElement
-        The algebra object (an instance of FAClass), the structure data used to create one,
-        or a list of AlgebraElement instances with the same parent algebra.
-    label : str
-        The label used to reference the algebra object in the global namespace.
-    basis_labels : list, optional
-        A list of custom labels for the basis elements of the algebra.
-        If not provided, default labels will be generated.
-    grading : list of lists or list, optional
-        A list specifying the grading(s) of the algebra.
-    format_sparse : bool, optional
-        Whether to use sparse arrays when creating the FAClass object.
-    process_matrix_rep : bool, optional
-        Whether to compute and store the matrix representation of the algebra.
-    verbose : bool, optional
-        If True, provides detailed feedback during the creation process.
-    """
-
-    if label in listVar(algebras_only=True):
-        warnings.warn('`createFiniteAlg` was called with a `label` already assigned to another algebra, so `createFiniteAlg` will overwrite the other algebra.')
-        clearVar(label)
-
-    def validate_structure_data(data, process_matrix_rep=False):
-        """
-        Validates the structure data and converts it to a list of lists of lists.
-        """
-        # Case 1: If process_matrix_rep is True, handle matrix representation
-        if process_matrix_rep:
-            if all(
-                isinstance(sp.Matrix(obj), sp.Matrix)
-                and sp.Matrix(obj).shape[0] == sp.Matrix(obj).shape[1]
-                for obj in data
-            ):
-                return algebraDataFromMatRep(data)
-            else:
-                raise ValueError(
-                    "sp.Matrix representation requires a list of square matrices."
-                )
-
-        # Case 2: If the input is a list of VFClass objects, handle vector fields
-        if all(isinstance(obj, VFClass) for obj in data):
-            return algebraDataFromVF(data)
-
-        # Case 3: Validate and return the data as a list of lists of lists
-        try:
-            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-                if len(data) == len(data[0]) == len(data[0][0]):
-                    return data
-                else:
-                    raise ValueError("Structure data must have 3D shape (x, x, x).")
-            else:
-                raise ValueError("Structure data format must be a 3D list of lists.")
-        except Exception as e:
-            raise ValueError(f"Invalid structure data format: {type(data)} - {e}")
-
-    def extract_structure_from_elements(elements):
-        """
-        Computes structure constants and validates linear independence from a list of AlgebraElement.
-
-        Parameters
-        ----------
-        elements : list of AlgebraElement
-            A list of AlgebraElement instances.
-
-        Returns
-        -------
-        structure_data : list of lists of lists
-            The structure constants for the subalgebra spanned by the elements.
-
-        Raises
-        ------
-        ValueError
-            If the elements are not linearly independent or not closed under the algebra product.
-        """
-        if not elements or not all(isinstance(el, AlgebraElement) for el in elements):
-            raise ValueError(
-                "Invalid input: All elements must be instances of AlgebraElement."
-            )
-
-        # Check that all elements have the same parent algebra
-        parent_algebra = elements[0].algebra
-        if not all(el.algebra == parent_algebra for el in elements):
-            raise ValueError(
-                "All AlgebraElement instances must share the same parent algebra."
-            )
-
-        try:
-            # Use the parent algebra's is_subspace_subalgebra method
-            result = parent_algebra.is_subspace_subalgebra(
-                elements, return_structure_data=True
-            )
-        except ValueError as e:
-            raise ValueError(
-                "Error during subalgebra validation. "
-                "The input list of AlgebraElement instances must be linearly independent and closed under the algebra product. "
-                f"Original error: {e}"
-            ) from e
-
-        if not result["linearly_independent"]:
-            raise ValueError(
-                "The input elements are not linearly independent. "
-            )
-
-        if not result["closed_under_product"]:
-            raise ValueError(
-                "The input elements are not closed under the algebra product. "
-            )
-
-        # Return structure data
-        return result["structure_data"]
-
-    # Validate or create the FAClass object
-    if isinstance(obj, FAClass):
-        if verbose:
-            print(f"Using existing FAClass instance: {label}")
-        structure_data = obj.structureData
-        dimension = obj.dimension
-    elif isinstance(obj, list) and all(isinstance(el, AlgebraElement) for el in obj):
-        if verbose:
-            print("Creating algebra from list of AlgebraElement instances.")
-        structure_data = extract_structure_from_elements(obj)
-        dimension = len(obj)
-    else:
-        if verbose:
-            print("Validating or processing structure data.")
-        structure_data = validate_structure_data(
-            obj, process_matrix_rep=process_matrix_rep
-        )
-        dimension = len(structure_data)
-
-    # Create or validate basis labels
-    if basis_labels is None:
-        basis_labels = [validate_label(f"{label}_{i+1}") for i in range(dimension)]
-    validate_label_list(basis_labels)
-
-    # Process grading
-    if grading is None:
-        grading = [tuple([0] * dimension)]
-    elif isinstance(grading, (list, tuple)) and all(
-        isinstance(w, (int, sp.Expr)) for w in grading
-    ):
-        # Single grading vector
-        if len(grading) != dimension:
-            raise ValueError(
-                f"Grading vector length ({len(grading)}) must match the algebra dimension ({dimension})."
-            )
-        grading = [tuple(grading)]
-    elif isinstance(grading, list) and all(
-        isinstance(vec, (list, tuple)) for vec in grading
-    ):
-        # List of grading vectors
-        for vec in grading:
-            if len(vec) != dimension:
-                raise ValueError(
-                    f"Grading vector length ({len(vec)}) must match the algebra dimension ({dimension})."
-                )
-        grading = [tuple(vec) for vec in grading]
-    else:
-        raise ValueError("Grading must be a single vector or a list of vectors.")
-
-    passkey = retrieve_passkey()
-    algebra_obj = FAClass(
-        structure_data=structure_data,
-        grading=grading,
-        format_sparse=format_sparse,
-        process_matrix_rep=process_matrix_rep,
-        _label=label,
-        _basis_labels=basis_labels,
-        _calledFromCreator=passkey,
-    )
-
-    assert (
-        algebra_obj.basis is not None
-    ), "Algebra object basis elements must be initialized."
-
-    _cached_caller_globals.update({label: algebra_obj})
-    _cached_caller_globals.update(zip(basis_labels, algebra_obj.basis))
-
-    variable_registry = get_variable_registry()
-    variable_registry["finite_algebra_systems"][label] = {
-        "family_type": "algebra",
-        "family_names": tuple(basis_labels),
-        "family_values": tuple(algebra_obj.basis),
-        "dimension": dimension,
-        "grading": grading,
-        "basis_labels": basis_labels,
-        "structure_data": structure_data,
-    }
-
-    if verbose:
-        print(f"Algebra '{label}' registered successfully.")
-        print(
-            f"Dimension: {dimension}, Grading: {grading}, Basis Labels: {basis_labels}"
-        )
-
-
-def algebraDataFromVF(vector_fields):
-    """
-    Create the structure data array for a Lie algebra from a list of vector fields in *vector_fields*.
-
-    This function computes the Lie algebra structure constants from a list of vector fields
-    (instances of VFClass) defined on the same variable space. The returned structure data
-    can be used to initialize an FAClass instance.
-
-    Parameters
-    ----------
-    vector_fields : list
-        A list of VFClass instances, all defined on the same variable space with respect to the same basis.
-
-    Returns
-    -------
-    list
-        A 3D array-like list of lists of lists representing the Lie algebra structure data.
-
-    Raises
-    ------
-    Exception
-        If the vector fields do not span a Lie algebra or are not defined on a common basis.
-
-    Notes
-    -----
-    This function dynamically chooses its approach to solve for the structure constants:
-    - For smaller dimensional algebras, it substitutes pseudo-arbitrary values for the variables in `varSpaceLoc`
-      based on a power function to create a system of linear equations.
-    - For larger systems, where `len(varSpaceLoc)` raised to `len(vector_fields)` exceeds a threshold (default is 10,000),
-      random rational numbers are used for substitution to avoid performance issues caused by large numbers.
-    """
-    # Define the product threshold for switching to random sampling
-    product_threshold = 1
-
-    # Check if all vector fields are defined on the same variable space
-    if len(set([vf.varSpace for vf in vector_fields])) != 1:
-        raise Exception(
-            "algebraDataFromVF requires vector fields defined with respect to a common basis."
-        )
-
-    complexHandling = any(vf.dgcvType == "complex" for vf in vector_fields)
-    if complexHandling:
-        vector_fields = [allToReal(j) for j in vector_fields]
-    varSpaceLoc = vector_fields[0].varSpace
-
-    # Create temporary variables for solving structure constants
-    tempVarLabel = "T" + retrieve_public_key()
-    variableProcedure(tempVarLabel, len(vector_fields), _tempVar=retrieve_passkey())
-    combiVFLoc = addVF(
-        *[
-            _cached_caller_globals[tempVarLabel][j] * vector_fields[j]
-            for j in range(len(_cached_caller_globals[tempVarLabel]))
-        ]
-    )
-
-    def computeBracket(j, k):
-        """
-        Compute and return the Lie bracket [vf_j, vf_k] and structure constants.
-
-        Parameters
-        ----------
-        j : int
-            Index of the first vector field.
-        k : int
-            Index of the second vector field.
-
-        Returns
-        -------
-        list
-            Structure constants for the Lie bracket of vf_j and vf_k.
-        """
-        if k <= j:
-            return [0] * len(_cached_caller_globals[tempVarLabel])
-
-        # Compute the Lie bracket
-        bracket = VF_bracket(vector_fields[j], vector_fields[k]) - combiVFLoc
-
-        if complexHandling:
-            bracket = [allToReal(expr) for expr in bracket.coeffs]
-        else:
-            bracket = bracket.coeffs
-
-        if len(varSpaceLoc) ** len(vector_fields) <= product_threshold:
-            # Use the current system of pseudo-arbitrary substitutions
-            bracketVals = list(
-                set(
-                    sum(
-                        [
-                            [
-                                expr.subs(
-                                    [
-                                        (
-                                            varSpaceLoc[i],
-                                            sp.Rational((i + 1) ** sampling_index, 32),
-                                        )
-                                        for i in range(len(varSpaceLoc))
-                                    ]
-                                )
-                                for expr in bracket
-                            ]
-                            for sampling_index in range(len(vector_fields))
-                        ],
-                        [],
-                    )
-                )
-            )
-        else:
-            # Use random sampling system for larger cases
-            def random_rational():
-                return sp.Rational(random.randint(1, 1000), random.randint(1001, 2000))            
-            bracketVals = list(
-                set(
-                    sum(
-                        [
-                            [
-                                expr if not hasattr(expr,'subs') else
-                                expr.subs(
-                                    [
-                                        (varSpaceLoc[i], random_rational())
-                                        for i in range(len(varSpaceLoc))
-                                    ]
-                                )
-                                for expr in bracket
-                            ]
-                            for _ in range(len(vector_fields))
-                        ],
-                        [],
-                    )
-                )
-            )
-
-        # Solve the system of equations
-        solutions = list(sp.linsolve(bracketVals, _cached_caller_globals[tempVarLabel]))
-
-        if len(solutions) == 1:
-            # Extract the solution and substitute into all temporary variables
-            sol_values = solutions[0]
-
-            # Substitute back into the original bracket
-            substituted_constants = [
-                expr.subs(zip(_cached_caller_globals[tempVarLabel], sol_values))
-                for expr in _cached_caller_globals[tempVarLabel]
-            ]
-
-            return substituted_constants
-        else:
-            raise Exception(
-                f"Fields at positions {j} and {k} are not closed under Lie brackets."
-            )
-
-    # Precompute all necessary Lie brackets and store as 3D list
-    structure_data = [
-        [[0 for _ in vector_fields] for _ in vector_fields] for _ in vector_fields
-    ]
-
-    for j in range(len(vector_fields)):
-        for k in range(j + 1, len(vector_fields)):
-            structure_data[j][k] = computeBracket(j, k)
-            structure_data[k][j] = [-elem for elem in structure_data[j][k]]
-
-    # Clean up temporary variables
-    clearVar(*listVar(temporary_only=True), report=False)
-
-    return structure_data
-
-
-def algebraDataFromMatRep(mat_list):
-    """
-    Create the structure data array for a Lie algebra from a list of matrices in *mat_list*.
-
-    This function computes the Lie algebra structure constants from a matrix representation of a Lie algebra.
-    The returned structure data can be used to initialize an FAClass instance.
-
-    Parameters
-    ----------
-    mat_list : list
-        A list of square matrices of the same size representing the Lie algebra.
-
-    Returns
-    -------
-    list
-        A 3D list of lists of lists representing the Lie algebra structure data.
-
-    Raises
-    ------
-    Exception
-        If the matrices do not span a Lie algebra, or if the matrices are not square and of the same size.
-    """
-    if isinstance(mat_list, list):
-        mListLoc = [
-            sp.Matrix(j) for j in mat_list
-        ]  # Convert input to sympy sp.Matrix objects
-        shapeLoc = mListLoc[0].shape[0]
-
-        # Check that all matrices are square and of the same size
-        if all(j.shape == (shapeLoc, shapeLoc) for j in mListLoc):
-            # Temporary variables for solving the commutators
-            tempVarLabel = "T" + retrieve_public_key()
-            variableProcedure(tempVarLabel, len(mat_list), _tempVar=retrieve_passkey())
-
-            # Create a symbolic matrix to solve for commutators
-            combiMatLoc = sum(
-                [
-                    _cached_caller_globals[tempVarLabel][j] * mListLoc[j]
-                    for j in range(len(_cached_caller_globals[tempVarLabel]))
-                ],
-                sp.zeros(shapeLoc, shapeLoc),
-            )
-
-            def pairValue(j, k):
-                """
-                Compute the commutator [m_j, m_k] and match with the combination matrix.
-
-                Parameters
-                ----------
-                j : int
-                    Index of the first matrix in the commutator.
-                k : int
-                    Index of the second matrix in the commutator.
-
-                Returns
-                -------
-                list
-                    The coefficients representing the structure constants.
-                """
-                bracketVals = list(
-                    set(
-                        (
-                            mListLoc[j] * mListLoc[k]
-                            - mListLoc[k] * mListLoc[j]
-                            - combiMatLoc
-                        ).vec()
-                    )
-                )
-
-                solLoc = list(
-                    sp.linsolve(bracketVals, _cached_caller_globals[tempVarLabel])
-                )
-
-                if len(solLoc) == 1:
-                    return [
-                        expr.subs(zip(_cached_caller_globals[tempVarLabel], solLoc[0]))
-                        for expr in _cached_caller_globals[tempVarLabel]
-                    ]
-                else:
-                    raise Exception(
-                        f"Unable to determine if matrices are closed under commutators. "
-                        f"Problem matrices are in positions {j} and {k}."
-                    )
-
-            # Assemble the structure data array from commutators and store as 3D list
-            structure_data = [
-                [
-                    pairValue(j, k)
-                    for j in range(len(_cached_caller_globals[tempVarLabel]))
-                ]
-                for k in range(len(_cached_caller_globals[tempVarLabel]))
-            ]
-
-            # Clear all temporary variables
-            clearVar(*listVar(temporary_only=True), report=False)
-
-            return structure_data
-        else:
-            raise Exception(
-                "algebraDataFromMatRep expects a list of square matrices of the same size."
-            )
-    else:
-        raise Exception("algebraDataFromMatRep expects a list of square matrices.")
-
-
-def createClassicalLA(
-    series: str,
-    label: str = None,
-    basis_labels: list = None,
-):
-    """
-    Creates a simple (with 2 exceptions) complex Lie algebra specified from the classical
-    series
-        - A_n = sl(n+1)     for n>0
-        - B_n = so(2n+1)    for n>0
-        - C_n = sp(2n)      for n>0
-        - D_n = so(2n)      for n>0 (not simple for n=1,2)
-
-
-    Parameters
-    ----------
-    series : str
-        The type and rank of the Lie algebra, e.g., "A1", "A2", ..., "Dn".
-    label : str, optional
-        Custom label for the Lie algebra. If not provided, defaults to a standard notation,
-        like sl2 for A2 etc.
-    basis_labels : list, optional
-        Custom labels for the basis elements. If not provided, default labels will be generated.
-
-    Returns
-    -------
-    FAClass
-        The resulting Lie algebra as an FAClass instance.
-
-    Raises
-    ------
-    ValueError
-        If the series is not recognized or not implemented.
-
-    Notes
-    -----
-    - Currently supports only the A series (special linear Lie algebras: A_n = sl(n+1)).
-    """
-    # Extract series type and rank
-    try:
-        series_type, rank = series[0], int(series[1:])
-    except (IndexError, ValueError):
-        raise ValueError(f"Invalid series format: {series}. Expected a letter 'A', 'B', 'C', or 'D' followed by a positive integer, like 'A1', 'B5', etc.")
-    if rank <= 0:
-            raise ValueError(f"Sequence index must be a positive integer, but got: {rank}.")
-
-    def generate_A_series_structure_data(n):
-        """
-        Generates the structure data and weights for the A_n series (special linear: sl(n+1)).
-
-        Parameters
-        ----------
-        n : int
-            The relevant term in the A-series
-
-        Returns
-        -------
-        tuple
-            - basis (list): A 3-dimensional list representing the structure data for sl(n+1).
-                            Each element is a 2D list of lists representing a trace-free (n+1)x(n+1) matrix.
-            - weight_vectors (list): A list containing one inner list representing the weight vectors of the basis.
-
-        Notes
-        -----
-        - Basis includes off-diagonal elementary matrices E_{j,k} (j < k first, then j > k).
-        - Diagonal basis elements are trace-free combinations of E_{j,j}.
-        - Weight vectors:
-            - Off-diagonal E_{j,k} is assigned weight j-k.
-            - Diagonal trace-free matrices are assigned weight 0.
-        """
-        # Dimension of the matrices
-        matrix_dim = n + 1
-
-        # Basis elements and weight vectors
-        basis = []
-        weight_vectors = []
-
-        # Add off-diagonal elements with j < k
-        for j in range(matrix_dim):
-            for k in range(j + 1, matrix_dim):
-                E_jk = [[0] * matrix_dim for _ in range(matrix_dim)]
-                E_jk[j][k] = 1  # Set the (j, k)-entry to 1
-                basis.append(E_jk)
-                weight_vectors.append(j - k)
-
-        # Add diagonal trace-free elements
-        for j in range(matrix_dim - 1):
-            E_diag = [[0] * matrix_dim for _ in range(matrix_dim)]
-            E_diag[j][j] = 1       # +1 for the j-th diagonal entry
-            E_diag[j + 1][j + 1] = -1  # -1 for the (j+1)-th diagonal entry
-            basis.append(E_diag)
-            weight_vectors.append(0)
-
-        # Add off-diagonal elements with j > k
-        for j in range(matrix_dim):
-            for k in range(j):
-                E_jk = [[0] * matrix_dim for _ in range(matrix_dim)]
-                E_jk[j][k] = 1  # Set the (j, k)-entry to 1
-                basis.append(E_jk)
-                weight_vectors.append(j - k)
-
-        # Wrap weight vectors in a list (for compatibility with multiple weight systems)
-        weight_vectors = [weight_vectors]
-
-        return basis, weight_vectors
-
-    def generate_B_series_structure_data(n):
-        """
-        Generates the structure data the B_n series 
-        (special orthogonal: so(2n+1)).
-
-        Parameters
-        ----------
-        n : int
-            The rank of the B-series Lie algebra (2n+1 is the matrix dimension).
-
-        Returns
-        -------
-        tuple
-            - basis (list): A 3-dimensional list representing the structure data for so(2n+1).
-                            Each element is a 2D list of lists representing a skew-symmetric (2n+1)x(2n+1) matrix.
-            - weight_vectors (list): An empty list (weights not assigned for B-series).
-
-        Notes
-        -----
-        - Basis includes skew-symmetric matrices E_{j,k} - E_{k,j} (j < k).
-        - Weight vector assignment for B-series is non-trivial and left empty for now.
-        """
-        # Dimension of the matrices
-        matrix_dim = 2 * n + 1
-
-        # Basis elements
-        basis = []
-
-        # Generate skew-symmetric off-diagonal matrices E_{j,k} - E_{k,j}
-        for j in range(matrix_dim):
-            for k in range(j + 1, matrix_dim):
-                # Create a zero matrix
-                skew_symmetric = [[0] * matrix_dim for _ in range(matrix_dim)]
-                skew_symmetric[j][k] = 1   # Set the (j, k)-entry to 1
-                skew_symmetric[k][j] = -1  # Set the (k, j)-entry to -1
-                basis.append(skew_symmetric)
-
-        # Return basis and empty weight_vectors
-        return basis, None
-
-    def generate_C_series_structure_data(n):
-        """
-        Generates the structure data and weight vectors for the C_n series 
-        (symplectic Lie algebra: sp(2n)).
-
-        Parameters
-        ----------
-        n : int
-            The rank of the C-series Lie algebra (2n is the matrix dimension).
-
-        Returns
-        -------
-        tuple
-            - basis (list): A 3-dimensional list representing the structure data for sp(2n).
-                            Each element is a 2D list of lists representing a matrix.
-            - weight_vectors (list): A single weight vector for the basis elements, 
-                                    representing a grading of the algebra.
-
-        Notes
-        -----
-        - Basis matrices are partitioned into nxn blocks and constructed in three groups:
-        1. Lower block triangular: [[0, 0], [S_{j,k}, 0]] (weight = -1).
-        2. Block diagonal: [[E_{j,k}, 0], [0, -E_{k,j}]] (weight = 0).
-        3. Upper block triangular: [[0, S_{j,k}], [0, 0]] (weight = 1).
-        """
-        # Dimension of the full matrices
-        matrix_dim = 2 * n
-
-        # Basis elements and weight vector
-        basis = []
-        weight_vector = []
-
-        # Step 1: Create symmetric matrices S_{j,k} = E_{j,k} + E_{k,j} for j ≤ k
-        symmetric_matrices = []
-        for j in range(n):
-            for k in range(j, n):
-                S = [[0] * n for _ in range(n)]
-                S[j][k] = 1
-                if j != k:
-                    S[k][j] = 1
-                symmetric_matrices.append(S)
-
-        # Step 2: Create pairs P_{j,k} = (E_{j,k}, -E_{k,j})
-        matrix_pairs = []
-        for j in range(n):
-            for k in range(n):
-                P1 = [[0] * n for _ in range(n)]
-                P2 = [[0] * n for _ in range(n)]
-                P1[j][k] = 1
-                P2[k][j] = -1
-                matrix_pairs.append((P1, P2))
-
-        # Step 3: Create basis matrices in three groups
-        # Group 1: Lower block triangular [[0, 0], [S_{j,k}, 0]] (weight = -1)
-        for S in symmetric_matrices:
-            lower_triangular = [[0] * matrix_dim for _ in range(matrix_dim)]
-            # Insert S into the lower-left block
-            for i in range(n):
-                for j in range(n):
-                    lower_triangular[n + i][j] = S[i][j]
-            basis.append(lower_triangular)
-            weight_vector.append(-1)
-
-        # Group 2: Block diagonal [[E_{j,k}, 0], [0, -E_{k,j}]] (weight = 0)
-        for P1, P2 in matrix_pairs:
-            block_diagonal = [[0] * matrix_dim for _ in range(matrix_dim)]
-            # Insert P1 into the top-left block and P2 into the bottom-right block
-            for i in range(n):
-                for j in range(n):
-                    block_diagonal[i][j] = P1[i][j]
-                    block_diagonal[n + i][n + j] = P2[i][j]
-            basis.append(block_diagonal)
-            weight_vector.append(0)
-
-        # Group 3: Upper block triangular [[0, S_{j,k}], [0, 0]] (weight = 1)
-        for S in symmetric_matrices:
-            upper_triangular = [[0] * matrix_dim for _ in range(matrix_dim)]
-            # Insert S into the upper-right block
-            for i in range(n):
-                for j in range(n):
-                    upper_triangular[i][n + j] = S[i][j]
-            basis.append(upper_triangular)
-            weight_vector.append(1)
-
-        # Return basis and weight vector wrapped in a list (to allow multiple gradings)
-        return basis, [weight_vector]
-
-    def generate_D_series_structure_data(n):
-        """
-        Generates the structure data and an empty weight vector for the D_n series 
-        (special orthogonal Lie algebra: so(2n)).
-
-        Parameters
-        ----------
-        n : int
-            The rank of the D-series Lie algebra (2n is the matrix dimension).
-
-        Returns
-        -------
-        tuple
-            - basis (list): A 3-dimensional list representing the structure data for so(2n).
-                            Each element is a 2D list of lists representing a matrix.
-            - weight_vectors (list): An empty list (weights not assigned for D-series).
-
-        Notes
-        -----
-        - Reuses the skew-symmetric construction logic from the B-series generator.
-        - The weight vector assignment for D-series is left empty for now.
-        """
-        return generate_B_series_structure_data(n)
-
-    # A-series implementation
-    if series_type == "A":
-        default_label = f"sl{rank + 1}" if label is None else label
-        # Compute structure data for sl(n+1)
-        structure_data, grading = generate_A_series_structure_data(rank)
-        # Create and return the Lie algebra
-        return createFiniteAlg(
-            structure_data,
-            default_label,
-            basis_labels=basis_labels,
-            grading=grading,
-            process_matrix_rep=True
-        )
-
-    # B-series implementation
-    elif series_type == "B":
-        default_label = f"so{2*rank + 1}" if label is None else label
-        # Compute structure data for so(2n+1)
-        structure_data, grading = generate_B_series_structure_data(rank)
-        # Create and return the Lie algebra
-        return createFiniteAlg(
-            structure_data,
-            default_label,
-            basis_labels=basis_labels,
-            grading=grading,
-            process_matrix_rep=True
-        )
-
-    # C-series implementation
-    elif series_type == "C":
-        default_label = f"sp{2*rank}" if label is None else label
-        # Compute structure data for sp(2n)
-        structure_data, grading = generate_C_series_structure_data(rank)
-        # Create and return the Lie algebra
-        return createFiniteAlg(
-            structure_data,
-            default_label,
-            basis_labels=basis_labels,
-            grading=grading,
-            process_matrix_rep=True
-        )
-
-    # D-series implementation
-    elif series_type == "D":
-        default_label = f"so{2*rank}" if label is None else label
-        # Compute structure data for so(2n)
-        structure_data, grading = generate_D_series_structure_data(rank)
-        # Create and return the Lie algebra
-        return createFiniteAlg(
-            structure_data,
-            default_label,
-            basis_labels=basis_labels,
-            grading=grading,
-            process_matrix_rep=True
-        )
-
-    # Raise an error for unrecognized series
-    else:
-        raise ValueError(f"Series type '{series_type}' is not recognized. Expected 'A', 'B', 'C', or 'D'.")
+        return hash((self.ambiant, self.basis, self._grading))
+    def __contains__(self, item):
+        return item in self.basis
+
+    def contains(self, items):
+        if not isinstance(items,(list,tuple)):
+            items = [items]
+        for item in items:
+            if not isinstance(item,algebra_element_class) or item.algebra!=self.ambiant:
+                return False
+            if item not in self.basis:
+                tempVarLabel = "T" + retrieve_public_key()
+                variableProcedure(tempVarLabel, len(self.basis), _tempVar=retrieve_passkey())
+                genElement = sum([_cached_caller_globals[tempVarLabel][j+1] * elem for j,elem in enumerate(self.basis[1:])],_cached_caller_globals[tempVarLabel][0]*(self.basis[0]))
+                sol = solve_dgcv(item-genElement,_cached_caller_globals[tempVarLabel])
+                clearVar(*listVar(temporary_only=True))
+                if len(sol)==0:
+                    return False
+        return True
+
+    def __iter__(self):
+        return iter(self.basis) 
+
+    def __getitem__(self, index):
+        return self.basis[index]
+
+    def is_subalgebra(self,return_structure_data=False):
+        if self._is_subalgebra is None:
+            self._is_subalgebra = self.ambiant.is_subspace_subalgebra(self.filtered_basis,return_structure_data=return_structure_data)
+        return self._is_subalgebra
+
+    def __str__(self):
+        return f'span{{{', '.join(elem.__str__() for elem in self.basis)}}}'
+
+    def __repr__(self):
+        return self.__str__()
+
+    def _repr_latex_(self):
+        formatted_str = f'\\langle{', '.join(elem._repr_latex_() for elem in self.basis)}\\rangle'.replace('$','').replace('\\displaystyle','')
+        return f'$\\displaystyle {formatted_str}$'
+
+    def _latex(self, printer=None):
+        return self._repr_latex_().replace('$','').replace('\\displaystyle','')
 
 
 ############## algebra tools
 
-def killingForm(arg1, list_processing=False):
-    if arg1.__class__.__name__ == "FAClass":
+def killingForm(alg, list_processing=False):
+    if get_dgcv_category(alg) in {"algebra","subalgebra"}:
         # Convert the structure data to a mutable array
-        if not arg1.is_lie_algebra():
+        if not alg.is_lie_algebra():
             raise Exception(
-                "killingForm expects argument to be a Lie algebra instance of the FAClass"
-            )
+                "killingForm expects argument to be a Lie algebra instance of the algebra"
+            ) from None
         if list_processing:
-            aRepLoc = arg1.structureData
+            aRepLoc = alg.structureData
             return [
                 [
                     trace_matrix(multiply_matrices(aRepLoc[j], aRepLoc[k]))
-                    for k in range(arg1.dimension)
+                    for k in range(alg.dimension)
                 ]
-                for j in range(arg1.dimension)
+                for j in range(alg.dimension)
             ]
         else:
-            aRepLoc = adjointRepresentation(arg1)
+            aRepLoc = adjointRepresentation(alg)
             return sp.Matrix(
-                arg1.dimension,
-                arg1.dimension,
+                alg.dimension,
+                alg.dimension,
                 lambda j, k: (aRepLoc[j] * aRepLoc[k]).trace(),
             )
     else:
-        raise Exception("killingForm expected to receive an FAClass instance.")
+        raise Exception("killingForm expected to receive an algebra instance.") from None
 
 
-def adjointRepresentation(arg1, list_format=False):
-    if arg1.__class__.__name__ == "FAClass":
+def adjointRepresentation(alg, list_format=False):
+    if get_dgcv_category(alg) in {"algebra","subalgebra"}:
         # Convert the structure data to a mutable array
-        if not arg1.is_lie_algebra():
+        if not alg.is_lie_algebra():
             warnings.warn(
                 "Caution: The algebra passed to adjointRepresentation is not a Lie algebra."
             )
         if list_format:
-            return arg1.structureData
-        return [sp.Matrix(j) for j in arg1.structureData]
+            return alg.structureData
+        return [sp.Matrix(j) for j in alg.structureData]
     else:
         raise Exception(
-            "adjointRepresentation expected to receive an FAClass instance."
-        )
+            "adjointRepresentation expected to receive an algebra instance."
+        ) from None
 
+
+############## helpers
+
+def convert_to_greek(var_name):
+    for name, greek in greek_letters.items():
+        if var_name.lower().startswith(name):
+            return var_name.replace(name, greek, 1)
+    return var_name
+def format_latex_subscripts(var_name, nest_braces=False):
+    """for use_latex branches"""
+    if var_name[-1]=='_':
+        var_name=var_name[:-1]
+    parts = var_name.split("_")
+    if len(parts) == 1:
+        return convert_to_greek(var_name)
+    base = convert_to_greek(parts[0])
+    subscript = ", ".join(parts[1:])
+    if nest_braces is True:
+        return f"{{{base}_{{{subscript}}}}}"
+    else:
+        return f"{base}_{{{subscript}}}"
 
 ############## linear algebra list processing
 
@@ -2664,7 +2084,7 @@ def multiply_matrices(A, B):
             "Incompatible matrix dimensions: A is {}x{}, B is {}x{}".format(
                 rows_A, cols_A, rows_B, cols_B
             )
-        )
+        ) from None
 
     # Initialize the result matrix with zeros
     result = [[0 for _ in range(cols_B)] for _ in range(rows_A)]
@@ -2676,7 +2096,6 @@ def multiply_matrices(A, B):
                 result[i][j] += A[i][k] * B[k][j]
 
     return result
-
 
 def trace_matrix(A):
     """
@@ -2706,7 +2125,7 @@ def trace_matrix(A):
             "Trace can only be computed for square matrices. sp.Matrix is {}x{}.".format(
                 rows_A, cols_A
             )
-        )
+        ) from None
 
     # Compute the trace (sum of the diagonal elements)
     trace_value = sum(A[i][i] for i in range(rows_A))

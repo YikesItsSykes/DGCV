@@ -8,10 +8,15 @@ from math import prod  # requires python >=3.8
 import sympy as sp
 
 from .._config import _cached_caller_globals, get_variable_registry
-from .._safeguards import create_key, retrieve_passkey, validate_label
+from .._safeguards import (
+    create_key,
+    get_dgcv_category,
+    retrieve_passkey,
+    validate_label,
+)
 from ..combinatorics import carProd, weightedPermSign
-from ..dgcv_core import clearVar
 from ..dgcv_formatter import process_basis_label
+from ..vmf import clearVar
 
 
 def factor_dgcv(expr, **kw):
@@ -726,6 +731,10 @@ def _zeroFormFactory(label, index_set={}, assumeReal=False, coframe=None, cofram
         "real":assumeReal if assumeReal else None,
         "conjugates": conjugates,
         "family_relatives": family_relatives
+    }
+    variable_registry["_labels"][label] = {
+        "path": ("eds", "atoms", label),
+        "children": set(family_names + list(conjugates.keys()))
     }
 
     # Store in _cached_caller_globals
@@ -1947,6 +1956,14 @@ def _DFFactory(label,degree, number_of_variables=None, initialIndex=1, assumeRea
         "family_relatives": family_relatives
     }
 
+    children_set = set(family_names)
+    if not assumeReal:
+        children_set.update(conjugates.keys())
+    variable_registry["_labels"][label] = {
+        "path": ("eds", "atoms", label),
+        "children": children_set
+    }
+
     # Store in _cached_caller_globals
     _cached_caller_globals[label] = family_values if family_type=='tuple' else family_values[0]
     for name, instance in zip(family_names, family_values):
@@ -2855,6 +2872,10 @@ def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, co
                                     "cousins_vals": _cached_caller_globals[str_eqns_labels],
                                     "cousins_parent": str_eqns_labels
                                     }
+    vr["_labels"][label] = {
+        "path": ("eds", "coframes", label),
+        "children": set(coframe_labels + coeff_labels)
+    }
 
 def coframe_derivative(df, coframe, *cfIndex):
     """
@@ -3341,6 +3362,10 @@ def _equation_formatting(eqn,variables_dict):
     var_dict = dict()
     if isinstance(eqn,(sp.Expr,int,float)) and not isinstance(eqn,zeroFormAtom):
          return [sp.sympify(eqn)], var_dict
+    if get_dgcv_category(eqn) in ['algebra_element','subalgebra_element','vector_space_element']:
+        return [sp.sympify(term) for term in eqn.coeffs], var_dict
+    if get_dgcv_category(eqn) == 'tensorProduct':
+        return [sp.sympify(term) for term in eqn.coeff_dict.values()], var_dict
     if isinstance(eqn,zeroFormAtom):
         not_found_filter = True
         for k,v in variables_dict.items():

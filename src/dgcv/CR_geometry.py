@@ -34,10 +34,8 @@ from .dgcv_core import (
     VFClass,
     addVF,
     allToReal,
-    clearVar,
     holToReal,
     holVF_coeffs,
-    listVar,
     realPartOfVF,
     scaleVF,
     symToReal,
@@ -46,6 +44,7 @@ from .dgcv_core import (
 from .polynomials import createMultigradedPolynomial
 from .solvers import solve_dgcv
 from .vector_fields_and_differential_forms import assembleFromHolVFC
+from .vmf import clearVar, listVar
 
 
 def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, *args):
@@ -208,7 +207,7 @@ def findWeightedCRSymmetries_old(
             arg2,
             arg4,
             arg3,
-            "Akey",
+            Akey,
             _tempVar=retrieve_passkey(),
             degreeCap=degreeCap,
             assumeReal=True,
@@ -217,7 +216,7 @@ def findWeightedCRSymmetries_old(
                 arg2,
                 arg4,
                 arg3,
-                "Bkey",
+                Bkey,
                 _tempVar=retrieve_passkey(),
                 degreeCap=degreeCap,
                 assumeReal=True,

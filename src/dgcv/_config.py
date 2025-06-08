@@ -183,14 +183,17 @@ variable_registry = {
         "real_part": StringifiedSymbolsDict(),
         "im_part": StringifiedSymbolsDict(),
     },
+    "_labels":{}
 }
 dgcv_settings_registry = {
     'use_latex':False,
     'theme':'blue',
     'format_displays':False,
-    'version_specific_defaults':f'v{__version__}'
+    'version_specific_defaults':f'v{__version__}',
+    'ask_before_overwriting_objects_in_vmf':True,
+    'forgo_warnings':False
 }
-# retrieval function for accessing variable_registry
+# retrieval functions for accessing and clearing registries
 def get_variable_registry():
     return variable_registry
 
@@ -198,7 +201,6 @@ def get_dgcv_settings_registry():
     return dgcv_settings_registry
 
 def clear_variable_registry():
-    # Optional: function to reset variable_registry if needed
     global variable_registry
     variable_registry = {
         "standard_variable_systems": {},

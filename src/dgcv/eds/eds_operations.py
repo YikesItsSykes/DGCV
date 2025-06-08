@@ -1,6 +1,7 @@
 
 from .._safeguards import _cached_caller_globals, create_key, retrieve_passkey
-from ..dgcv_core import clearVar, listVar, variableProcedure
+from ..dgcv_core import variableProcedure
+from ..vmf import clearVar, listVar
 from .eds import abst_coframe, abstDFAtom, abstDFMonom, abstract_DF, extDer
 
 

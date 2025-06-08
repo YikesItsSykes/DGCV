@@ -51,6 +51,20 @@ from ._dgcv_display import (
     show,
 )
 from ._settings import set_dgcv_settings
+from .algebras.algebras_aux import algebraDataFromMatRep, algebraDataFromVF
+from .algebras.algebras_core import (
+    adjointRepresentation,
+    algebra_class,
+    algebra_element_class,
+    algebra_subspace_class,
+    killingForm,
+)
+from .algebras.algebras_secondary import (
+    createAlgebra,
+    createFiniteAlg,  # deprecated
+    createSimpleLieAlgebra,
+    subalgebra_class,
+)
 from .combinatorics import carProd, chooseOp, permSign
 from .complex_structures import Del, DelBar, KahlerStructure
 from .coordinate_maps import coordinate_map
@@ -62,7 +76,6 @@ from .CR_geometry import (
 )
 from .dgcv_core import (
     DFClass,
-    DGCV_snapshot,  # deprecated
     DGCVPolyClass,  # deprecated
     STFClass,
     VF_bracket,
@@ -80,7 +93,6 @@ from .dgcv_core import (
     changeTFBasis,
     changeVFBasis,
     cleanUpConjugation,
-    clearVar,
     complex_struct_op,
     complexVFC,
     compress_dgcv_class,
@@ -98,7 +110,6 @@ from .dgcv_core import (
     holVF_coeffs,
     im_with_hol_coor,
     im_with_real_coor,
-    listVar,
     re_with_hol_coor,
     re_with_real_coor,
     realPartOfVF,
@@ -111,11 +122,7 @@ from .dgcv_core import (
     symToReal,
     tensor_product,
     tensorField,
-    variableSummary,
-    vmf_summary,
 )
-
-# EDS imports exposed at the top level
 from .eds import (
     DF_representation,
     abst_coframe,
@@ -132,17 +139,7 @@ from .eds import (
     transform_coframe,
     zeroFormAtom,
 )
-from .finite_dim_algebras import (
-    AlgebraElement,
-    FAClass,
-    adjointRepresentation,
-    algebraDataFromMatRep,
-    algebraDataFromVF,
-    algebraSubspace,
-    createClassicalLA,
-    createFiniteAlg,
-    killingForm,
-)
+from .filtered_structures import Tanaka_symbol, distribution
 from .polynomials import (
     createBigradPolynomial,
     createPolynomial,
@@ -156,7 +153,7 @@ from .Riemannian_geometry import (
 )
 from .solvers import solve_dgcv
 from .styles import get_DGCV_themes, get_dgcv_themes  # get_DGCV_themes is deprecated
-from .tensors import createVectorSpace, tensorProduct, vectorSpace, vectorSpaceElement
+from .tensors import createVectorSpace, tensorProduct, vector_space_element, vectorSpace
 from .vector_fields_and_differential_forms import (
     LieDerivative,
     annihilator,
@@ -171,6 +168,7 @@ from .vector_fields_and_differential_forms import (
     interiorProduct,
     makeZeroForm,
 )
+from .vmf import DGCV_snapshot, clearVar, listVar, variableSummary, vmf_summary
 
 # Default functions/classes
 __all__ = [
@@ -202,6 +200,19 @@ __all__ = [
 
     # From _config
     "canonicalize",         # Reformat supported objects canonically
+
+    # From algebras
+    "algebra_element_class",# Algebra element class
+    "algebra_subspace_class",     # Algebra subspace class
+    "algebra_class",        # Finite dimensional algebra
+    "adjointRepresentation",# Adjoint representation of algebra
+    "algebraDataFromMatRep",# Algebra data from matrix representation
+    "algebraDataFromVF",    # Algebra data from vector fields
+    "createFiniteAlg",      # deprecated
+    "createAlgebra",        # Create a finite dimensional algebra
+    "createSimpleLieAlgebra",
+    "killingForm",          # Compute the Killing form
+    "subalgebra_class",
 
     # From coordinateMaps
     "coordinate_map",       # Transforms coordinates systems
@@ -285,16 +296,9 @@ __all__ = [
     "DF_representation",
     "transform_coframe",
 
-    # From finiteDimAlgebras
-    "AlgebraElement",       # Algebra element class
-    "algebraSubspace",      # Algebra subspace class
-    "FAClass",              # Finite dimensional algebra class
-    "createClassicalLA",    # Initialize classicle simple L.A.
-    "adjointRepresentation",# Adjoint representation of algebra
-    "algebraDataFromMatRep",# Algebra data from matrix representation
-    "algebraDataFromVF",    # Algebra data from vector fields
-    "createFiniteAlg",      # Create a finite dimensional algebra
-    "killingForm",          # Compute the Killing form
+    # From filtered_structures
+    "distribution", 
+    "Tanaka_symbol",
 
     # From polynomials
     "createBigradPolynomial",# Create bigraded polynomial
@@ -316,7 +320,7 @@ __all__ = [
 
     # From tensors
     "vectorSpace",          # Class representing vector spaces
-    "vectorSpaceElement",   # Class representing elements in a vector space
+    "vector_space_element",   # Class representing elements in a vector space
     "tensorProduct",       # Class representing elements in tensor products (of VS elements)
                             # of vector space and their dual spaces
     "createVectorSpace",    # Create vectorSpace class instances with labeling

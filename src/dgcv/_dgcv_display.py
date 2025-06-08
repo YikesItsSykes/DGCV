@@ -19,6 +19,7 @@ from IPython.display import HTML, Latex, display
 from sympy.printing.latex import LatexPrinter
 
 ############# dgcv classes to format
+from ._safeguards import check_dgcv_category, get_dgcv_category
 from .dgcv_core import (
     DFClass,
     STFClass,
@@ -29,7 +30,6 @@ from .dgcv_core import (
     tensorField,
 )
 from .filtered_structures import Tanaka_symbol
-from .finite_dim_algebras import AlgebraElement, FAClass
 from .Riemannian_geometry import metricClass
 
 
@@ -58,9 +58,9 @@ def LaTeX(obj, removeBARs=False):
                 return sp.latex(symToHol(term))
             else:
                 return sp.latex(term)
-        elif isinstance(term, FAClass):
-            return _alglabeldisplayclass(term.label)._repr_latex_()
-        elif isinstance(term, AlgebraElement):
+        elif get_dgcv_category(term) in {'algebra','algebra_element'}:
+            return term._repr_latex_()
+        elif get_dgcv_category(term)=='algebra_element':
             return _alglabeldisplayclass(term.algebra.label, term)._repr_latex_()
         elif isinstance(term, Tanaka_symbol):
             return "Tanaka_symbol Class"
@@ -68,16 +68,9 @@ def LaTeX(obj, removeBARs=False):
             return sp.latex(symToHol(term))
 
     def strip_dollar_signs(latex_str):
-        """Strip leading and trailing $ or $$ signs from a LaTeX string."""
-        # if latex_str == None:
-        #     return ''
         if latex_str is None:
             return latex_str
-        if latex_str.startswith("$$") and latex_str.endswith("$$"):
-            return latex_str[2:-2]
-        if latex_str.startswith("$") and latex_str.endswith("$"):
-            return latex_str[1:-1]
-        return latex_str
+        return latex_str.replace("$", "")
 
     if isinstance(obj, list):
         latex_elements = [strip_dollar_signs(filter(elem)) for elem in obj]
@@ -90,7 +83,6 @@ def LaTeX(obj, removeBARs=False):
         return r"\left\{ " + ", ".join(latex_elements) + r" \right\}"
 
     else:
-        # Apply sympy.latex() for non-list/tuple objects
         return strip_dollar_signs(filter(obj))
 
 def LaTeX_eqn_system(eqn_dict, math_mode = '$$', left_prefix = "", left_suffix = "", right_prefix = "", right_suffix = "", one_line = False, bare_latex = False, add_period = False):
@@ -157,13 +149,13 @@ def _display_DGCV_single(arg):
         display(Latex(arg))
     elif isinstance(
         arg,
-        (sp.Expr, metricClass, DFClass, VFClass, STFClass, tensorField, dgcvPolyClass, Tanaka_symbol),
+        (sp.Expr, metricClass, DFClass, VFClass, STFClass, tensorField, dgcvPolyClass, Tanaka_symbol) or check_dgcv_category(arg),
     ):
         _complexDisplay(arg)
-    elif isinstance(arg, FAClass):
-        _complexDisplay(_alglabeldisplayclass(arg.label))
-    elif isinstance(arg, AlgebraElement):
-        _complexDisplay(_alglabeldisplayclass(arg.algebra.label, ae=arg))
+    # elif get_dgcv_category(arg)=='algebra':
+    #     _complexDisplay(_alglabeldisplayclass(arg.label))
+    # elif get_dgcv_category(arg)=='algebra_element_class':
+    #     _complexDisplay(_alglabeldisplayclass(arg.algebra.label, ae=arg))
     else:
         display(arg)
 

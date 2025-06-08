@@ -5,6 +5,7 @@ import sympy as sp
 from ._config import _cached_caller_globals, get_variable_registry
 from ._safeguards import (
     create_key,
+    get_dgcv_category,
     retrieve_passkey,
     validate_label,
     validate_label_list,
@@ -14,7 +15,7 @@ from ._tensor_field_printers import (
     tensor_VS_printer,
 )
 from .combinatorics import shufflings
-from .dgcv_core import clearVar, listVar
+from .vmf import clearVar, listVar
 
 
 # vector space class
@@ -36,6 +37,8 @@ class vectorSpace(sp.Basic):
         _calledFromCreator=None,
     ):
         self.dimension = dimension
+        self._dgcv_class_check=retrieve_passkey()
+        self._dgcv_category='vectorSpace'
 
         # Detect if initialized from creator (using the passkey)
         if _calledFromCreator == retrieve_passkey():
@@ -119,7 +122,7 @@ class vectorSpace(sp.Basic):
 
         # Initialize basis
         self.basis = tuple(
-            vectorSpaceElement(
+            vector_space_element(
                 self,
                 [1 if i == j else 0 for j in range(self.dimension)],
                 1
@@ -217,7 +220,7 @@ class vectorSpace(sp.Basic):
 
         return format_VS_label(self.label)
 
-    def _repr_latex_(self):
+    def _repr_latex_(self,**kwargs):
         """
         Provides a LaTeX representation of the vectorSpace object for Jupyter notebooks.
         Raises a warning if the instance is unregistered.
@@ -312,15 +315,15 @@ class vectorSpace(sp.Basic):
         Parameters
         ----------
         elements : list
-            A list of vectorSpaceElement instances.
+            A list of vector_space_element instances.
 
         Returns
         -------
-        list of vectorSpaceElement
+        list of vector_space_element
             basis of subspace
         """
 
-        if not all(isinstance(j,vectorSpaceElement) for j in elements) or not all(j.vectorSpace==self for j in elements) or len(set([j.valence for j in elements]))!=1:
+        if not all(isinstance(j,vector_space_element) for j in elements) or not all(j.vectorSpace==self for j in elements) or len(set([j.valence for j in elements]))!=1:
             raise TypeError('vectorSpace.subspace_basis expects a list of elements from the calling vectorSpace instance.')
 
         # Perform linear independence check
@@ -333,17 +336,17 @@ class vectorSpace(sp.Basic):
         rref_matrix, pivot_columns = span_matrix.rref()
 
         # Extract the linearly independent basis
-        return [vectorSpaceElement(self,elements[i],) for i in pivot_columns]
+        return [vector_space_element(self,elements[i],) for i in pivot_columns]
 
 # vector space element class
-class vectorSpaceElement(sp.Basic):
+class vector_space_element(sp.Basic):
     def __new__(cls, VS, coeffs, valence):
         if not isinstance(VS, vectorSpace):
             raise TypeError(
-                "vectorSpaceElement expects the first argument to be an instance of vectorSpace."
+                "vector_space_element expects the first argument to be an instance of vectorSpace."
             )
         if valence not in {0, 1}:
-            raise TypeError("vectorSpaceElement expects third argument to be 0 or 1.")
+            raise TypeError("vector_space_element expects third argument to be 0 or 1.")
 
         coeffs = tuple(coeffs)
 
@@ -354,9 +357,11 @@ class vectorSpaceElement(sp.Basic):
         self.vectorSpace = VS
         self.coeffs = tuple(coeffs)  # Store coeffs as a tuple instead of a Matrix
         self.valence = valence
+        self._dgcv_class_check=retrieve_passkey()
+        self._dgcv_category='vector_space_element'
 
     def __eq__(self, other):
-        if not isinstance(other, vectorSpaceElement):
+        if not isinstance(other, vector_space_element):
             return NotImplemented
         return (
             self.vectorSpace == other.vectorSpace and
@@ -369,13 +374,13 @@ class vectorSpaceElement(sp.Basic):
 
     def __str__(self):
         """
-        Custom string representation for vectorSpaceElement.
+        Custom string representation for vector_space_element.
         Displays the linear combination of basis elements with coefficients.
         Handles unregistered parent vector space by raising a warning.
         """
         if not self.vectorSpace._registered:
             warnings.warn(
-                "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
+                "This vector_space_element's parent vector space (vectorSpace) was initialized without an assigned label. "
                 "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
@@ -418,14 +423,14 @@ class vectorSpaceElement(sp.Basic):
 
         return " + ".join(terms).replace("+ -", "- ")
 
-    def _repr_latex_(self):
+    def _repr_latex_(self,**kwargs):
         """
-        Provides a LaTeX representation of vectorSpaceElement for Jupyter notebooks.
+        Provides a LaTeX representation of vector_space_element for Jupyter notebooks.
         Handles unregistered parent vector space by raising a warning.
         """
         if not self.vectorSpace._registered:
             warnings.warn(
-                "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
+                "This vector_space_element's parent vector space (vectorSpace) was initialized without an assigned label. "
                 "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
@@ -488,25 +493,25 @@ class vectorSpaceElement(sp.Basic):
 
     def _sympystr(self):
         """
-        SymPy string representation for vectorSpaceElement.
+        SymPy string representation for vector_space_element.
         Handles unregistered parent vector space by raising a warning.
         """
         if not self.vectorSpace._registered:
             warnings.warn(
-                "This vectorSpaceElement's parent vector space (vectorSpace) was initialized without an assigned label. "
+                "This vector_space_element's parent vector space (vectorSpace) was initialized without an assigned label. "
                 "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
         coeffs_str = ", ".join(map(str, self.coeffs))
         if self.vectorSpace.label:
-            return f"vectorSpaceElement({self.vectorSpace.label}, coeffs=[{coeffs_str}])"
+            return f"vector_space_element({self.vectorSpace.label}, coeffs=[{coeffs_str}])"
         else:
-            return f"vectorSpaceElement(coeffs=[{coeffs_str}])"
+            return f"vector_space_element(coeffs=[{coeffs_str}])"
 
     def __repr__(self):
         """
-        Representation of vectorSpaceElement.
+        Representation of vector_space_element.
         Shows the linear combination of basis elements with coefficients.
         Falls back to __str__ if basis_labels is None.
         """
@@ -556,7 +561,7 @@ class vectorSpaceElement(sp.Basic):
             return True
 
     def dual(self):
-        return vectorSpaceElement(self.vectorSpace, self.coeffs, (self.valence+1)%2)
+        return vector_space_element(self.vectorSpace, self.coeffs, (self.valence+1)%2)
 
     def _convert_to_tp(self):
         return tensorProduct(self.vectorSpace,{(j,self.valence):self.coeffs[j] for j in range(self.vectorSpace.dimension)})
@@ -566,63 +571,63 @@ class vectorSpaceElement(sp.Basic):
 
     def subs(self, subsData):
         newCoeffs = [sp.sympify(j).subs(subsData) for j in self.coeffs]
-        return vectorSpaceElement(self.vectorSpace, newCoeffs)
+        return vector_space_element(self.vectorSpace, newCoeffs)
 
     def __call__(self, other):
-        if not isinstance(other, vectorSpaceElement) or other.vectorSpace!=self.vectorSpace or other.valence==self.valence:
-            raise TypeError('`vectorSpaceElement.call()` can only be applied to `vectorSpaceElement` instances with the same vectorSpace but different valence attributes.')
+        if not isinstance(other, vector_space_element) or other.vectorSpace!=self.vectorSpace or other.valence==self.valence:
+            raise TypeError('`vector_space_element.call()` can only be applied to `vector_space_element` instances with the same vectorSpace but different valence attributes.')
         return sum([self.coeffs[j]*other.coeffs[j] for j in range(self.vectorSpace.dimension)])
 
     def __add__(self, other):
-        if isinstance(other, vectorSpaceElement):
+        if isinstance(other, vector_space_element):
             if self.vectorSpace == other.vectorSpace and self.valence == other.valence:
-                return vectorSpaceElement(
+                return vector_space_element(
                     self.vectorSpace,
                     [self.coeffs[j] + other.coeffs[j] for j in range(len(self.coeffs))],
                     self.valence
                 )
             else:
                 raise TypeError(
-                    "vectorSpaceElement operands for + must belong to the same vectorSpace."
+                    "vector_space_element operands for + must belong to the same vectorSpace."
                 )
         else:
             raise TypeError(
-                "Unsupported operand type(s) for + with the vectorSpaceElement class"
+                "Unsupported operand type(s) for + with the vector_space_element class"
             )
 
     def __sub__(self, other):
-        if isinstance(other, vectorSpaceElement):
+        if isinstance(other, vector_space_element):
             if self.vectorSpace == other.vectorSpace and self.valence == other.valence:
-                return vectorSpaceElement(
+                return vector_space_element(
                     self.vectorSpace,
                     [self.coeffs[j] - other.coeffs[j] for j in range(len(self.coeffs))],
                     self.valence
                 )
             else:
                 raise TypeError(
-                    "vectorSpaceElement operands for - must belong to the same vectorSpace."
+                    "vector_space_element operands for - must belong to the same vectorSpace."
                 )
         else:
             raise TypeError(
-                "Unsupported operand type(s) for - with the vectorSpaceElement class"
+                "Unsupported operand type(s) for - with the vector_space_element class"
             )
 
     def __mul__(self, other):
         """
-        Multiplies two vectorSpaceElement objects by multiplying their coefficients
+        Multiplies two vector_space_element objects by multiplying their coefficients
         and summing the results based on the vector space's structure constants. Also handles
         multiplication with scalars.
 
         Args:
-            other (vectorSpaceElement) or (scalar): The vector space element or scalar to multiply with.
+            other (vector_space_element) or (scalar): The vector space element or scalar to multiply with.
 
         Returns:
-            vectorSpaceElement: The result of the multiplication.
+            vector_space_element: The result of the multiplication.
         """
         if isinstance(other, (int, float, sp.Expr)):
             # Scalar multiplication case
             new_coeffs = [coeff * other for coeff in self.coeffs]
-            return vectorSpaceElement(
+            return vector_space_element(
                 self.vectorSpace, new_coeffs, self.valence
             )
         else:
@@ -643,14 +648,17 @@ class vectorSpaceElement(sp.Basic):
 
     def __matmul__(self, other):
         """Overload @ operator for tensor product."""
-        if not isinstance(other, vectorSpaceElement) or other.vectorSpace!=self.vectorSpace:
-            raise TypeError('`@` only supports tensor products between vectorSpaceElements instances with the same vectorSpace attribute')
+        if not isinstance(other, vector_space_element) or other.vectorSpace!=self.vectorSpace:
+            raise TypeError('`@` only supports tensor products between vector_space_elements instances with the same vectorSpace attribute')
         return tensorProduct(self.vectorSpace, {(j,k,self.valence,other.valence):self.coeffs[j]*other.coeffs[k] for j in range(self.vectorSpace.dimension) for k in range(self.vectorSpace.dimension)})
 
     def __xor__(self, other):
         if other == '':
             return self.dual()
             raise ValueError("Invalid operation. Use `^ ''` to denote the dual.")
+
+    def __neg__(self):
+        return -1*self
 
 class tensorProduct(sp.Basic):
     def __new__(cls, vector_space, coeff_dict):
@@ -693,6 +701,8 @@ class tensorProduct(sp.Basic):
         self._weights = None
         self._leading_valence = None
         self._trailing_valence = None
+        self._dgcv_class_check=retrieve_passkey()
+        self._dgcv_category='tensorProduct'
 
     @staticmethod
     def _process_coeffs_dict(coeff_dict):
@@ -769,6 +779,13 @@ class tensorProduct(sp.Basic):
     def homogeneous_components(self):
         return [tensorProduct(self.vector_space,cd) for cd in self.homogeneous_dicts.values()]
 
+    @property
+    def free_vectors(self):
+        vec_idx = set()
+        for idx_t in self.coeff_dict:
+            vec_idx = vec_idx | set(idx_t[:len(idx_t//2)])
+        return set([self.vector_space.basis[idx] for idx in vec_idx])
+
     def _compute_weights(self):
         """Lazily compute weights for all terms in coeff_dict for each weight vector."""
         if not hasattr(self, "_weights"):
@@ -778,7 +795,7 @@ class tensorProduct(sp.Basic):
             self._weights = {}
             grading = self.vector_space.grading  # List of weight vectors
 
-            for key, _ in self.coeff_dict.items():
+            for key, _ in self.coeff_dict.items():  # algo requires valence 1 for vec and 0 for covec
                 weight_list = []
                 for weight_vector in grading:
                     weight = 0
@@ -789,8 +806,10 @@ class tensorProduct(sp.Basic):
 
         return self._weights
 
-    def compute_weight(self):
+    def compute_weight(self, _return_mixed_weight_list = False):
         weights = list(set((self._compute_weights()).values()))
+        if _return_mixed_weight_list is True:
+            return weights
         if len(weights)==1:
             return weights[0]
         else:
@@ -817,14 +836,16 @@ class tensorProduct(sp.Basic):
 
     def tp(self, other):
         """Tensor product with another tensorProduct."""
-        if hasattr(other,"algebra") and other.algebra == self.vector_space:
+        if get_dgcv_category(other)=='subalgebra_element' and other.algebra.ambiant == self.vector_space:
+            other = other._convert_to_tp()
+        elif hasattr(other,"algebra") and other.algebra == self.vector_space:
             other = other._convert_to_tp()
         elif hasattr(other,"vectorSpace") and other.vectorSpace == self.vector_space:
             other = other._convert_to_tp()
         if not isinstance(other, tensorProduct):
             raise ValueError("The other object must be a tensorProduct instance.")
         if self.vector_space != other.vector_space:
-            raise ValueError("Both tensors must have the same vector_space.")
+            raise ValueError(f"Both tensors must have the same vector_space. Recieved objects {self} and {other} with vector_spaces: {self.vector_space} and {other.vector_space}.")
 
         # Compute new coefficient dictionary
         new_coeff_dict = {}
@@ -848,11 +869,14 @@ class tensorProduct(sp.Basic):
     def __repr__(self):
         return tensor_VS_printer(self)
 
-    def _latex(self, printer):
+    def _latex(self, printer=None,**kwargs):
         """
         Defines the LaTeX representation for SymPy's latex() function.
         """
-        return tensor_latex_helper(self)
+        return f'$\\displaystyle {tensor_latex_helper(self)}$'
+
+    def _repr_latex_(self,**kwargs):
+        return self._latex()
 
     def _sympystr(self, printer):
         return self.__repr__()
@@ -875,13 +899,19 @@ class tensorProduct(sp.Basic):
         return tensorProduct(self.vector_space, new_dict)
 
     def __add__(self,other):
-        if hasattr(other,"algebra") and other.algebra == self.vector_space:
+        if get_dgcv_category(other)=='subalgebra_element':
+            if other.algebra == self.vector_space:
+                other = other._convert_to_tp()
+            elif other.algebra.ambiant == self.vector_space:
+                other = other.ambiant_rep._convert_to_tp()
+            ###!!!! add logic branch for when self.vector_space is a subalgebra
+        if get_dgcv_category(other)=='algebra_element' and other.algebra == self.vector_space:
             other = other._convert_to_tp()
         elif hasattr(other,"vectorSpace") and other.vectorSpace == self.vector_space:
             other = other._convert_to_tp()
-        if not isinstance(other,tensorProduct) and other.vector_space != self.vector_space:
+        if not isinstance(other,tensorProduct) or (isinstance(other,tensorProduct) and other.vector_space != self.vector_space):
             raise TypeError('`+` requires other tensor to be formed from the same vector space.')
-        new_dict = self.coeff_dict
+        new_dict = dict(self.coeff_dict)
         for key, val in other.coeff_dict.items():
             if key in new_dict:
                 new_dict[key] = new_dict[key]+val
@@ -890,13 +920,18 @@ class tensorProduct(sp.Basic):
         return tensorProduct(self.vector_space,new_dict)
 
     def __sub__(self,other):
-        if hasattr(other,"algebra") and other.algebra == self.vector_space:
+        if get_dgcv_category(other)=='subalgebra_element':
+            if other.algebra == self.vector_space:
+                other = other._convert_to_tp()
+            elif other.algebra.ambiant == self.vector_space:
+                other = other.ambiant_rep._convert_to_tp()
+        if get_dgcv_category(other)=='algebra_element' and other.algebra == self.vector_space:
             other = other._convert_to_tp()
         elif hasattr(other,"vectorSpace") and other.vectorSpace == self.vector_space:
             other = other._convert_to_tp()
-        if not isinstance(other,tensorProduct) and other.vector_space != self.vector_space:
+        if not isinstance(other,tensorProduct) or (isinstance(other,tensorProduct) and other.vector_space != self.vector_space):
             raise TypeError('`+` requires other tensor to be formed from the same vector space.')
-        new_dict = self.coeff_dict
+        new_dict = dict(self.coeff_dict)
         for key, val in other.coeff_dict.items():
             if key in new_dict:
                 new_dict[key] = new_dict[key]-val
@@ -904,13 +939,19 @@ class tensorProduct(sp.Basic):
                 new_dict[key] = -val
         return tensorProduct(self.vector_space,new_dict)
 
+    def __truediv__(self, other):
+        if isinstance(other,int):
+            return sp.Rational(1,other)*self
+        if isinstance(other,(float,sp.Expr)):
+            return (1/other)*self
+
     def __matmul__(self, other):
         """Overload @ operator for tensor product."""
         return self.tp(other)
 
     def contract_call(self, other):
         """
-        Contract the last index of self with the first index of other or handle AlgebraElement.
+        Contract the last index of self with the first index of other or handle algebra_element.
         """
         if self.is_zero():
             return self
@@ -933,19 +974,16 @@ class tensorProduct(sp.Basic):
 
             return tensorProduct(self.vector_space, new_dict)
 
+        if get_dgcv_category(other)=='subalgebra_element' and other.algebra != self.vector_space:
+            other = other.ambiant_rep
+
         elif hasattr(other, "algebra") and self.vector_space == other.algebra:
-            # Logic for AlgebraElement instances
             if self.trailing_valence != 0:
-                raise ValueError("Operating on AlgebraElement requires all terms in self to end in covariant tensor factor.")
-
-            # Convert other (AlgebraElement) into a tensorProduct instance
+                raise ValueError(f"Operating on algebra_element requires all terms in self to end in covariant tensor factor. Recieved self: {self} and other: {other}")
             other_as_tensor = other._convert_to_tp()
-
-            # Reuse existing contract_call logic
             return self.contract_call(other_as_tensor)
-
         else:
-            raise ValueError("The other object must be a tensorProduct or an AlgebraElement with matching algebra.")
+            raise ValueError("The other object must be a tensorProduct or an algebra_element with matching algebra.")
 
     def _recursion_contract_hom(self,other):
         if self.is_zero():
@@ -993,6 +1031,8 @@ class tensorProduct(sp.Basic):
             return self
         if other.is_zero():
             return 0*self
+        if get_dgcv_category(other)=='subalgebra_element' and other.algebra != self.vector_space:
+            other = other.ambiant_rep
         if isinstance(other, tensorProduct):
             if self.vector_space != other.vector_space:
                 raise ValueError("In `tensorProduct._bracket` both tensors must be defined w.r.t. the same vector_space.")
@@ -1004,41 +1044,55 @@ class tensorProduct(sp.Basic):
 
             new_dict = {}
             for key1, value1 in self.coeff_dict.items():
+                degree1 = len(key1) // 2
                 for key2, value2 in other.coeff_dict.items():
-                    if key1[(len(key1)//2)-1] == key2[0]:  # Matching indices for contraction
+                    degree2 = len(key2) // 2
+                    for idx in range(1, degree1 - 1):
+                        if key1[idx] == key2[0] and len(key2) > 3:   # Check index matching before contraction
+                            new_value = value1 * value2
+                            k1_start = key1[:idx]
+                            k2_start = key2[1:2]
+                            k1_tail_inputs = key1[idx+1:degree1]
+                            k2_inputs = key2[2:degree2]
+                            new_tails = shufflings(k1_tail_inputs, k2_inputs)
+                            valence = (self.prolongation_type,) + (complimentType,)*(degree1+degree2-3)
+                            new_keys = [tuple(k1_start + k2_start + tuple(tail) + valence) for tail in new_tails]
+                            for key in new_keys:
+                                new_dict[key] = new_dict.get(key, 0) + new_value  # Accumulate values for duplicate keys
+                    if key1[degree1-1] == key2[0]:   # Check index matching before contraction
                         new_value = value1 * value2
-                        key1_truncated = list(key1[:(len(key1)//2)-1])
-                        key1_start = [key1_truncated[0]]
-                        key1_tr_tail = key1_truncated[1:]
-                        key2_tail = key2[1:(len(key2)//2)]
-                        new_tails = shufflings(key1_tr_tail,key2_tail)
-                        valence = [self.prolongation_type]+([complimentType]*(len(key1_tr_tail)+len(key2_tail)))
-                        new_keys = [tuple(key1_start+tail+valence) for tail in new_tails]
-                        for key in new_keys:
-                            new_dict[key] = new_dict.get(key, 0) + new_value  # Accumulate values for duplicate keys
-                    if key2[(len(key1)//2)-1] == key1[0]:  # Matching indices for contraction
-                        new_value = -value1 * value2
-                        key2_truncated = list(key2[:(len(key2)//2)-1])
-                        key2_start = [key2_truncated[0]]
-                        key2_tr_tail = key2_truncated[1:]
-                        key1_tail = key1[1:(len(key1)//2)]
-                        new_tails = shufflings(key2_tr_tail,key1_tail)
-                        valence = [self.prolongation_type]+([complimentType]*(len(key2_tr_tail)+len(key1_tail)))
-                        new_keys = [tuple(key2_start+tail+valence) for tail in new_tails]
-                        for key in new_keys:
-                            new_dict[key] = new_dict.get(key, 0) + new_value  # Accumulate values for duplicate keys
+                        k1_start = key1[:degree1-1]
+                        k2_inputs = key2[1:degree2]
+                        valence = (self.prolongation_type,) + (complimentType,)*(degree1+degree2-3)
+                        new_key = tuple(k1_start + k2_inputs + valence)
+                        new_dict[new_key] = new_dict.get(new_key, 0) + new_value
 
+                    for idx in range(1, degree2 - 1):
+                        if key2[idx] == key1[0] and len(key1) > 3:   # Check index matching before contraction
+                            new_value = -value1 * value2
+                            k2_start = key2[:idx]
+                            k1_start = key1[1:2]
+                            k2_tail_inputs = key2[idx+1:degree2]
+                            k1_inputs = key1[2:degree1]
+                            new_tails = shufflings(k2_tail_inputs, k1_inputs)
+                            valence = (self.prolongation_type,) + (complimentType,)*(degree1+degree2-3)
+                            new_keys = [tuple(k2_start + k1_start + tuple(tail) + valence) for tail in new_tails]
+                            for key in new_keys:
+                                new_dict[key] = new_dict.get(key, 0) + new_value  # Accumulate values for duplicate keys
+                    if key2[degree2-1] == key1[0]:   # Check index matching before contraction
+                        new_value = -value1 * value2
+                        k2_start = key2[:degree2-1]
+                        k1_inputs = key1[1:degree1]
+                        valence = (self.prolongation_type,) + (complimentType,)*(degree2+degree1-3)
+                        new_key = tuple(k2_start + k1_inputs + valence)
+                        new_dict[new_key] = new_dict.get(new_key, 0) + new_value
             return tensorProduct(self.vector_space, new_dict)
 
         elif hasattr(other, "algebra") and self.vector_space == other.algebra:
-            # Logic for AlgebraElement instances
             if self.vector_space != other.algebra:
                 raise ValueError("In `tensorProduct._bracket` both tensors must be defined w.r.t. the same vector_space.")
-
             if self.prolongation_type != other.valence:
-                raise ValueError("`tensorProduct._bracket` operating on AlgebraElement requires all terms in self to end in covariant tensor factor.")
-
-            # Convert other (AlgebraElement) into a tensorProduct instance
+                raise ValueError("`tensorProduct._bracket` operating on algebra_element requires all terms in self to end in covariant tensor factor.")
             other_as_tensor = other._convert_to_tp()
             other_index,other_value = list(other_as_tensor.coeff_dict.items())[0]
             new_dict = {}
@@ -1048,21 +1102,24 @@ class tensorProduct(sp.Basic):
                     key_truncated = tuple(key[:(len(key)//2)-1]+key[(len(key)//2):-1])
                     new_dict[key_truncated] = new_dict.get(key_truncated, 0) + new_value
             return tensorProduct(self.vector_space, new_dict)
-
         else:
-            raise ValueError("In `tensorProduct._bracket` the second factor must be a tensorProduct or an AlgebraElement with matching algebra.")
-
-
+            raise ValueError("In `tensorProduct._bracket` the second factor must be a tensorProduct or an algebra_element with matching algebra.")
 
     def __mul__(self, other):
-        """Overload * to compute the Lie bracket, with special logic for AlgebraElement."""
+        """Overload * to compute the Lie bracket, with special logic for algebra_element."""
         if self.max_degree==0:
-            return self.coeff_dict[tuple()]*other
+            coef=self.coeff_dict[tuple()]
+            if coef!=0:      # max_degree loses relevance when coef is zero 
+                return coef*other
         if isinstance(other, (int, float, sp.Expr)):
             new_coeff_dict = {key: value * other for key, value in self.coeff_dict.items()}
             return tensorProduct(self.vector_space, new_coeff_dict)
 
-        if isinstance(other, vectorSpaceElement) or hasattr(other, "algebra"):
+        if (hasattr(other,'is_zero') and other.is_zero()) or self.is_zero():
+            new_coeff_dict = {key:0 for key in self.coeff_dict.keys()}
+            return tensorProduct(self.vector_space, new_coeff_dict)
+
+        if get_dgcv_category(other) in {'subalgebra_element', 'vectorSpace', 'algebra_element'}:
             other = other._convert_to_tp()
 
         if isinstance(other, tensorProduct):
@@ -1074,20 +1131,20 @@ class tensorProduct(sp.Basic):
 
             if other.max_degree==1 and other.min_degree==1:
                 if self.max_degree==1 and self.min_degree==1:
-                    from dgcv.finite_dim_algebras import AlgebraElement #local import  # noqa: I001
                     if self.prolongation_type == other.prolongation_type:
                         if isinstance(self.vector_space,vectorSpace):
                             return 0*self
                         pt = self.prolongation_type
                         coeffs1 = [self.coeff_dict.get((j, pt), 0) for j in range(self.vector_space.dimension)]
                         coeffs2 = [other.coeff_dict.get((j, pt), 0) for j in range(self.vector_space.dimension)]
-                        LA_elem1 = AlgebraElement(self.vector_space,coeffs1,pt)
-                        LA_elem2 = AlgebraElement(other.vector_space,coeffs2,pt)
+                        LA_elem1 = self.vector_space._class_builder(coeffs1,pt)
+                        LA_elem2 = self.vector_space._class_builder(coeffs2,pt)
                         return (LA_elem1*LA_elem2)._convert_to_tp()
                     else:
                         ###!!! mixed prolongation type needs an additional logic branch
                         pt1 = self.prolongation_type
                         pt2 = other.prolongation_type
+                        warnings.warn('DEBUG NOTE: incomplete logic branch triggered...')
                         return sum([self.coeff_dict[(j,pt1)]*other.coeff_dict[(j,pt2)] for j in range(self.vector_space.dimension)])
                 else:
                     if self.trailing_valence != other.prolongation_type and self.trailing_valence!=-1:
@@ -1105,14 +1162,17 @@ class tensorProduct(sp.Basic):
             raise ValueError(f"Unsupported operation for * between the given object types: {type(self)} and {type(other)}")
 
     def __rmul__(self, other):
-        """Right-hand multiplication for AlgebraElement * tensorProduct."""
         if isinstance(other, (int, float, sp.Expr)):
             return self.__mul__(other)
+        if get_dgcv_category(other)=='subalgebra_element' and other.algebra != self.vector_space:
+            other = other.ambiant_rep
         if hasattr(other, "algebra") and other.algebra == self.vector_space:
-            # Reverse order: AlgebraElement * tensorProduct
-            return -self.contract_call(other)
+            return -self.__mul__(other)
         else:
             return NotImplemented
+
+    def __neg__(self):
+        return -1*self
 
 
 ################ creator functions
@@ -1129,7 +1189,7 @@ def createVectorSpace(
 
     Parameters
     ----------
-    obj : int, vectorSpace, list of vectorSpaceElements
+    obj : int, vectorSpace, list of vector_space_elements
         vector space dimension
     label : str
         The label used to reference the VS object in the global namespace.
@@ -1151,9 +1211,9 @@ def createVectorSpace(
         if verbose:
             print(f"Using existing vectorSpace instance: {label}")
         dimension = obj.dimension
-    elif isinstance(obj, list) and all(isinstance(el, vectorSpaceElement) for el in obj):
+    elif isinstance(obj, list) and all(isinstance(el, vector_space_element) for el in obj):
         if verbose:
-            print("Creating VS from list of vectorSpaceElement instances.")
+            print("Creating VS from list of vector_space_element instances.")
         dimension = len(obj)
     elif isinstance(obj,int) and 0<=obj:
         dimension = obj
