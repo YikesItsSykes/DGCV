@@ -6,3 +6,4 @@ dist/
 *.egg-info/
 pyrightconfig.json
 requirements*.txt
+tests/notebooks/local/
