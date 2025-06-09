@@ -7,10 +7,13 @@ from .._safeguards import (
     _cached_caller_globals,
     get_dgcv_category,
     retrieve_passkey,
+    retrieve_public_key,
     validate_label,
     validate_label_list,
 )
 from ..combinatorics import carProd
+from ..dgcv_core import variableProcedure
+from ..solvers import solve_dgcv
 from ..tensors import tensorProduct
 from ..vmf import clearVar, listVar
 from .algebras_aux import _validate_structure_data
@@ -22,14 +25,18 @@ from .algebras_core import (
 
 
 class subalgebra_class(algebra_subspace_class):
+    def __new__(cls, basis, alg, grading=None, _compressed_structure_data=None, _internal_lock=None):
+        return super().__new__(cls, basis, alg, test_weights=None, _grading=grading, _internal_lock=_internal_lock)
     def __init__(self, basis, alg, grading=None, _compressed_structure_data=None, _internal_lock=None):
         super().__init__(basis, alg, test_weights=None, _grading=grading, _internal_lock=_internal_lock)
+        basis = self.filtered_basis
         self.structureData = None
         if _internal_lock==retrieve_passkey():
             if _compressed_structure_data is not None:
-                self.structureData==_compressed_structure_data
+                self.structureData=_compressed_structure_data
         if self.structureData is None:
             self.structureData = self.is_subalgebra(return_structure_data=True)['structure_data']
+        self._structureData=tuple(map(tuple, self.structureData))
         self.subindices_to_ambiant_dict = {count:elem for count,elem in enumerate(basis)}
         self.basis_in_ambiant_alg = tuple(basis)
         self.basis = [subalgebra_element(self,[1 if j==count else 0 for j in range(self.dimension)],elem.valence) for count,elem in enumerate(basis)]
@@ -79,7 +86,41 @@ class subalgebra_class(algebra_subspace_class):
         return self.ambiant.subalegra(basis,grading=grading)
     def subspace(self,basis,grading=None):
         return self.ambiant.subspace(basis,grading=grading)
-
+    def contains(self, items, return_basis_coeffs = False):
+        if not isinstance(items,(list,tuple)):
+            items = [items]
+        for item in items:
+            if get_dgcv_category(item)=='subalgebra_element':
+                if item.algebra==self:
+                    bas=self.basis
+                elif item.algebra.ambiant==self.ambiant:
+                    item=item.ambiant_rep
+                    bas=self.basis_in_ambiant_alg
+                else:
+                    return False
+            elif get_dgcv_category(item)=='algebra_element' and item.algebra.ambiant==self.ambiant:
+                item=item.ambiant_rep
+                bas=self.basis_in_ambiant_alg
+            else:
+                return False
+            if item not in bas:
+                tempVarLabel = "T" + retrieve_public_key()
+                variableProcedure(tempVarLabel, len(bas), _tempVar=retrieve_passkey())
+                genElement = sum([_cached_caller_globals[tempVarLabel][j+1] * elem for j,elem in enumerate(bas[1:])],_cached_caller_globals[tempVarLabel][0]*(bas[0]))
+                sol = solve_dgcv(item-genElement,_cached_caller_globals[tempVarLabel])
+                if len(sol)==0:
+                    clearVar(*listVar(temporary_only=True))
+                    return False
+            else:
+                if return_basis_coeffs is True:
+                    idx = bas.index(item)
+                    return [1 if _==idx else 0 for _ in range(len(bas))]
+        if return_basis_coeffs is True:
+            vec=[var.subs(sol[0]) for var in _cached_caller_globals[tempVarLabel]]
+            clearVar(*listVar(temporary_only=True))
+            return vec
+        clearVar(*listVar(temporary_only=True))
+        return True
 
 class subalgebra_element():
     def __init__(self,alg,coeffs,valence,ambiant_rep=None,_internalLock=None):
@@ -262,11 +303,11 @@ class subalgebra_element():
 
         Notes
         -----
-        - This method calls the parentt algebra' check_element_weight method.
+        - This method calls the parent algebra' check_element_weight method.
         - 'AllW' is returned for zero elements, which are compaible with all weights.
         - 'NoW' is returned for non-homogeneous elements that do not satisfy the grading constraints.
         """
-        return self.ambiant_rep.check_element_weight()
+        return self.algebra.check_element_weight(self)
 
 class simpleLieAlgebra(algebra_class):
     def __init__(self, structure_data, grading=None, format_sparse=False, process_matrix_rep=False, preferred_representation=None, _label=None, _basis_labels=None, _calledFromCreator=None, _callLock=None, _print_warning=None, _child_print_warning=None, _exclude_from_VMF=None,_simple_data=None):
@@ -441,9 +482,17 @@ class simpleLieAlgebra(algebra_class):
             roots=[roots]
         elif not isinstance(roots,(list,tuple)):
             raise TypeError(f'The `roots` parameter in `simpleLieAlgebra.parabolic_grading(roots)` should be either `None`, an `int`, or a list of integers in the range (1,...,{self.rank}) representing indices of simple roots as enumerated in the algebras Dynkin diagram (see `simpleLieAlgebra.root_space_summary()` for a summary of this indexing).') from None
-        return [sum([self.grading[idx-1][j] for idx in roots]) for j in range(self.dimension)]
+        gradingVector = [sum([self.grading[idx-1][j] for idx in roots]) for j in range(self.dimension)]
+        denom = 1
+        for weight in gradingVector:
+            if isinstance(weight,sp.Rational):
+                if denom<weight.denominator:
+                    denom=weight.denominator
+        if denom>1:
+            gradingVector=[denom*weight for weight in gradingVector]
+        return gradingVector
 
-    def parabolic_subalgebra(self,roots=None,label=None,basis_labels=None,register_in_vmf=True, return_Alg=False,use_non_positive_weights=False):
+    def parabolic_subalgebra(self,roots=None,label=None,basis_labels=None,register_in_vmf=None, return_Alg=False,use_non_positive_weights=False, format_as_subalgebra_class=False):
         if roots is None:
             roots=[]
         if isinstance(roots,int):
@@ -451,33 +500,62 @@ class simpleLieAlgebra(algebra_class):
         elif not isinstance(roots,(list,tuple)):
             raise TypeError(f'The `roots` parameter in `simpleLieAlgebra.parabolic_subalgebra(roots)` should be either `None`, an `int`, or a list of integers in the range (1,...,{self.rank}) representing indices of simple roots as enumerated in the algebras Dynkin diagram (see `simpleLieAlgebra.root_space_summary()` for a summary of this indexing).') from None
         newGrading = [sum([self.grading[idx-1][j] for idx in roots]) for j in range(self.dimension)]
-        # parabolic = []
+        if format_as_subalgebra_class is True:
+            parabolic = []
         subIndices = []
         filtered_grading = []
         if not isinstance(use_non_positive_weights,bool):
             use_non_positive_weights = False
         for count, weight in enumerate(newGrading):
             if (weight>=0 and use_non_positive_weights is False) or (weight<=0 and use_non_positive_weights is True):
-                # parabolic.append(self.basis[count])
+                if format_as_subalgebra_class is True:
+                    parabolic.append(self.basis[count])
                 subIndices.append(count)
                 filtered_grading.append(weight)
+        denom = 1
+        for weight in filtered_grading:
+            if isinstance(weight,sp.Rational):
+                if denom<weight.denominator:
+                    denom=weight.denominator
+        if denom>1:
+            filtered_grading=[denom*weight for weight in filtered_grading]
+
         def truncateBySubInd(li):
             return [li[j] for j in subIndices]
         structureData = truncateBySubInd(self._structureData)
         structureData = [truncateBySubInd(plane) for plane in structureData]
         structureData = [[truncateBySubInd(li) for li in plane] for plane in structureData]
+        if format_as_subalgebra_class is True:
+            ignoredList = []
+            if label is not None:
+                ignoredList.append('label')
+            if basis_labels is not None:
+                ignoredList.append('basis_labels')
+            if register_in_vmf is True:
+                ignoredList.append('register_in_vmf')
+            if len(ignoredList)==1:
+                warnings.warn(f'A parameter value was supplied for `{ignoredList[0]}`, but `format_as_subalgebra_class=True` was set. The `subalgebra_class` is not tracked in the vmf, so this parameter value was ignored. A subalgebra_class instance was returned instead.')
+            elif len(ignoredList)==2:
+                warnings.warn(f'Parameter values were supplied for `{ignoredList[0]}` and `{ignoredList[1]}`, but `format_as_subalgebra_class=True` was set. The `subalgebra_class` is not tracked in the vmf, so these parameter values were ignored. A subalgebra_class instance was returned instead.')
+            elif len(ignoredList)==3:
+                warnings.warn(f'Parameter values were supplied for `{ignoredList[0]}`, `{ignoredList[1]}`, and `{ignoredList[2]}`, but `format_as_subalgebra_class=True` was set. The `subalgebra_class` is not tracked in the vmf, so these parameter values were ignored. `A subalgebra_class instance was returned instead.`')
+            return subalgebra_class(parabolic, self, grading=[filtered_grading], _compressed_structure_data=structureData, _internal_lock=retrieve_passkey())
         if isinstance(label,str) or isinstance(basis_labels,(list,tuple,str)):
             register_in_vmf=True
         if register_in_vmf is True:
             if label is None:
                 label = self.label+'_parabolic'
-            if (isinstance(basis_labels,(list,tuple)) and not all(isinstance(elem,str) for elem in basis_labels)) or not isinstance(basis_labels,str):
+            if basis_labels is None:
+                basis_labels = label
+            elif (isinstance(basis_labels,(list,tuple)) and not all(isinstance(elem,str) for elem in basis_labels)) or not isinstance(basis_labels,str):
                 raise TypeError('If supplying the optional parameter `basis_labels` to `simpleLieAlgebra.parabolic_subalgebra` then it should be either a string or list of strings') from None
             createAlgebra(structureData,label=label,basis_labels=basis_labels,grading=filtered_grading)
             if return_Alg is True:
                 return _cached_caller_globals[label]
-        if return_Alg is True or register_in_vmf is False:
-            return algebra_class(structureData,grading=filtered_grading)
+        if return_Alg is True:
+            return algebra_class(structureData,grading=[filtered_grading])
+        elif register_in_vmf is not True:
+            warnings.warn('Optional keywords for the `parabolic_subalgebra` method indicate that nothing should be return returned or registered in the vmf. Probably that is not intended, in which case at least one keyword `label`, `basis_labels`, `register_in_vmf`, `return_Alg`, or `format_as_subalgebra_class` should be set differently.')
 
 
 def createSimpleLieAlgebra(

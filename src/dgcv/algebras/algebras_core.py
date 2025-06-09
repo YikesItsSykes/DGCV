@@ -60,7 +60,7 @@ class algebra_class(sp.Basic):
             self._registered = True
         else:
             self.label = "Alg_" + create_key()
-            self.basis_labels = None
+            self.basis_labels = [f"_e{i+1}" for i in range(len(self.structureData))]
             self._registered = False
         self._callLock = _callLock
         self._print_warning = _print_warning
@@ -971,10 +971,11 @@ class algebra_class(sp.Basic):
         else:
             nonAE = []
             wrongAlgebra = []
+            typeCheck={'algebra_element','subalgebra_element'}
             for elem in elements:
-                if not isinstance(elem, algebra_element_class):
+                if get_dgcv_category(elem) not in typeCheck:
                     nonAE.append(elem)
-                elif elem.algebra!=self:
+                elif elem.algebra!=self or (get_dgcv_category(elem)=='subalgebra_element' and elem.algebra.ambiant!=self):
                     wrongAlgebra.append(elem)
             if len(nonAE)>0 or len(wrongAlgebra)>0:
                 if len(nonAE)>0:
@@ -988,6 +989,8 @@ class algebra_class(sp.Basic):
         unique_elements = []
         seen_coeffs = set()
         for el in elements:
+            if get_dgcv_category(el)=='subalgebra_element':
+                el = el.ambiant_rep
             coeff_tuple = tuple(el.coeffs)  # Convert coeffs to a tuple for hashability
             if coeff_tuple not in seen_coeffs:
                 seen_coeffs.add(coeff_tuple)
@@ -1177,17 +1180,12 @@ class algebra_class(sp.Basic):
         Notes
         -----
         - The (j, k)-entry of the structure matrix is the result of `basis[j] * basis[k]`.
-        - If `basis_labels` is None, defaults to "e1", "e2", ..., "ed".
+        - If `basis_labels` is None, defaults to "_e1", "_e2", ..., "_e{d}".
         """
         import pandas as pd
 
-        # Dimension of the algebra
         dimension = self.dimension
-
-        # Default labels if basis_labels is None
-        basis_labels = self.basis_labels or [f"e{i+1}" for i in range(dimension)]
-
-        # Initialize the structure matrix as a list of lists
+        basis_labels = self.basis_labels or [f"_e{i+1}" for i in range(dimension)]
         structure_matrix = [
             [(self.basis[j] * self.basis[k]) for k in range(dimension)]
             for j in range(dimension)
@@ -1213,8 +1211,6 @@ class algebra_class(sp.Basic):
                 pandas_style
             )
             return styled_df
-
-        # Return as a list of lists
         return structure_matrix
 
     def is_ideal(self, subspace_elements):
@@ -1427,7 +1423,6 @@ class algebra_class(sp.Basic):
 
     def subspace(self,basis,grading=None):
         return algebra_subspace_class(self,basis,parent_algebra=self,test_weights=grading)
-
 
 
 class algebra_element_class(sp.Basic):
@@ -1866,10 +1861,6 @@ class algebra_element_class(sp.Basic):
         - 'AllW' is returned for zero elements, which are compaible with all weights.
         - 'NoW' is returned for non-homogeneous elements that do not satisfy the grading constraints.
         """
-        if not hasattr(self, "algebra") or not isinstance(self.algebra, algebra_class):
-            raise ValueError(
-                "This algebra_element_class is not associated with a valid algebra."
-            ) from None
 
         return self.algebra.check_element_weight(self)
 
@@ -1877,24 +1868,55 @@ class algebra_subspace_class(sp.Basic):
     def __new__(cls, basis, parent_algebra=None, test_weights=None,_grading=None,_internal_lock=None,**kwargs):
         if not isinstance(basis,(list,tuple)):
             raise TypeError('algebra_subspace_class expects first argument to a be a list or tuple of algebra_element_class instances') from None
-        if not all(isinstance(j,algebra_element_class) for j in basis):
+        typeCheck = {'subalgebra_element', 'algebra_element'}
+        if (not all(get_dgcv_category(j) in typeCheck for j in basis)):
             raise TypeError('algebra_subspace_class expects first argument to a be a list or tuple of algebra_element_class instances') from None
         if parent_algebra is None:
             if len(basis)>0:
-                parent_algebra=basis[0].algebra
-        elif not isinstance(parent_algebra, algebra_class):
-            raise TypeError('algebra_subspace_class expects second argument to an algebra instance.') from None
-        if not all([j.algebra == parent_algebra for j in basis]):
-            raise TypeError('algebra_subspace_class expects all algebra_element_class instances given in the first argument to have the same `algebra_element_class.algebra` value as the second argument.') from None
+                if get_dgcv_category(basis[0].algebra)!='algebra':
+                    if all(j.algebra==basis[0].algebra for j in basis[1:]):
+                        parent_alg = basis[0].algebra.ambiant
+                        if test_weights and isinstance(test_weights,(list,tuple)) and len(test_weights[0])==len(basis[0].algebra):
+                            weight_subspace = basis[0].algebra
+                        else:
+                            weight_subspace = parent_alg
+                    else:
+                        parent_alg = basis[0].algebra.ambiant
+                        weight_subspace = parent_alg
+                else:
+                    parent_alg=basis[0].algebra
+                    weight_subspace = parent_alg
+            else: 
+                weight_subspace = []
+        elif get_dgcv_category(parent_algebra) in {'subalgebra', 'algebra_subspace'}:
+            parent_alg = parent_algebra.ambiant
+            weight_subspace = parent_algebra if test_weights else parent_alg
+        elif get_dgcv_category(parent_algebra)=='algebra':
+            parent_alg = parent_algebra
+            weight_subspace = parent_algebra
+        else:
+            raise TypeError('algebra_subspace_class expects second argument to an algebra instance or algebra subspace or subalgebra.') from None
+
+        if not all([j.algebra == weight_subspace for j in basis]):
+            if get_dgcv_category(weight_subspace)=='algebra':
+                new_basis = []
+                for elem in basis:
+                    if get_dgcv_category(elem)=='algebra_element':
+                        new_basis.append(elem)
+                    else:
+                        new_basis.append(elem.ambiant_rep)
+                basis=new_basis
+            if not all([j.algebra == weight_subspace for j in basis]):
+                raise TypeError('algebra_subspace_class expects all (sub)algebra_element_class instances given in the first argument to have the same `(sub)algebra_element_class.algebra` value as the second argument.') from None
         if test_weights and not(_internal_lock==retrieve_passkey() and _grading is not None):
             if not isinstance(test_weights,(list,tuple)):
-                raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a list/tuple of lists of weight values (int,float, or sp.Expr).') from None
+                raise TypeError('`algebra_subspace_class` initializer expects `test_weight` to be None or a list/tuple of lists of weight values (int,float, or sp.Expr).') from None
             for tw in test_weights:
                 if not isinstance(tw,(list,tuple)):
-                    raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a list/tuple of lists of weight values (int,float, or sp.Expr).') from None
-                if parent_algebra.dimension != len(tw) or not all([isinstance(j,(int,float,sp.Expr)) for j in tw]):
-                    raise TypeError('`check_element_weight` expects `check_element_weight` to be None or a length {alg.dimension} list/tuple of weight values (int,float, or sp.Expr).') from None
-        filtered_basis = parent_algebra.filter_independent_elements(basis)
+                    raise TypeError('`algebra_subspace_class` initializer expects `test_weight` to be None or a list/tuple of lists of weight values (int,float, or sp.Expr).') from None
+                if weight_subspace.dimension != len(tw) or not all([isinstance(j,(int,float,sp.Expr)) for j in tw]):
+                    raise TypeError('`algebra_subspace_class` initializer expects `test_weight` to be None or a length {alg.dimension} list/tuple of weight values (int,float, or sp.Expr).') from None
+        filtered_basis = parent_alg.filter_independent_elements(basis)
         if len(filtered_basis)<len(basis):
             basis = filtered_basis
             warnings.warn('The given list for `basis` was not linearly independent, so the algebra_subspace_class initializer computed a basis for its span to use instead.')
@@ -1902,30 +1924,28 @@ class algebra_subspace_class(sp.Basic):
         # Create the new instance
         obj = sp.Basic.__new__(cls, basis, parent_algebra, test_weights)
         obj.filtered_basis = filtered_basis
+        obj.basis = tuple(filtered_basis)
+        obj.dimension = len(filtered_basis)
+        obj.ambiant = parent_alg
+        grading_per_elem = []
+        if test_weights is None and _internal_lock==retrieve_passkey() and _grading is not None:
+            obj.grading=_grading
+        else:
+            for elem in filtered_basis:
+                weight = weight_subspace.check_element_weight(elem,test_weights=test_weights)
+                grading_per_elem.append(weight)
+            obj.grading = list(zip(*grading_per_elem))
+            obj.grading = [elem for elem in obj.grading if 'NoW' not in elem]
         return obj
 
     def __init__(self, basis, parent_algebra=None, test_weights=None,_grading=None,_internal_lock=None):
-        if parent_algebra is None:
-            if len(basis)>0:
-                parent_algebra=basis[0].algebra
-        self.ambiant = parent_algebra
-        self.basis = tuple(self.filtered_basis)
         self.original_basis = basis
-        self.dimension = len(self.basis)
-        grading_per_elem = []
-        if test_weights is None and _internal_lock==retrieve_passkey() and _grading is not None:
-            self.grading=_grading
-        else:
-            for elem in self.basis:
-                weight = parent_algebra.check_element_weight(elem,test_weights=test_weights)
-                grading_per_elem.append(weight)
-            self.grading = list(zip(*grading_per_elem))
-            self.grading = [elem for elem in self.grading if 'NoW' not in elem]
         self._dgcv_class_check=retrieve_passkey()
         self._dgcv_category='algebra_subspace'
 
         # immutables
         self._grading = tuple(self.grading)
+        self._gradingNumber = len(self._grading)
 
         # attribute caches
         self._is_subalgebra = None
@@ -1943,10 +1963,65 @@ class algebra_subspace_class(sp.Basic):
     def __contains__(self, item):
         return item in self.basis
 
-    def contains(self, items):
+    def check_element_weight(self, element, test_weights = None):
+        """
+        Determines the weight vector of an algebra_element_class with respect to the grading vectors assigned to an algebra_subspace_class. Weight can be instead computed against another grading vector passed a list of weights as the keyword `test_weights`.
+
+        Parameters
+        ----------
+        element : (sub)algebra_element_class
+            The (sub)algebra_element_class to analyze.
+        test_weights : list of int or sympy.Expr, optional (default: None)
+
+        Returns
+        -------
+        list
+            A list of weights corresponding to the grading vectors of this algebra subspace (or test_weights if provided).
+            Each entry is either an integer, sympy.Expr (weight), the string 'AllW' (i.e., All Weights) if the element is the zero element,
+            or 'NoW' (i.e., No Weights) if the element is not homogeneous.
+
+        Notes
+        -----
+        - 'AllW' (meaning, All Weights) is returned for zero elements, which are compatible with all weights.
+        - 'NoW' (meaning, No Weights) is returned for non-homogeneous elements that do not satisfy the grading constraints.
+        """
+        if not isinstance(element, algebra_element_class) or element.algebra!=self:
+            if get_dgcv_category(element)=='subalgebra_element' and element.algebra.ambiant==self.ambiant:
+                pass
+            else:
+                raise TypeError("Input in `algebra_subspace_class.check_element_weight` must be an `(sub)algebra_element_class` instance belonging to the `(sub)algebra_class` instance whose `check_element_weight` is being called.") from None
+        if not test_weights:
+            if self._gradingNumber == 0:
+                raise ValueError("This algebra subspace instance has no assigned grading vectors to test weighting w.r.t..") from None
+        if all(coeff == 0 for coeff in element.coeffs):
+            return ["AllW"] * self._gradingNumber
+        if test_weights:
+            if not isinstance(test_weights,(list,tuple)):
+                raise TypeError('`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or sp.Expr).') from None
+            for weight in test_weights:
+                if not isinstance(weight,(list,tuple)):
+                    raise TypeError('`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or sp.Expr).') from None
+                if self.dimension != len(weight) or not all([isinstance(j,(int,float,sp.Expr)) for j in weight]):
+                    raise TypeError('`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or sp.Expr).') from None
+            GVs = test_weights
+        else:
+            GVs = self.grading
+        weights = []
+        for grading_vector in GVs:
+            non_zero_indices = [i for i, coeff in enumerate(element.coeffs) if coeff != 0]
+            basis_weights = [grading_vector[i] for i in non_zero_indices]
+            if len(set(basis_weights)) == 1:
+                weights.append(basis_weights[0])
+            else:
+                weights.append("NoW")
+        return weights
+
+    def contains(self, items, return_basis_coeffs = False):
         if not isinstance(items,(list,tuple)):
             items = [items]
         for item in items:
+            if get_dgcv_category(item)=='subalgebra_element':
+                item=item.ambiant_rep
             if not isinstance(item,algebra_element_class) or item.algebra!=self.ambiant:
                 return False
             if item not in self.basis:
@@ -1954,9 +2029,18 @@ class algebra_subspace_class(sp.Basic):
                 variableProcedure(tempVarLabel, len(self.basis), _tempVar=retrieve_passkey())
                 genElement = sum([_cached_caller_globals[tempVarLabel][j+1] * elem for j,elem in enumerate(self.basis[1:])],_cached_caller_globals[tempVarLabel][0]*(self.basis[0]))
                 sol = solve_dgcv(item-genElement,_cached_caller_globals[tempVarLabel])
-                clearVar(*listVar(temporary_only=True))
                 if len(sol)==0:
+                    clearVar(*listVar(temporary_only=True))
                     return False
+            else:
+                if return_basis_coeffs is True:
+                    idx = (self.basis).index(item)
+                    return [1 if _==idx else 0 for _ in range(len(self.basis))]
+        if return_basis_coeffs is True:
+            vec=[var.subs(sol[0]) for var in _cached_caller_globals[tempVarLabel]]
+            clearVar(*listVar(temporary_only=True))
+            return vec
+        clearVar(*listVar(temporary_only=True))
         return True
 
     def __iter__(self):

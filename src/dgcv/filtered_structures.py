@@ -55,11 +55,11 @@ class Tanaka_symbol(sp.Basic):
             elif isinstance(GLA.grading[0],(list,tuple)):
                 if not all(j<=0 for j in GLA.grading[0]):
                     raise TypeError(
-                        "`Tanaka_symbol` expects `GLA` to be a graded Lie algebra (`algebra`, `algebra_subspace_class`, or `sualgebra` in particular) with non-positive weights in the first element of `GLA.grading`."
+                        f"`Tanaka_symbol` expects `GLA` to be a graded Lie algebra (`algebra`, `algebra_subspace_class`, or `sualgebra` in particular) with non-positive weights in the first element of `GLA.grading`. Recieved grading data: {GLA.grading}"
                     )
             elif not all(j<=0 for j in GLA.grading):
                 raise TypeError(
-                    "`Tanaka_symbol` expects `GLA` to be a graded Lie algebra (`algebra`, `algebra_subspace_class`, or `sualgebra` in particular) with non-positive weights in the first element of `GLA.grading`."
+                    f"`Tanaka_symbol` expects `GLA` to be a graded Lie algebra (`algebra`, `algebra_subspace_class`, or `sualgebra` in particular) with non-positive weights in the first element of `GLA.grading`. Recieved grading data: {GLA.grading}."
                 )
 
             if isinstance(nonnegParts,dict):
@@ -668,7 +668,6 @@ class Tanaka_symbol(sp.Basic):
         def bracket_decomp(idx1,idx2):
             w1,sId1=flatToLayered(idx1)
             w2,sId2=flatToLayered(idx2)
-            _cached_caller_globals['DEBUG']=(f'Grading len={len(grading_vec)}.\n Thresholds={indexThresholds}\n levelLengths={levelLengths} \n For {idx1}: {w1}, {sId1}. \n For {idx2}: {w2}, {sId2}')
             newElem = self.levels[w1][sId1]*self.levels[w2][sId2]
             newWeight = w1+w2
             ambiant_basis = self.levels[newWeight]
