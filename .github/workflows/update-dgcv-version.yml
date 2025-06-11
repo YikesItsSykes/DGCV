@@ -32,7 +32,6 @@ jobs:
           VERSION=$(grep -E '^version\s*=' setup.cfg | head -1 | sed -E 's/version\s*=\s*//')
           mkdir -p includes/dgcv
           echo -n "${VERSION}" > includes/dgcv/dgcv_version.txt
-          # Generate release date based on current runner date
           RELD_FMT=$(date '+%B %-d, %Y')
           echo -n "$RELD_FMT" > includes/dgcv/latest-rel-date.txt
           scp -i deploy_key.pem -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
