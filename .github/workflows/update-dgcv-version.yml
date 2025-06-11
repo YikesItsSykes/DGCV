@@ -22,8 +22,8 @@ jobs:
         run: |
           # Write private key to file via heredoc to preserve exact formatting
           cat << 'EOF' > deploy_key.pem
-${{ secrets.DGCV_TO_RAI_KEY }}
-EOF
+          ${{ secrets.DGCV_TO_RAI_KEY }}
+          EOF
           chmod 600 deploy_key.pem
           # Copy the file using scp with explicit key
           scp -i deploy_key.pem -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
