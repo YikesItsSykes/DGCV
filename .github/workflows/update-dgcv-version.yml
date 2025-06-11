@@ -18,18 +18,12 @@ jobs:
           ref: main
           persist-credentials: true
 
-      - name: Generate dgcv_version.json include
-        run: |
-          VERSION="${GITHUB_REF##*/}"
-          mkdir -p includes
-          echo "{ \"version\": \"${VERSION}\" }" > includes/dgcv_version.json
-
-      - name: Upload version include to website via SCP
-        uses: appleboy/scp-action@v0.1.3
+      - name: Copy setup.cfg to website via SCP
+        uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.RAIHOME }}
           username: ${{ secrets.MEATRAI }}
           key: ${{ secrets.DGCV_TO_RAI_KEY }}
           port: ${{ secrets.RAISSH }}
-          source: "includes/dgcv_version.json"
+          source: "setup.cfg"
           target: "/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/"
