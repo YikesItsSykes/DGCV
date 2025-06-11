@@ -18,13 +18,14 @@ jobs:
           ref: main
           persist-credentials: true
 
-      - name: Start SSH agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DGCV_TO_RAI_KEY }}
-
       - name: Copy setup.cfg via scp
         run: |
-          scp -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
+          # Write private key to file
+          printf '%s\n' "${{ secrets.DGCV_TO_RAI_KEY }}" > deploy_key.pem
+          chmod 600 deploy_key.pem
+          # Copy the file using scp with explicit key
+          scp -i deploy_key.pem -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
               setup.cfg \
-              ${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}:/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/
+              "${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}:/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/"
+          # Remove the temporary key file
+          rm deploy_key.pem
