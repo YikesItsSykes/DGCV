@@ -18,12 +18,13 @@ jobs:
           ref: main
           persist-credentials: true
 
-      - name: Copy setup.cfg to website via SCP
-        uses: appleboy/scp-action@v1
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.8.1
         with:
-          host: ${{ secrets.RAIHOME }}
-          username: ${{ secrets.MEATRAI }}
-          key: ${{ secrets.DGCV_TO_RAI_KEY }}
-          port: ${{ secrets.RAISSH }}
-          source: "setup.cfg"
-          target: "/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/"
+          ssh-private-key: ${{ secrets.DGCV_TO_RAI_KEY }}
+
+      - name: Copy setup.cfg via scp
+        run: |
+          scp -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
+              setup.cfg \
+              ${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}:/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/
