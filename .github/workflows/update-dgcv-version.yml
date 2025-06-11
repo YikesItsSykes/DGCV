@@ -20,13 +20,16 @@ jobs:
           ref: main
           persist-credentials: true
 
-      - name: Copy setup.cfg via scp
+      - name: Copy setup.cfg and README.md via scp
         run: |
           cat << 'EOF' > deploy_key.pem
           ${{ secrets.DGCV_TO_RAI_KEY }}
           EOF
           chmod 600 deploy_key.pem
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
+              "${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}" \
+              "mkdir -p ~/realandimaginary.com/includes/dgcv"
           scp -i deploy_key.pem -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
-              setup.cfg \
-              "${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}:/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/"
+              setup.cfg README.md \
+              "${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}:/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/dgcv/"
           rm deploy_key.pem
