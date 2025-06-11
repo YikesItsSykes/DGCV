@@ -24,12 +24,17 @@ jobs:
           mkdir -p includes
           echo "{ \"version\": \"${VERSION}\" }" > includes/dgcv_version.json
 
-      - name: Upload version include to website via SCP
-        uses: appleboy/scp-action@v0.1.3
-        with:
-          host: ${{ secrets.WEBSITE_HOST }}
-          username: ${{ secrets.WEBSITE_USER }}
-          key: ${{ secrets.DGCV_TO_RAI_KEY }}
-          port: ${{ secrets.WEBSITE_SSH_PORT }}
-          source: "includes/dgcv_version.json"
-          target: "/home/${{ secrets.WEBSITE_USER }}/realandimaginary.com/includes/"
+      - name: Copy version JSON to server via scp
+        env:
+          HOST: ${{ secrets.RAIHOME }}
+          USER: ${{ secrets.MEATRAI }}
+          PORT: ${{ secrets.RAISSH }}
+          DEPLOY_KEY: ${{ secrets.DGCV_TO_RAI_KEY }}
+        run: |
+          echo "${DEPLOY_KEY}" > deploy_key.pem
+          chmod 600 deploy_key.pem
+          scp -i deploy_key.pem -o StrictHostKeyChecking=no -P "${PORT:-22}" \
+              includes/dgcv_version.json \
+              "${USER}@${HOST}:/home/${USER}/realandimaginary.com/includes/"
+          # Clean up
+          rm deploy_key.pem
