@@ -29,7 +29,10 @@ jobs:
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
               "${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}" \
               "mkdir -p ~/realandimaginary.com/includes/dgcv"
+          VERSION="${GITHUB_REF##*/}"
+          mkdir -p includes/dgcv
+          echo "${VERSION}" > includes/dgcv/dgcv_version.txt
           scp -i deploy_key.pem -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
-              setup.cfg README.md \
+              setup.cfg README.md includes/dgcv/dgcv_version.txt \
               "${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}:/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/dgcv/"
           rm deploy_key.pem
