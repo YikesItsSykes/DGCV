@@ -2,6 +2,8 @@ name: Update dgcv Version Include
 
 on:
   workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -20,14 +22,11 @@ jobs:
 
       - name: Copy setup.cfg via scp
         run: |
-          # Write private key to file via heredoc to preserve exact formatting
           cat << 'EOF' > deploy_key.pem
           ${{ secrets.DGCV_TO_RAI_KEY }}
           EOF
           chmod 600 deploy_key.pem
-          # Copy the file using scp with explicit key
           scp -i deploy_key.pem -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
               setup.cfg \
               "${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}:/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/"
-          # Remove the temporary key file
           rm deploy_key.pem
