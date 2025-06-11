@@ -31,7 +31,7 @@ jobs:
               "mkdir -p ~/realandimaginary.com/includes/dgcv"
           VERSION=$(grep -E '^version\s*=' setup.cfg | head -1 | sed -E 's/version\s*=\s*//')
           mkdir -p includes/dgcv
-          echo "${VERSION}" > includes/dgcv/dgcv_version.txt
+          echo -n "${VERSION}" > includes/dgcv/dgcv_version.txt
           scp -i deploy_key.pem -o StrictHostKeyChecking=no -P "${{ secrets.RAISSH }}" \
               setup.cfg README.md includes/dgcv/dgcv_version.txt \
               "${{ secrets.MEATRAI }}@${{ secrets.RAIHOME }}:/home/${{ secrets.MEATRAI }}/realandimaginary.com/includes/dgcv/"
