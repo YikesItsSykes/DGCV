@@ -153,7 +153,12 @@ from .Riemannian_geometry import (
 )
 from .solvers import solve_dgcv
 from .styles import get_DGCV_themes, get_dgcv_themes  # get_DGCV_themes is deprecated
-from .tensors import createVectorSpace, tensorProduct, vector_space_element, vectorSpace
+from .tensors import (
+    createVectorSpace,
+    tensorProduct,
+    vector_space_class,
+    vector_space_element,
+)
 from .vector_fields_and_differential_forms import (
     LieDerivative,
     annihilator,
@@ -319,11 +324,11 @@ __all__ = [
     "solve_dgcv",           # supports solving equations with various DGCV types
 
     # From tensors
-    "vectorSpace",          # Class representing vector spaces
+    "vector_space_class",          # Class representing vector spaces
     "vector_space_element",   # Class representing elements in a vector space
     "tensorProduct",       # Class representing elements in tensor products (of VS elements)
                             # of vector space and their dual spaces
-    "createVectorSpace",    # Create vectorSpace class instances with labeling
+    "createVectorSpace",    # Create vector_space_class class instances with labeling
 
     # From vectorFieldsAndDifferentialForms
     "LieDerivative",        # Compute Lie derivative

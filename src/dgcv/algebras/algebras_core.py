@@ -1511,8 +1511,8 @@ class algebra_element_class(sp.Basic):
                 warnings.warn(self.algebra._child_print_warning,UserWarning)
             else:
                 warnings.warn(
-                    "This algebra_element_class's parent vector space (vectorSpace) was initialized without an assigned label. "
-                    "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                    "This algebra_element_class's parent vector space (algebra_class) was initialized without an assigned label. "
+                    "It is recommended to initialize `algebra_class` objects with dgcv creator functions like `createAlgebra` instead.",
                     UserWarning,
                 )
 

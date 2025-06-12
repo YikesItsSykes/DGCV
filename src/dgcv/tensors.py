@@ -19,10 +19,10 @@ from .vmf import clearVar, listVar
 
 
 # vector space class
-class vectorSpace(sp.Basic):
+class vector_space_class(sp.Basic):
     def __new__(cls, dimension, *args, **kwargs):
         if not isinstance(dimension, int) or dimension < 0:
-            raise TypeError("vectorSpace expected dimension to be a positive int.")
+            raise TypeError("vector_space_class expected dimension to be a positive int.")
 
         # Create the new instance
         obj = sp.Basic.__new__(cls, dimension)
@@ -131,7 +131,7 @@ class vectorSpace(sp.Basic):
         )
 
     def __eq__(self, other):
-        if not isinstance(other, vectorSpace):
+        if not isinstance(other, vector_space_class):
             return NotImplemented
         return (
             self.dimension == other.dimension and
@@ -152,29 +152,29 @@ class vectorSpace(sp.Basic):
 
     def __repr__(self):
         """
-        Provides a detailed representation of the vectorSpace object.
+        Provides a detailed representation of the vector_space_class object.
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
             warnings.warn(
-                "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                "This vector_space_class instance was initialized without an assigned label. "
+                "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
         return (
-            f"vectorSpace(dim={self.dimension}, grading={self.grading}, "
+            f"vector_space_class(dim={self.dimension}, grading={self.grading}, "
             f"label={self.label}, basis_labels={self.basis_labels}"
         )
 
     def __str__(self):
         """
-        Provides a string representation of the vectorSpace object.
+        Provides a string representation of the vector_space_class object.
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
             warnings.warn(
-                "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                "This vector_space_class instance was initialized without an assigned label. "
+                "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -201,8 +201,8 @@ class vectorSpace(sp.Basic):
         """
         if not self._registered:
             warnings.warn(
-                "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                "This vector_space_class instance was initialized without an assigned label. "
+                "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -222,13 +222,13 @@ class vectorSpace(sp.Basic):
 
     def _repr_latex_(self,**kwargs):
         """
-        Provides a LaTeX representation of the vectorSpace object for Jupyter notebooks.
+        Provides a LaTeX representation of the vector_space_class object for Jupyter notebooks.
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
             warnings.warn(
-                "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                "This vector_space_class instance was initialized without an assigned label. "
+                "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -293,20 +293,20 @@ class vectorSpace(sp.Basic):
 
     def _sympystr(self):
         """
-        SymPy string representation for vectorSpace.
+        SymPy string representation for vector_space_class.
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
             warnings.warn(
-                "This vectorSpace instance was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                "This vector_space_class instance was initialized without an assigned label. "
+                "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
         if self.label:
-            return f"vectorSpace({self.label}, dim={self.dimension})"
+            return f"vector_space_class({self.label}, dim={self.dimension})"
         else:
-            return f"vectorSpace(dim={self.dimension})"
+            return f"vector_space_class(dim={self.dimension})"
 
     def subspace_basis(self, elements):
         """
@@ -324,7 +324,7 @@ class vectorSpace(sp.Basic):
         """
 
         if not all(isinstance(j,vector_space_element) for j in elements) or not all(j.vectorSpace==self for j in elements) or len(set([j.valence for j in elements]))!=1:
-            raise TypeError('vectorSpace.subspace_basis expects a list of elements from the calling vectorSpace instance.')
+            raise TypeError('vector_space_class.subspace_basis expects a list of elements from the calling vector_space_class instance.')
 
         # Perform linear independence check
         span_matrix = sp.Matrix.hstack(*[el.coeffs for el in elements])
@@ -341,9 +341,9 @@ class vectorSpace(sp.Basic):
 # vector space element class
 class vector_space_element(sp.Basic):
     def __new__(cls, VS, coeffs, valence):
-        if not isinstance(VS, vectorSpace):
+        if not isinstance(VS, vector_space_class):
             raise TypeError(
-                "vector_space_element expects the first argument to be an instance of vectorSpace."
+                "vector_space_element expects the first argument to be an instance of vector_space_class."
             )
         if valence not in {0, 1}:
             raise TypeError("vector_space_element expects third argument to be 0 or 1.")
@@ -380,8 +380,8 @@ class vector_space_element(sp.Basic):
         """
         if not self.vectorSpace._registered:
             warnings.warn(
-                "This vector_space_element's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                "This vector_space_element's parent vector space (vector_space_class) was initialized without an assigned label. "
+                "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -430,8 +430,8 @@ class vector_space_element(sp.Basic):
         """
         if not self.vectorSpace._registered:
             warnings.warn(
-                "This vector_space_element's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                "This vector_space_element's parent vector space (vector_space_class) was initialized without an assigned label. "
+                "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -498,8 +498,8 @@ class vector_space_element(sp.Basic):
         """
         if not self.vectorSpace._registered:
             warnings.warn(
-                "This vector_space_element's parent vector space (vectorSpace) was initialized without an assigned label. "
-                "It is recommended to initialize vectorSpace objects with dgcv creator functions like `createVectorSpace` instead.",
+                "This vector_space_element's parent vector space (vector_space_class) was initialized without an assigned label. "
+                "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
             )
 
@@ -575,7 +575,7 @@ class vector_space_element(sp.Basic):
 
     def __call__(self, other):
         if not isinstance(other, vector_space_element) or other.vectorSpace!=self.vectorSpace or other.valence==self.valence:
-            raise TypeError('`vector_space_element.call()` can only be applied to `vector_space_element` instances with the same vectorSpace but different valence attributes.')
+            raise TypeError('`vector_space_element.call()` can only be applied to `vector_space_element` instances with the same vector_space_class but different valence attributes.')
         return sum([self.coeffs[j]*other.coeffs[j] for j in range(self.vectorSpace.dimension)])
 
     def __add__(self, other):
@@ -588,7 +588,7 @@ class vector_space_element(sp.Basic):
                 )
             else:
                 raise TypeError(
-                    "vector_space_element operands for + must belong to the same vectorSpace."
+                    "vector_space_element operands for + must belong to the same vector_space_class."
                 )
         else:
             raise TypeError(
@@ -605,7 +605,7 @@ class vector_space_element(sp.Basic):
                 )
             else:
                 raise TypeError(
-                    "vector_space_element operands for - must belong to the same vectorSpace."
+                    "vector_space_element operands for - must belong to the same vector_space_class."
                 )
         else:
             raise TypeError(
@@ -649,7 +649,7 @@ class vector_space_element(sp.Basic):
     def __matmul__(self, other):
         """Overload @ operator for tensor product."""
         if not isinstance(other, vector_space_element) or other.vectorSpace!=self.vectorSpace:
-            raise TypeError('`@` only supports tensor products between vector_space_elements instances with the same vectorSpace attribute')
+            raise TypeError('`@` only supports tensor products between vector_space_elements instances with the same vector_space_class attribute')
         return tensorProduct(self.vectorSpace, {(j,k,self.valence,other.valence):self.coeffs[j]*other.coeffs[k] for j in range(self.vectorSpace.dimension) for k in range(self.vectorSpace.dimension)})
 
     def __xor__(self, other):
@@ -1132,7 +1132,7 @@ class tensorProduct(sp.Basic):
             if other.max_degree==1 and other.min_degree==1:
                 if self.max_degree==1 and self.min_degree==1:
                     if self.prolongation_type == other.prolongation_type:
-                        if isinstance(self.vector_space,vectorSpace):
+                        if isinstance(self.vector_space,vector_space_class):
                             return 0*self
                         pt = self.prolongation_type
                         coeffs1 = [self.coeff_dict.get((j, pt), 0) for j in range(self.vector_space.dimension)]
@@ -1189,7 +1189,7 @@ def createVectorSpace(
 
     Parameters
     ----------
-    obj : int, vectorSpace, list of vector_space_elements
+    obj : int, vector_space_class, list of vector_space_elements
         vector space dimension
     label : str
         The label used to reference the VS object in the global namespace.
@@ -1206,10 +1206,10 @@ def createVectorSpace(
         warnings.warn('`createFiniteAlg` was called with a `label` already assigned to another algebra, so `createFiniteAlg` will overwrite the other algebra.')
         clearVar(label)
 
-    # Validate or create the vectorSpace object
-    if isinstance(obj, vectorSpace):
+    # Validate or create the vector_space_class object
+    if isinstance(obj, vector_space_class):
         if verbose:
-            print(f"Using existing vectorSpace instance: {label}")
+            print(f"Using existing vector_space_class instance: {label}")
         dimension = obj.dimension
     elif isinstance(obj, list) and all(isinstance(el, vector_space_element) for el in obj):
         if verbose:
@@ -1248,10 +1248,10 @@ def createVectorSpace(
     else:
         raise ValueError("Grading must be a single vector or a list of vectors.")
 
-    # Create the vectorSpace object
+    # Create the vector_space_class object
     passkey = retrieve_passkey()
 
-    vs_obj = vectorSpace(
+    vs_obj = vector_space_class(
         dimension,
         grading=grading,
         _label=label,
