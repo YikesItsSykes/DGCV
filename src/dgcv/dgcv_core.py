@@ -70,6 +70,7 @@ License:
 
 ############## dependencies
 import itertools
+import numbers
 import warnings
 
 import sympy as sp
@@ -86,6 +87,8 @@ from ._safeguards import (
     validate_label,
 )
 from ._tensor_field_printers import tensor_field_latex, tensor_field_printer
+from .backends._caches import _get_expr_num_types, _get_expr_types, _is_atomic
+from .backends._symbolic_api import get_free_symbols
 from .combinatorics import carProd, permSign
 from .vmf import _coeff_dict_formatter, clearVar
 
@@ -169,6 +172,9 @@ class tensorField(sp.Basic):
         self._antiholVarSpace = None
         self._imVarSpace = None
         self._cd_formats = None
+
+    def _sage_(self):
+        raise AttributeError
 
     def _set_varSpace_type(self):
         """Determine the type of variable space (real, complex, or standard)."""
@@ -658,7 +664,7 @@ class tensorField(sp.Basic):
         - If `other` is a scalar (int, float, sympy expression), the tensor is scaled.
         - If `other` is another `tensorField` their tensor product is returned
         """
-        if isinstance(other, (int, float, sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             return scaleTensorField(other,self)
 
         elif isinstance(other,tensorField):
@@ -855,7 +861,7 @@ class DFClass(tensorField):
         # Validate the inputs
         if not isinstance(varSpace, (list, tuple)):
             raise TypeError("`varSpace` must be a list or tuple.")
-        if not isinstance(degree, int) or degree < 0:
+        if not isinstance(degree, numbers.Integral) or degree < 0:
             raise ValueError("`degree` must be a non-negative integer.")
         if len(varSpace) != len(set(varSpace)):
             raise ValueError("`varSpace` must not have duplicate entries.")
@@ -1140,7 +1146,7 @@ class DFClass(tensorField):
             # If the argument is another differential form, compute the exterior product
             return exteriorProduct(self, other)
         elif isinstance(
-            other, (sp.Expr, int, float)
+            other, _get_expr_num_types()
         ):
             return scaleDF(other, self)
         elif isinstance(other,tensorField):
@@ -1177,7 +1183,7 @@ class DFClass(tensorField):
             # If the argument is another differential form, compute the exterior product
             return exteriorProduct(other, self)
         elif isinstance(
-            other, (sp.Expr, int, float)
+            other, _get_expr_num_types()
         ):
             return scaleDF(other, self)
         elif isinstance(other,tensorField):
@@ -1449,7 +1455,7 @@ class VFClass(tensorField):
     def __truediv__(self, scalar):
         if isinstance(scalar, float):
             inverse = 1 / scalar
-        elif isinstance(scalar, (int,sp.Expr)):
+        elif isinstance(scalar, _get_expr_num_types()):
             inverse = sp.Rational(1, scalar)
         else:
             return NotImplemented
@@ -1761,12 +1767,12 @@ class STFClass(tensorField):
             raise TypeError("Unsupported operand type(s) for - with STFClass")
 
     def __mul__(self, other):
-        if isinstance(other,(int,float,sp.Expr)):
+        if isinstance(other,_get_expr_num_types()):
             return STFClass(self.varSpace, {k:other*v for k,v in self.coeff_dict.items()}, self.degree, dgcvType=self.dgcvType, _simplifyKW=self._simplifyKW)
         return super().__mul__(other)
 
     def __rmul__(self, other):
-        if isinstance(other,(int,float,sp.Expr)):
+        if isinstance(other,_get_expr_num_types()):
             return STFClass(self.varSpace,  {k:other*v for k,v in self.coeff_dict.items()}, self.degree, dgcvType=self.dgcvType, _simplifyKW=self._simplifyKW)
         return super().__mul__(other)
 
@@ -1877,10 +1883,10 @@ class dgcvPolyClass(sp.Basic):
 
         # If varSpace is not provided, infer it from the free symbols in polyExpr
         if varSpace is None:
-            if isinstance(polyExpr, (int, float)):  # If polyExpr is a scalar
+            if isinstance(polyExpr, numbers.Number):  # If polyExpr is a scalar
                 self.varSpace = ()
             else:
-                self.varSpace = tuple(polyExpr.free_symbols)
+                self.varSpace = tuple(get_free_symbols(polyExpr))
         else:
             self.varSpace = tuple(varSpace)
 
@@ -1897,6 +1903,9 @@ class dgcvPolyClass(sp.Basic):
         self._poly_obj_complex = None
         self._poly_obj_real = None
 
+    def _sage_(self):
+        raise AttributeError
+
     @property
     def poly_obj_unformatted(self):
         """Lazily constructs and returns the unformatted Poly object."""
@@ -1912,7 +1921,7 @@ class dgcvPolyClass(sp.Basic):
             complex_expr = allToSym(self.polyExpr)
             # Get the free symbols of the transformed expression for generators
             complex_varSpace = tuple(
-                set.union(*[allToSym(j).free_symbols for j in self.varSpace])
+                set.union(*[get_free_symbols(allToSym(j)) for j in self.varSpace])
             )
             self._poly_obj_complex = sp.Poly(complex_expr, *complex_varSpace)
         return self._poly_obj_complex
@@ -1925,7 +1934,7 @@ class dgcvPolyClass(sp.Basic):
             real_expr = allToReal(self.polyExpr)
             # Get the free symbols of the transformed expression for generators
             real_varSpace = tuple(
-                set.union(*[allToReal(j).free_symbols for j in self.varSpace])
+                set.union(*[get_free_symbols(allToReal(j)) for j in self.varSpace])
             )
             self._poly_obj_real = sp.Poly(real_expr, *real_varSpace)
         return self._poly_obj_real
@@ -2016,7 +2025,7 @@ class dgcvPolyClass(sp.Basic):
                 term = (
                     sp.Mul(*[gen**exp for gen, exp in zip(poly_obj.gens, monom)]) * coeff
                 )
-                free_symbols = term.free_symbols
+                free_symbols = get_free_symbols(term)
 
                 # Check if all symbols are holomorphic
                 if all(
@@ -2044,7 +2053,7 @@ class dgcvPolyClass(sp.Basic):
                 term = (
                     sp.Mul(*[gen**exp for gen, exp in zip(poly_obj.gens, monom)]) * coeff
                 )
-                free_symbols = term.free_symbols
+                free_symbols = get_free_symbols(term)
 
                 # Check if all symbols are antiholomorphic
                 if all(
@@ -2090,7 +2099,7 @@ class dgcvPolyClass(sp.Basic):
                 term = (
                     sp.Mul(*[gen**exp for gen, exp in zip(poly_obj.gens, monom)]) * coeff
                 )
-                free_symbols = term.free_symbols
+                free_symbols = get_free_symbols(term)
 
                 # Check if the term contains both holomorphic and antiholomorphic variables
                 is_holomorphic = all(
@@ -2339,7 +2348,7 @@ class dgcvPolyClass(sp.Basic):
                 degreeUpperBound=self.degreeUpperBound,
             )
 
-        elif isinstance(other, (int, float, sp.Expr)):
+        elif isinstance(other, _get_expr_num_types()):
             # Add directly
             return dgcvPolyClass(
                 self.polyExpr + other,
@@ -2372,7 +2381,7 @@ class dgcvPolyClass(sp.Basic):
                 degreeUpperBound=self.degreeUpperBound,
             )
 
-        elif isinstance(other, (int, float, sp.Expr)):
+        elif isinstance(other, _get_expr_num_types()):
             # Subtract directly
             return dgcvPolyClass(
                 self.polyExpr - other,
@@ -2401,7 +2410,6 @@ class dgcvPolyClass(sp.Basic):
         ValueError
             If the multiplication involves a non-polynomial or unsupported expression.
         """
-        # Case 1: Multiplying by another dgcvPolyClass instance
         if isinstance(other, dgcvPolyClass):
             # Combine varSpaces, preserving order and removing duplicates
             new_varSpace = tuple(dict.fromkeys(self.varSpace + other.varSpace))
@@ -2423,8 +2431,7 @@ class dgcvPolyClass(sp.Basic):
                 degreeUpperBound=new_degreeUpperBound,
             )
 
-        # Case 2: Multiplying by a scalar (constant or polynomial)
-        elif isinstance(other, (int, float, sp.Number, sp.Poly, sp.Symbol)):
+        elif isinstance(other, (numbers.Number, sp.Poly, sp.Symbol)):
             # Multiply directly
             return dgcvPolyClass(
                 self.polyExpr * other,
@@ -2432,8 +2439,7 @@ class dgcvPolyClass(sp.Basic):
                 degreeUpperBound=self.degreeUpperBound,
             )
 
-        # Case 3: Handle non-polynomial expressions
-        elif isinstance(other, sp.Expr):
+        elif isinstance(other, _get_expr_num_types()):
             # Check if the scalar is a polynomial
             if sp.Poly(other, self.varSpace).is_zero:
                 raise ValueError(
@@ -2447,7 +2453,6 @@ class dgcvPolyClass(sp.Basic):
                 degreeUpperBound=self.degreeUpperBound,
             )
 
-        # Case 4: Unsupported types
         return NotImplemented
 
     def __rmul__(self, other):
@@ -2589,7 +2594,7 @@ def createVariables(
             "`createVariables` requires its first argument to be a string, which will be used in lables for the created variables."
         )
     if (
-        isinstance(real_label, int)
+        isinstance(real_label, numbers.Integral)
         and imaginary_label is None
         and number_of_variables is None
     ):
@@ -2773,7 +2778,7 @@ def variableProcedure(
             _obscure = True
 
         # Handle multi-index variable case.
-        if isinstance(multiindex_shape, (list, tuple)) and all(isinstance(n, int) and n > 0 for n in multiindex_shape):
+        if isinstance(multiindex_shape, (list, tuple)) and all(isinstance(n, numbers.Integral) and n > 0 for n in multiindex_shape):
             # Generate multi-index variable names.
             indices = list(carProd(*[range(initialIndex, initialIndex + n) for n in multiindex_shape]))
             var_names = [f"{labelLoc}_{'_'.join(map(str, idx))}" for idx in indices]
@@ -2830,7 +2835,7 @@ def variableProcedure(
                 }
 
         # Handle tuple of variables.
-        elif isinstance(number_of_variables, int) and number_of_variables >= 0:
+        elif isinstance(number_of_variables, numbers.Integral) and number_of_variables >= 0:
             lengthLoc = number_of_variables
             var_names = [f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)]
             vars = [sp.symbols(f"{labelLoc}{i}", real=assumeReal) for i in range(initialIndex, lengthLoc + initialIndex)]
@@ -3030,7 +3035,7 @@ def varWithVF(
                 }
 
         # Handle the tuple case
-        elif isinstance(number_of_variables, int) and number_of_variables >= 0:
+        elif isinstance(number_of_variables, numbers.Integral) and number_of_variables >= 0:
             lengthLoc = number_of_variables
             var_names = [
                 f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
@@ -3370,7 +3375,7 @@ def complexVarProc(
         # -------------------------------------------------
         # Tuple System Case (Phase 1: Build variables and update conversion info)
         # -------------------------------------------------
-        elif isinstance(number_of_variables, int) and number_of_variables > 0:
+        elif isinstance(number_of_variables, numbers.Number) and number_of_variables > 0:
             lengthLoc = number_of_variables
             variableProcedure(
                 labelLoc1,
@@ -3708,7 +3713,7 @@ def _format_complex_coordinates(
 
 
 def _VFDF_conversion(obj, default_var_format=None, _converter=None, coeffsOnly = None):
-    def converter(expr, _conv):     # typically invoking some recursion. E.g., symToReal may call _VFDF_conversion and have converter() apply symToReal to object components.
+    def converter(expr, _conv):     # !!! typically invoking some recursion... try to optimize
         if _conv is None:
             return expr
         return _conv(expr)
@@ -3812,18 +3817,14 @@ def holToReal(expr, skipVar=None, simplify_everything=True):
             except for those specified in skipVar.
     """
     vr = get_variable_registry()
-    # Work on a copy so as not to modify the original conversion dict.
     conv_holToReal = vr.get("conversion_dictionaries", {}).get("holToReal", {}).copy()
 
-    # If skipVar is provided, remove the holomorphic variables from conv_holToReal
     if skipVar:
         for var in skipVar:
             complex_system = vr.get("complex_variable_systems", {}).get(var, {})
             family_values = complex_system.get("family_values", ((), (), (), ()))
-            # For a single variable system, ensure family_values is iterable as tuple of iterables.
             if complex_system.get("family_type") == "single":
                 family_values = tuple([j] for j in family_values)
-            # Assume the first tuple contains the holomorphic variables.
             holomorphic_vars = family_values[0] if len(family_values) > 0 else ()
             for hol_var in holomorphic_vars:
                 if hol_var in conv_holToReal:
@@ -3832,23 +3833,19 @@ def holToReal(expr, skipVar=None, simplify_everything=True):
     if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
         co = False if simplify_everything is True else conv_holToReal
         return _VFDF_conversion(expr, default_var_format="real", _converter=holToReal, coeffsOnly = co)
-
-    if isinstance(expr, (int, float)):
+    if isinstance(expr, numbers.Number):
         return expr
-
-    if isinstance(expr, sp.Symbol):
+    if _is_atomic(expr):
         if expr in conv_holToReal:
             return conv_holToReal[expr]
         else:
             return expr
-
-    if isinstance(expr, sp.Expr):
-        filtered_subs = {sym: conv_holToReal[sym] for sym in expr.free_symbols if sym in conv_holToReal}
+    if isinstance(expr, _get_expr_types()):
+        filtered_subs = {sym: conv_holToReal[sym] for sym in get_free_symbols(expr) if sym in conv_holToReal}
         result = sp.sympify(expr).subs(filtered_subs)
         if simplify_everything:
             result = sp.simplify(result)
         return result
-
     if hasattr(expr, "applyfunc"):
         return expr.applyfunc(lambda e: holToReal(e, skipVar=skipVar, simplify_everything=simplify_everything))
     return expr
@@ -3875,15 +3872,12 @@ def realToSym(expr, skipVar=None, simplify_everything=True):
     vr = get_variable_registry()
     conv_realToSym = vr.get("conversion_dictionaries", {}).get("realToSym", {}).copy()
 
-    # If skipVar is provided, remove the corresponding real and imaginary variables from conv_realToSym.
     if skipVar:
         for var in skipVar:
             complex_system = vr.get("complex_variable_systems", {}).get(var, {})
             family_values = complex_system.get("family_values", ((), (), (), ()))
             if complex_system.get("family_type", None) == "single":
-                # Ensure family_values is a tuple of iterables
                 family_values = tuple([(j,) for j in family_values])
-            # Assume the third and fourth tuples are real and imaginary variables, respectively.
             real_vars = family_values[2] if len(family_values) > 2 else ()
             imag_vars = family_values[3] if len(family_values) > 3 else ()
             for real_var in real_vars + imag_vars:
@@ -3894,19 +3888,19 @@ def realToSym(expr, skipVar=None, simplify_everything=True):
         co = False if simplify_everything is True else conv_realToSym
         return _VFDF_conversion(expr, default_var_format="complex", _converter=realToSym, coeffsOnly = co)
 
-    if isinstance(expr, (int, float)):
+    if isinstance(expr, numbers.Number):
         return expr
 
-    if isinstance(expr, sp.Symbol):
+    if _is_atomic(expr):
         if expr in conv_realToSym:
             return conv_realToSym[expr]
         else:
             return expr
 
-    if isinstance(expr, sp.Expr):
+    if isinstance(expr, _get_expr_types()):
         filtered_subs = {
             sym: conv_realToSym[sym]
-            for sym in expr.free_symbols
+            for sym in get_free_symbols(expr)
             if sym in conv_realToSym
         }
         result = sp.sympify(expr).subs(filtered_subs)
@@ -3938,17 +3932,14 @@ def symToHol(expr, skipVar=None, simplify_everything=True):
             except for those specified in skipVar.
     """
     variable_registry = get_variable_registry()
-    # Work on a copy so as not to modify the original conversion dict.
     conversion_dict = variable_registry.get("conversion_dictionaries", {}).get("symToHol", {}).copy()
 
-    # If skipVar is provided, remove the antiholomorphic keys for those variable systems.
     if skipVar:
         for var in skipVar:
             complex_system = variable_registry.get("complex_variable_systems", {}).get(var, {})
             family_values = complex_system.get("family_values", ((), (), (), ()))
             if complex_system.get("family_type", None) == "single":
                 family_values = tuple([(j,) for j in family_values])
-            # Assume the second tuple contains the antiholomorphic variables.
             antiholomorphic_vars = family_values[1] if len(family_values) > 1 else ()
             for anti_var in antiholomorphic_vars:
                 if anti_var in conversion_dict:
@@ -3957,15 +3948,15 @@ def symToHol(expr, skipVar=None, simplify_everything=True):
     if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
         co = False if simplify_everything is True else conversion_dict
         return _VFDF_conversion(expr, default_var_format="complex", _converter=symToHol, coeffsOnly = co)
-    if isinstance(expr, (int, float)):
+    if isinstance(expr, numbers.Number):
         return expr
-    if isinstance(expr, sp.Symbol):
+    if _is_atomic(expr):
         if expr in conversion_dict:
             return conversion_dict[expr]
         else:
             return expr
-    if isinstance(expr, sp.Expr):
-        filtered_subs = {sym: conversion_dict[sym] for sym in expr.free_symbols if sym in conversion_dict}
+    if isinstance(expr, _get_expr_types()):
+        filtered_subs = {sym: conversion_dict[sym] for sym in get_free_symbols(expr) if sym in conversion_dict}
         result = expr.subs(filtered_subs)
         if simplify_everything:
             result = sp.simplify(result)
@@ -3996,10 +3987,8 @@ def holToSym(expr, skipVar=None, simplify_everything=True):
         The expression with holomorphic variables (and any present real variables)
         replaced by symbolic conjugates, except for those specified in skipVar.
     """
-    # First apply holToReal()
     expr = holToReal(expr, skipVar=skipVar, simplify_everything=simplify_everything)
 
-    # Then apply realToSym()
     expr = realToSym(expr, skipVar=skipVar, simplify_everything=simplify_everything)
 
     return expr
@@ -4046,21 +4035,16 @@ def realToHol(expr, skipVar=None, simplify_everything=True):
             The expression with real variables replaced by holomorphic variables,
             except for those specified in skipVar.
     """
-    import sympy as sp
-    # Get variable registry and conversion dictionary
     vr = get_variable_registry()
-    # We'll work on a copy so as not to modify the original dict
     conv_realToHol = vr.get("conversion_dictionaries", {}).get("realToHol", {}).copy()
-
-    # If skipVar provided, remove the corresponding real and imaginary variables from conv_realToHol.
     if skipVar:
         for var in skipVar:
             complex_system = vr.get("complex_variable_systems", {}).get(var, {})
             family_values = complex_system.get("family_values", ((), (), (), ()))
-            # For a single system, ensure family_values is treated as tuple of iterables
+
             if complex_system.get("family_type") == "single":
                 family_values = tuple([j] for j in family_values)
-            # Assume the third and fourth tuples are real and imaginary parts.
+
             real_vars = family_values[2] if len(family_values) > 2 else ()
             imag_vars = family_values[3] if len(family_values) > 3 else ()
             for real_var in real_vars + imag_vars:
@@ -4073,17 +4057,16 @@ def realToHol(expr, skipVar=None, simplify_everything=True):
         return _VFDF_conversion(
             expr, default_var_format="complex", _converter=realToHol, coeffsOnly = co
         )
-    if isinstance(expr, (int, float)):
+    if isinstance(expr, numbers.Number):
         return expr
-    if isinstance(expr, sp.Symbol):
+    if _is_atomic(expr):
         if expr in conv_realToHol:
             return conv_realToHol[expr]
         else:
             return expr
-    if isinstance(expr, sp.Expr):
-        # Build a reformatted substitution dictionary only for symbols that occur in expr.free_symbols.
+    if isinstance(expr, _get_expr_types()):
         reformatted_subs_dict = {
-            sym: conv_realToHol[sym] for sym in expr.free_symbols if sym in conv_realToHol
+            sym: conv_realToHol[sym] for sym in get_free_symbols(expr) if sym in conv_realToHol
         }
         result = sp.sympify(expr).subs(reformatted_subs_dict)
         if simplify_everything:
@@ -4115,7 +4098,6 @@ def symToReal(expr, skipVar=None, simplify_everything=True):
     variable_registry = get_variable_registry()
     conversion_dict = variable_registry.get("conversion_dictionaries", {}).get("symToReal", {}).copy()
 
-    # If skipVar is provided, remove the symbolic conjugate keys for the given systems.
     if skipVar:
         for var in skipVar:
             complex_system = variable_registry.get("complex_variable_systems", {}).get(var, {})
@@ -4133,16 +4115,16 @@ def symToReal(expr, skipVar=None, simplify_everything=True):
         co = False if simplify_everything is True else conversion_dict
         return _VFDF_conversion(expr, default_var_format="real", _converter=symToReal, coeffsOnly = co)
 
-    if isinstance(expr, (int, float)):
+    if isinstance(expr, numbers.Number):
         return expr
-    if isinstance(expr, sp.Symbol):
+    if _is_atomic(expr):
         if expr in conversion_dict:
             return conversion_dict[expr]
         else:
             return expr
-    if isinstance(expr, sp.Expr):
+    if isinstance(expr, _get_expr_types()):
         filtered_subs = {sym: conversion_dict[sym]
-                         for sym in expr.free_symbols if sym in conversion_dict}
+                         for sym in get_free_symbols(expr) if sym in conversion_dict}
         result = expr.subs(filtered_subs)
         if simplify_everything:
             result = sp.simplify(result)
@@ -4153,7 +4135,7 @@ def symToReal(expr, skipVar=None, simplify_everything=True):
 
 def allToReal(expr, skipVar=None, simplify_everything=True):
     """
-    ⚠️ ... not to be confused with "all too real"! 😊
+    !... not to be confused with "all too real"!
 
     Converts all variables (holomorphic, symbolic conjugates, and real) to real variables.
 
@@ -4168,14 +4150,11 @@ def allToReal(expr, skipVar=None, simplify_everything=True):
         The expression with all variables converted to real variables,
         except for those specified in skipVar.
     """
-    # First convert symbolic conjugates to real variables
     expr = symToReal(expr, skipVar=skipVar, simplify_everything=simplify_everything)
 
-    # Then convert holomorphic variables to real variables
     expr = holToReal(expr, skipVar=skipVar, simplify_everything=simplify_everything)
 
     return expr
-
 
 def allToHol(expr, skipVar=None, simplify_everything=True):
     """
@@ -4198,10 +4177,8 @@ def allToHol(expr, skipVar=None, simplify_everything=True):
     if isinstance(expr, tuple):
         return [allToHol(j) for j in expr]
 
-    # First convert symbolic conjugates to real variables
     expr = symToHol(expr, skipVar=skipVar, simplify_everything=simplify_everything)
 
-    # Then convert real variables to holomorphic variables
     expr = realToHol(expr, skipVar=skipVar, simplify_everything=simplify_everything)
 
     return expr
@@ -4398,6 +4375,7 @@ def compressDGCVClass(obj):
         stacklevel=2
     )
     return compress_dgcv_class(obj)
+
 def compress_dgcv_class(obj):
     """Removes superfluous variables from the variable space that a VFClass or DFClass object is defined w.r.t."""
     if isinstance(obj, DFClass):
@@ -4828,7 +4806,7 @@ def changeTensorFieldBasis(tensor_field, new_varSpace):
         else:
             raise KeyError(f"First variable {first_var} in tensor_field.varSpace is not part of complex variable system in dgcv's variable management framework.")
 
-        # Validate that all variables in new_varSpace belong to dgcv's complex variable system
+        # Verify all variables in new_varSpace belong to dgcv's complex variable system
         if not all(var in cd['real_part'] or var in cd['find_parents'] for var in new_varSpace):
             warnings.warn(
                 "`changeTensorFieldBasis` was given a `complex` type tensor field and `new_varSpace` "
@@ -4855,7 +4833,7 @@ def changeTensorFieldBasis(tensor_field, new_varSpace):
                         formatted_varSpace.append(var)
                     elif var in cd['real_part']:  # Convert hol/antihol to real/imag
                         real_var = cd['real_part'][var]  # Retrieve real part
-                        imag_var = next(iter((cd['im_part'][var]).free_symbols))  # Retrieve imaginary part
+                        imag_var = next(iter(get_free_symbols((cd['im_part'][var]))))  # Retrieve imaginary part
                         if real_var not in formatted_varSpace:
                             formatted_varSpace.append(real_var)
                         if imag_var not in formatted_varSpace:
@@ -5516,7 +5494,7 @@ def tensor_product(*args, doNotSimplify=False):
     if len(args) > 1:
         result = args[0]
         for next_tensor in args[1:]:
-            if isinstance(next_tensor,(float,int,sp.Expr)):
+            if isinstance(next_tensor,_get_expr_num_types()):
                 result = next_tensor * result
             else:
                 result = tensor_productOf2(result, next_tensor)

@@ -3,6 +3,9 @@ from itertools import combinations
 
 import sympy as sp
 
+from ._config import get_dgcv_settings_registry
+from .backends._sage_backend import get_sage_module
+from .backends._symbolic_api import get_free_symbols
 from .eds.eds import (
     _equation_formatting,
     _sympy_to_abstract_ZF,
@@ -90,36 +93,98 @@ def solve_dgcv(eqns, vars_to_solve=None, verbose=False, method="solve", simplify
     eqns, vars_to_solve = normalize_equations_and_vars(eqns, vars_to_solve)
     processed_eqns, system_vars, extra_vars, variables_dict = _equations_preprocessing(eqns, vars_to_solve)
 
-    def _try_linsolve(eqns, vars_):
-        try:
-            sol_set = sp.linsolve(eqns, *vars_)
-            if sol_set:
-                sol_tuple = next(iter(sol_set))
-                if all(s is not None for s in sol_tuple):
-                    return [dict(zip(vars_, sol_tuple))]
-        except Exception:
-            pass
-        return []
+    use_sage = get_dgcv_settings_registry().get('default_symbolic_engine','').lower() == 'sage'
+    if use_sage:
+        orig_expr_vars = set(system_vars)
+        for eqn in processed_eqns:
+            orig_expr_vars |= get_free_symbols(eqn)
+        # Build Sage symbol map
+        sage = get_sage_module()
+        symbol_map = {}
+        for sym in orig_expr_vars:
+            if getattr(sym, 'is_real', False):
+                s = sage.var(str(sym), domain="real")
+            else:
+                s = sage.var(str(sym))
+            symbol_map[sym] = s
+        # Convert SymPy eqns and vars into Sage
+        s_eqns = [sage.SR(str(e)) for e in processed_eqns]
+        s_vars = [symbol_map[v] for v in system_vars]
 
-    def _try_solve(eqns, vars_):
-        try:
-            return sp.solve(eqns, vars_, dict=True)
-        except Exception:
-            return []
-
-    # Decide on solving strategy
     preformatted_solutions = []
-    if method == "linsolve":
-        preformatted_solutions = _try_linsolve(processed_eqns, system_vars)
-    elif method == "solve":
-        preformatted_solutions = _try_solve(processed_eqns, system_vars)
-    elif method == "auto":
-        preformatted_solutions = _try_linsolve(processed_eqns, system_vars)
-        if not preformatted_solutions:
-            warnings.warn("linsolve failed or returned no solution. Falling back to sympy.solve.", RuntimeWarning)
-            preformatted_solutions = _try_solve(processed_eqns, system_vars)
+    if use_sage:
+        # Sage-first strategy: atomic conversion already done above
+        if method in ("linsolve", "auto"):
+            try:
+                A, b = sage.linear_equations_matrix(s_eqns, s_vars)
+                sol_vector = A.solve_right(b)
+                sol_set = [dict(zip(s_vars, sol_vector))]
+            except Exception:
+                sol_set = []
+            if method == "auto" and not sol_set:
+                sol_set = sage.solve(s_eqns, s_vars, solution_dict=True)
+        elif method == "solve":
+            sol_set = sage.solve(s_eqns, s_vars, solution_dict=True)
+        else:
+            raise ValueError(f"Unknown method '{method}'. Use 'auto', 'linsolve', or 'solve'.")
+        # Convert Sage solutions back to SymPy
+        inv_map = {v_sage: sym for sym, v_sage in symbol_map.items()}
+        for sol in sol_set:
+            sol_py = {}
+            for v_sage, val_sage in sol.items():
+                # key: original SymPy symbol
+                sym = inv_map.get(v_sage, sp.sympify(str(v_sage), evaluate=False))
+                # value: convert to SymPy and then replace atoms
+                val = sp.sympify(str(val_sage), evaluate=False)
+                # subs fresh symbols back to original ones
+                subs_map = {sp.Symbol(str(orig)): orig for orig in symbol_map.keys()}
+                val = val.subs(subs_map)
+                sol_py[sym] = val
+            preformatted_solutions.append(sol_py)
     else:
-        raise ValueError(f"Unknown method '{method}'. Use 'auto', 'linsolve', or 'solve'.")
+        # SymPy-first strategy (unchanged)
+        if method == "linsolve":
+            try:
+                sol_set = sp.linsolve(processed_eqns, *system_vars)
+                if sol_set:
+                    sol_tuple = next(iter(sol_set))
+                    if all(s is not None for s in sol_tuple):
+                        preformatted_solutions = [dict(zip(system_vars, sol_tuple))]
+                    else:
+                        preformatted_solutions = []
+                else:
+                    preformatted_solutions = []
+            except Exception:
+                preformatted_solutions = []
+        elif method == "solve":
+            try:
+                preformatted_solutions = sp.solve(processed_eqns, system_vars, dict=True)
+            except Exception:
+                preformatted_solutions = []
+        elif method == "auto":
+            try:
+                sol_set = sp.linsolve(processed_eqns, *system_vars)
+                if sol_set:
+                    sol_tuple = next(iter(sol_set))
+                    if all(s is not None for s in sol_tuple):
+                        preformatted_solutions = [dict(zip(system_vars, sol_tuple))]
+                    else:
+                        preformatted_solutions = []
+                else:
+                    preformatted_solutions = []
+            except Exception:
+                preformatted_solutions = []
+            if not preformatted_solutions:
+                warnings.warn(
+                    "linsolve failed or returned no solution. Falling back to sympy.solve.",
+                    RuntimeWarning
+                )
+                try:
+                    preformatted_solutions = sp.solve(processed_eqns, system_vars, dict=True)
+                except Exception:
+                    preformatted_solutions = []
+        else:
+            raise ValueError(f"Unknown method '{method}'. Use 'auto', 'linsolve', or 'solve'.")
 
     # Reformat solutions back into dgcv form
     solutions_formatted = []

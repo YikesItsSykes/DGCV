@@ -26,6 +26,7 @@ import warnings
 import sympy as sp
 
 from ._config import get_variable_registry
+from .backends._caches import _get_expr_num_types
 from .dgcv_core import (
     DFClass,
     STFClass,
@@ -67,7 +68,7 @@ def Del(arg1):
     """
     variable_registry = get_variable_registry()
     # Ensure arg1 is a DFClass or convert it into a zero-form
-    if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sp.Expr)):
+    if not isinstance(arg1, DFClass) and isinstance(arg1, _get_expr_num_types()):
         arg1 = allToSym(arg1)
         varSpace = tuple(
             [
@@ -152,7 +153,7 @@ def DelBar(arg1):
     """
     variable_registry = get_variable_registry()
     # Ensure arg1 is a DFClass or convert it into a zero-form
-    if not isinstance(arg1, DFClass) and isinstance(arg1, (int, float, sp.Expr)):
+    if not isinstance(arg1, DFClass) and isinstance(arg1, _get_expr_num_types()):
         arg1 = allToSym(arg1)
         varSpace = tuple(
             [

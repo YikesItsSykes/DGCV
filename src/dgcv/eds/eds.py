@@ -1,3 +1,4 @@
+import numbers
 import random
 import string
 import warnings
@@ -14,6 +15,8 @@ from .._safeguards import (
     retrieve_passkey,
     validate_label,
 )
+from ..backends._caches import _get_expr_num_types, _get_expr_types
+from ..backends._symbolic_api import get_free_symbols
 from ..combinatorics import carProd, weightedPermSign
 from ..dgcv_formatter import process_basis_label
 from ..vmf import clearVar
@@ -22,7 +25,7 @@ from ..vmf import clearVar
 def factor_dgcv(expr, **kw):
     """Apply custom .factor() method once to dgcv classes, and then try SymPy.factor."""
 
-    dgcv_classes = (zeroFormAtom, abstract_ZF,abstract_DF, abstDFAtom,abstDFMonom)  
+    dgcv_classes = (zeroFormAtom, abstract_ZF,abstract_DF, abstDFAtom, abstDFMonom)  
 
     if isinstance(expr, dgcv_classes):
         return expr.factor(**kw)
@@ -134,7 +137,7 @@ class zeroFormAtom(sp.Basic):
         for elem in coframe_derivatives:
             if not len(elem) == 0 and not isinstance(elem[0],abst_coframe):
                 raise ValueError(f"first elements in the `coframe_derivatives` tuples must be coframe type. Given object {elem} instead with type {type(elem)}")
-            if not all(isinstance(order, int) and order in range(elem[0].dimension) for order in elem[1:]):
+            if not all(isinstance(order, numbers.Integral) and order in range(elem[0].dimension) for order in elem[1:]):
                 raise ValueError(f"tuples in `coframe_derivatives` must begin with an abstCoframe instance followed by non-negative integers in the range of the corresponding coframe dimension. Instead of an integer tuple, recieved: {elem[1:]} \n with associated coframe basis: {elem[0]}")
         coframe_derivatives = tuple([tuple(elem) for elem in coframe_derivatives if len(elem[1:])>0])
         if coframe is None:
@@ -177,6 +180,8 @@ class zeroFormAtom(sp.Basic):
             self._differential_order = sum([len(elem[1:]) for elem in self.coframe_derivatives])
         return self._differential_order
 
+    def _sage_(self):
+        raise AttributeError
 
     def __eq__(self, other):
         """
@@ -248,7 +253,7 @@ class zeroFormAtom(sp.Basic):
             return other
         if self.is_zero:
             return abstract_ZF(0)
-        if isinstance(other, (zeroFormAtom, abstract_ZF, int, float, sp.Expr)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
             return abstract_ZF(("mul", self, other))
         return NotImplemented
 
@@ -262,7 +267,7 @@ class zeroFormAtom(sp.Basic):
         """
         Division with zeroFormAtom
         """
-        if isinstance(other, (zeroFormAtom, int, float, sp.Expr)):
+        if isinstance(other, zeroFormAtom) or isinstance(other,_get_expr_num_types()):
             return abstract_ZF(("div", self, other))
         return NotImplemented
 
@@ -270,7 +275,7 @@ class zeroFormAtom(sp.Basic):
         """
         Division with zeroFormAtom instances
         """
-        if isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
             return abstract_ZF(("div", other, self))
 
         return NotImplemented
@@ -281,12 +286,12 @@ class zeroFormAtom(sp.Basic):
         Exponentiation of zeroFormAtom:
         - Returns a structured `abstract_ZF` exponentiation.
         """
-        if isinstance(exp, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+        if isinstance(exp, (zeroFormAtom, abstract_ZF)) or isinstance(exp,_get_expr_num_types()):
             return abstract_ZF(('pow', self, exp))
         return NotImplemented
 
     def __rpow__(self, other):
-        if isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
             return abstract_ZF(("pow", other, self))
 
         return NotImplemented
@@ -295,14 +300,14 @@ class zeroFormAtom(sp.Basic):
         """
         Addition with zeroFormAtom
         """
-        if isinstance(other, (zeroFormAtom, int, float, sp.Expr, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
             return abstract_ZF(("add", self, other))
         return NotImplemented
     def __radd__(self, other):
         """
         Addition with zeroFormAtom
         """
-        if isinstance(other, (zeroFormAtom, int, float, sp.Expr, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
             return abstract_ZF(("add", self, other))
         return NotImplemented
 
@@ -310,14 +315,14 @@ class zeroFormAtom(sp.Basic):
         """
         Subtraction of zeroFormAtom:
         """
-        if isinstance(other, (zeroFormAtom, int, float, sp.Expr, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
             return abstract_ZF(("sub", self, other))
         return NotImplemented
     def __rsub__(self, other):
         """
         Subtraction of zeroFormAtom
         """
-        if isinstance(other, (zeroFormAtom, int, float, sp.Expr, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
             return abstract_ZF(("sub", other, self))
         return NotImplemented
 
@@ -411,7 +416,7 @@ class zeroFormAtom(sp.Basic):
                     truthVal, coefDer = self.is_diff_corollary(key,returnCD=True)
                     if truthVal:
                         new_value = data[key]
-                        if isinstance(new_value, (zeroFormAtom, abstract_ZF, int, float, sp.Expr)):
+                        if isinstance(new_value, (zeroFormAtom, abstract_ZF)) or isinstance(new_value,_get_expr_num_types()):
                             for cd in coefDer:
                                 new_value = coframe_derivative(new_value,*cd)
                             return new_value
@@ -419,7 +424,7 @@ class zeroFormAtom(sp.Basic):
                             raise TypeError(f'subs() cannot replace a `zeroFormAtom` with object type {type(new_value)}.')
             if self in data:
                 new_value = data[self]
-                if isinstance(new_value, (zeroFormAtom, abstract_ZF, int, float, sp.Expr)):
+                if isinstance(new_value, (zeroFormAtom, abstract_ZF)) or isinstance(new_value,_get_expr_num_types()):
                     return new_value
                 else:
                     raise TypeError(f'subs() cannot replace a `zeroFormAtom` with object type {type(new_value)}.')
@@ -614,8 +619,8 @@ def createZeroForm(labels, index_set={}, initial_index=1, assumeReal=False, cofr
         # Return the list of non-empty substrings
         return [s for s in substrings if len(s) > 0]
 
-    if isinstance(index_set,int) and index_set>0:
-        if not isinstance(initial_index,int):
+    if isinstance(index_set,numbers.Integral) and index_set>0:
+        if not isinstance(initial_index,numbers.Integral):
             initial_index = 1
         index_set = {'lower':list(range(initial_index,index_set+initial_index))}
     elif not isinstance(index_set,dict):
@@ -661,10 +666,10 @@ def _zeroFormFactory(label, index_set={}, assumeReal=False, coframe=None, cofram
         def expand_indices(index):
             if index is None:
                 return []
-            if isinstance(index, int):
+            if isinstance(index, numbers.Integral):
                 return [[index]]
             if isinstance(index, list):
-                return [[i] if isinstance(i, int) else i for i in index]
+                return [[i] if isinstance(i, numbers.Integral) else i for i in index]
             raise ValueError("Indices must be an integer or a list of integers/lists.")
 
         upper_indices = expand_indices(index_set.get("upper", None))
@@ -800,7 +805,7 @@ class abstract_ZF(sp.Basic):
         if isinstance(base, tuple):
             op, *args = base  # Extract operator and operands
             if op == 'sub':
-                if all(isinstance(j,(int,float,sp.Expr)) for j in args):
+                if all(isinstance(j,_get_expr_num_types()) for j in args):
                     base = args[0]-args[1]
                 elif args[0]==args[1]:
                     base = 0
@@ -809,7 +814,7 @@ class abstract_ZF(sp.Basic):
                 elif abstract_ZF(args[1]).is_zero:
                     base = args[0]
             elif op == 'div':
-                if all(isinstance(j,(int,float,sp.Expr)) for j in args):
+                if all(isinstance(j,_get_expr_num_types()) for j in args):
                     base = sp.Rational(args[0],args[1])
                 elif args[0]==args[1] and (not abstract_ZF(args[0]).is_zero):
                     base = 1
@@ -851,7 +856,7 @@ class abstract_ZF(sp.Basic):
                                 new_other_terms[term] = new_other_terms.get(term, 0) + 1
 
                             # Case 2: Multiplication structure (e.g., ('mul', 1, A))
-                            elif isinstance(term, tuple) and term[0] == "mul" and len(term) == 3 and isinstance(term[1], (int, float, sp.Expr)):
+                            elif isinstance(term, tuple) and term[0] == "mul" and len(term) == 3 and isinstance(term[1], _get_expr_num_types()):
                                 coeff, base_term = term[1], term[2]
                                 new_other_terms[base_term] = new_other_terms.get(base_term, 0) + coeff
 
@@ -913,7 +918,7 @@ class abstract_ZF(sp.Basic):
                         base = 0
                     elif is_one_check(left):
                         base = 1
-                    elif isinstance(left,(int,float,sp.Expr)) and isinstance(right,(int,float,sp.Expr)):
+                    elif isinstance(left,_get_expr_num_types()) and isinstance(right,_get_expr_num_types()):
                         base =left**right
                     elif isinstance(left, abstract_ZF) and isinstance(left.base, tuple) and left.base[0] == "pow":
                         inner_base, inner_exp = left.base[1], left.base[2]
@@ -927,7 +932,7 @@ class abstract_ZF(sp.Basic):
             obj.base = base 
             return obj
 
-        elif not isinstance(base, (zeroFormAtom, abstract_ZF, int, float, sp.Expr)):
+        elif not (isinstance(base, (zeroFormAtom, abstract_ZF)) or isinstance(base,_get_expr_num_types())):
             raise TypeError("Base must be zeroFormAtom, int, float, sympy.Expr, abstract_ZF, or an operation tuple.")
 
         # Call sp.Basic constructor
@@ -982,6 +987,9 @@ class abstract_ZF(sp.Basic):
             self._free_symbols = FS
         return self._free_symbols
 
+    def _sage_(self):
+        raise AttributeError
+
     def __hash__(self):
         """
         Hash the abstract_ZF instance for use in sets and dicts.
@@ -1007,7 +1015,7 @@ class abstract_ZF(sp.Basic):
         """
         Symbolic substitution in abstract_ZF.
         """
-        if isinstance(self.base,(int,float)):
+        if isinstance(self.base,numbers.Number):
             return self
         if isinstance(data, (list, tuple)) and all(isinstance(j, tuple) and len(j) == 2 for j in data):
             l1 = len(data)
@@ -1016,12 +1024,12 @@ class abstract_ZF(sp.Basic):
                 warnings.warn('Provided substitution rules had repeat keys, and only one was used.')
         if isinstance(self.base,zeroFormAtom):
             return abstract_ZF(self.base.subs(data,with_diff_corollaries=with_diff_corollaries))
-        if isinstance(self.base,sp.Expr):
+        if isinstance(self.base,_get_expr_types()):
             new_subs = dict()
             spare_subs = dict()
             for k,v in data.items():
-                if isinstance(k,sp.Expr):
-                    if isinstance(v,(sp.Expr,float,int)):
+                if isinstance(k,_get_expr_types()):
+                    if isinstance(v,_get_expr_num_types()):
                         new_subs[k] = v
                     else:
                         spare_subs[k] = v
@@ -1047,12 +1055,12 @@ class abstract_ZF(sp.Basic):
                         else:
                             raise ValueError('dgcv subs methods do not support replacing 0-forms with higher degree forms.')
                     return newArg
-                if isinstance(arg,sp.Expr):
+                if isinstance(arg,_get_expr_types()):
                     new_subs = dict()
                     spare_subs = dict()
                     for k,v in data.items():
-                        if isinstance(k,sp.Expr):
-                            if isinstance(v,(sp.Expr,float,int)):
+                        if isinstance(k,_get_expr_types()):
+                            if isinstance(v,_get_expr_num_types()):
                                 new_subs[k] = v
                             else:
                                 spare_subs[k] = v
@@ -1084,7 +1092,7 @@ class abstract_ZF(sp.Basic):
         Addition of abstract_ZF instances.
         Supports addition with int, float, and sympy.Expr.
         """
-        if not isinstance(other, (abstract_ZF, int, float, sp.Expr, zeroFormAtom)):
+        if not (isinstance(other, (abstract_ZF, zeroFormAtom)) or isinstance(other, _get_expr_num_types())):
             return NotImplemented
         if other == 0:
             return self
@@ -1100,7 +1108,7 @@ class abstract_ZF(sp.Basic):
         """
         if isinstance(other, zeroFormAtom):
             other = abstract_ZF(other)
-        if not isinstance(other, (abstract_ZF, int, float, sp.Expr)):
+        if not (isinstance(other, (abstract_ZF)) or isinstance(other, _get_expr_num_types())):
             return NotImplemented
         if other == 0:
             return self
@@ -1124,8 +1132,8 @@ class abstract_ZF(sp.Basic):
 
             return abstract_ZF(("mul", self.base, other.base))  # Default multiplication for abstract_ZF instances
 
-        elif isinstance(other, (int, float, sp.Expr)):
-            if isinstance(self.base,tuple) and self.base[0]=='mul' and isinstance(self.base[1],(int,float,sp.Expr)):
+        elif isinstance(other, _get_expr_num_types()):
+            if isinstance(self.base,tuple) and self.base[0]=='mul' and isinstance(self.base[1], _get_expr_num_types()):
                 factors = tuple(['mul']+[other*f if count==0 else f for count,f in enumerate(self.base[1:])])
             else: 
                 factors = ("mul", other, self.base)
@@ -1150,7 +1158,7 @@ class abstract_ZF(sp.Basic):
         Division of abstract_ZF instances.
         Supports division with int, float, and sympy.Expr.
         """
-        if isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
             return abstract_ZF(("div", self, other))
 
         return NotImplemented
@@ -1160,7 +1168,7 @@ class abstract_ZF(sp.Basic):
         Division of abstract_ZF instances.
         Supports division with int, float, and sympy.Expr.
         """
-        if isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
             return abstract_ZF(("div", other, self))
 
         return NotImplemented
@@ -1170,7 +1178,7 @@ class abstract_ZF(sp.Basic):
         Exponentiation of abstract_ZF instances.
         Supports exponentiation with int, float, and sympy.Expr.
         """
-        if isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
             return abstract_ZF(("pow", self, other))
 
         return NotImplemented
@@ -1179,7 +1187,7 @@ class abstract_ZF(sp.Basic):
         """
         Exponentiation of abstract_ZF instances.
         """
-        if isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
             return abstract_ZF(("pow", other, self))
 
         return NotImplemented
@@ -1396,7 +1404,7 @@ class abstract_ZF(sp.Basic):
                             formatted_args.append('-1')
                         else:
                             formatted_args.append('-')
-                elif op=='pow' and isinstance(args[1],sp.Rational) and all(isinstance(j,int) and j>0 for j in [args[1].numerator,args[1].denominator-1]):
+                elif op=='pow' and isinstance(args[1],numbers.Rational) and all(isinstance(j,numbers.Integral) and j>0 for j in [args[1].numerator,args[1].denominator-1]):
                     op = '_handled'
                     if isinstance(arg,tuple):
                         arg_latex = f"{{{abstract_ZF(arg)._latex(printer=printer)}}}"
@@ -1457,7 +1465,7 @@ class abstract_ZF(sp.Basic):
                 return abstract_ZF(zf), stabilized
             else:
                 return zf, stabilized
-        if isinstance(zf.base,(int,float,sp.Expr)):
+        if isinstance(zf.base,_get_expr_num_types()):
             return zf, True     # True for stabilized
         if isinstance(zf.base,tuple):
             stabilized = True   # default, may change
@@ -1496,7 +1504,7 @@ class abstDFAtom(sp.Basic):
             coeff = 0
         elif hasattr(coeff,'is_one') and coeff.is_one:
             coeff = 1
-        if isinstance(coeff,(int,float)):
+        if isinstance(coeff,numbers.Integral):
             coeff = sp.sympify(coeff)
 
         obj = sp.Basic.__new__(cls, coeff, degree, label, ext_deriv_order, _markers)
@@ -1510,6 +1518,9 @@ class abstDFAtom(sp.Basic):
 
     def __init__(self, coeff, degree, label=None, ext_deriv_order=0, _markers=frozenset()):
         self.coeffs = [coeff]
+
+    def _sage_(self):
+        raise AttributeError
 
     def __eq__(self, other):
         """
@@ -1553,7 +1564,7 @@ class abstDFAtom(sp.Basic):
     def __repr__(self):
         """String representation for abstDFAtom."""
         def extDerFormat(string):
-            if isinstance(self.ext_deriv_order,int) and self.ext_deriv_order>0:
+            if isinstance(self.ext_deriv_order,numbers.Integral) and self.ext_deriv_order>0:
                 return f'extDer({string},order = {self.ext_deriv_order})'
             else:
                 return string
@@ -1608,7 +1619,7 @@ class abstDFAtom(sp.Basic):
 
     def __str__(self):
         def extDerFormat(string):
-            if isinstance(self.ext_deriv_order,int) and self.ext_deriv_order!=0:
+            if isinstance(self.ext_deriv_order,numbers.Integral) and self.ext_deriv_order!=0:
                 return f'{string}_extD_{self.ext_deriv_order}'
             else:
                 return string
@@ -1684,8 +1695,8 @@ class abstDFAtom(sp.Basic):
         new_coeff = None
         if isinstance(self.coeff,(zeroFormAtom,abstract_ZF)):
             new_coeff = (self.coeff).subs(subs_data,with_diff_corollaries = with_diff_corollaries)
-        elif isinstance(self.coeff,sp.Expr):
-            if not all(isinstance(k,(sp.Expr)) and isinstance(v,(sp.Expr,int,float)) for k,v in subs_data.items()):
+        elif isinstance(self.coeff,_get_expr_types()):
+            if not all(isinstance(k,_get_expr_types()) and isinstance(v,_get_expr_num_types()) for k,v in subs_data.items()):
                 new_coeff = abstract_ZF(_sympy_to_abstract_ZF(self.coeff,subs_rules=subs_data))
             else:
                 new_coeff = (self.coeff).subs(subs_data)
@@ -1724,7 +1735,7 @@ class abstDFAtom(sp.Basic):
         elif isinstance(other, abstDFMonom):
             # Prepend this atom as a factor to the monomial's factors
             return abstDFMonom([self] + other.factors_sorted)
-        elif isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+        elif isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
             return abstDFAtom(self.coeff * other, self.degree, self.label, _markers=self._markers)
         else:
             return NotImplemented
@@ -1734,7 +1745,7 @@ class abstDFAtom(sp.Basic):
         if isinstance(other, abstDFMonom):
             # Append this atom as a factor to the monomial
             return abstDFMonom(other.factors_sorted + [self])
-        elif isinstance(other, (int, float, sp.Expr, zeroFormAtom, abstract_ZF)):
+        elif isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
             return abstDFAtom(self.coeff * other, self.degree, self.label,_markers=self._markers)
         else:
             return NotImplemented
@@ -1745,7 +1756,7 @@ class abstDFAtom(sp.Basic):
                 other = other.coeff
             else:
                 other = other.coeff*zeroFormAtom(other.label,_markers = other._markers)
-        if isinstance(other,(float,int,sp.Expr,abstract_ZF,zeroFormAtom)):
+        if isinstance(other,(abstract_ZF,zeroFormAtom)) or isinstance(other, _get_expr_num_types()):
             if other == 0:
                 raise ZeroDivisionError("division by zero")
             return (1/other)*self
@@ -1758,7 +1769,7 @@ class abstDFAtom(sp.Basic):
         """Addition with another atom or monomial returns an abstract_DF."""
         if other is None:
             return self
-        if isinstance(other,(int,float,sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             other = abstract_ZF(other)
         if isinstance(other, (abstDFMonom, abstDFAtom)):
             return abstract_DF([abstDFMonom([self]), other])
@@ -1775,9 +1786,8 @@ class abstDFAtom(sp.Basic):
         """Subtraction with another atom or monomial returns an abstract_DF."""
         if other is None:
             return self
-        if isinstance(other,(int,float,sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             other = abstract_ZF(other)
-
         elif isinstance(other, (abstDFMonom, abstDFAtom)):
             return abstract_DF([abstDFMonom([self]), -1 * other])
         elif isinstance(other, abstract_DF):
@@ -2039,6 +2049,9 @@ class abstDFMonom(sp.Basic):
         )
         self.degree = sum(factor.degree for factor in self.factors if factor.coeff!=0)
 
+    def _sage_(self):
+        raise AttributeError
+
     def __eq__(self, other):
         """
         Check equality of two abstDFMonom instances.
@@ -2069,7 +2082,7 @@ class abstDFMonom(sp.Basic):
             if factor == 0:
                 coeff = 0
                 break
-            if isinstance(factor,(int,float,sp.Expr,abstract_ZF,zeroFormAtom)):
+            if isinstance(factor,(abstract_ZF,zeroFormAtom)) or isinstance(factor, _get_expr_num_types()):
                 coeff *= factor
         return coeff
 
@@ -2202,7 +2215,7 @@ class abstDFMonom(sp.Basic):
         elif isinstance(other, abstDFAtom):
             # Append the atom as a factor to this monomial
             return abstDFMonom(self.factors_sorted + [other])
-        elif isinstance(other, (int, float, sp.Expr,abstract_ZF,zeroFormAtom)):
+        elif isinstance(other, (abstract_ZF,zeroFormAtom)) or isinstance(other, _get_expr_num_types()):
             # Scalar multiplication (prepend as an atom with degree 0)
             other_sympy = sp.sympify(other)
             return abstDFMonom([abstDFAtom(other_sympy, 0)] + self.factors_sorted)
@@ -2214,7 +2227,7 @@ class abstDFMonom(sp.Basic):
 
     def __rmul__(self, other):
         """Handle right multiplication (symmetrically supports scalar * abstDFMonom)."""
-        if isinstance(other, (int, float, sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             other_sympy = sp.sympify(other)
             return abstDFMonom([abstDFAtom(other_sympy, 0)] + self.factors_sorted)
         elif isinstance(other, (abstract_ZF,zeroFormAtom)):
@@ -2228,7 +2241,7 @@ class abstDFMonom(sp.Basic):
                 other = other.coeff
             else:
                 other = other.coeff*zeroFormAtom(other.label,_markers = other._markers)
-        if isinstance(other,(float,int,sp.Expr,abstract_ZF,zeroFormAtom)):
+        if isinstance(other,(abstract_ZF,zeroFormAtom)) or isinstance(other, _get_expr_num_types()):
             if other == 0:
                 raise ZeroDivisionError("division by zero")
             return (1/other)*self
@@ -2241,7 +2254,7 @@ class abstDFMonom(sp.Basic):
         """Addition with another monomial or atom returns an abstract_DF."""
         if other is None:
             return self
-        if isinstance(other,(int,float,sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             other = abstract_ZF(other)
         if isinstance(other, (abstDFMonom, abstDFAtom)):
             return abstract_DF([self, other])
@@ -2249,7 +2262,7 @@ class abstDFMonom(sp.Basic):
             return abstract_DF((self,) + tuple(other.terms))
         elif isinstance(other, (abstract_ZF,zeroFormAtom)):
             return abstract_DF([self, abstDFAtom(other, 0)])
-        elif isinstance(other, (int, float, sp.Expr)):
+        elif isinstance(other, _get_expr_num_types()):
             other_sympy = sp.sympify(other)
             return abstract_DF([self, abstDFAtom(other_sympy, 0)])
         else:
@@ -2259,7 +2272,7 @@ class abstDFMonom(sp.Basic):
         """Subtraction with another monomial or atom returns an abstract_DF."""
         if other is None:
             return self
-        if isinstance(other,(int,float,sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             other = abstract_ZF(other)
         elif isinstance(other, (abstDFMonom, abstDFAtom)):
             return abstract_DF([self, -1 * other])
@@ -2268,7 +2281,7 @@ class abstDFMonom(sp.Basic):
             return abstract_DF([self] + negated_terms)
         elif isinstance(other, (abstract_ZF,zeroFormAtom)):
             return abstract_DF([self, abstDFAtom(-1*other, 0)])
-        elif isinstance(other, (int, float, sp.Expr)):
+        elif isinstance(other, _get_expr_num_types()):
             other_sympy = -1*sp.sympify(other)
             return abstract_DF([self, abstDFAtom(other_sympy, 0)])
         else:
@@ -2325,6 +2338,9 @@ class abstract_DF(sp.Basic):
             collected_terms=(abstDFMonom([abstDFAtom(0,0)]),)
         self.terms = collected_terms
         self.degree = self.terms[0].degree if all(j.degree == self.terms[0].degree for j in self.terms) else None
+
+    def _sage_(self):
+        raise AttributeError
 
     def simplify_terms(self, terms):
         """
@@ -2415,11 +2431,11 @@ class abstract_DF(sp.Basic):
         return abstract_DF(new_terms)
 
     def __add__(self, other):
-        if isinstance(other,(int,float,sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             other = abstract_ZF(other)
         if isinstance(other, (abstract_ZF,zeroFormAtom)):
             other = abstDFAtom(other, 0)
-        elif isinstance(other, (int, float, sp.Expr)):
+        elif isinstance(other, _get_expr_num_types()):
             other = abstDFAtom(sp.sympify(other), 0)
         if other is None:
             return self
@@ -2431,11 +2447,11 @@ class abstract_DF(sp.Basic):
             raise TypeError("Unsupported operand type for + with `abstract_DF`")
 
     def __sub__(self, other):
-        if isinstance(other,(int,float,sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             other = abstract_ZF(other)
         if isinstance(other, (abstract_ZF,zeroFormAtom)):
             other = abstDFAtom(other, 0)
-        elif isinstance(other, (int, float, sp.Expr)):
+        elif isinstance(other, _get_expr_num_types()):
             other = abstDFAtom(sp.sympify(other), 0)
         if other is None:
             return self
@@ -2456,9 +2472,9 @@ class abstract_DF(sp.Basic):
     def __mul__(self, other):
         if isinstance(other, (abstract_ZF,zeroFormAtom)):
             other = abstDFAtom(other, 0)
-        elif isinstance(other, (int, float, sp.Expr)):
+        elif isinstance(other, _get_expr_num_types()):
             other = abstDFAtom(sp.sympify(other), 0)
-        if isinstance(other, (int, float, sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             # Scalar multiplication
             return abstract_DF([term * other for term in self.terms])
         if isinstance(other, abstract_DF):
@@ -2476,9 +2492,9 @@ class abstract_DF(sp.Basic):
     def __rmul__(self, other):
         if isinstance(other, (abstract_ZF,zeroFormAtom)):
             other = abstDFAtom(other, 0)
-        elif isinstance(other, (int, float, sp.Expr)):
+        elif isinstance(other, _get_expr_num_types()):
             other = abstDFAtom(sp.sympify(other), 0)
-        if isinstance(other, (int, float, sp.Expr)):
+        if isinstance(other, _get_expr_num_types()):
             return self * other
         if isinstance(other, abstDFAtom):
             other = abstDFMonom([other])
@@ -2579,7 +2595,7 @@ class abst_coframe(sp.Basic):
         # forms_tuple = tuple(sorted(structure_equations.keys(), key=lambda x: (x.degree, x.label)))
 
         conj_atoms = list(min_conj_rules.keys())+list(min_conj_rules.values())
-        if len(conj_atoms)!=len(set(conj_atoms)) or not all(isinstance(j,int) for j in conj_atoms) or not all (j in range(len(forms_tuple)) for j in conj_atoms):
+        if len(conj_atoms)!=len(set(conj_atoms)) or not all(isinstance(j,numbers.Integral) for j in conj_atoms) or not all (j in range(len(forms_tuple)) for j in conj_atoms):
             raise ValueError(f'`conj_rules` should be an invertible dict containing `int` indices in the range 0 to {len(forms_tuple)}')
         # Create the instance
         obj = super().__new__(cls, forms_tuple)
@@ -2598,6 +2614,9 @@ class abst_coframe(sp.Basic):
         Initialization is fully handled in __new__.
         """
         pass
+
+    def _sage_(self):
+        raise AttributeError
 
     def structure_coeff(self, lo1, lo2, hi):
         if not (0 <= lo1 < self.dimension and 0 <= lo2 < self.dimension and 0 <= hi < self.dimension):
@@ -2619,7 +2638,7 @@ class abst_coframe(sp.Basic):
                 termCoeff = term.coeff
                 if isinstance(termCoeff,abstDFAtom) and termCoeff.degree == 0:
                     scale = termCoeff
-                elif isinstance(termCoeff, (float, int, sp.Expr, zeroFormAtom, abstract_ZF)):
+                elif isinstance(termCoeff, (zeroFormAtom, abstract_ZF)) or isinstance(termCoeff, _get_expr_num_types()):
                     scale = termCoeff
 
                 for count, factor in enumerate(term.factors_sorted):
@@ -2894,12 +2913,12 @@ def coframe_derivative(df, coframe, *cfIndex):
     if len(cfIndex) > 1:
         result = df
         for idx in cfIndex:
-            if not isinstance(idx, int) or idx < 0:
+            if not isinstance(idx, numbers.Integral) or idx < 0:
                 raise ValueError(f"`coframe_derivative` indices (i.e., optional arguments) must all be non-negative integers. Received {idx}.")
             result = coframe_derivative(result, coframe, idx)
         return result
     cfIndex = cfIndex[0]
-    if not isinstance(cfIndex, int) or cfIndex < 0:
+    if not isinstance(cfIndex, numbers.Integral) or cfIndex < 0:
         raise ValueError(f"optional `cfIndex` arguments must all be non-negative integers. Recieved {cfIndex}.")
     if cfIndex >= coframe.dimension:
         raise IndexError(f"`cfIndex` {cfIndex} is out of bounds for coframe with {coframe.dimension} forms.")
@@ -2916,7 +2935,7 @@ def coframe_derivative(df, coframe, *cfIndex):
             other =  1
         newDF = coeff*other
         return coframe_derivative(newDF, coframe, cfIndex)
-    elif isinstance(df, (float,int, sp.Expr)):
+    elif isinstance(df, _get_expr_num_types()):
         return 0
     else:
         if isinstance(df, abstDFAtom):
@@ -2939,7 +2958,7 @@ def extDer(df, coframe=None, order=1, with_canonicalize = False, with_simplify =
     if hasattr(df, '_dgcv_eds_applyfunc'):
         return df._dgcv_eds_applyfunc(lambda elem: extDer(elem, coframe=coframe, order=order, with_canonicalize = with_canonicalize, with_simplify = with_simplify))
 
-    if not isinstance(order, int) or order < 1:
+    if not isinstance(order, numbers.Integral) or order < 1:
         raise ValueError("`order` must be a positive integer.")
     # Recursive case for order > 1
     if order > 1:
@@ -2963,7 +2982,7 @@ def extDer(df, coframe=None, order=1, with_canonicalize = False, with_simplify =
             ddf = _extDer_abstDFMonom(df, coframe)
         elif isinstance(df, abstract_DF):
             ddf = _extDer_abstract_DF(df, coframe)
-        elif isinstance(df,(int,float, sp.Expr)):
+        elif isinstance(df,_get_expr_num_types()):
             return 0
         else:
             raise TypeError(f"`extDer` does not support type `{type(df).__name__}`.")
@@ -3027,7 +3046,7 @@ def _extDer_abstDFAtom(df:abstDFAtom, coframe:abst_coframe):
     if isinstance(df.coeff,(zeroFormAtom,abstract_ZF)):
         new_markers = frozenset([j for j in df._markers if (j!="holomorphic" and j!="antiholomorphic")])
         return extDer(df.coeff,coframe=coframe)*abstDFAtom(1,df.degree,df.label,df.ext_deriv_order,_markers=new_markers)+(df.coeff)*extDer(abstDFAtom(1,df.degree,df.label,df.ext_deriv_order,_markers=df._markers),coframe=coframe)
-    if isinstance(df.coeff, sp.Expr) and len((df.coeff).free_symbols)>0:
+    if isinstance(df.coeff, _get_expr_types()) and len(get_free_symbols((df.coeff)))>0:
         new_markers = frozenset([j for j in df._markers if (j!="holomorphic" and j!="antiholomorphic")])
         return abstDFAtom(df.coeff,1,ext_deriv_order=1)*abstDFAtom(1,df.degree,df.label,df.ext_deriv_order,_markers=new_markers)+(df.coeff)*extDer(abstDFAtom(1,df.degree,df.label,df.ext_deriv_order,_markers=df._markers),coframe=coframe)
     # if df.label:
@@ -3086,7 +3105,7 @@ def _cofrDer_zeroFormAtom(zf, cf, cfIndex):
         raise TypeError("`zf` must be an instance of `zeroFormAtom`.")
     if not isinstance(cf, abst_coframe):
         raise TypeError("`cf` must be an instance of `abst_coframe`.")
-    if not isinstance(cfIndex, int) or cfIndex < 0:
+    if not isinstance(cfIndex, numbers.Integral) or cfIndex < 0:
         raise ValueError("`cfIndex` must be a non-negative integer.")
 
     if cfIndex >= cf.dimension:
@@ -3132,7 +3151,7 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
     Returns:
     - The coframe derivative as an `abstract_ZF` expression.
     """
-    if isinstance(df, (int, float, sp.Expr)):  # Scalars differentiate to 0
+    if isinstance(df, _get_expr_num_types()):  # Scalars differentiate to 0
         return 0
     if hasattr(df, 'base'):
         df = df.base
@@ -3164,7 +3183,7 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
             base, exponent = args
             dbase = _cofrDer_abstract_ZF(base, cf, cfIndex)
 
-            if isinstance(exponent, (int, float, sp.Expr)):
+            if isinstance(exponent, _get_expr_num_types()):
                 new_exp = exponent-1
                 return abstract_ZF(("mul", exponent, ("pow", base, new_exp), dbase))
             else:
@@ -3203,7 +3222,7 @@ def simplify_with_PDEs(expr,PDEs:dict,tryLess=False, iterations = 1):
                         raise ValueError('`simplify_with_PDEs` recieved `PDEs` dictionary in an unsupported format. All PDEs should be solved for a variable whose higher order partials do not appear elsewhere in the expression.')
             if kOrder == vOrder and kOrder>0:
                 trip = False
-    standardEQs = {v:k for v,k in PDEs.items() if isinstance(v,sp.Expr) and not hasattr(v,'_subs_dgcv')}
+    standardEQs = {v:k for v,k in PDEs.items() if isinstance(v,_get_expr_types()) and not hasattr(v,'_subs_dgcv')}
     def _custom_subs(elem):
         if hasattr(elem,'_subs_dgcv'):
             return elem._subs_dgcv(PDEs,with_diff_corollaries=True)
@@ -3360,7 +3379,7 @@ def _generate_str_id(base_str: str, *dicts: dict) -> str:
 
 def _equation_formatting(eqn,variables_dict):
     var_dict = dict()
-    if isinstance(eqn,(sp.Expr,int,float)) and not isinstance(eqn,zeroFormAtom):
+    if isinstance(eqn,_get_expr_num_types()) and not isinstance(eqn,zeroFormAtom):
          return [sp.sympify(eqn)], var_dict
     if get_dgcv_category(eqn) in ['algebra_element','subalgebra_element','vector_space_element']:
         return [sp.sympify(term) for term in eqn.coeffs], var_dict

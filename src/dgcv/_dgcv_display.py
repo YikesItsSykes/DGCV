@@ -1,17 +1,13 @@
 """
 _display.py
 
-This module provides functions for customizing the display in Jupyter notebooks.
-The `load_fonts()` function loads web fonts and applies them to the notebook
-environment using HTML and CSS.
+This module provides functions for adjusting display formatting in Jupyter notebooks.
 
-Functions
----------
-- load_fonts: Injects HTML and CSS to load Google Fonts and apply custom fonts to the notebook.
 """
 
 
 ############# for printing
+import numbers
 import warnings
 
 import sympy as sp
@@ -85,16 +81,18 @@ def LaTeX(obj, removeBARs=False):
     else:
         return strip_dollar_signs(filter(obj))
 
-def LaTeX_eqn_system(eqn_dict, math_mode = '$$', left_prefix = "", left_suffix = "", right_prefix = "", right_suffix = "", one_line = False, bare_latex = False, add_period = False):
+def LaTeX_eqn_system(eqn_dict, math_mode = '$$', left_prefix = "", left_suffix = "", right_prefix = "", right_suffix = "", one_line = False, bare_latex = False, punctuation=None, add_period = False):
     if isinstance(eqn_dict,(list,tuple)):
         eqn_dict = {k:0 for k in eqn_dict}
         list_format = True
     else:
         list_format = False
     if add_period is True:
-        period = '.'
+        punct = '.'
+    elif isinstance(punctuation,str):
+        punct = punctuation
     else:
-        period = ''
+        punct = ''
     if bare_latex is True:
         joiner = r', '
         boundary = ''
@@ -118,18 +116,87 @@ def LaTeX_eqn_system(eqn_dict, math_mode = '$$', left_prefix = "", left_suffix =
     else:
         kv_pairs = [f'{left_prefix}{LaTeX(k)}{left_suffix}={right_prefix}{LaTeX(v)}{right_suffix}' for k,v in eqn_dict.items()]
     if len(kv_pairs)==0:
-        return period
+        return punct
     elif len(kv_pairs)==1:
-        return boundary + kv_pairs[0] + period + boundary
+        return boundary + kv_pairs[0] + punct + boundary
     elif len(kv_pairs)==2:
         if bare_latex is True:
-            return boundary + kv_pairs[0] + r'\quad\text{and}\quad ' + kv_pairs[1] + period + boundary
+            return boundary + kv_pairs[0] + r'\quad\text{and}\quad ' + kv_pairs[1] + punct + boundary
         if math_mode == '$':
-            return boundary + kv_pairs[0] + boundary + 'and' + boundary + kv_pairs[1] + period + boundary
+            return boundary + kv_pairs[0] + boundary + 'and' + boundary + kv_pairs[1] + punct + boundary
         if one_line is True:
-            return boundary + kv_pairs[0] + r' \quad \text{ and }\quad' + kv_pairs[1] + period + boundary
-        return boundary + kv_pairs[0] + boundary + 'and' + boundary + kv_pairs[1] + period + boundary
-    return boundary+joiner.join(kv_pairs[:-1])+penultim + kv_pairs[-1] + period + boundary
+            return boundary + kv_pairs[0] + r' \quad \text{ and }\quad ' + kv_pairs[1] + punct + boundary
+        return boundary + kv_pairs[0] + boundary + 'and' + boundary + kv_pairs[1] + punct + boundary
+    return boundary+joiner.join(kv_pairs[:-1])+penultim + kv_pairs[-1] + punct + boundary
+
+def LaTeX_list(list_to_print, math_mode = '$$', prefix = "", suffix = "", one_line = False, items_per_line = 1, bare_latex = False, punctuation = None, item_labels = None):
+    if not isinstance(list_to_print,(list,tuple)):
+        if bare_latex is not True and (math_mode == '$' or math_mode=='$$'):
+            return f'{math_mode}{LaTeX(list_to_print)}{math_mode}'
+        return LaTeX(list_to_print)
+    if one_line is True or math_mode=='$' or not isinstance(items_per_line,numbers.Integral) or items_per_line<1:
+        items_per_line = len(list_to_print)
+    if not isinstance(item_labels,(list,tuple)):
+        item_labels=[]
+    item_labels = [str(label)+' = ' for label in item_labels[:min(len(item_labels),len(list_to_print))]]+([''])*max(0,len(list_to_print)-len(item_labels))
+    if isinstance(punctuation,str):
+        punct = punctuation
+    else:
+        punct = ''
+    if bare_latex is True:
+        joiner = r', '
+        boundary = ''
+        penultim = r',\quad\text{and}\quad '
+    elif math_mode == '$':
+        joiner = '$, $'
+        boundary = '$'
+        penultim = '$, and $'
+    elif items_per_line!=1:
+        joiner = r', \quad '
+        boundary = '$$'
+        penultim = r',\quad\text{and}\quad '
+    else:
+        joiner = r',$$ $$ '
+        boundary = '$$'
+        penultim = r',$$ and $$'
+
+    formatted_elems = [f'{j}{prefix}{LaTeX(k)}{suffix}' for j,k in zip(item_labels,list_to_print)]
+    formatted_chunks = [formatted_elems[j:j+items_per_line] for j in range(0, len(formatted_elems), items_per_line)]
+    def line_printer(formatted_items, conjunction = False, pun = ','):
+        if len(formatted_items)==0:
+            return pun
+        elif len(formatted_items)==1:
+            return boundary + formatted_items[0] + pun + boundary
+        elif len(formatted_items)==2:
+            if conjunction is False:
+                insert = joiner
+            else:
+                insert = r'\quad\text{and}\quad '
+            if bare_latex is True:
+                return boundary + formatted_items[0] + insert + formatted_items[1] + pun + boundary
+            if math_mode == '$':
+                if conjunction is False:
+                    insert = ', '
+                else:
+                    insert = 'and'
+                return boundary + formatted_items[0] + boundary + insert + boundary + formatted_items[1] + pun + boundary
+            if conjunction is False:
+                insert = joiner
+            else:
+                insert = r' \quad \text{ and }\quad '
+            return boundary + formatted_items[0] + insert + formatted_items[1] + pun + boundary
+        if conjunction is False:
+            return boundary+joiner.join(formatted_items) + pun + boundary
+        else:
+            return boundary+joiner.join(formatted_items[:-1])+penultim + formatted_items[-1] + pun + boundary
+    to_print = ''
+    for fc in formatted_chunks[:-1]:
+        to_print+=line_printer(fc)+' '
+    if len(formatted_chunks)>1 and len(formatted_chunks[-1])==1:
+        conjuction = ' and '
+    else:
+        conjuction = ''
+    return to_print + conjuction +line_printer(formatted_chunks[-1],conjunction=True,pun=punct)
 
 def display_DGCV(*args):
     warnings.warn(
@@ -146,16 +213,13 @@ def show(*args):
 
 def _display_DGCV_single(arg):
     if isinstance(arg, str):
-        display(Latex(arg))
+        to_print=Latex(arg)
+        display(to_print)
     elif isinstance(
         arg,
         (sp.Expr, metricClass, DFClass, VFClass, STFClass, tensorField, dgcvPolyClass, Tanaka_symbol) or check_dgcv_category(arg),
     ):
         _complexDisplay(arg)
-    # elif get_dgcv_category(arg)=='algebra':
-    #     _complexDisplay(_alglabeldisplayclass(arg.label))
-    # elif get_dgcv_category(arg)=='algebra_element_class':
-    #     _complexDisplay(_alglabeldisplayclass(arg.algebra.label, ae=arg))
     else:
         display(arg)
 
@@ -248,7 +312,6 @@ class DGCVLatexPrinter(LatexPrinter):
     def _print_DFClass(self, expr):
         return expr._repr_latex_()
 
-
 def DGCV_collection_latex_printer(obj):
     if isinstance(obj, (tuple, list)):
         return tuple(
@@ -256,7 +319,6 @@ def DGCV_collection_latex_printer(obj):
             for element in obj
         )
     return None
-
 
 def DGCV_latex_printer(obj, **kwargs):
     if obj is None:

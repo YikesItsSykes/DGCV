@@ -3,6 +3,7 @@ import re
 import sympy as sp
 
 from ._config import greek_letters
+from .backends._caches import _get_expr_types
 
 joinders = {'symmetric':{'latex':'\\odot ','plain':'&'},'skew':{'latex':'\\wedge ','plain':'*'}}
 def _shape_joinders(shape,format):
@@ -113,7 +114,6 @@ def tensor_field_latex(tensor):
 
     return f"${latex_str}$"
 
-
 def tensor_VS_printer(tp):
     terms = tp.coeff_dict
 
@@ -180,7 +180,7 @@ def tensor_VS_latex(tp):
         if scalar==-1:
             return "-"
         scalar_str = sp.latex(scalar)
-        if isinstance(scalar, sp.Expr) and len(scalar.args) > 0:
+        if isinstance(scalar, _get_expr_types()) and len(scalar.args) > 0:
             return f"\\left({scalar_str}\\right)"
         return scalar_str
     basis_labels = tp.vector_space.basis_labels or [f"e_{i+1}" for i in range(tp.vector_space.dimension)]
@@ -232,7 +232,7 @@ def tensor_latex_helper(tp):
         if scalar == -1:
             return "-"
         scalar_str = sp.latex(scalar)
-        if isinstance(scalar, sp.Expr) and len(scalar.args) > 0:
+        if isinstance(scalar, _get_expr_types()) and len(scalar.args) > 0:
             return f"\\left({scalar_str}\\right)"
         return scalar_str
 
@@ -267,9 +267,6 @@ def tensor_latex_helper(tp):
             latex_str += f" + {term}"
 
     return latex_str
-
-
-
 
 def _convert_to_greek(var_name):
     for name, greek in greek_letters.items():

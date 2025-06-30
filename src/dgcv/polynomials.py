@@ -194,7 +194,6 @@ def createPolynomial(
     else:
         return sum(monomials)
 
-
 def createBigradPolynomial(
     arg1,
     arg2,
@@ -373,7 +372,6 @@ def createMultigradedPolynomial(
     else:
         return sum(monomials)
 
-
 def monomialWeight(arg1, arg2, arg3):
     """
     Computes the weight of a nonzero monomial *arg1* in the variables *arg2* with respect to weights *arg3*.
@@ -429,9 +427,7 @@ def monomialWeight(arg1, arg2, arg3):
         sp.ln(arg1 / coeffLoc).subs([(arg2[i], sp.exp(arg3[i])) for i in range(len(arg2))])
     )
 
-
 ############## manipulating polynomials
-
 
 def getWeightedTerms(arg1, arg2, arg3):
     """

@@ -2,7 +2,11 @@ import warnings
 
 import sympy as sp
 
-from .._config import get_dgcv_settings_registry, get_variable_registry
+from .._config import (
+    dgcv_exception_note,
+    get_dgcv_settings_registry,
+    get_variable_registry,
+)
 from .._safeguards import (
     _cached_caller_globals,
     get_dgcv_category,
@@ -1483,9 +1487,12 @@ def createAlgebra(
     else:
         if verbose:
             print("processing structure data...")
-        structure_data = _validate_structure_data(
-            obj, process_matrix_rep=process_matrix_rep, assume_skew=assume_skew, assume_Lie_alg=assume_Lie_alg, basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns
-        )
+        try:
+            structure_data = _validate_structure_data(
+                obj, process_matrix_rep=process_matrix_rep, assume_skew=assume_skew, assume_Lie_alg=assume_Lie_alg, basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns
+            )
+        except dgcv_exception_note as e:
+            raise SystemExit(e)
         dimension = len(structure_data)
 
     # Create or validate basis labels

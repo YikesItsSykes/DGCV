@@ -2,7 +2,7 @@ import random
 
 import sympy as sp
 
-from .._config import _cached_caller_globals
+from .._config import _cached_caller_globals, dgcv_exception_note
 from .._safeguards import retrieve_passkey, retrieve_public_key
 from ..dgcv_core import VF_bracket, VFClass, addVF, allToReal, variableProcedure
 from ..solvers import solve_dgcv
@@ -16,7 +16,10 @@ def _validate_structure_data(data, process_matrix_rep=False, assume_skew=False, 
             and len(set(sp.Matrix(obj).shape[:2]))<2
             for obj in data
         ):
-            return algebraDataFromMatRep(data)
+            try:
+                return algebraDataFromMatRep(data)
+            except Exception as e:
+                raise dgcv_exception_note(f'{e}') from None
         else:
             raise ValueError(
                 f"matrix representation prcessing requires a list of square matrices. Recieved: {data}"
@@ -299,23 +302,22 @@ def algebraDataFromMatRep(mat_list):
                     result = [var.subs(solLoc[0]) for var in _cached_caller_globals[tempVarLabel]]
                     return result
                 else:
+                    clearVar(*listVar(temporary_only=True),report=False)
                     raise Exception(
                         f"Unable to determine if matrices are closed under commutators. "
                         f"Problem matrices are in positions {j} and {k}."
                     )
-
 
             structure_data = [[[0]*indexRangeCap if k<=j else pairValue(k, j) for j in range(indexRangeCap)] for k in range(indexRangeCap)]
             for k in range(indexRangeCap):
                 for j in range(k+1,indexRangeCap):
                     structure_data[k][j]=[-entry for entry in structure_data[j][k]]
 
-            # Clear all temporary variables
             clearVar(*listVar(temporary_only=True), report=False)
 
             return structure_data
         else:
-            raise Exception("algebraDataFromMatRep expects a list of square matrices of the same size.")
+            raise Exception("algorithm for extracting algebra data from matrices expects a list of square matrices of the same size.")
     else:
-        raise Exception("algebraDataFromMatRep expects a list of square matrices.")
+        raise Exception("algorithm for extracting algebra data from matrices expects a list of square matrices.")
 

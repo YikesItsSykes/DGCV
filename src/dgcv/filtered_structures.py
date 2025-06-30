@@ -18,8 +18,8 @@ from .dgcv_core import (
     allToReal,
     variableProcedure,
 )
-from .dgcv_formatter import get_style
 from .solvers import solve_dgcv
+from .styles import get_style
 from .tensors import tensorProduct
 from .vector_fields_and_differential_forms import LieDerivative, annihilator, decompose
 from .vmf import clearVar, listVar

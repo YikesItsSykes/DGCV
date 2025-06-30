@@ -44,7 +44,7 @@ Depending on Python install configurations, the above command can vary. The key 
 
 ### Future Development
 
-Version 0.3.5 of **dgcv** is designed with several planned extensions to the library in mind. Current plans broadly fall into two categories:
+Version 0.3.6 of **dgcv** is designed with several planned extensions to the library in mind. Current plans broadly fall into two categories:
 
 - Extending complex variable handling and dynamic coordinate-type conversion automations. The simple goal is to fully automate handling of complex variable formats, allowing input to be formatted freely with any coordinate type, with features to fully control coordinate type formatting or let the systems automate the process.
 - Expanding libraries dedicated to more specialized areas of differential geometry

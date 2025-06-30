@@ -1,5 +1,8 @@
+import numbers
+
 import sympy as sp
 
+from ..backends._caches import _get_expr_num_types
 from .eds import abstDFAtom, abstDFMonom, abstract_DF, abstract_ZF, zeroFormAtom
 
 
@@ -13,7 +16,7 @@ class DF_representation(sp.Basic):
 
 
         dgcv_classes = [zeroFormAtom, abstDFAtom, abstDFMonom, abstract_DF, abstract_ZF]
-        supported_classes = tuple(dgcv_classes + [sp.Expr, sp.NumberSymbol, float, int])
+        supported_classes = tuple(dgcv_classes)+ _get_expr_num_types()
 
         if callable(array_data):
             if row_count is None or col_count is None:
@@ -77,7 +80,7 @@ class DF_representation(sp.Basic):
         else:
             return self.array[key]  # Allow row-wise access
 
-        if isinstance(row_key, int) and isinstance(col_key, int):
+        if isinstance(row_key, numbers.Integral) and isinstance(col_key, numbers.Integral):
             return self.array[row_key][col_key]
         else:
             new_data = [row[col_key] for row in self.array[row_key]]
@@ -110,7 +113,7 @@ class DF_representation(sp.Basic):
         return DF_representation(self.row_count, self.col_count, new_data)
 
     def __mul__(self, scalar):
-        if not isinstance(scalar, (abstract_ZF,zeroFormAtom,sp.Expr, sp.NumberSymbol, float, int)):
+        if not isinstance(scalar, (abstract_ZF,zeroFormAtom)) or isinstance(scalar, _get_expr_num_types()):
             raise TypeError("Can only multiply by scalar values")
         new_data = [[scalar * self.array[i][j] for j in range(self.col_count)] for i in range(self.row_count)]
         return DF_representation(self.row_count, self.col_count, new_data)

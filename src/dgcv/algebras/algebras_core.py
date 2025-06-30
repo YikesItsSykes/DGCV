@@ -5,7 +5,12 @@ import warnings
 import pandas as pd
 import sympy as sp
 
-from .._config import _cached_caller_globals, get_dgcv_settings_registry, greek_letters
+from .._config import (
+    _cached_caller_globals,
+    dgcv_exception_note,
+    get_dgcv_settings_registry,
+    greek_letters,
+)
 from .._safeguards import (
     create_key,
     get_dgcv_category,
@@ -28,9 +33,13 @@ class algebra_class(sp.Basic):
         if kwargs.get("_calledFromCreator", False) == retrieve_passkey():
             validated_structure_data = structure_data
         else:
-            validated_structure_data = _validate_structure_data(
-                structure_data, process_matrix_rep=kwargs.get("process_matrix_rep", False), assume_skew=kwargs.get("assume_skew", False), assume_Lie_alg=kwargs.get("assume_Lie_alg", False),basis_order_for_supplied_str_eqns=kwargs.get("basis_order_for_supplied_str_eqns", False)
-            )
+            try:
+                structure_data = validated_structure_data = _validate_structure_data(
+                    structure_data, process_matrix_rep=kwargs.get("process_matrix_rep", False), assume_skew=kwargs.get("assume_skew", False), assume_Lie_alg=kwargs.get("assume_Lie_alg", False),basis_order_for_supplied_str_eqns=kwargs.get("basis_order_for_supplied_str_eqns", False)
+                )
+            except dgcv_exception_note as e:
+                raise SystemExit(e)
+
         validated_structure_data = tuple(map(tuple, validated_structure_data))
 
         obj = sp.Basic.__new__(cls, validated_structure_data)

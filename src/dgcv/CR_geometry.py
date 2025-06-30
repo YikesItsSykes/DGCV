@@ -24,6 +24,7 @@ License:
 """
 
 ############## dependencies
+import time
 from functools import reduce
 
 import sympy as sp
@@ -47,7 +48,7 @@ from .vector_fields_and_differential_forms import assembleFromHolVFC
 from .vmf import clearVar, listVar
 
 
-def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, *args):
+def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, data_already_in_real_coor=False, *args):
     """
     Computes the tangency obstruction for a holomorphic vector field with respect to a CR hypersurface.
 
@@ -78,15 +79,25 @@ def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, *a
     TypeError
         If the first argument is not a VFClass instance with dgcvType='complex'.
     """
+    inner_start_time = time.time()    
+    if data_already_in_real_coor is not True:
+        graph_variable = allToReal(graph_variable)
+        vf = allToReal(vf)
+        CR_defining_expr = allToReal(CR_defining_expr)
+    print(f"│ preprocess real: {time.time() - inner_start_time:.3f}s")
+
     if not (isinstance(vf, VFClass) and vf.dgcvType == "complex"):
         raise TypeError(
             "`tangencyObstruction` requires its first argument to be a VFClass instance with dgcvType='complex'"
         )
-    vf_real = allToReal(vf)
-    real_eval = realPartOfVF(vf_real)(holToReal(graph_variable - CR_defining_expr))
-    eval_real = allToReal(real_eval)
-    substituted_expr = eval_real.subs(holToReal(symToReal(graph_variable)), symToReal(CR_defining_expr))
-    result_expr = symToReal(substituted_expr)
+    inner_start_time = time.time()    
+    real_eval = realPartOfVF(vf)(graph_variable - CR_defining_expr)
+    print(f"│ real VF and eval: {time.time() - inner_start_time:.3f}s")
+    inner_start_time = time.time()    
+    substituted_expr = real_eval.subs(graph_variable, CR_defining_expr)
+    result_expr = substituted_expr
+    print(f"│ subs {time.time() - inner_start_time:.3f}s")
+
     if simplify:
         result_expr = sp.simplify(result_expr)
     return result_expr
@@ -308,6 +319,7 @@ def findWeightedCRSymmetries(
 ):
     """
     """
+    totaltime = time.time()
     if not isinstance(coordinate_weights[0],(list,tuple)):
         coordinate_weights = [coordinate_weights]
     if not isinstance(symmetry_weight,(list,tuple)):
@@ -320,6 +332,7 @@ def findWeightedCRSymmetries(
     cd = vr['conversion_dictionaries']
     def extractRIVar(coordinate_list):
         return set(sum([[cd['real_part'].get(var,var),cd['im_part'].get(var,var)] for var in coordinate_list], []))
+    start_time = time.time()
     VFLoc = addVF(
         weightedHomogeneousVF(
             holomorphic_coordinates,
@@ -341,23 +354,57 @@ def findWeightedCRSymmetries(
             ),
         ),
     )
+    print(f"┌ Built local VF in {time.time() - start_time:.3f}s")
+    start_time = time.time()
     tanObst = tangencyObstruction(VFLoc, graph_function, graph_variable, simplify=simplify)
+    print(f"│ Tangency obstruction built in {time.time() - start_time:.3f}s")
     varLoc = tanObst.atoms(sp.Symbol)
     varLoc1 = varLoc.copy()
     varComp = extractRIVar(holomorphic_coordinates)
     varLoc.difference_update(varComp)
     varLoc1.difference_update(varLoc)
     varComp.difference_update(varLoc1)
+    start_time = time.time()
     if coeff_label is None:
         coeff_label = create_key(prefix='X',key_length=5)
     variableProcedure(coeff_label, len(varLoc), assumeReal=True)
-    if simplifyingFactor is not None:
-        tanObst = sp.simplify(symToReal(simplifyingFactor)*tanObst)
+    print(f"│ Coefficient variables created in {time.time() - start_time:.3f}s")
+    print(f'│ Equation system size: {len(varLoc)} variables')
+    # if simplifyingFactor is not None and assume_polynomial is not True:
+    #     assume_polynomial = True
+    #     terms = tanObst.as_ordered_terms() if isinstance(tanObst, sp.Add) else [tanObst]
+    #     new_terms = []
+    #     for term in terms:
+    #         num, den = term.as_numer_denom()
+    #         den_sq = den**2
+    #         midCheck = None
+    #         if isinstance(den_sq,numbers.Number):
+    #             new_terms.append(num * (simplifyingFactor**2))
+    #         else:
+    #             midCheck = sp.simplify(den_sq/simplifyingFactor)
+    #         if midCheck is not None:
+    #             if isinstance(midCheck,numbers.Number):
+    #                 new_terms.append(num * den)
+    #             elif isinstance(sp.simplify(midCheck/simplifyingFactor**2),numbers.Number):
+    #                 new_terms.append(num)
+    #         else:
+    #             print("│ simplifyingFactor fails to enable the optimization algorithm... using fallback")
+    #             assume_polynomial = False
+    #             break
+    #     if assume_polynomial is True:
+    #         tanObst = sum(new_terms)
+
     if not assume_polynomial:
         if varLoc1 == set():
             varLoc1 = set(holomorphic_coordinates)
-        coefList = sp.poly_from_expr(sp.expand(sp.numer(tanObst)), *varLoc1)[0].coeffs()
+        inner_start_time = time.time()
+        numer = sp.cancel(tanObst).as_numer_denom()[0]
+        coefList = sp.poly_from_expr(sp.expand(numer), *varLoc1)[0].coeffs()
+        print(f"│ extracting polynom numerator: {time.time() - inner_start_time:.3f}s")
+        # coefList = sp.poly_from_expr(sp.expand(sp.numer(tanObst)), *varLoc1)[0].coeffs()
+        start_time = time.time()
         solutions = solve_dgcv(coefList, varLoc, method="auto")
+        print(f"│ Solve algorithm: {time.time() - start_time:.3f}s")
     else:
         if varLoc1 == set():
             varLoc1 = set(holomorphic_coordinates)
@@ -365,7 +412,10 @@ def findWeightedCRSymmetries(
         coefList = sp.poly_from_expr(
             sp.expand(tanObst), *varLoc1
         )[0].coeffs()
+        start_time = time.time()
         solutions = solve_dgcv(coefList, varLoc, method="auto")
+        print(f"│ Solve algorithm: {time.time() - start_time:.3f}s")
+    start_time = time.time()
     if len(solutions) == 0:
         if tanObst!=0:
             clearVar(*listVar(temporary_only=True), report=False)
@@ -389,6 +439,8 @@ def findWeightedCRSymmetries(
         j.subs(dict(zip(subVar, coeff_vars))) if hasattr(j,'subs') else j for j in VFCLoc
     ]
     clearVar(*listVar(temporary_only=True), report=False)
+    print(f"│ Assembling results: {time.time() - start_time:.3f}s")
+    print(f"└ Total time : {time.time() - totaltime:.3f}s")
     if returnVectorFieldBasis:
         VFListLoc = []
         for j in coeff_vars:

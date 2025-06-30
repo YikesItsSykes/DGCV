@@ -40,13 +40,14 @@ cache_globals()
 
 # Initialize variable_registry when dgcv is imported
 _ = get_variable_registry()
-
+import numbers
 
 from ._config import canonicalize
 from ._dgcv_display import (
     DGCV_init_printing,
     LaTeX,
     LaTeX_eqn_system,
+    LaTeX_list,
     display_DGCV,
     show,
 )
@@ -65,6 +66,7 @@ from .algebras.algebras_secondary import (
     createSimpleLieAlgebra,
     subalgebra_class,
 )
+from .backends._sage_backend import get_sage_module, is_sage_available
 from .combinatorics import carProd, chooseOp, permSign
 from .complex_structures import Del, DelBar, KahlerStructure
 from .coordinate_maps import coordinate_map
@@ -182,7 +184,8 @@ __all__ = [
     # From _dgcv_display
     "LaTeX",                # Custom LaTeX renderer for DGCV objects
     "LaTeX_eqn_system",     # Custom LaTeX renderer for dictionaries 
-                            # or lists representing equation systems       
+                            # or lists representing equation systems     
+    "LaTeX_list",
     "display_DGCV",         # deprecated
     "show",                 # Augments IPython.display.display
                             # with support for DGCV object like
@@ -348,3 +351,17 @@ __all__ = [
 
 # Configure warnings
 configure_warnings()
+
+
+# Register Sage’s numeric types with numbers ABCs for isinstance checks
+if is_sage_available():
+    try:
+        sage = get_sage_module()
+        from sage.all import Integer as SageInteger  # type: ignore
+        from sage.all import Rational as SageRational  # type: ignore
+        from sage.all import RealNumber as SageFloat  # type: ignore
+        numbers.Integral.register(SageInteger)
+        numbers.Real.register(SageFloat)
+        numbers.Rational.register(SageRational)
+    except Exception:
+        pass

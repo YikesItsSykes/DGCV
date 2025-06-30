@@ -29,6 +29,8 @@ This module minimizes dependencies and is critical for handling combinatorics wi
 """
 
 ############## dependencies
+import numbers
+
 from sympy import MutableDenseNDimArray
 
 
@@ -297,7 +299,7 @@ def chooseOp(
             resultLoc = carProd(*arg2 * arg1)
 
     # Apply homogeneity filter if needed
-    if isinstance(restrictHomogeneity, int):
+    if isinstance(restrictHomogeneity, numbers.Integral):
         return (j for j in resultLoc if sum(j) == restrictHomogeneity)
     else:
         return resultLoc

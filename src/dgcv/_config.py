@@ -1,21 +1,15 @@
 """
 _config.py
 
-This module provides utility functions for managing the `variable_registry` 
-and caching/retrieving the caller's global namespace in the DGCV package. 
-It uses the `inspect` module to search through the call stack for the `__main__` 
-module and caches its globals for later use. Additionally, this module manages 
-the centralized `variable_registry` that tracks DGCV variables, ensuring that 
-it remains protected from user interference.
+This module provides utility functions for dgcv's Variable Management Framework, maintaining
+a registry of instantiated mathematical object for interaction with dgcv functions. 
 
 Functions
 ---------
 - get_variable_registry: Returns the current state of the `variable_registry`, 
-  which holds information about standard and complex variable systems.
+  which holds information about objects tracked in the VMF.
 - clear_variable_registry: Resets the `variable_registry` to its initial state.
-- get_caller_globals: Searches the call stack for the globals of the `__main__` module.
-- cache_globals: Initializes the globals cache at package import.
-
+- get_dgcv_settings_registry: Returns the current state of the dictionary storing setting default affecting dgcv functions.
 """
 
 import collections.abc
@@ -100,7 +94,6 @@ def get_caller_globals():
 
     raise RuntimeError("Could not find the '__main__' module in the call stack.")
 
-
 def cache_globals():
     """
     Initialize the global namespace cache.
@@ -111,8 +104,6 @@ def cache_globals():
     if _cached_caller_globals is None:
         get_caller_globals()
 
-
-# warning format
 def configure_warnings():
     warnings.simplefilter("once")  # Only show each warning once
 
@@ -123,8 +114,6 @@ def configure_warnings():
         return f"{category.__name__}: {message}\n"
 
     warnings.formatwarning = custom_format_warning
-
-
 
 class StringifiedSymbolsDict(collections.abc.MutableMapping):
     """
@@ -162,7 +151,6 @@ class StringifiedSymbolsDict(collections.abc.MutableMapping):
     def __repr__(self):
         return f"StringifiedSymbolsDict({self._data})"
 
-# Initialize variable_registry and settings registry
 variable_registry = {
     "standard_variable_systems": {},
     "complex_variable_systems": {},
@@ -191,9 +179,10 @@ dgcv_settings_registry = {
     'format_displays':False,
     'version_specific_defaults':f'v{__version__}',
     'ask_before_overwriting_objects_in_vmf':True,
-    'forgo_warnings':False
+    'forgo_warnings':False,
+    'default_symbolic_engine':'sympy'
 }
-# retrieval functions for accessing and clearing registries
+
 def get_variable_registry():
     return variable_registry
 
@@ -229,3 +218,11 @@ def canonicalize(obj,with_simplify = False, depth = 1000):
         return obj._eval_simplify() if hasattr(obj,'_eval_simplify') else obj
     else:
         return obj
+
+class dgcv_exception_note(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+    def __str__(self):
+        return self.message
