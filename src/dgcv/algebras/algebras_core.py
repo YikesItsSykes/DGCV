@@ -389,10 +389,23 @@ class algebra_class:
         if self._endomorphisms is None:
             self._endomorphisms=vector_space_endomorphisms(self)
         return self._endomorphisms
-
     @property
     def zero_element(self):
         return algebra_element_class(self,(0,)*self.dimension,1)
+
+    def update_grading(self,new_weight_vectors_list,replace_instead_of_add=False):
+        if isinstance(new_weight_vectors_list,(list,tuple)):
+            if all(isinstance(elem,(list,tuple)) for elem in new_weight_vectors_list):
+                   if replace_instead_of_add is True:
+                       self.grading = [tuple(elem) for elem in new_weight_vectors_list]
+                   else:
+                       grad=list(self.grading)+[tuple(elem) for elem in new_weight_vectors_list]
+                       self.grading=grad
+            else:
+                raise TypeError(f'update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}')
+        else:
+            raise TypeError(f'update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}')
+
 
     def contains(self, items, return_basis_coeffs=False,strict_types=True):
         if isinstance(items, (list, tuple)):
@@ -1371,14 +1384,7 @@ class algebra_class:
                 + warning_message
             ) from None
         if remain_subalg is False:
-            elements = [
-                (
-                    elem.ambiant_rep
-                    if get_dgcv_category(elem) == "subalgebra_element"
-                    else elem
-                )
-                for elem in elements
-            ]
+            elements = [(elem.ambiant_rep if get_dgcv_category(elem) == "subalgebra_element" else elem) for elem in elements]
         else:
             elements = list(elements)
         return _extract_basis(elements, ALBS=apply_light_basis_simplification)
@@ -1789,6 +1795,8 @@ class algebra_class:
         return span_matrix * solution == product_vector
 
     def weighted_component(self, weights, test_weights=None, trust_test_weight_format=False, from_subalg=None):
+        if isinstance(weights,(set,dict)):
+            weights=list(weights)
         if get_dgcv_category(from_subalg) == "subalgebra":
             refAlg = from_subalg
         else:
@@ -1804,7 +1812,7 @@ class algebra_class:
                 weights = [list(weight) for weight in weights]
         else:
             raise ValueError(
-                "The `weights` parameter in `algebra_class.weighted_component` must be a list/tuple of weights/multi-weights. If giving a single multi-weight, it should be a length-1 list/tuple of lists/tuples, as otherwise a bare mult-weight tuple will be interpreted as a list of singleton weights."
+                f"The `weights` parameter in `algebra_class.weighted_component` must be a list/tuple of weights/multi-weights. If giving a single multi-weight, it should be a length-1 list/tuple of lists/tuples, as otherwise a bare mult-weight tuple will be interpreted as a list of singleton weights. Instead recieved{weights}"
             ) from None
         if test_weights is None:
             test_weights = refAlg.grading
@@ -3184,7 +3192,6 @@ class algebra_element_class:
 
 
 class algebra_subspace_class:
-
     def __init__(
         self,
         basis,
@@ -3286,6 +3293,20 @@ class algebra_subspace_class:
 
     def __contains__(self, item):
         return item in self.basis
+
+    def update_grading(self,new_weight_vectors_list,replace_instead_of_add=False):
+        if isinstance(new_weight_vectors_list,(list,tuple)):
+            if all(isinstance(elem,(list,tuple)) for elem in new_weight_vectors_list):
+                   if replace_instead_of_add is True:
+                       self.grading = [tuple(elem) for elem in new_weight_vectors_list]
+                   else:
+                       grad=list(self.grading)+[tuple(elem) for elem in new_weight_vectors_list]
+                       self.grading=grad
+            else:
+                raise TypeError(f'update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}')
+        else:
+            raise TypeError(f'update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}')
+
 
     def check_element_weight(self, element, test_weights=None, flatten_weights=False):
         """
@@ -3599,7 +3620,8 @@ def trace_matrix(A):
 
 
 def _indep_check(elems, newE, return_decomp_coeffs=False):
-    if getattr(elems,'len',0) == 0:
+
+    if not isinstance(elems, (list,tuple)) or len(elems) == 0:
         if return_decomp_coeffs:
             return True, []
         return True
@@ -3650,7 +3672,9 @@ def _basis_builder(elems, newE, ALBS=False):
         return list(elems)
     if ALBS is True:
         newE = _elem_scale(newE)
-    if getattr(elems,'len',0) == 0:
+    if not isinstance(elems,(list,tuple)):
+        raise TypeError(f'_basis_builder expects `elems` to be a list, recieved {elems} of type {type(elems)}')
+    if len(elems) == 0:
         return [newE]
     if _indep_check(elems, newE) is True:
         return list(elems) + [newE]

@@ -620,33 +620,43 @@ def vmf_summary(style=None, use_latex=None, complete_report=None):
     if use_latex is None:
         use_latex = get_dgcv_settings_registry()['use_latex']
 
-    if complete_report is True:
-        force_report = True
-    else:
-        force_report = False
+    force_report = True if complete_report is True else False
     if complete_report is None:
         complete_report = True
 
     vr = get_variable_registry()
-    sections = []
-
+    builders = []
     if vr['standard_variable_systems'] or vr['complex_variable_systems'] or force_report:
-        sections.append(_snapshot_coor_(style=style, use_latex=use_latex))
+        builders.append(_snapshot_coor_)
     if vr['finite_algebra_systems'] or force_report:
-        sections.append(_snapshot_algebras_(style=style, use_latex=use_latex))
+        builders.append(_snapshot_algebras_)
     if vr['eds']['atoms'] or force_report:
-        sections.append(_snapshot_eds_atoms_(style=style, use_latex=use_latex))
+        builders.append(_snapshot_eds_atoms_)
     if vr['eds']['coframes'] or force_report:
-        sections.append(_snapshot_coframes_(style=style, use_latex=use_latex))
+        builders.append(_snapshot_coframes_)
 
-    if not sections and not force_report:
+    if not builders and not force_report:
         print("There are no objects currently registered in the dgcv VMF.")
         return
 
     container_id = "dgcv-vmf-summary"
 
     html_parts = []
-    for view in sections:
+    total = len(builders)
+    for i, builder in enumerate(builders):
+        is_first = (i == 0)
+        is_last = (i == total - 1)
+        corner_kwargs = {}
+        if is_first and is_last:
+            corner_kwargs = {}
+        elif is_first:
+            corner_kwargs = {"lr": 0, "ll": 0}
+        elif is_last:
+            corner_kwargs = {"ur": 0, "ul": 0}
+        else:
+            corner_kwargs = {"ur": 0, "lr": 0, "ll": 0, "ul": 0}
+
+        view = builder(style=style, use_latex=use_latex, **corner_kwargs)
         html_parts.append(f'<div class="section">{view.to_html()}</div>')
 
     combined_html = f"""
@@ -680,7 +690,7 @@ def vmf_summary(style=None, use_latex=None, complete_report=None):
 
     return latex_in_html(_HTMLWrapper(combined_html))
 
-def _snapshot_coor_(style=None, use_latex=None):
+def _snapshot_coor_(style=None, use_latex=None, **kwargs):
     if style is None:
         style = get_dgcv_settings_registry()['theme']
     if use_latex is None:
@@ -899,10 +909,11 @@ def _snapshot_coor_(style=None, use_latex=None):
         escape_headers=True,
         nowrap=False,
         truncate_chars=None,
+        **kwargs
     )
     return view
 
-def _snapshot_algebras_(style=None, use_latex=None):
+def _snapshot_algebras_(style=None, use_latex=None, **kwargs):
     if style is None:
         style = get_dgcv_settings_registry()['theme']
     if use_latex is None:
@@ -1008,10 +1019,11 @@ def _snapshot_algebras_(style=None, use_latex=None):
         escape_headers=True,
         nowrap=False,
         truncate_chars=None,
+        **kwargs
     )
     return view
 
-def _snapshot_eds_atoms_(style=None, use_latex=None):
+def _snapshot_eds_atoms_(style=None, use_latex=None, **kwargs):
     if style is None:
         style = get_dgcv_settings_registry()['theme']
     if use_latex is None:
@@ -1161,9 +1173,10 @@ def _snapshot_eds_atoms_(style=None, use_latex=None):
         escape_headers=True,
         nowrap=False,
         truncate_chars=None,
+        **kwargs
     )
 
-def _snapshot_coframes_(style=None, use_latex=None):
+def _snapshot_coframes_(style=None, use_latex=None, **kwargs):
     """
     Returns a summary table listing coframes in the VMF scope
     """
@@ -1267,5 +1280,6 @@ def _snapshot_coframes_(style=None, use_latex=None):
         escape_headers=True,
         nowrap=False,
         truncate_chars=None,
+        **kwargs
     )
     return view

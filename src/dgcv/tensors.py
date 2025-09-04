@@ -86,7 +86,6 @@ class vector_space_class:
         if grading is None:
             self.grading = (tuple([0] * self.dimension),)
         else:
-            # Handle single or multiple grading vectors
             if isinstance(grading, (list, tuple)) and all(
                 isinstance(g, (list, tuple, sp.Tuple)) for g in grading
             ):
@@ -96,7 +95,6 @@ class vector_space_class:
                     for vector in grading
                 )
             else:
-                # Single grading vector provided
                 self.grading = (
                     validate_and_adjust_grading_vector(grading, self.dimension),
                 )
@@ -121,6 +119,19 @@ class vector_space_class:
     @property
     def ambiant(self):
         return self
+
+    def update_grading(self,new_weight_vectors_list,replace_instead_of_add=False):
+        if isinstance(new_weight_vectors_list,(list,tuple)):
+            if all(isinstance(elem,(list,tuple)) for elem in new_weight_vectors_list):
+                   if replace_instead_of_add is True:
+                       self.grading = [tuple(elem) for elem in new_weight_vectors_list]
+                   else:
+                       grad=list(self.grading)+[tuple(elem) for elem in new_weight_vectors_list]
+                       self.grading=grad
+            else:
+                raise TypeError(f'update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}')
+        else:
+            raise TypeError(f'update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}')
 
 
     def __eq__(self, other):

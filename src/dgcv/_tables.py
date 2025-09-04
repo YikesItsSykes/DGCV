@@ -124,7 +124,7 @@ class TableView:
         preface_html: Optional[str] = None,
         theme_styles: Optional[List[CSSRule]] = None,
         extra_styles: Optional[List[CSSRule]] = None,
-        table_attrs: str = 'style=" table-layout:fixed; overflow-x:auto;"', # max-width:900px;
+        table_attrs: str = 'style=" table-layout:fixed; overflow-x:auto;"',
         cell_align: Optional[str] = None,
         column_align: Optional[Dict[Union[int, str], str]] = None,
         escape_cells: bool = True,
@@ -139,12 +139,15 @@ class TableView:
         side_width: Union[int, str] = "320px",
         breakpoint_px: int = 900,
         container_id: Optional[str] = None,
-        # NEW:
         footer_rows: Optional[List[List[object]]] = None,
+        ul: Union[int, str] = 10,
+        ur: Union[int, str] = 10,
+        lr: Union[int, str] = 10,
+        ll: Union[int, str] = 10,
     ):
         self.columns = columns
         self.rows = rows
-        self.footer_rows = footer_rows or []  # NEW
+        self.footer_rows = footer_rows or []
         self.index_labels = index_labels
         self.caption = caption
         self.theme_styles = theme_styles or []
@@ -164,6 +167,10 @@ class TableView:
         self.breakpoint_px = breakpoint_px
         self.container_id = container_id or f"dgcv-view-{uuid.uuid4().hex[:8]}"
         self.preface_html = preface_html
+        self.ul = f"{ul}px" if isinstance(ul, int) else str(ul)
+        self.ur = f"{ur}px" if isinstance(ur, int) else str(ur)
+        self.lr = f"{lr}px" if isinstance(lr, int) else str(lr)
+        self.ll = f"{ll}px" if isinstance(ll, int) else str(ll)
 
         if column_align:
             name_to_idx = {name: i for i, name in enumerate(columns)}
@@ -177,7 +184,6 @@ class TableView:
         else:
             self._column_align_idx = None
 
-    # --- NEW: helper to render <td>/<th> with optional attrs / custom html ---
     def _render_cell(self, cell: object, *, tag: str = "td") -> str:
         """
         Accepts:
@@ -224,11 +230,10 @@ class TableView:
                 idx_html = _coerce_html(idx_val, html_safe=not self.escape_index)
                 tds.append(f'<th scope="row" class="row_heading">{idx_html}</th>')
             for cell in row:
-                tds.append(self._render_cell(cell, tag="td"))  # MAY be dict w/ colspan
+                tds.append(self._render_cell(cell, tag="td"))  
             body.append("<tr>" + "".join(tds) + "</tr>")
         return "<tbody>" + "".join(body) + "</tbody>"
 
-    # NEW: optional <tfoot>
     def _tfoot_html(self) -> str:
         if not self.footer_rows:
             return ""
@@ -237,7 +242,6 @@ class TableView:
         for row in self.footer_rows:
             tds = []
             if has_index:
-                # Keep the footer aligned: add an empty header cell
                 tds.append('<th scope="row" class="row_heading"></th>')
             for cell in row:
                 tds.append(self._render_cell(cell, tag="td"))
@@ -256,6 +260,11 @@ class TableView:
     def _layout_css(self) -> str:
         cid = self.container_id
         direction = "row" if self.layout == "row" else "column"
+        r_tl, r_tr, r_br, r_bl = self.ul, self.ur, self.lr, self.ll
+        if not self.footer_rows:
+            s_br,s_bl=r_br, r_bl
+        else:
+            s_br,s_bl=0,0
         return f"""
 <style>
 #{cid} .dgcv-flex {{
@@ -266,8 +275,36 @@ class TableView:
   justify-content: flex-start;
   flex-wrap: wrap;
 }}
-#{cid} .dgcv-main {{ flex: 1 1 0; min-width: 0; }}
-#{cid} .dgcv-side {{ flex: 0 0 {self.side_width}; max-width: 40%; box-sizing: border-box; overflow-y: visible;}}
+#{cid} .dgcv-main {{ flex: 0 1 auto; min-width: 0; margin: 0;}}
+#{cid} .dgcv-side {{ flex: 0 0 {self.side_width}; max-width: 40%; box-sizing: border-box; overflow-y: visible; margin: 0;}}
+
+#{cid} .dgcv-data-table {{ width: auto; table-layout: fixed; border-collapse: separate; border-spacing: 0; }}
+#{cid} .dgcv-table-wrap {{ overflow-x: auto; max-width: 100%; }}
+
+#{cid} .dgcv-data-table,
+#{cid} .dgcv-data-table thead,
+#{cid} .dgcv-data-table tfoot {{ background-color: inherit; }}
+
+#{cid} .dgcv-data-table th,
+#{cid} .dgcv-data-table td {{ background-clip: padding-box; }}
+
+#{cid} .dgcv-data-table thead tr:first-child th:first-child {{ border-top-left-radius: {r_tl}; }}
+#{cid} .dgcv-data-table thead tr:first-child th:last-child  {{ border-top-right-radius: {r_tr}; }}
+#{cid} .dgcv-data-table tfoot tr:last-child td:first-child    {{ border-bottom-left-radius: {r_bl}; }}
+#{cid} .dgcv-data-table tbody tr:last-child td:first-child    {{ border-bottom-left-radius: {s_bl}; }}
+#{cid} .dgcv-data-table tfoot tr:last-child td:last-child     {{ border-bottom-right-radius: {r_br}; }}
+#{cid} .dgcv-data-table tbody tr:last-child td:last-child     {{ border-bottom-right-radius: {s_br}; }}
+
+#{cid} .dgcv-data-table {{ border-radius: {r_tl} {r_tr} {r_br} {r_bl}; overflow: hidden; }}
+
+#{cid} .dgcv-flex .dgcv-data-table thead tr:first-child th:last-child {{ border-top-right-radius: 0; }}
+#{cid} .dgcv-flex .dgcv-data-table tfoot tr:last-child td:last-child,
+#{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child td:last-child   {{ border-bottom-right-radius: 0; }}
+#{cid} .dgcv-flex .dgcv-data-table tfoot tr:last-child td:first-child  {{ border-bottom-left-radius: {r_bl}; }}
+#{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child td:first-child  {{ border-bottom-left-radius: {s_bl}; }}
+#{cid} .dgcv-flex .dgcv-data-table {{ border-radius: {r_tl} 0 0 {r_bl}; overflow: hidden; }}
+#{cid} .dgcv-flex .dgcv-side-panel {{ border-radius: 0 {r_tr} {r_br} 0; }}
+
 @media (max-width: {int(self.breakpoint_px)}px) {{
 #{cid} .dgcv-flex {{
   flex-direction: column;
@@ -275,18 +312,36 @@ class TableView:
   align-items: stretch;
 }}
 #{cid} .dgcv-main, #{cid} .dgcv-side, #{cid} .dgcv-table-wrap, #{cid} .dgcv-side-panel {{
+  display: block;
   width: 100%;
   box-sizing: border-box;
   margin-bottom: {int(self.gap_px)}px;
 }}
-#{cid} .dgcv-table-wrap {{ margin: 0; }}
+#{cid} .dgcv-table-wrap {{ margin: 0;}}
 #{cid} .dgcv-side {{
-  max-width: %100;
+  max-width: 100%;
   flex: 1;
   overflow-y: visible;
 }}
+
+#{cid} .dgcv-data-table {{ width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; }}
+#{cid} .dgcv-flex .dgcv-data-table thead tr:first-child th:first-child {{ border-top-left-radius: {r_tl}; }}
+#{cid} .dgcv-flex .dgcv-data-table thead tr:first-child th:last-child {{ border-top-right-radius: {r_tr}; }}
+#{cid} .dgcv-flex .dgcv-data-table tfoot tr:last-child td:first-child,
+#{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child td:first-child {{ border-bottom-left-radius: 0; }}
+#{cid} .dgcv-flex .dgcv-data-table tfoot tr:last-child td:last-child,
+#{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child td:last-child {{ border-bottom-right-radius: 0; }}
+
+#{cid} .dgcv-data-table,
+#{cid} .dgcv-data-table thead,
+#{cid} .dgcv-data-table tfoot {{ background-color: inherit; }}
+
+#{cid} .dgcv-data-table th,
+#{cid} .dgcv-data-table td {{ background-clip: padding-box; }}
+
+#{cid} .dgcv-flex .dgcv-data-table {{ border-radius: {r_tl} {r_tr} 0 0; overflow: hidden; }}
+#{cid} .dgcv-flex .dgcv-side-panel {{ border-radius: 0 0 {r_br} {r_bl}; }}
 }}
-#{cid} .dgcv-table-wrap {{ overflow-x: auto; max-width: %100; }}
 </style>
 """.strip()
 
@@ -310,7 +365,7 @@ class TableView:
         css = self._table_css()
         return (
             f"{css}"
-            f"<table {self.table_attrs}>"
+            f"<table class=\"dgcv-data-table\" {self.table_attrs}>"
             f"{cap}"
             f"{thead}"
             f"{tbody}"
@@ -322,10 +377,10 @@ class TableView:
         panel = self._panel_html()
         table_html = self._table_html_only()
         preface = self.preface_html or ""
-        if not panel:
-            return f'<div id="{self.container_id}">{preface}<div class="dgcv-table-wrap">{table_html}</div></div>'
-
         layout_css = self._layout_css()
+        if not panel:
+            return f'<div id="{self.container_id}">{layout_css}{preface}<div class="dgcv-table-wrap">{table_html}</div></div>'
+
         return (
             f'<div id="{self.container_id}">'
             f"{layout_css}"

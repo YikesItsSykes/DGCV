@@ -350,6 +350,7 @@ class Tanaka_symbol():
     def __iter__(self):
         return iter(self.basis) 
 
+
     def _prolong_by_1(self, levels, height, distinguished_s_weight_bound = -1, with_characteristic_space_reductions=False, ADS=None): # height must match levels structure
         if ADS is None:
             fast_DS = self._fast_process_DS
@@ -438,7 +439,7 @@ class Tanaka_symbol():
             else:
                 solution = solve_dgcv(eqns,tVars)
             if len(solution)==0:
-                raise RuntimeError(f'`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {tVars}')
+                raise RuntimeError(f'`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {tVars}; return solution data was {solution}')
             el_sol = general_elem.subs(solution[0])
             if hasattr(el_sol,'_convert_to_tp'):
                 el_sol = el_sol._convert_to_tp()
@@ -702,25 +703,23 @@ class Tanaka_symbol():
         extra = [
             {"selector": ".dgcv-table-wrap, .dgcv-side-panel", "props": [
                 ("box-sizing", "border-box"),
-                ("width", "100%"),
             ]},
             {"selector": ".dgcv-table-wrap", "props": [
-                ("display", "block"),
-                ("overflow", "hidden"),
-                ("padding", "4px"),
+                ("display", "inline-block"),
+                # ("width", "fit-content"),
+                ("max-width", "100%"),
                 ("margin", "0"),
                 ("border", f"{thickness} solid transparent"),
-                ("scrollbar-gutter", "stable"),
             ]},
             {"selector": ".dgcv-side-panel", "props": [
                 ("border", f"{thickness} solid {border_color}"),
                 ("background-color", col_heading_bg or header_bg or "transparent"),
-                ("width", f"calc(100% - 2*{thickness})"),
+                ("width", f"calc(100% - 2 * {thickness})"),
                 ("color", header_col or "inherit"),
                 ("padding", "4px 4px"),
-                # ("margin", "0"),
+                ("margin", "0"),
                 ("overflow-y", "visible"),
-                ("height", f"calc(100% - 2*{thickness})"),
+                ("height", f"calc(100% - 2 * {thickness})"),
                 ("max-height", "none"),
             ]},
             {"selector": ".dgcv-side-panel *", "props": [
@@ -763,6 +762,9 @@ class Tanaka_symbol():
                 ("background-color", col_heading_bg or header_bg or "transparent"),
                 ("color", header_col or "inherit"),
             ]},
+            {"selector": ".dgcv-data-table", "props": [
+                ("border-collapse", "separate"),
+            ]},
         ]
 
         table = build_plain_table(
@@ -784,10 +786,9 @@ class Tanaka_symbol():
             side_width="340px",
             breakpoint_px=900,   # stacked <= 900px; 
             container_id="tanaka-summary",
-            footer_rows=footer,  # <-- the real tfoot
+            footer_rows=footer,
         )
 
-        # No string replace here — TableView renders <tfoot> itself
         return latex_in_html(table, apply_VSCode_workarounds=_apply_VScode_display_workaround_with_JS_deliver)
 
 
