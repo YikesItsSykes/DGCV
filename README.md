@@ -11,7 +11,7 @@ At its core are symbolic representations of standard DG objects such as vector f
 
 As systems of differential geometric objects constructed from complex variables inherit natural relationships from the underlying complex structure, **dgcv** objects track these relationships across the constructions. This system enables smooth switching between real and holomorphic coordinate representations of mathematical objects. In computations, **dgcv** objects dynamically manage this format switching on their own so that typical complex variables formulas can be written plainly and will simply work. Some examples of this: In coordinates $z_j = x_j + iy_j$, expressions such as $\frac{\partial}{\partial x_j}|z_j|^2$ or $d z_j \wedge d \overline{z_j} \left( \frac{\partial}{\partial z_j}, \frac{\partial}{\partial y_j} \right)$ are correctly parsed without needing to convert everything to a uniform variable format. Retrieving objects' complex structure-related attributes, like the holomorphic part of a vector field or pluriharmonic terms from a polynomial is straightforward. Complexified cotangent bundles and their exterior algebras are easily decomposed into components from the Dolbeault complex and Dolbeault operators themselves can be applied to functions and k-forms in either coordinate format.
 
-**dgcv** is tested on Python 3.13, and has dependencies on the SymPy, Pandas, and iPython libraries.
+**dgcv** is tested on Python 3.13, and has dependencies on the SymPy and iPython libraries.
 
 ## Features
 
@@ -44,7 +44,7 @@ Depending on Python install configurations, the above command can vary. The key 
 
 ### Future Development
 
-Version 0.3.7 of **dgcv** is designed with several planned extensions to the library in mind. Current plans broadly fall into two categories:
+Version 0.3.8 of **dgcv** is designed with several planned extensions to the library in mind. Current plans broadly fall into two categories:
 
 - Extending complex variable handling and dynamic coordinate-type conversion automations. The simple goal is to fully automate handling of complex variable formats, allowing input to be formatted freely with any coordinate type, with features to fully control coordinate type formatting or let the systems automate the process.
 - Expanding libraries dedicated to more specialized areas of differential geometry
