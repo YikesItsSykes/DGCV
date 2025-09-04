@@ -3599,7 +3599,7 @@ def trace_matrix(A):
 
 
 def _indep_check(elems, newE, return_decomp_coeffs=False):
-    if len(elems) == 0:
+    if getattr(elems,'len',0) == 0:
         if return_decomp_coeffs:
             return True, []
         return True
@@ -3650,7 +3650,7 @@ def _basis_builder(elems, newE, ALBS=False):
         return list(elems)
     if ALBS is True:
         newE = _elem_scale(newE)
-    if len(elems) == 0:
+    if getattr(elems,'len',0) == 0:
         return [newE]
     if _indep_check(elems, newE) is True:
         return list(elems) + [newE]
