@@ -324,6 +324,7 @@ class Tanaka_symbol():
 
         self._GLA_structure = dynamic_dict
         self.levels = dynamic_dict(levels, initial_index = index_threshold)
+        self.dimension = sum(len(level) for level in self.levels.values())
         self._test_commutators = None
         self.distinguished_subspaces = distinguished_subspaces
 
