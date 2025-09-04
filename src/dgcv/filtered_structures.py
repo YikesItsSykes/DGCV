@@ -740,6 +740,8 @@ class Tanaka_symbol():
             {"selector": ".dgcv-side-panel ul", "props": [
                 ("margin", "8px 0 0 18px"),
                 ("padding", "0"),
+                ("overflow-wrap","scroll"),
+                ("overflow-y","hidden")
             ]},
             {"selector": ".dgcv-side-panel li::marker", "props": [
                 ("color", col_heading_color or header_col or border_color),

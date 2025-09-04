@@ -1928,6 +1928,10 @@ class algebra_class:
             escape_headers=False,
             escape_index=False,
             nowrap=True,
+            ul=0,
+            ur=0,
+            ll=0,
+            lr=0
         )
 
         return latex_in_html(table)
