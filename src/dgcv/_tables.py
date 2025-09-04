@@ -124,7 +124,7 @@ class TableView:
         preface_html: Optional[str] = None,
         theme_styles: Optional[List[CSSRule]] = None,
         extra_styles: Optional[List[CSSRule]] = None,
-        table_attrs: str = 'style="max-width:900px; table-layout:fixed; overflow-x:auto;"',
+        table_attrs: str = 'style=" table-layout:fixed; overflow-x:auto;"', # max-width:900px;
         cell_align: Optional[str] = None,
         column_align: Optional[Dict[Union[int, str], str]] = None,
         escape_cells: bool = True,
@@ -263,10 +263,11 @@ class TableView:
   flex-direction: {direction};
   gap: {int(self.gap_px)}px;
   align-items: flex-start;
+  justify-content: flex-start;
   flex-wrap: wrap;
 }}
 #{cid} .dgcv-main {{ flex: 1 1 0; min-width: 0; }}
-#{cid} .dgcv-side {{ flex: 0 0 {self.side_width}; max-width: 40%; box-sizing: border-box; overflow-y: visible; }}
+#{cid} .dgcv-side {{ flex: 0 0 {self.side_width}; max-width: 40%; box-sizing: border-box; overflow-y: visible;}}
 @media (max-width: {int(self.breakpoint_px)}px) {{
 #{cid} .dgcv-flex {{
   flex-direction: column;
@@ -280,12 +281,12 @@ class TableView:
 }}
 #{cid} .dgcv-table-wrap {{ margin: 0; }}
 #{cid} .dgcv-side {{
-  max-width: none;
-  flex: 0 1 auto;
+  max-width: %100;
+  flex: 1;
   overflow-y: visible;
 }}
 }}
-#{cid} .dgcv-table-wrap {{ overflow-x: auto; max-width: 100%; }}
+#{cid} .dgcv-table-wrap {{ overflow-x: auto; max-width: %100; }}
 </style>
 """.strip()
 
@@ -305,7 +306,7 @@ class TableView:
         cap = self._caption_html()
         thead = self._thead_html()
         tbody = self._tbody_html()
-        tfoot = self._tfoot_html()  # NEW
+        tfoot = self._tfoot_html()
         css = self._table_css()
         return (
             f"{css}"
@@ -313,7 +314,7 @@ class TableView:
             f"{cap}"
             f"{thead}"
             f"{tbody}"
-            f"{tfoot}"   # NEW
+            f"{tfoot}"
             f"</table>"
         )
 

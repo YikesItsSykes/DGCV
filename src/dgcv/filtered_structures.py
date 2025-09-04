@@ -718,7 +718,7 @@ class Tanaka_symbol():
                 ("width", f"calc(100% - 2*{thickness})"),
                 ("color", header_col or "inherit"),
                 ("padding", "4px 4px"),
-                ("margin", "0"),
+                # ("margin", "0"),
                 ("overflow-y", "visible"),
                 ("height", f"calc(100% - 2*{thickness})"),
                 ("max-height", "none"),

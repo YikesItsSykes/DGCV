@@ -201,7 +201,7 @@ vlp=re.compile(
     re.VERBOSE,)
 dgcv_settings_registry = {
     "use_latex": False,
-    "theme": "appalachian", # blue
+    "theme": "graph_paper",  # appalachian, blue
     "format_displays": False,
     "version_specific_defaults": f"v{__version__}",
     "ask_before_overwriting_objects_in_vmf": True,
