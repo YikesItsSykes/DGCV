@@ -15,7 +15,7 @@ To get started, check out the Jupyter Notebook tutorials:
 
 setup(
     name="dgcv",
-    version="0.3.6",
+    version="0.3.7",
     description="Differential Geometry with Complex Variables",
     long_description=long_description,  # This shows up on PyPI
     long_description_content_type="text/markdown",
@@ -26,5 +26,5 @@ setup(
     },
     include_package_data=True,
     python_requires=">=3.6",
-    install_requires=["sympy>=1.9", "pandas>=1.0", "ipython>=7.0"],
+    install_requires=["sympy>=1.9", "ipython>=7.0"],
 )

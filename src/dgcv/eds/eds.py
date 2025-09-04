@@ -605,8 +605,8 @@ class zeroFormAtom(sp.Basic):
             count += 1
         return final_str
 
-    def _repr_latex_(self):
-        return f'${self._latex()}$'
+    def _repr_latex_(self,raw=False):
+        return self._latex() if raw else f'${self._latex()}$'
 
 def createZeroForm(labels, index_set={}, initial_index=1, assumeReal=False, coframe=None, coframe_independants=dict(), verbose_labeling=False,remove_guardrails=None):
     if not isinstance(labels, str):
@@ -699,11 +699,12 @@ def _zeroFormFactory(label, index_set={}, assumeReal=False, coframe=None, cofram
             lower, upper = index_pair
             if verbose is True or len(upper)!=0 or len(lower)>1:
                 return f"{label}" + (f"_low_{'_'.join(map(str, lower))}" if lower else "") + (f"_hi_{'_'.join(map(str, upper))}" if upper else "")
-            else:
+            elif len(lower)==1:
                 return f"{label}" + str(lower[0])
-        family_names = [
-            labeler(index_pair,verbose_labeling) for index_pair in index_combinations
-        ]
+            else:
+                return f"{label}"
+        _cached_caller_globals['DEBUG']=index_combinations,verbose_labeling
+        family_names = [labeler(index_pair,verbose_labeling) for index_pair in index_combinations]
     else:
         family_names = [label]
 
@@ -1114,6 +1115,9 @@ class abstract_ZF(sp.Basic):
             return self
         return abstract_ZF(("sub", self, other))
 
+    def __rsub__(self,other):
+        return -1*(self-other)
+
     def __mul__(self, other):
         """
         Multiplication of abstract_ZF instances.
@@ -1445,11 +1449,11 @@ class abstract_ZF(sp.Basic):
 
         return sp.latex(self.base)
 
-    def _repr_latex_(self):
+    def _repr_latex_(self,raw=False):
         """
         Jupyter Notebook LaTeX representation for abstract_ZF.
         """
-        return f"${sp.latex(self)}$"
+        return sp.latex(self) if raw else f"${sp.latex(self)}$"
 
     def to_sympy(self,subs_rules={}):
         return _sympify_abst_ZF(self,subs_rules)[0][0]
@@ -3181,11 +3185,12 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
 
         elif op == "pow":  # Power Rule: d(f^g)
             base, exponent = args
-            dbase = _cofrDer_abstract_ZF(base, cf, cfIndex)
-
             if isinstance(exponent, _get_expr_num_types()):
+                dbase = _cofrDer_abstract_ZF(base, cf, cfIndex)
                 new_exp = exponent-1
                 return abstract_ZF(("mul", exponent, ("pow", base, new_exp), dbase))
+            elif isinstance(base,_get_expr_num_types()):
+                return abstract_ZF(("mul", sp.ln(base), ("pow", base, exponent), _cofrDer_abstract_ZF(exponent, cf, cfIndex)))
             else:
                 raise NotImplementedError(f'coframe derivatives are not implemented for type {type(base)} raised to type {type(exponent)}')
 
@@ -3339,6 +3344,8 @@ def _sympy_to_abstract_ZF(expr, subs_rules={}):
     if isinstance(expr, sp.conjugate):
         return abstract_ZF(_sympy_to_abstract_ZF(expr.args[0], subs_rules))._eval_conjugate().base
 
+    if isinstance(expr,sp.exp):
+        return ('pow',sp.E,_sympy_to_abstract_ZF(expr.args[0],subs_rules))
 
     # Raise error for unsupported operations
     if isinstance(expr, sp.Function):
@@ -3379,12 +3386,14 @@ def _generate_str_id(base_str: str, *dicts: dict) -> str:
 
 def _equation_formatting(eqn,variables_dict):
     var_dict = dict()
+    if (isinstance(eqn,(tuple,list)) and len(eqn)==0) or eqn is None:
+        return [],var_dict
     if isinstance(eqn,_get_expr_num_types()) and not isinstance(eqn,zeroFormAtom):
          return [sp.sympify(eqn)], var_dict
     if get_dgcv_category(eqn) in ['algebra_element','subalgebra_element','vector_space_element']:
-        return [sp.sympify(term) for term in eqn.coeffs], var_dict
+        return [sp.sympify(term) for term in eqn.coeffs] or [], var_dict
     if get_dgcv_category(eqn) == 'tensorProduct':
-        return [sp.sympify(term) for term in eqn.coeff_dict.values()], var_dict
+        return [sp.sympify(term) for term in eqn.coeff_dict.values()] or [], var_dict
     if isinstance(eqn,zeroFormAtom):
         not_found_filter = True
         for k,v in variables_dict.items():

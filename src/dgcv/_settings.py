@@ -1,6 +1,6 @@
 import warnings
 
-from ._config import get_dgcv_settings_registry
+from ._config import get_dgcv_settings_registry, vlp
 from ._dgcv_display import dgcv_init_printing
 from .backends._sage_backend import is_sage_available
 
@@ -10,7 +10,7 @@ def set_dgcv_settings(theme=None,
                       use_latex=None,
                       version_specific_defaults=None,
                       ask_before_overwriting_objects_in_vmf=None,
-                      forgo_warnings=None,default_engine=None):
+                      forgo_warnings=None,default_engine=None,verbose_label_printing=None,DEBUG=None,apply_awkward_workarounds_to_fix_VSCode_display_issues=None):
     dgcvSR = get_dgcv_settings_registry()
     if theme is not None:
         dgcvSR['theme'] = theme
@@ -41,3 +41,11 @@ def set_dgcv_settings(theme=None,
                 f"Unrecognized default_engine value {default_engine!r}. "
                 "Supported options are 'sympy' and 'sage'. Default engine was not updated."
             )
+    if apply_awkward_workarounds_to_fix_VSCode_display_issues is not None:
+        dgcvSR['apply_awkward_workarounds_to_fix_VSCode_display_issues']=apply_awkward_workarounds_to_fix_VSCode_display_issues
+    if verbose_label_printing is not None:
+        dgcvSR['verbose_label_printing'] = verbose_label_printing
+        if dgcvSR['verbose_label_printing'] is False:
+            dgcvSR['VLP']=vlp
+    if DEBUG is not None:
+        dgcvSR['DEBUG'] = DEBUG

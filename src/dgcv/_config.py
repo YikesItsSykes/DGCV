@@ -2,11 +2,11 @@
 _config.py
 
 This module provides utility functions for dgcv's Variable Management Framework, maintaining
-a registry of instantiated mathematical object for interaction with dgcv functions. 
+a registry of instantiated mathematical object for interaction with dgcv functions.
 
 Functions
 ---------
-- get_variable_registry: Returns the current state of the `variable_registry`, 
+- get_variable_registry: Returns the current state of the `variable_registry`,
   which holds information about objects tracked in the VMF.
 - clear_variable_registry: Resets the `variable_registry` to its initial state.
 - get_dgcv_settings_registry: Returns the current state of the dictionary storing setting default affecting dgcv functions.
@@ -14,11 +14,25 @@ Functions
 
 import collections.abc
 import inspect
+import re
 import warnings
 
 from dgcv import __version__
 
 _cached_caller_globals = None
+
+dgcv_categories = {
+    "vector_field",
+    "tensor_field",
+    "differential_form",
+    "algebra",
+    "algebra_element",
+    "algebra_subspace",
+    "subalgebra",
+    "subalgebra_element",
+    "vectorSpace",
+    "vector_space_element",
+}
 
 greek_letters = {
     "alpha": "\\alpha",
@@ -62,8 +76,9 @@ greek_letters = {
     "Psi": "\\Psi",
     "Omega": "\\Omega",
     "ell": "\\ell",
-    "hbar": "\\hbar"
+    "hbar": "\\hbar",
 }
+
 
 def get_caller_globals():
     """
@@ -94,6 +109,7 @@ def get_caller_globals():
 
     raise RuntimeError("Could not find the '__main__' module in the call stack.")
 
+
 def cache_globals():
     """
     Initialize the global namespace cache.
@@ -103,6 +119,7 @@ def cache_globals():
     """
     if _cached_caller_globals is None:
         get_caller_globals()
+
 
 def configure_warnings():
     warnings.simplefilter("once")  # Only show each warning once
@@ -115,11 +132,13 @@ def configure_warnings():
 
     warnings.formatwarning = custom_format_warning
 
+
 class StringifiedSymbolsDict(collections.abc.MutableMapping):
     """
     A lightweight dictionary that stores keys as their string representations.
     When setting or getting an item with a key, it is converted to its string form.
     """
+
     def __init__(self, initial_data=None):
         self._data = {}
         if initial_data:
@@ -151,12 +170,13 @@ class StringifiedSymbolsDict(collections.abc.MutableMapping):
     def __repr__(self):
         return f"StringifiedSymbolsDict({self._data})"
 
+
 variable_registry = {
     "standard_variable_systems": {},
     "complex_variable_systems": {},
     "finite_algebra_systems": {},
-    "misc":{},
-    "eds":{'atoms':{},'coframes':{}},
+    "misc": {},
+    "eds": {"atoms": {}, "coframes": {}},
     "protected_variables": set(),
     "temporary_variables": set(),
     "obscure_variables": set(),
@@ -171,23 +191,44 @@ variable_registry = {
         "real_part": StringifiedSymbolsDict(),
         "im_part": StringifiedSymbolsDict(),
     },
-    "_labels":{}
+    "_labels": {},
 }
+vlp=re.compile(
+    r"""
+    ^(?:\\left\((?P<content>.*)\\right\))?   
+    _\{\\operatorname\{v\.\}(?P<j>\d+)\}$    
+    """,
+    re.VERBOSE,)
 dgcv_settings_registry = {
-    'use_latex':False,
-    'theme':'blue',
-    'format_displays':False,
-    'version_specific_defaults':f'v{__version__}',
-    'ask_before_overwriting_objects_in_vmf':True,
-    'forgo_warnings':False,
-    'default_symbolic_engine':'sympy'
+    "use_latex": False,
+    "theme": "appalachian", # blue
+    "format_displays": False,
+    "version_specific_defaults": f"v{__version__}",
+    "ask_before_overwriting_objects_in_vmf": True,
+    "forgo_warnings": False,
+    "default_symbolic_engine": "sympy",
+    "verbose_label_printing": False,
+    "VLP":vlp,
+    "apply_awkward_workarounds_to_fix_VSCode_display_issues": False,
 }
+vs_registry = []
+
 
 def get_variable_registry():
     return variable_registry
 
 def get_dgcv_settings_registry():
     return dgcv_settings_registry
+
+def get_vs_registry():
+    return vs_registry
+
+def from_vsr(idx):
+    return vs_registry[idx]
+
+def _vsr_inh_idx(idx):
+    vs=from_vsr(idx)
+    return getattr(vs,'ambiant',vs).dgcv_vs_id
 
 def clear_variable_registry():
     global variable_registry
@@ -211,13 +252,15 @@ def clear_variable_registry():
         },
     }
 
-def canonicalize(obj,with_simplify = False, depth = 1000):
-    if hasattr(obj,'_eval_canonicalize'):
+
+def canonicalize(obj, with_simplify=False, depth=1000):
+    if hasattr(obj, "_eval_canonicalize"):
         obj = obj._eval_canonicalize(depth=depth)
     if with_simplify is True:
-        return obj._eval_simplify() if hasattr(obj,'_eval_simplify') else obj
+        return obj._eval_simplify() if hasattr(obj, "_eval_simplify") else obj
     else:
         return obj
+
 
 class dgcv_exception_note(Exception):
     def __init__(self, message):
@@ -226,3 +269,26 @@ class dgcv_exception_note(Exception):
 
     def __str__(self):
         return self.message
+
+
+def latex_in_html(html_string, apply_VSCode_workarounds=False):
+    if (
+        dgcv_settings_registry["apply_awkward_workarounds_to_fix_VSCode_display_issues"]
+        is True
+    ):
+        apply_VSCode_workarounds = True
+    if apply_VSCode_workarounds is True:
+        from IPython.display import HTML
+
+        katexInjectString = """<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+" crossorigin="anonymous">
+<script type="module">
+    import renderMathInElement from "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.mjs";
+    renderMathInElement(document.body, {
+        delimiters: [
+            {left: "$$", right: "$$", display: true},
+            {left: "$", right: "$", display: false}
+        ]
+    });
+</script>"""
+        return HTML(katexInjectString + html_string.to_html(escape=False))
+    return html_string

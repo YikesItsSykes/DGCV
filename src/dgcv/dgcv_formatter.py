@@ -1,9 +1,6 @@
 import re
 
-from pandas import DataFrame, MultiIndex
-
 from ._config import get_variable_registry, greek_letters
-from .styles import get_style
 
 
 def collect_variable_data(variable_registry, use_latex):
@@ -70,14 +67,15 @@ def process_algebra(var_name, variable_registry, data, index, use_latex):
 
     index.append((formatted_str, ""))
 
-def build_table(data, index, style):
-    columns = MultiIndex.from_product(
-        [["Initialized Coordinate Systems and Algebras"], ["", "", "", "", ""]]
-    )
-    table = DataFrame(data=data, index=index, columns=columns)
+# def build_table(data, index, style):
+#     from pandas import DataFrame, MultiIndex
+#     columns = MultiIndex.from_product(
+#         [["Initialized Coordinate Systems and Algebras"], ["", "", "", "", ""]]
+#     )
+#     table = DataFrame(data=data, index=index, columns=columns)
 
-    table_styles = get_style(style)
-    return table.style.set_table_styles(table_styles)
+#     table_styles = get_style(style)
+#     return table.style.set_table_styles(table_styles)
 
 def format_variable_details(
     var_name, family_names, initial_index, tuple_len, system_type, use_latex

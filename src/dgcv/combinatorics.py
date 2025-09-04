@@ -283,7 +283,8 @@ def chooseOp(
     TypeError
         If the arguments are not in the correct format.
     """
-
+    if arg2==0:
+        return (0 for _ in range(0))
     arg1 = [list(arg1)]
 
     # Determine which Cartesian product function to use

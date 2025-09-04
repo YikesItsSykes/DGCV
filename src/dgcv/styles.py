@@ -1912,6 +1912,10 @@ def get_style(theme_name):
     """
     if theme_name == 'random':
         theme_name = random.choice(list(style_guide.keys()))
+        from ._settings import get_dgcv_settings_registry
+        if get_dgcv_settings_registry().get('DEBUG',False) is True:
+            print(f'theme name: {theme_name}')
+            print('=============================')
     if theme_name == 'chalkboard':
         theme_name = random.choice([
             "chalkboard_green", "chalkboard_blue", "chalkboard_red",
@@ -1938,7 +1942,7 @@ def get_style(theme_name):
     # Map the refactored keys back to selectors
     selector_mapping = {
         "table": "table",
-        "header": "th",
+        "header": "thead th",
         "col_heading": "th.col_heading.level0",
         "row_heading": "th.row_heading",
         "row": "tbody tr:nth-child(odd)",

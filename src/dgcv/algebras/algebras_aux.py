@@ -1,57 +1,75 @@
 import random
+import warnings
 
 import sympy as sp
 
 from .._config import _cached_caller_globals, dgcv_exception_note
-from .._safeguards import retrieve_passkey, retrieve_public_key
+from .._safeguards import (
+    create_key,
+    get_dgcv_category,
+    retrieve_passkey,
+    retrieve_public_key,
+)
+from ..backends._caches import _is_atomic
 from ..dgcv_core import VF_bracket, VFClass, addVF, allToReal, variableProcedure
 from ..solvers import solve_dgcv
 from ..vmf import clearVar, listVar
 
 
-def _validate_structure_data(data, process_matrix_rep=False, assume_skew=False, assume_Lie_alg=False, basis_order_for_supplied_str_eqns = None):
+def _validate_structure_data(data, process_matrix_rep=False, assume_skew=False, assume_Lie_alg=False, basis_order_for_supplied_str_eqns = None, process_tensor_rep = False):
+    if process_tensor_rep:
+        try:
+            return algebraDataFromTensorRep(data),'tensor'
+        except Exception as e:
+            raise dgcv_exception_note(f'{e}') from None
     if process_matrix_rep:
-        if all(
-            isinstance(sp.Matrix(obj), sp.Matrix)
-            and len(set(sp.Matrix(obj).shape[:2]))<2
-            for obj in data
-        ):
+        if all(isinstance(sp.Matrix(obj), sp.Matrix) and len(set(sp.Matrix(obj).shape[:2]))<2 for obj in data):
             try:
-                return algebraDataFromMatRep(data)
+                return algebraDataFromMatRep(data), 'matrix'
             except Exception as e:
                 raise dgcv_exception_note(f'{e}') from None
+        elif all(get_dgcv_category(elem)=='tensorProduct' for elem in data):
+            warnings.warn('`_validate_structure_data` was given a list of tensorProduct instance, but `process_matrix_rep` was also marked True. The latter was ignored.')
+            return _validate_structure_data(data, process_matrix_rep=False, assume_skew=assume_skew, assume_Lie_alg=assume_Lie_alg, basis_order_for_supplied_str_eqns = basis_order_for_supplied_str_eqns, process_tensor_rep = True), 'tensor'
         else:
             raise ValueError(
                 f"matrix representation prcessing requires a list of square matrices. Recieved: {data}"
             )
 
-    if isinstance(data,(list,tuple)) and all(isinstance(obj, VFClass) for obj in data):
-        return algebraDataFromVF(data)
+    if isinstance(data,(list,tuple)) and len(data)>0 and all(isinstance(obj, VFClass) for obj in data):
+        return algebraDataFromVF(data),'VF'
     try:
         if isinstance(data, dict):
-            if all(isinstance(key,tuple) and len(key)==2 and all(isinstance(idx,sp.Symbol) for idx in key) for key in data):
+            if all(isinstance(key,tuple) and len(key)==2 and all(_is_atomic(idx) for idx in key) for key in data):
                 if basis_order_for_supplied_str_eqns is None:
+                    build_basis_order = True
                     basis_order_for_supplied_str_eqns = []
-                if not isinstance(basis_order_for_supplied_str_eqns,(list,tuple)) or any(not isinstance(var,sp.Symbol) for var in basis_order_for_supplied_str_eqns):
-                    raise ValueError('If initializing an algebra from structure equations and supplying the `basis_order_for_supplied_str_eqns` parameter, this parameter should be a list of the sympy.Symbols instances appearing in the supplied structure equations.')
+                else:
+                    build_basis_order = False
+                if not isinstance(basis_order_for_supplied_str_eqns,(list,tuple)) or not all(_is_atomic(var) for var in basis_order_for_supplied_str_eqns):
+                    raise ValueError('If initializing an algebra from structure equations and supplying the `basis_order_for_supplied_str_eqns` parameter, this parameter should be a list of the atomic variables (e.g., sympy.Symbol instances) appearing in the supplied structure equations.')
                 for var in set(sum([list(key) for key in data.keys()],[])):
                     if var not in basis_order_for_supplied_str_eqns:
-                        raise ValueError('If initializing an algebra from structure equations and supplying the `basis_order_for_supplied_str_eqns` parameter, this parameter should be a list containing all sympy.Symbols instances appearing in the supplied structure equations.')
+                        if build_basis_order:
+                            basis_order_for_supplied_str_eqns.append(var)
+                        else:
+                            raise ValueError('If initializing an algebra from structure equations and supplying the `basis_order_for_supplied_str_eqns` parameter, this parameter should be a list containing all atomic variables (e.g., sympy.Symbol instances) appearing in the supplied structure equations.')
                 ordered_BV = basis_order_for_supplied_str_eqns
                 zeroing = {var:0 for var in ordered_BV}
                 new_data = dict()
                 for idx_pair, val in data.items():
-                    v1,v2 = idx_pair
-                    idx1 = ordered_BV.index(v1)
-                    idx2 = ordered_BV.index(v2)
-                    if hasattr(val,'subs') and val.subs(zeroing)==0:
-                        coeffs = []
-                        for var in ordered_BV:
-                            coeffs.append(sp.simplify(val.subs({var:1}).subs(zeroing)))
-                        new_data[(idx2,idx1)]=tuple(coeffs)
-                    else:
-                        print(val,zeroing)
-                        raise ValueError('If initializing an algebra from structure equations, supplied structure equations should be a dictionary whose keys are tuples of variables (`sympy.Symbol` class instances) and whose value is a linear combination of variables representing the product of the elements in the key tuple.')
+                    if val!=0:
+                        v1,v2 = idx_pair
+                        idx1 = ordered_BV.index(v1)
+                        idx2 = ordered_BV.index(v2)
+                        if hasattr(val,'subs') and val.subs(zeroing)==0:
+                            coeffs = []
+                            for var in ordered_BV:
+                                coeffs.append(sp.simplify(val.subs({var:1}).subs(zeroing)))
+                            new_data[(idx2,idx1)]=tuple(coeffs)
+                        else:
+                            print(val,zeroing)
+                            raise ValueError('If initializing an algebra from structure equations, supplied structure equations should be a dictionary whose keys are tuples of atomic variables (e.g., `sympy.Symbol` class instances) and whose value is a linear combination of variables representing the product of the elements in the key tuple.')
                 data = new_data
             if all(isinstance(key,tuple) and len(key)==2 and all(isinstance(idx,int) and idx>=0 for idx in key) for key in data):
                 provided_index_bound = max(sum([list(key) for key in data.keys()],[]))
@@ -94,11 +112,7 @@ def _validate_structure_data(data, process_matrix_rep=False, assume_skew=False, 
 
 def algebraDataFromVF(vector_fields):
     """
-    Create the structure data array for a Lie algebra from a list of vector fields in *vector_fields*.
-
-    This function computes the Lie algebra structure constants from a list of vector fields
-    (instances of VFClass) defined on the same variable space. The returned structure data
-    can be used to initialize an algebra instance.
+    Create the structure data array for a Lie algebra from a list of vector fields.
 
     Parameters
     ----------
@@ -110,58 +124,31 @@ def algebraDataFromVF(vector_fields):
     list
         A 3D array-like list of lists of lists representing the Lie algebra structure data.
 
-    Raises
-    ------
-    Exception
-        If the vector fields do not span a Lie algebra or are not defined on a common basis.
-
     Notes
     -----
     This function dynamically chooses its approach to solve for the structure constants:
-    - For smaller dimensional algebras, it substitutes pseudo-arbitrary values for the variables in `varSpaceLoc`
-      based on a power function to create a system of linear equations.
-    - For larger systems, where `len(varSpaceLoc)` raised to `len(vector_fields)` exceeds a threshold (default is 10,000),
-      random rational numbers are used for substitution to avoid performance issues caused by large numbers.
+    - For smaller dimensional algebras, it substitutes pseudo-arbitrary values for the variables in `varSpaceLoc` to create a system of linear equations.
+    - For larger systems, where `len(varSpaceLoc)` raised to `len(vector_fields)` exceeds a threshold, random rational numbers are used for substitution to minimize performance hits.
     """
-    # Define the product threshold for switching to random sampling
+
     product_threshold = 1
 
-    # Check if all vector fields are defined on the same variable space
     if len(set([vf.varSpace for vf in vector_fields])) != 1:
-        raise Exception(
-            "algebraDataFromVF requires vector fields defined with respect to a common basis."
-        )
+        raise Exception("algebraDataFromVF requires vector fields defined with respect to a common basis.")
 
     complexHandling = any(vf.dgcvType == "complex" for vf in vector_fields)
     if complexHandling:
         vector_fields = [allToReal(j) for j in vector_fields]
     varSpaceLoc = vector_fields[0].varSpace
 
-    # Create temporary variables for solving structure constants
     tempVarLabel = "T" + retrieve_public_key()
     variableProcedure(tempVarLabel, len(vector_fields), _tempVar=retrieve_passkey())
     combiVFLoc = addVF(*[_cached_caller_globals[tempVarLabel][j] * vector_fields[j] for j in range(len(_cached_caller_globals[tempVarLabel]))])
 
     def computeBracket(j, k):
-        """
-        Compute and return the Lie bracket [vf_j, vf_k] and structure constants.
-
-        Parameters
-        ----------
-        j : int
-            Index of the first vector field.
-        k : int
-            Index of the second vector field.
-
-        Returns
-        -------
-        list
-            Structure constants for the Lie bracket of vf_j and vf_k.
-        """
         if k <= j:
             return [0] * len(_cached_caller_globals[tempVarLabel])
 
-        # Compute the Lie bracket
         bracket = VF_bracket(vector_fields[j], vector_fields[k]) - combiVFLoc
 
         if complexHandling:
@@ -170,68 +157,22 @@ def algebraDataFromVF(vector_fields):
             bracket = bracket.coeffs
 
         if len(varSpaceLoc) ** len(vector_fields) <= product_threshold:
-            # Use the current system of pseudo-arbitrary substitutions
-            bracketVals = list(
-                set(
-                    sum(
-                        [
-                            [
-                                expr.subs(
-                                    [
-                                        (
-                                            varSpaceLoc[i],
-                                            sp.Rational((i + 1) ** sampling_index, 32),
-                                        )
-                                        for i in range(len(varSpaceLoc))
-                                    ]
-                                )
-                                for expr in bracket
-                            ]
-                            for sampling_index in range(len(vector_fields))
-                        ],
-                        [],
-                    )
-                )
-            )
+            bracketVals = list(set(sum([[expr.subs([(varSpaceLoc[i],sp.Rational((i + 1) ** sampling_index, 32)) for i in range(len(varSpaceLoc))]) for expr in bracket] for sampling_index in range(len(vector_fields))],[])))
         else:
-            # Use random sampling system for larger cases
+            # random sampling system for larger cases
             def random_rational():
                 return sp.Rational(random.randint(1, 1000), random.randint(1001, 2000))            
-            bracketVals = list(
-                set(
-                    sum(
-                        [
-                            [
-                                expr if not hasattr(expr,'subs') else
-                                expr.subs(
-                                    [
-                                        (varSpaceLoc[i], random_rational())
-                                        for i in range(len(varSpaceLoc))
-                                    ]
-                                )
-                                for expr in bracket
-                            ]
-                            for _ in range(len(vector_fields))
-                        ],
-                        [],
-                    )
-                )
-            )
+            bracketVals = list(set(sum([[expr if not hasattr(expr,'subs') else
+                                expr.subs([(varSpaceLoc[i], random_rational()) for i in range(len(varSpaceLoc))]) for expr in bracket] for _ in range(len(vector_fields))],[])))
 
         solutions = list(solve_dgcv(bracketVals, _cached_caller_globals[tempVarLabel]))
         if len(solutions) == 1:
             sol_values = solutions[0]
-            substituted_constants = [
-                expr.subs(sol_values)
-                for expr in _cached_caller_globals[tempVarLabel]
-            ]
+            substituted_constants = [expr.subs(sol_values) for expr in _cached_caller_globals[tempVarLabel]]
             return substituted_constants
         else:
-            raise Exception(
-                f"Fields at positions {j} and {k} are not closed under Lie brackets."
-            )
+            raise Exception(f"Fields at positions {j} and {k} are not closed under Lie brackets.")
 
-    # Precompute all necessary Lie brackets and store as 3D list
     structure_data = [[[0 for _ in vector_fields] for _ in vector_fields] for _ in vector_fields]
 
     for j in range(len(vector_fields)):
@@ -239,7 +180,6 @@ def algebraDataFromVF(vector_fields):
             structure_data[j][k] = computeBracket(k, j)         # CHECK index order!!!
             structure_data[k][j] = [-elem for elem in structure_data[j][k]]
 
-    # Clean up temporary variables
     clearVar(*listVar(temporary_only=True), report=False)
 
     return structure_data
@@ -271,7 +211,6 @@ def algebraDataFromMatRep(mat_list):
         shapeLoc = mListLoc[0].shape[0]
         indexRangeCap=len(mat_list)
 
-        # Check that all matrices are square and of the same size
         if all(j.shape == (shapeLoc, shapeLoc) for j in mListLoc):
             tempVarLabel = "T" + retrieve_public_key()
             variableProcedure(tempVarLabel, indexRangeCap, _tempVar=retrieve_passkey())
@@ -279,13 +218,6 @@ def algebraDataFromMatRep(mat_list):
             def pairValue(j, k):
                 """
                 Compute the commutator [m_j, m_k] and match with the combination matrix.
-
-                Parameters
-                ----------
-                j : int
-                    Index of the first matrix in the commutator.
-                k : int
-                    Index of the second matrix in the commutator.
 
                 Returns
                 -------
@@ -315,9 +247,54 @@ def algebraDataFromMatRep(mat_list):
 
             clearVar(*listVar(temporary_only=True), report=False)
 
-            return structure_data
+            return structure_data,mat_list ###!!! filter the mat_list for independence
         else:
             raise Exception("algorithm for extracting algebra data from matrices expects a list of square matrices of the same size.")
     else:
         raise Exception("algorithm for extracting algebra data from matrices expects a list of square matrices.")
 
+def algebraDataFromTensorRep(tensor_list):
+    """
+    Create the structure data array from a list of tensor products closed under the `_contraction_product` operator (see dgcv.tensorProduct documentation).
+
+    Parameters
+    ----------
+    tensorProduct : list
+        A list of tensorProduct instances
+
+    Returns
+    -------
+    list
+        A 3D array-like list of lists of lists representing the Lie algebra structure data.
+    """
+
+    tempVarLabel = "T" + create_key()
+    dim=len(tensor_list)
+    if dim==0:
+        return [[[]]],tensor_list
+    variableProcedure(tempVarLabel, dim, _tempVar=retrieve_passkey())
+    vars=_cached_caller_globals[tempVarLabel]
+    gen_elem = sum([vars[j] * tensor_list[j] for j in range(1,dim)],vars[0]*tensor_list[0])
+
+    def computeBracket(j, k):
+        if k < j:
+            return [0] * dim
+        product = (tensor_list[j]*tensor_list[k]) - gen_elem
+        solutions = solve_dgcv(product, vars)
+        if len(solutions) > 0:
+            sol_values = solutions[0]
+            coeffs = [var.subs(sol_values) for var in vars]
+            return coeffs
+        else:
+            raise Exception(f"Contraction product of tensors at positions {j} and {k} are not in the given tensor list.")
+
+    structure_data = [[[0 for _ in tensor_list] for _ in tensor_list] for _ in tensor_list]
+
+    for j in range(dim):
+        for k in range(j):
+            structure_data[k][j] = computeBracket(k, j)         # CHECK index order!!!
+            structure_data[j][k] = [-elem for elem in structure_data[k][j]]
+
+    clearVar(*listVar(temporary_only=True), report=False)
+
+    return structure_data,tensor_list   # filter independants

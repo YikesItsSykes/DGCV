@@ -13,12 +13,15 @@ _passkey = "".join(random.choices(string.ascii_letters + string.digits, k=16))
 public_key = "".join(random.choices(string.ascii_letters + string.digits, k=8))
 
 def get_dgcv_category(obj):
-    try:
-        if getattr(obj, '_dgcv_class_check', None) == _passkey:
-            return getattr(obj, '_dgcv_category', None)
-    except Exception:
-        pass
+    if getattr(obj, '_dgcv_class_check', None) == _passkey:
+        return getattr(obj, '_dgcv_category', None)
     return None
+
+def query_dgcv_categories(obj,cat):
+    if getattr(obj, '_dgcv_class_check', None) == _passkey:
+            if isinstance(cat,(list,tuple,set,dict)):
+                return any(c in getattr(obj, '_dgcv_categories', {get_dgcv_category(obj)}) for c in cat)
+            return cat in getattr(obj, '_dgcv_categories', {get_dgcv_category(obj)})
 
 def check_dgcv_category(obj):
     return getattr(obj, '_dgcv_class_check', None) == _passkey
@@ -32,7 +35,7 @@ def create_key(prefix=None, avoid_caller_globals=False, key_length = 8):
     prefix : str, optional
         A string to prepend to the generated key. Defaults to an empty string if not provided.
     avoid_caller_globals : bool, optional
-        If True, ensures the key does not conflict with existing keys in the caller's global namespace.
+        If True, makes sure that the key does not conflict with existing keys in the caller's global namespace.
 
     Returns
     -------
@@ -317,3 +320,89 @@ def validate_label(label, remove_guardrails=False):
         reformatted_label = label
 
     return reformatted_label
+
+def unique_label(label, remove_guardrails=False, version_prefix="v", tex_v_prefix="v.", tex_label=None, protected=set()):
+    """
+    Validate a label and, if it already exists in the VMF, append
+    a minimal version suffix to make it unique.
+
+
+    Parameters
+    ----------
+    label : str
+    remove_guardrails : bool, optional
+        If True, skip guardrail checks inside validate_label (still picks a unique name).
+    version_prefix : str, optional
+        Suffix to prepend to the numeric version (default "v").
+    tex_v_prefix : str, optional
+        Suffix to prepend to the numeric version in LaTeX (default "v.").
+    tex_label : str | None, optional
+        LaTeX companion string. When a version is added to the plain label,
+        the same version suffix is appended here.
+
+    Returns
+    -------
+    str | tuple[str, str]
+        If tex_label is None, returns the processed label string.
+        Otherwise returns a pair (label, latex_label).
+    """
+    base = validate_label(label, remove_guardrails=remove_guardrails)
+
+    vr = get_variable_registry()
+    taken = set()
+
+    taken.update(_cached_caller_globals.keys())
+
+    labels_index = vr.get("_labels", {})
+    taken.update(labels_index.keys())
+    for meta in labels_index.values():
+        children = meta.get("children", set())
+        if isinstance(children, (set, list, tuple)):
+            taken.update(children)
+
+    protected_vr = vr.get("protected_variables", set())
+    if isinstance(protected_vr, (set, list, tuple)):
+        taken.update(protected_vr)
+    try:
+        taken.update(protect_variable_relatives())
+    except Exception:
+        pass
+    if protected:
+        if isinstance(protected, str):
+            taken.add(protected)
+        else:
+            try:
+                for name in protected:
+                    if isinstance(name, str):
+                        taken.add(name)
+            except TypeError:
+                taken.add(str(protected))
+
+    def _augment_tex_label(tl: str, version_number: int) -> str:
+        suffix = f"_{{\\operatorname{{{tex_v_prefix}}}{version_number}}}"
+        if tl is None:
+            return None
+        needs_wrap = False
+        if tl.startswith("\\left(") and tl.endswith(")"):
+            needs_wrap = False
+        elif tl.startswith("(") and tl.endswith(")"):
+            needs_wrap = False
+        else:
+            if any(ch in tl for ch in (" ", "\\", "{", "}", "+", "-", "*", "/")):
+                needs_wrap = True
+        core = f"\\left({tl}\\right)" if needs_wrap else tl
+        return f"{core}{suffix}"
+
+    if base not in taken:
+        if tex_label is None:
+            return base
+        return base, tex_label
+
+    n = 1
+    while True:
+        candidate = f"{base}_{version_prefix}{n}"
+        if candidate not in taken:
+            if tex_label is None:
+                return candidate
+            return candidate, _augment_tex_label(tex_label, n)
+        n += 1
