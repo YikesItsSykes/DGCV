@@ -37,7 +37,7 @@ def _validate_structure_data(data, process_matrix_rep=False, assume_skew=False, 
             )
 
     if isinstance(data,(list,tuple)) and len(data)>0 and all(isinstance(obj, VFClass) for obj in data):
-        return algebraDataFromVF(data),'VF'
+        return algebraDataFromVF(data)
     try:
         if isinstance(data, dict):
             if all(isinstance(key,tuple) and len(key)==2 and all(_is_atomic(idx) for idx in key) for key in data):
@@ -68,8 +68,7 @@ def _validate_structure_data(data, process_matrix_rep=False, assume_skew=False, 
                                 coeffs.append(sp.simplify(val.subs({var:1}).subs(zeroing)))
                             new_data[(idx2,idx1)]=tuple(coeffs)
                         else:
-                            print(val,zeroing)
-                            raise ValueError('If initializing an algebra from structure equations, supplied structure equations should be a dictionary whose keys are tuples of atomic variables (e.g., `sympy.Symbol` class instances) and whose value is a linear combination of variables representing the product of the elements in the key tuple.')
+                            raise ValueError('If initializing an algebra from structure equations, supplied structure equations should be a dictionary whose keys are tuples of atomic variables (e.g., `sympy.Symbol` class instances) and whose value is a linear combination of variables representing the product of the elements in the key tuple. If that is the case then you are likely getting this error because you did not supply the algebra creator with a valid value for the `basis_order_for_supplied_str_eqns` parameter. If that paremeter were omited, it is not always possible to unambiguously infer its proper value from general structure equations data, and hence this error arises.')
                 data = new_data
             if all(isinstance(key,tuple) and len(key)==2 and all(isinstance(idx,int) and idx>=0 for idx in key) for key in data):
                 provided_index_bound = max(sum([list(key) for key in data.keys()],[]))
@@ -142,12 +141,13 @@ def algebraDataFromVF(vector_fields):
     varSpaceLoc = vector_fields[0].varSpace
 
     tempVarLabel = "T" + retrieve_public_key()
-    variableProcedure(tempVarLabel, len(vector_fields), _tempVar=retrieve_passkey())
+    dim=len(vector_fields)
+    variableProcedure(tempVarLabel, dim, _tempVar=retrieve_passkey())
     combiVFLoc = addVF(*[_cached_caller_globals[tempVarLabel][j] * vector_fields[j] for j in range(len(_cached_caller_globals[tempVarLabel]))])
 
     def computeBracket(j, k):
         if k <= j:
-            return [0] * len(_cached_caller_globals[tempVarLabel])
+            return [0] * dim
 
         bracket = VF_bracket(vector_fields[j], vector_fields[k]) - combiVFLoc
 
@@ -177,7 +177,7 @@ def algebraDataFromVF(vector_fields):
 
     for j in range(len(vector_fields)):
         for k in range(j + 1, len(vector_fields)):
-            structure_data[j][k] = computeBracket(k, j)         # CHECK index order!!!
+            structure_data[j][k] = computeBracket(j, k)         # CHECK index order!!!
             structure_data[k][j] = [-elem for elem in structure_data[j][k]]
 
     clearVar(*listVar(temporary_only=True), report=False)

@@ -2840,49 +2840,69 @@ def createVariables(
 
 
 ############## variable factories
-class coordinate_system(tuple):
-    def __init__(self,*elements,label=None,shape=None,dgcv_type='standard',rich=False):
-        super().__init__()
-        if shape is None:
-            self.shape = [len(self)]
-        else:
-            self.shape = shape
-        self.dgcv_type=dgcv_type
-        self.rich=rich
-        self.label=None
-        self._spooled_id={}
 
-    def _spool_modifier(self, idx, val):
-        self._spooled_id[idx]=val
+class coordinate_system(tuple):     ###!!! TO FIX
+    def __new__(cls, *elements, label=None, shape=None, dgcv_type='standard', rich=False):
+        obj = super().__new__(cls, elements)
+        return obj
+
+    def __init__(self, *elements, label=None, shape=None, dgcv_type='standard', rich=False):
+        if shape is None:
+            self.shape = (len(self),)
+        else:
+            self.shape = tuple(shape)
+        self.dgcv_type = dgcv_type
+        self.rich = rich
+        self.label = label
+        self._spooled_id = {}
+
+    def _spool_modifier(self, midx, val):
+        self._spooled_id[midx] = val
         return val
-    def _spool(self,midx):
-        return sum(midx[j]*prod(self.shape[j+1:]) for j in range(len(self.shape)))
-    def _unspool(self,idx):
+
+    def _spool(self, midx):
+        return sum(midx[j] * prod(self.shape[j+1:]) for j in range(len(self.shape)))
+
+    def _unspool(self, idx):
         midx = []
-        p=idx
+        p = idx
         for j in range(len(self.shape)):
-            q=prod(self.shape[j+1:])
-            midx1=p//q
+            q = prod(self.shape[j+1:]) if j+1 < len(self.shape) else 1
+            midx1 = p // q
             midx.append(midx1)
-            p=p-midx1*q
+            p -= midx1 * q
         return tuple(midx)
 
-    def __getitem__(self,*idx):
-        if len(idx)!=1 or not isinstance(idx[0],numbers.Integral):
-            if isinstance(idx[0],numbers.Integral):
-                pass
+    def __getitem__(self, idx):
+        """
+        Supports:
+          - cs[i]                 -> flat index like a normal tuple
+          - cs[i, j, k, ...]     -> multi-index matching self.shape (spooled to flat)
+          - (optional) partial multi-index cs[i, j]  -> TODO (not implemented here)
+        """
+        if not isinstance(idx, tuple):
+            if isinstance(idx, numbers.Integral):
+                return tuple.__getitem__(self, idx)
+            elif isinstance(idx, slice):
+                return tuple.__getitem__(self, idx)
             else:
-                print(f'DEBUGA, {idx[0]}')
-                idx=idx[0]
-        else:
-            idx=tuple(idx)
-            if len(idx)==len(self.shape):
-                newidx=self._spooled_id.get(idx,self._spool_modifier(idx,self._spool(idx)))
-                return self[newidx]
-            elif len(idx)<len(self.shape):
-                print(f'DEBUG: recieved idx {idx}; test result: {len(idx)}')
-            else:
-                raise TypeError('multi-index for coordinate slice has too many components.')
+                raise TypeError(f"Invalid index type: {type(idx).__name__}")
+
+        if any(isinstance(x, slice) for x in idx):
+            raise TypeError("Slicing with slices in multi-index is not implemented.")
+
+        if len(idx) == len(self.shape):
+            key = tuple(idx)
+            flat = self._spooled_id.get(key, self._spool_modifier(key, self._spool(key)))
+            return tuple.__getitem__(self, flat)
+
+        if len(idx) < len(self.shape):
+            raise NotImplementedError(
+                f"Partial indexing with {len(idx)} components for shape {self.shape} not implemented."
+            )
+
+        raise TypeError("Multi-index has too many components for this coordinate_system.")
+
 
 def variableProcedure(
     variables_label,
@@ -2989,7 +3009,7 @@ def variableProcedure(
                 )
             )
             var_names = [f"{labelLoc}_{'_'.join(map(str, idx))}" for idx in indices]
-            vars = coordinate_system([sp.symbols(f"{labelLoc}_{'_'.join(map(str, idx))}", real=assumeReal) for idx in indices],label=labelLoc,shape=multiindex_shape)
+            vars = tuple([sp.symbols(f"{labelLoc}_{'_'.join(map(str, idx))}", real=assumeReal) for idx in indices]) #label=labelLoc,shape=multiindex_shape
 
             # Batch update globals.
             new_globals = dict(zip(var_names, vars))

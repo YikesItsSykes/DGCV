@@ -1193,6 +1193,44 @@ class simple_Lie_algebra(algebra_class):
             lines.append(border_bottom)
 
             print("\n".join(lines))
+        elif self.simpleLieType[0] == "C":
+            n = self.rank
+            lines = []
+            horiz = "   "
+            if n > 7:
+                mid_nodes = ["r_1 r_2", f"r_{n-3}", f"r_{n-2}", f"r_{n-1}"]
+                latter_rules = [
+                    " ◯───◯─" + " ⋯ ─",
+                    "─" * (len(mid_nodes[1])),
+                    "─" * (len(mid_nodes[2])),
+                    "═" * (len(mid_nodes[3]) - 2) + "<═",
+                    "",
+                ]
+                horiz += "◯".join(latter_rules)
+                top_labels = f"{' '*4}{mid_nodes[0]}{' '*3}{mid_nodes[1]} {mid_nodes[2]} {mid_nodes[3]}"
+            else:
+                horiz += "───".join("◯" for _ in range(n - 1))
+                top_labels = "   " + " ".join([f"r_{i+1}" for i in range(n - 1)])
+                horiz += "══>◯"
+            top_labels += " " + f"r_{n}"
+
+            # bounding box
+            width_bound = len(top_labels) + 1
+            title = "│" + self.simpleLieType.center(width_bound) + " │"
+            border_top = "┌" + "─" * width_bound + "─┐"
+            head_sep = "╞" + "═" * width_bound + "═╡"
+            top_labels = "│" + top_labels + "  │"
+            horiz = "│" + horiz.ljust(width_bound) + " │"
+            border_bottom = "└" + "─" * width_bound + "─┘"
+
+            lines.append(border_top)
+            lines.append(title)
+            lines.append(head_sep)
+            lines.append(top_labels)
+            lines.append(horiz)
+            lines.append(border_bottom)
+
+            print("\n".join(lines))
         elif self.simpleLieType[0] == "A":
             n = self.rank
             lines = []
@@ -1268,7 +1306,7 @@ class simple_Lie_algebra(algebra_class):
             roots = []
         if isinstance(roots, int):
             roots = [roots]
-        elif not isinstance(roots, (list, tuple)):
+        if not isinstance(roots, (list, tuple)) or not all(root-1 in range(self.rank) for root in roots):
             raise TypeError(
                 f"The `roots` parameter in `simple_Lie_algebra.parabolic_subalgebra(roots)` should be either `None`, an `int`, or a list of integers in the range (1,...,{self.rank}) representing indices of simple roots as enumerated in the algebras Dynkin diagram (see `simple_Lie_algebra.root_space_summary()` for a summary of this indexing)."
             ) from None
@@ -1666,7 +1704,6 @@ def createSimpleLieAlgebra(
                 idx2, idx1 = idx1, idx2
             else:
                 reSign = 1
-            idx1, idx2 = sorted([idx1, idx2])
             p10, p11, p12 = indexingKey[idx1]
             p20, p21, p22 = indexingKey[idx2]
             if p12 == 0:
@@ -1839,92 +1876,210 @@ def createSimpleLieAlgebra(
         )
         return _structure_data, list(zip(*gradingVecs)), CartanSubalg, matrixBasis
 
-    def generate_C_series_structure_data(n):
-        """
-        Generates the structure data and weight vectors for the C_n series
-        (symplectic Lie algebra: sp(2n)).
-
-        Parameters
-        ----------
-        n : int
-            The rank of the C-series Lie algebra (2n is the matrix dimension).
-
-        Returns
-        -------
-        tuple
-            - basis (list): A 3-dimensional list representing the structure data for sp(2n).
-                            Each element is a 2D list of lists representing a matrix.
-            - weight_vectors (list): A single weight vector for the basis elements,
-                                    representing a grading of the algebra.
-
-        Notes
-        -----
-        - Basis matrices are partitioned into nxn blocks and constructed in three groups:
-        1. Lower block triangular: [[0, 0], [S_{j,k}, 0]] (weight = -1).
-        2. Block diagonal: [[E_{j,k}, 0], [0, -E_{k,j}]] (weight = 0).
-        3. Upper block triangular: [[0, S_{j,k}], [0, 0]] (weight = 1).
-        """
-        # Dimension of the full matrices
+    def _generate_C_series_structure_data(n):
         matrix_dim = 2 * n
 
-        # Basis elements and weight vector
-        basis = []
-        weight_vector = []
+        # Basis elements
+        hBasis = {"elems": dict(), "grading": dict()}
+        offDiag = {"elems": dict(), "grading": dict()}
 
-        # Step 1: Create symmetric matrices S_{j,k} = E_{j,k} + E_{k,j} for j ≤ k
-        symmetric_matrices = []
+        symplectic = [[0] * matrix_dim for _ in range(matrix_dim)]
+
+        def gPlusWeights(idx1, idx2):
+            wVec = []
+            for idx in range(idx1):
+                wVec.append(0)
+            for idx in range(idx1,idx2):
+                wVec.append(1)
+            for idx in range(idx2,n-1):
+                wVec.append(2)
+            wVec.append(1)
+            return wVec
+
+        def gMinusWeights(idx1, idx2):
+            wVec = []
+            for idx in range(idx1):
+                wVec.append(0)
+            for idx in range(idx1,idx2):
+                wVec.append(-1)
+            for idx in range(idx2,n-1):
+                wVec.append(-2)
+            wVec.append(-1)
+            return wVec
+
+
+        def GLWeights(idx1, idx2):
+            if idx1<idx2:
+                wVec=[1 if idx1<=idx and idx<idx2 else 0 for idx in range(n)]
+            else:
+                wVec=[-1 if idx2<=idx and idx<idx1 else 0 for idx in range(n)]
+            return wVec
+
         for j in range(n):
-            for k in range(j, n):
-                S = [[0] * n for _ in range(n)]
-                S[j][k] = 1
-                if j != k:
-                    S[k][j] = 1
-                symmetric_matrices.append(S)
+            for k in range(j,n):
+                if j == k:
+                    M = [row[:] for row in symplectic]
+                    if j<n-1:
+                        for idx in range(j+1):
+                            M[idx][idx] = 1
+                            M[n+idx][n+idx] = -1
+                    else:
+                        for idx in range(n):
+                            M[idx][idx] = sp.Rational(1,2)
+                            M[n+idx][n+idx] = -sp.Rational(1,2)
+                    hBasis["elems"][(j, k, 0)] = M
+                    hBasis["grading"][(j, k, 0)] = [0] * n
 
-        # Step 2: Create pairs P_{j,k} = (E_{j,k}, -E_{k,j})
-        matrix_pairs = []
-        for j in range(n):
-            for k in range(n):
-                P1 = [[0] * n for _ in range(n)]
-                P2 = [[0] * n for _ in range(n)]
-                P1[j][k] = 1
-                P2[k][j] = -1
-                matrix_pairs.append((P1, P2))
+                    M = [row[:] for row in symplectic]
+                    M[j][n+j] = 1
+                    offDiag["elems"][(j, k, 1)] = M
+                    offDiag["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
-        # Step 3: Create basis matrices in three groups
-        # Group 1: Lower block triangular [[0, 0], [S_{j,k}, 0]] (weight = -1)
-        for S in symmetric_matrices:
-            lower_triangular = [[0] * matrix_dim for _ in range(matrix_dim)]
-            # Insert S into the lower-left block
-            for i in range(n):
-                for j in range(n):
-                    lower_triangular[n + i][j] = S[i][j]
-            basis.append(lower_triangular)
-            weight_vector.append(-1)
+                    M = [row[:] for row in symplectic]
+                    M[n+j][j] = 1
+                    offDiag["elems"][(j, k, -1)] = M
+                    offDiag["grading"][(j, k, -1)] = gMinusWeights(j, k)
+                else:
+                    M = [row[:] for row in symplectic]
+                    M[j][k] = 1
+                    M[n+k][n+j] = -1
+                    offDiag["elems"][(j, k, 2)] = M
+                    offDiag["grading"][(j, k, 2)] = GLWeights(j, k)
 
-        # Group 2: Block diagonal [[E_{j,k}, 0], [0, -E_{k,j}]] (weight = 0)
-        for P1, P2 in matrix_pairs:
-            block_diagonal = [[0] * matrix_dim for _ in range(matrix_dim)]
-            # Insert P1 into the top-left block and P2 into the bottom-right block
-            for i in range(n):
-                for j in range(n):
-                    block_diagonal[i][j] = P1[i][j]
-                    block_diagonal[n + i][n + j] = P2[i][j]
-            basis.append(block_diagonal)
-            weight_vector.append(0)
+                    M = [row[:] for row in symplectic]
+                    M[k][j] = 1
+                    M[n+j][n+k] = -1
+                    offDiag["elems"][(k, j, 2)] = M
+                    offDiag["grading"][(k, j, 2)] = GLWeights(k, j)
 
-        # Group 3: Upper block triangular [[0, S_{j,k}], [0, 0]] (weight = 1)
-        for S in symmetric_matrices:
-            upper_triangular = [[0] * matrix_dim for _ in range(matrix_dim)]
-            # Insert S into the upper-right block
-            for i in range(n):
-                for j in range(n):
-                    upper_triangular[i][n + j] = S[i][j]
-            basis.append(upper_triangular)
-            weight_vector.append(1)
+                    M = [row[:] for row in symplectic]
+                    M[j][n+k] = 1
+                    M[k][n+j] = 1
+                    offDiag["elems"][(j, k, 1)] = M
+                    offDiag["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
-        # Return basis and weight vector wrapped in a list (to allow multiple gradings)
-        return basis, [weight_vector]
+                    M = [row[:] for row in symplectic]
+                    M[n+j][k] = 1
+                    M[n+k][j] = 1
+                    offDiag["elems"][(j, k, -1)] = M
+                    offDiag["grading"][(j, k, -1)] = gMinusWeights(j, k)
+
+        indexingKey = dict(
+            enumerate(
+                list(hBasis["grading"].keys())
+                + list(offDiag["grading"].keys())
+            )
+        )
+        indexingKeyRev = {j: k for k, j in indexingKey.items()}
+        LADimension = len(indexingKey)
+
+        _cached_caller_globals['DEBUG']=indexingKey,indexingKeyRev,LADimension
+
+
+        def minmaxtuple(id1,id2,id3):
+            if id1<id2:
+                return (id1,id2,id3)
+            return (id2,id1,id3)
+        def _structureCoeffs(idx1, idx2):
+            coeffs = [0] * LADimension
+            if idx2 == idx1:
+                return coeffs
+            if idx2 < idx1:
+                reSign = -1
+                idx2, idx1 = idx1, idx2
+            else:
+                reSign = 1
+            p10, p11, p12 = indexingKey[idx1]
+            p20, p21, p22 = indexingKey[idx2]
+            if p12 == 0:
+                if p22 == 1:
+                    coeffs[idx2] += offDiag["grading"][indexingKey[idx2]][p10]
+                elif p22 == -1:
+                    coeffs[idx2] += offDiag["grading"][indexingKey[idx2]][p10]
+                elif p22 == 2:
+                    coeffs[idx2] += offDiag["grading"][indexingKey[idx2]][p10]
+            elif p12 == 1:
+                if p22 == -1:
+                    if p11 == p20:
+                        coeffs[indexingKeyRev[(p10,p21,2*int(p10!=p21))]] += reSign
+                    elif p11 == p21:
+                        coeffs[indexingKeyRev[(p10,p20,2*int(p10!=p20))]] += reSign
+                    if p11!=p10:
+                        if p10 == p20:
+                            coeffs[indexingKeyRev[(p11,p21,2*int(p11!=p21))]] += reSign
+                        elif p10 == p21:
+                            coeffs[indexingKeyRev[(p11,p20,2*int(p11!=p20))]] += reSign
+                elif p22 == 2:
+                    if p11 == p21 and p10==p20:     ###!!! check second condition
+                        coeffs[indexingKeyRev[minmaxtuple(p10,p20,1)]] += -reSign
+                    if p10 == p21:
+                        coeffs[indexingKeyRev[minmaxtuple(p11,p20,1)]] += -reSign
+                    if p11!=p10:
+                        if p10 == p21 and p11==p20: ###!!! check second condition
+                            coeffs[indexingKeyRev[minmaxtuple(p11,p20,1)]] += -reSign
+                        if p11 == p21:
+                            coeffs[indexingKeyRev[minmaxtuple(p10,p20,1)]] += -reSign
+
+            elif p12 == -1:
+                if p22 == 1:
+                    if p11 == p20:
+                        coeffs[indexingKeyRev[(p21,p10,2*int(p10!=p21))]] += -reSign
+                    elif p11 == p21:
+                        coeffs[indexingKeyRev[(p20,p10,2*int(p10!=p20))]] += -reSign
+                    if p11!=p10:
+                        if p10 == p20:
+                            coeffs[indexingKeyRev[(p21,p11,2*int(p11!=p21))]] += -reSign
+                        elif p10 == p21:
+                            coeffs[indexingKeyRev[(p20,p11,2*int(p11!=p20))]] += -reSign
+                elif p22 == 2:
+                    if p11 == p20 and p10==p21:     ###!!! check second condition
+                        coeffs[indexingKeyRev[minmaxtuple(p10,p21,-1)]] += reSign
+                    if p10 == p20:
+                        coeffs[indexingKeyRev[minmaxtuple(p11,p21,-1)]] += reSign
+                    if p11!=p10:
+                        if p10 == p20 and p11 == p21:   ###!!! check second condition
+                            coeffs[indexingKeyRev[minmaxtuple(p11,p21,-1)]] += reSign
+                        if p11 == p20:
+                            coeffs[indexingKeyRev[minmaxtuple(p10,p21,-1)]] += reSign
+
+            elif p12 == 2:
+                if p22 == 1:
+                    if p21 == p11 and p20==p10:     ###!!! check second condition
+                        coeffs[indexingKeyRev[minmaxtuple(p20,p10,1)]] += reSign
+                    if p20 == p11:
+                        coeffs[indexingKeyRev[minmaxtuple(p21,p10,1)]] += reSign
+                    if p20!=p21:
+                        if p20 == p11 and p21==p10: ###!!! check second condition
+                            coeffs[indexingKeyRev[minmaxtuple(p21,p10,1)]] += reSign
+                        if p21 == p11:
+                            coeffs[indexingKeyRev[minmaxtuple(p20,p10,1)]] += reSign
+                elif p22 == -1:
+                    if p21 == p10 and p20==p11:     ###!!! check second condition
+                        coeffs[indexingKeyRev[minmaxtuple(p20,p11,-1)]] += -reSign
+                    if p20 == p10:
+                        coeffs[indexingKeyRev[minmaxtuple(p21,p11,-1)]] += -reSign
+                    if p20!=p21:
+                        if p20 == p10 and p21==p11:  ###!!! check second condition
+                            coeffs[indexingKeyRev[minmaxtuple(p21,p11,-1)]] += -reSign
+                        if p21 == p10:
+                            coeffs[indexingKeyRev[minmaxtuple(p20,p11,-1)]] += -reSign
+
+                elif p22 == 2:
+                    if p11 == p20:
+                        coeffs[indexingKeyRev[(p10,p21,2*int(p10!=p21))]] += reSign
+                    if p10 == p21:
+                        coeffs[indexingKeyRev[(p20,p11,2*int(p20!=p11))]] += -reSign
+            return coeffs
+        _structure_data = [
+            [_structureCoeffs(k, j) for j in range(LADimension)]
+            for k in range(LADimension)
+        ]
+        CartanSubalg = list(hBasis["elems"].values())
+        matrixBasis = CartanSubalg + list(offDiag["elems"].values())
+        gradingVecs = list(hBasis["grading"].values()) + list(
+            offDiag["grading"].values()
+        )
+        return _structure_data, list(zip(*gradingVecs)), CartanSubalg, matrixBasis
 
     def _generate_D_series_structure_data(n):
         matrix_dim = 2 * n
@@ -2067,7 +2222,6 @@ def createSimpleLieAlgebra(
                 idx2, idx1 = idx1, idx2
             else:
                 reSign = 1
-            idx1, idx2 = sorted([idx1, idx2])
             p10, p11, p12 = indexingKey[idx1]
             p20, p21, p22 = indexingKey[idx2]
             if p12 == 0:
@@ -2227,11 +2381,9 @@ def createSimpleLieAlgebra(
 
     elif series_type == "B":
         default_label = f"so{2*rank + 1}" if label is None else label
-        # Compute structure data for so(2n+1)
         structure_data, grading, CartanSubalgebra, matrixBasis = (
             _generate_B_series_structure_data(rank)
         )
-        # Create and return the Lie algebra
         passkey = retrieve_passkey()
         if build_standard_mat_rep is True:
             return createAlgebra(
@@ -2262,17 +2414,44 @@ def createSimpleLieAlgebra(
             )
 
     elif series_type == "C":
-        raise ValueError(
-            "The C series (i.e., C_1=sp(2), C2=sp(4), ...) is not yet supported by `createSimpleLieAlgebra`. A future update will include support the C series."
-        ) from None
+        default_label = f"sp{rank}" if label is None else label
+        structure_data, grading, CartanSubalgebra, matrixBasis = (
+            _generate_C_series_structure_data(rank)
+        )
+
+        if build_standard_mat_rep is True:
+            return createAlgebra(
+                matrixBasis,
+                label=default_label,
+                basis_labels=basis_labels,
+                grading=grading,
+                process_matrix_rep=True,
+                preferred_representation=matrixBasis,
+                _simple={
+                    "lockKey": retrieve_passkey(),
+                    "CartanSubalgebra": CartanSubalgebra,
+                    "type": [series_type, rank],
+                },
+            )
+        else:
+            return createAlgebra(
+                structure_data,
+                label=default_label,
+                basis_labels=basis_labels,
+                grading=grading,
+                preferred_representation=matrixBasis,
+                _simple={
+                    "lockKey": retrieve_passkey(),
+                    "CartanSubalgebra": CartanSubalgebra,
+                    "type": [series_type, rank],
+                },
+            )
 
     elif series_type == "D":
         default_label = f"so{2*rank}" if label is None else label
-        # Compute structure data for so(2n)
         structure_data, grading, CartanSubalgebra, matrixBasis = (
             _generate_D_series_structure_data(rank)
         )
-        # Create and return the Lie algebra
         passkey = retrieve_passkey()
         if build_standard_mat_rep is True:
             return createAlgebra(
@@ -2628,6 +2807,7 @@ def createAlgebra(
             _basis_labels_parent=_basis_labels_parent
         )
     else:
+        _cached_caller_globals['DEBUGSD']=structure_data
         _markers = {k:v for k,v in _markers.items() if k!="lockKey"} if _markers.get("lockKey", None) == passkey else {}
         algebra_obj = algebra_class(
             structure_data=structure_data,

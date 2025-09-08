@@ -39,7 +39,7 @@ def carProd(*args):
     """
     Compute the Cartesian product of a variable number of lists.
 
-    This function takes multiple lists as input and computes their
+    Takes multiple lists as input and computes their
     Cartesian product, yielding tuples containing elements from each list.
 
     Parameters
@@ -51,21 +51,6 @@ def carProd(*args):
     -------
     generator
         A generator yielding tuples representing the Cartesian product.
-
-    Examples
-    --------
-    >>> list(carProd([1, 2], [3, 4]))
-    [(1, 3), (1, 4), (2, 3), (2, 4)]
-
-    Notes
-    -----
-    This function avoids loading the entire Cartesian product into memory
-    at once by using generators.
-
-    Raises
-    ------
-    TypeError
-        If any of the input arguments are not iterable.
     """
 
     def carProdTwo(arg1, arg2):
@@ -127,22 +112,6 @@ def carProdWithOrder(*args):
     generator
         A generator yielding unique tuples representing the Cartesian
         product, with permutations removed.
-
-    Examples
-    --------
-    >>> list(carProdWithOrder([1, 2], [2, 3]))
-    [(1, 2), (1, 3), (2, 3)]
-
-    Notes
-    -----
-    The input lists are sorted to ensure permutations are excluded more
-    efficiently. The function yields results lazily for improved memory
-    efficiency.
-
-    Raises
-    ------
-    TypeError
-        If any of the input arguments are not iterable.
     """
     sorted_args = [sorted(arg) for arg in args]
     seen = set()
@@ -319,24 +288,15 @@ def permSign(arg1, returnSorted=False, **kwargs):
     ----------
     arg1 : list
         A list containing a permutation of sortable elements
+    
+    returnSorted : bool (optional), default is False
+        If true, the sorted list is also returned
 
     Returns
     -------
-    int
+    int (or (int,list) if returnSorted==True)
         The signature of the permutation, either 1 (even permutation) or -1 (odd permutation).
-
-    Examples
-    --------
-    >>> permSign([2, 1, 3])
-    -1
-
-    >>> permSign([2, 0, 1])
-    1
-
-    Raises
-    ------
-    ValueError
-        If the input is not a valid permutation of consecutive integers.
+        If returnSorted==True then (sign, sorted_list) is returned
     """
 
     def merge_sort(permutation):
@@ -510,8 +470,6 @@ def shufflings(list1: list | tuple, list2: list | tuple):
             yield from treeCrawl(path + [list2[j]], i, j + 1)
 
     yield from treeCrawl([], 0, 0)
-
-
 
 
 ############## for tensor caculus

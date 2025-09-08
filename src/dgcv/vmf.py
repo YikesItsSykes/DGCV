@@ -687,6 +687,8 @@ def vmf_summary(style=None, use_latex=None, complete_report=None):
     class _HTMLWrapper:
         def __init__(self, html): self._html = html
         def to_html(self, *args, **kwargs): return self._html
+        def _repr_html_(self):
+            return self._html
 
     return latex_in_html(_HTMLWrapper(combined_html))
 
@@ -753,7 +755,7 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
             else:
                 content = f"{var_name} = ({family_names[0]}, ..., {family_names[-1]})"
         else:
-            content = f"{var_name}"
+            content = f"{convert_to_greek(var_name)}" if use_latex else f"{var_name}"
         return f"${content}$" if use_latex else content
 
     def build_object_string(obj_type, var_name, start_index, tuple_len, system_type, use_latex=False):

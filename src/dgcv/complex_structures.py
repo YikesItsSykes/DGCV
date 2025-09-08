@@ -588,5 +588,5 @@ class KahlerStructure(sp.Basic):
     @property
     def is_closed(self):
         if self._is_closed is None:
-            self._is_closed = exteriorDerivative(self.kahlerForm).is_zero()
+            self._is_closed = exteriorDerivative(self.kahlerForm).is_zero
         return self._is_closed

@@ -487,7 +487,7 @@ class algebra_class:
             else:
                 warnings.warn(
                     "This algebra instance was initialized without an assigned label. "
-                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
                     UserWarning,
                 )
         return (
@@ -520,7 +520,7 @@ class algebra_class:
             else:
                 warnings.warn(
                     "This algebra instance was initialized without an assigned label. "
-                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
                     UserWarning,
                 )
 
@@ -554,7 +554,7 @@ class algebra_class:
             else:
                 warnings.warn(
                     "This algebra instance was initialized without an assigned label. "
-                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
                     UserWarning,
                 )
 
@@ -589,7 +589,7 @@ class algebra_class:
             else:
                 warnings.warn(
                     "This algebra instance was initialized without an assigned label. "
-                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
                     UserWarning,
                 )
 
@@ -704,7 +704,7 @@ class algebra_class:
             else:
                 warnings.warn(
                     "This algebra instance was initialized without an assigned label. "
-                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead.",
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
                     UserWarning,
                 )
 
@@ -828,6 +828,15 @@ class algebra_class:
             "If it is not then unexpected results may occur.",
             UserWarning,
         )
+
+    def is_lie_algebra(self, verbose=False, return_bool=True):
+        warnings.warn(
+            "`algebra_class.is_lie_algebra` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
+            "It will be removed in 2026. Please use `algebra_class.is_Lie_algebra` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.is_Lie_algebra(verbose=False, return_bool=True)
 
     def is_Lie_algebra(self, verbose=False, return_bool=True):
         """

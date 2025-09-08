@@ -17,6 +17,8 @@ import inspect
 import re
 import warnings
 
+from IPython.display import HTML
+
 from dgcv import __version__
 
 _cached_caller_globals = None
@@ -278,7 +280,6 @@ def latex_in_html(html_string, apply_VSCode_workarounds=False):
     ):
         apply_VSCode_workarounds = True
     if apply_VSCode_workarounds is True:
-        from IPython.display import HTML
 
         katexInjectString = """<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+" crossorigin="anonymous">
 <script type="module">

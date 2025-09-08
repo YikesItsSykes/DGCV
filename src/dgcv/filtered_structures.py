@@ -55,8 +55,8 @@ class Tanaka_symbol():
 
             def __getitem__(self, key):
                 if isinstance(key, numbers.Integral) and (self.index_threshold is None or key >= self.index_threshold):
-                    return super().get(key, [0])
-                return super().get(key, None)
+                    return super().get(key, [])
+                return super().get(key, [])
 
             def _set_index_thr(self, new_threshold):
                 if not (isinstance(new_threshold, _get_expr_num_types()) or new_threshold is None):
@@ -444,7 +444,7 @@ class Tanaka_symbol():
             if hasattr(el_sol,'_convert_to_tp'):
                 el_sol = el_sol._convert_to_tp()
 
-            free_variables = tuple(set.union(*[set(sp.sympify(j).free_symbols) for j in el_sol.coeff_dict.values()]))
+            free_variables = tuple(set.union(set(),*[set(sp.sympify(j).free_symbols) for j in el_sol.coeff_dict.values()]))
 
             new_level = []
             for var in free_variables:
@@ -496,7 +496,7 @@ class Tanaka_symbol():
                         raise RuntimeError(f'`Tanaka_symbol.prolongation` failed at a step where sympy.linsolve was being applied. The equation system was {eqns} w.r.t. {solVars}')
                     solCoeffs = [j.subs(solution[0]) for j in tVars]
 
-                    free_variables = tuple(set.union(*[set(sp.sympify(j).free_symbols) for j in solCoeffs]))
+                    free_variables = tuple(set.union(set(),*[set(sp.sympify(j).free_symbols) for j in solCoeffs]))
                     new_vectors = []
                     for var in free_variables:
                         basis_element = [j.subs({var: 1}).subs([(other_var, 0) for other_var in free_variables if other_var != var]) for j in solCoeffs]
@@ -531,7 +531,7 @@ class Tanaka_symbol():
         ssd = [fast_DS,standard_DS] if ADS is True else None
         return new_levels, stable, ssd
 
-    def prolong(self, iterations, return_symbol=False, report_progress=False, report_progress_and_return_nothing=False, with_characteristic_space_reductions=None, absorb_distinguished_subspaces=False):
+    def prolong(self, iterations, return_symbol=True, report_progress=False, report_progress_and_return_nothing=False, with_characteristic_space_reductions=None, absorb_distinguished_subspaces=False):
         if absorb_distinguished_subspaces is True:
             subspace_data = [copy.deepcopy(self._fast_process_DS),copy.deepcopy(self._standard_process_DS)]
             if len(self._slow_process_DS)>0:
@@ -602,11 +602,14 @@ class Tanaka_symbol():
         style=None,
         use_latex=None,
         display_length=500,
-        _apply_VScode_display_workaround_with_JS_deliver=False,
+        table_scroll=False,
+        cell_scroll=False
     ):
         dgcvSR = get_dgcv_settings_registry()
         if dgcvSR.get("apply_awkward_workarounds_to_fix_VSCode_display_issues") is True:
             _apply_VScode_display_workaround_with_JS_deliver = True
+        else:
+            _apply_VScode_display_workaround_with_JS_deliver = False
         if use_latex is None:
             use_latex = dgcvSR.get("use_latex", False)
         style_key = style or dgcvSR.get("theme", "dark")
@@ -789,6 +792,8 @@ class Tanaka_symbol():
             breakpoint_px=900,   # stacked <= 900px; 
             container_id="tanaka-summary",
             footer_rows=footer,
+            table_scroll=table_scroll,
+            cell_scroll=cell_scroll
         )
 
         return latex_in_html(table, apply_VSCode_workarounds=_apply_VScode_display_workaround_with_JS_deliver)
@@ -857,33 +862,36 @@ class Tanaka_symbol():
 
     def export_algebra_data(self,_internal_call_lock=None):
         grading_vec = []
-        indexThresholds = [0]
-        levelLengths = []
+        indexBands = dict()
+        dimen = 0
+        complimentWeights = {}
         for weight,level in self.levels.items():
-            lLength = len(level)
+            lLength = 0 if (level==[0] or level is None) else len(level)
+            nextDim=dimen+lLength
+            for j in range(dimen,nextDim):
+                indexBands[j]=(weight,j-dimen)
+            complimentWeights[weight]=(dimen,self.dimension-nextDim)
+            dimen=nextDim
             grading_vec += [weight]*lLength
-            indexThresholds.append(indexThresholds[-1]+lLength)
-            levelLengths.append(lLength)
-        dimen = len(grading_vec)
+
         def flatToLayered(idx):
-            for count, iT in enumerate(indexThresholds):
-                if idx<iT:
-                    return count+self.depth-1,idx-indexThresholds[count-1]
+            return indexBands[idx]
         def bracket_decomp(idx1,idx2):
             w1,sId1=flatToLayered(idx1)
             w2,sId2=flatToLayered(idx2)
-            newElem = self.levels[w1][sId1]*self.levels[w2][sId2]
+            newElem = (self.levels[w1][sId1].ambiant_rep)*(self.levels[w2][sId2].ambiant_rep)   ### generalize to remove ambiant_rep
             newWeight = w1+w2
-            ambiant_basis = self.levels[newWeight]
-            nLDim= 0 if (ambiant_basis is None or ambiant_basis==[0]) else len(ambiant_basis)
+            if self.levels[newWeight] is not None:
+                ambiant_basis = [j.ambiant_rep for j in self.levels[newWeight]]     ### generalize to remove ambiant_rep
+            nLDim = 0 if (ambiant_basis is None or ambiant_basis==[0] or ambiant_basis==[]) else len(ambiant_basis)
             if nLDim==0:
-                if newElem.is_zero:
+                if getattr(newElem,'is_zero',False) or newElem==0:
                     return [0]*dimen
                 else:
                     return 'NoSol'
-            varLabel=create_key(prefix="_cv")   # label for temparary variables
+            varLabel=create_key(prefix="_cv")
             variableProcedure(varLabel,nLDim,_tempVar=retrieve_passkey())
-            tVars = _cached_caller_globals[varLabel]    # pointers to tuple of coef vars
+            tVars = _cached_caller_globals[varLabel]
             general_elem = sum([tVars[j]*ambiant_basis[j] for j in range(1, len(tVars))],tVars[0]*ambiant_basis[0])
             eqns = [newElem-general_elem]
             sol=solve_dgcv(eqns,tVars)
@@ -891,16 +899,13 @@ class Tanaka_symbol():
                 return 'NoSol'
             coeffVec = [var.subs(sol[0]) for var in tVars]
             clearVar(*listVar(temporary_only=True),report=False)
-            if 0<=newWeight-self.depth and newWeight-self.depth<len(indexThresholds)-1: 
-                start = [0]*indexThresholds[newWeight-self.depth]
-                end = [0]*(dimen-indexThresholds[newWeight-self.depth]-nLDim)
-                coeffVec = start+coeffVec+end
-            else:
-                end = [0]*(dimen-nLDim)
-                coeffVec = coeffVec+end
-            return coeffVec
+
+            #   newWeight should be in complimentWeights by construction
+            start = [0]*complimentWeights[newWeight][0]
+            end = [0]*complimentWeights[newWeight][1]
+            return start+coeffVec+end
         zeroVec = [0]*dimen
-        str_data = [[bracket_decomp(k,j) if j<k else zeroVec for j in range(dimen)] for k in range(dimen)]
+        str_data = [[bracket_decomp(k,j) if j<k else list(zeroVec) for j in range(dimen)] for k in range(dimen)]
         for j in range(dimen):
             for k in range(j+1,dimen):
                 skew_data=str_data[k][j]

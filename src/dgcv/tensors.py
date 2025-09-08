@@ -1,6 +1,8 @@
 import numbers
 import warnings
 from collections import Counter
+from collections.abc import MutableMapping
+from typing import Any, Iterable, Iterator, Mapping, Optional, Tuple, Union
 
 import sympy as sp
 
@@ -23,7 +25,7 @@ from ._tensor_field_printers import (
     tensor_VS_printer,
 )
 from .backends._caches import _get_expr_num_types
-from .combinatorics import shufflings
+from .combinatorics import permSign, shufflings
 from .solvers import simplify_dgcv
 from .vmf import clearVar, listVar
 
@@ -724,7 +726,7 @@ class vector_space_element:
             return self.__matmul__(tensorProduct('_',{tuple():other}))
         if get_dgcv_category(other) not in {'vector_space_element','algebra_element','subalgebra_element'}:
             raise TypeError('`@` only supports tensor products between vector_space_elements instances with the same vector_space_class attribute')
-        return tensorProduct(mergeVS([self.dgcv_vs_id],[other.dgcv_vs_id]), {(j,k,self.valence,other.valence,self.dgcv_vs_id,other.dgcv_vs_id):self.coeffs[j]*other.coeffs[k] for j in range(self.vectorSpace.dimension) for k in range(other.vectorSpace.dimension)})
+        return tensorProduct('_',{(j,k,self.valence,other.valence,self.dgcv_vs_id,other.dgcv_vs_id):self.coeffs[j]*other.coeffs[k] for j in range(self.vectorSpace.dimension) for k in range(other.vectorSpace.dimension)})
 
     def __rmatmul__(self, other):
         """Overload @ operator for tensor product."""
@@ -768,19 +770,17 @@ class vector_space_element:
             self._terms=[self] if len(terms)<2 else terms
         return self._terms
 
-
-class tensorProduct(sp.Basic):
-    def __new__(cls, depricated_placeholder_param, coeff_dict,_amb_prom=False):
+class tensorProduct:
+    def __init__(self, depricated_placeholder_param, coeff_dict,_amb_prom=False):
 
         if not isinstance(coeff_dict, dict):
             raise ValueError("Coefficient dictionary must be a dictionary.")
 
-        # Process the coefficient dictionary
         try:
             result = tensorProduct._process_coeffs_dict(coeff_dict,_amb_prom=_amb_prom)
         except ValueError as ve:
             print(f"ValueError: {ve}\nDebug info: Check the return statement of _process_coeffs_dict.")
-            raise  # <- do not continue
+            raise
         except TypeError as te:
             print(f"TypeError: {te}\nDebug info: Make sure _process_coeffs_dict returns a tuple.")
             raise
@@ -789,25 +789,20 @@ class tensorProduct(sp.Basic):
                 f"{result if 'result' in locals() else 'Function did not return any value.'}")
             raise
         processed_coeff_dict, max_degree, min_degree, prolongation_type, homogeneous_dicts, vector_spaces, spring, replacements = result
-        obj = sp.Basic.__new__(cls, vector_spaces,  processed_coeff_dict)
-
-        obj.vector_space = from_vsr(vector_spaces[0]) if len(vector_spaces)>0 else from_vsr(0) ### depricate soon
-        obj.vector_spaces = vector_spaces
-        obj._vs_spring = spring.keys()
-        obj._unpromoted_spring = {}
+        self.vector_space = from_vsr(vector_spaces[0]) if len(vector_spaces)>0 else from_vsr(0) ### depricate soon
+        self.vector_spaces = vector_spaces
+        self._vs_spring = spring.keys()
+        self._unpromoted_spring = {}
         if replacements:
             for k,v in spring.items():
                 for idx in v[1]:
-                    obj._unpromoted_spring|={idx:k}
-        obj.coeff_dict = processed_coeff_dict
-        obj.max_degree = max_degree
-        obj.min_degree = min_degree
-        obj.prolongation_type = prolongation_type
-        obj.homogeneous_dicts = homogeneous_dicts
-        obj.homogeneous = True if len(homogeneous_dicts)==1 else False
-        return obj
-
-    def __init__(self, depricated_placeholder_param, coeff_dict,_amb_prom=False):
+                    self._unpromoted_spring|={idx:k}
+        self.coeff_dict = processed_coeff_dict
+        self.max_degree = max_degree
+        self.min_degree = min_degree
+        self.prolongation_type = prolongation_type
+        self.homogeneous_dicts = homogeneous_dicts
+        self.homogeneous = True if len(homogeneous_dicts)==1 else False    
         self._weights = None
         self._leading_valence = None
         self._trailing_valence = None
@@ -1874,6 +1869,203 @@ class tensorProduct(sp.Basic):
         #     return term
         # else:
         #     return tensorProduct(self.vector_spaces,new_cd)
+
+
+KeyFlat = Tuple[Any, ...]
+KeyLike = KeyFlat
+class _tensor_structure_data(MutableMapping):
+    __slots__ = ("shape", "_data")
+
+    def __init__(
+        self,
+        init: Optional[Union[Mapping[KeyLike, Any], Iterable[Tuple[KeyLike, Any]], "_tensor_structure_data"]] = None,
+        *,
+        shape: Optional[str] = None,
+        _validated: Any = None,
+    ):
+        if shape not in (None, "symmetric", "skew"):
+            shape=None
+        self.shape = shape
+        self._data: dict[KeyFlat, Any] = {}
+
+        if init is None:
+            return
+
+        it = init.items() if isinstance(init, Mapping) else (init.items() if isinstance(init, _tensor_structure_data) else init)
+        is_validated = (_validated == retrieve_passkey())
+
+        if self.shape is None:
+            for k, v in it:
+                if v != 0:
+                    self._data[k] = self._data.get(k, 0) + v
+            return
+
+        if self.shape == "symmetric":
+            for k, v in it:
+                if v == 0:
+                    continue
+                _, fkc = self._canon_symmetric_for_access(k)
+                self._data[fkc] = self._data.get(fkc, 0) + v
+            return
+
+        # skew
+        if is_validated:
+            for k, v in it:
+                if v == 0:
+                    continue
+                s, fkc = self._canon_skew_for_access(k)
+                if s is None:
+                    raise ValueError("Nonzero skew term has repeated indices.")
+                self._data[fkc] = self._data.get(fkc, 0) + s * v
+        else:
+            for k, v in it:
+                if v == 0:
+                    continue
+                s, fkc = self._canon_skew_for_access(k)
+                if s is None:
+                    raise ValueError("Nonzero skew term has repeated indices.")
+                self._data[fkc] = self._data.get(fkc, 0) + s * v
+        if len(self._data)==0:
+            self._data[tuple()]=0
+
+    def __getitem__(self, key: KeyLike) -> Any:
+        if self.shape is None:
+            return self._data.get(key, 0)
+        if self.shape == "symmetric":
+            _, fkc = self._canon_symmetric_for_access(key)
+            return self._data.get(fkc, 0)
+        s, fkc = self._canon_skew_for_access(key)
+        if s is None:
+            return 0
+        return s * self._data.get(fkc, 0)
+
+    def __setitem__(self, key: KeyLike, value: Any) -> None:
+        if value == 0:
+            try:
+                del self[key]
+            except KeyError:
+                pass
+            return
+
+        if self.shape is None:
+            self._data[key] = value
+            return
+
+        if self.shape == "symmetric":
+            _, fkc = self._canon_symmetric_for_access(key)
+            self._data[fkc] = value
+            return
+
+        s, fkc = self._canon_skew_for_access(key)
+        if s is None:
+            raise ValueError("Cannot set nonzero skew term with repeated indices.")
+        self._data[fkc] = value * s
+
+    def __delitem__(self, key: KeyLike) -> None:
+        if self.shape is None:
+            del self._data[key]
+            return
+
+        if self.shape == "symmetric":
+            _, fkc = self._canon_symmetric_for_access(key)
+            del self._data[fkc]
+            return
+
+        s, fkc = self._canon_skew_for_access(key)
+        if s is None:
+            raise KeyError(key)
+        del self._data[fkc]
+
+    def __iter__(self) -> Iterator[KeyFlat]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __contains__(self, key: object) -> bool:
+        try:
+            return self[key] != 0
+        except Exception:
+            return False
+
+    def __repr__(self) -> str:
+        return f"_tensor_structure_data(shape={self.shape!r}, size={len(self)})"
+
+    def add(self, key: KeyLike, delta: Any) -> None:
+        if delta == 0:
+            return
+        if self.shape is None:
+            self._data[key] = self._data.get(key, 0) + delta
+            return
+        if self.shape == "symmetric":
+            _, fkc = self._canon_symmetric_for_access(key)
+            self._data[fkc] = self._data.get(fkc, 0) + delta
+            return
+        s, fkc = self._canon_skew_for_access(key)
+        if s is None:
+            raise ValueError("Cannot add nonzero skew term with repeated indices.")
+        self._data[fkc] = self._data.get(fkc, 0) + s * delta
+
+    def update(self, other: Optional[Union[Mapping[KeyLike, Any], Iterable[Tuple[KeyLike, Any]]]] = None, **kwargs: Any) -> None:
+        if other is not None:
+            it = other.items() if isinstance(other, Mapping) else other
+            for k, v in it:
+                self.add(k, v)
+        for k, v in kwargs.items():
+            self.add(k, v)
+
+    @staticmethod
+    def _bundle(flat: KeyFlat) -> list[Tuple[Any, Any, Any]]:
+        if not flat:
+            return []
+        d = len(flat) // 3
+        return [(flat[j], flat[j + d], flat[j + 2 * d]) for j in range(d)]
+
+    @staticmethod
+    def _unbundle(trip: list[Tuple[Any, Any, Any]]) -> KeyFlat:
+        if not trip:
+            return tuple()
+        i, v, vs = zip(*trip)
+        return tuple(i) + tuple(v) + tuple(vs)
+
+    def _canon_symmetric_for_access(self, flat: KeyFlat) -> Tuple[int, KeyFlat]:
+        trip = self._bundle(flat)
+        _, sorted_trip = permSign(trip, returnSorted=True)
+        return 1, self._unbundle(sorted_trip)
+
+    def _canon_skew_for_access(self, flat: KeyFlat) -> Tuple[Optional[int], KeyFlat]:
+        trip = self._bundle(flat)
+        if len(trip) != len(set(trip)):
+            _, sorted_trip = permSign(trip, returnSorted=True)
+            return None, self._unbundle(sorted_trip)
+        s, sorted_trip = permSign(trip, returnSorted=True)
+        return int(s), self._unbundle(sorted_trip)
+
+    def __iadd__(self, other):
+        if isinstance(other, _tensor_structure_data) or isinstance(other, Mapping):
+            self.update(other)
+            return self
+        try:
+            iter(other)
+        except TypeError:
+            return NotImplemented
+        self.update(other)
+        return self
+
+    def __isub__(self, other):
+        if isinstance(other, _tensor_structure_data) or isinstance(other, Mapping):
+            for k, v in other.items():
+                self.add(k, -v)
+            return self
+        try:
+            it = iter(other)
+        except TypeError:
+            return NotImplemented
+        for k, v in it:
+            self.add(k, -v)
+        return self
+
+
 
 
 def mergeVS(L1,L2):

@@ -72,10 +72,12 @@ def _parse_theme_border(theme_styles: List[CSSRule]):
             for k, v in sd.get("props", []):
                 if k in {"border-top","border-right","border-bottom","border-left"}:
                     sides.add(k)
-                    if not val: val = v
+                    if not val: 
+                        val = v
                 elif k == "border" and not val:
                     val = v
-    if not val: return ("1px","solid","#ccc", sides)
+    if not val: 
+        return ("1px","solid","#ccc", sides)
     parts = val.split()
     thickness = parts[0] if parts else "1px"
     color = parts[-1] if parts else "#ccc"
@@ -144,6 +146,8 @@ class TableView:
         ur: Union[int, str] = 10,
         lr: Union[int, str] = 10,
         ll: Union[int, str] = 10,
+        table_scroll = False,
+        cell_scroll = False
     ):
         self.columns = columns
         self.rows = rows
@@ -171,6 +175,8 @@ class TableView:
         self.ur = f"{ur}px" if isinstance(ur, int) else str(ur)
         self.lr = f"{lr}px" if isinstance(lr, int) else str(lr)
         self.ll = f"{ll}px" if isinstance(ll, int) else str(ll)
+        self.table_scroll = table_scroll
+        self.cell_scroll = cell_scroll
 
         if column_align:
             name_to_idx = {name: i for i, name in enumerate(columns)}
@@ -200,7 +206,7 @@ class TableView:
         else:
             html = _coerce_html(cell, html_safe=not self.escape_cells)
 
-        html = self._truncate(html)
+        html = f'<div class="table-cell">{self._truncate(html)}</div>'
         attr_str = "".join(f' {k}="{_esc(str(v))}"' for k, v in attrs.items())
         return f"<{use_tag}{attr_str}>{html}</{use_tag}>"
 
@@ -265,21 +271,55 @@ class TableView:
             s_br,s_bl=r_br, r_bl
         else:
             s_br,s_bl=0,0
+        gap=int(self.gap_px)
+        if self.table_scroll:
+            additional_str1 = f"""
+        #{cid} .dgcv-data-table {{
+        width: max-content;
+        min-width: 100%;
+        table-layout: fixed;
+        border-collapse: separate;
+        border-spacing: 0;
+        }}
+        #{cid} .dgcv-table-wrap {{
+        overflow-x: auto;
+        max-width: 100%;
+        }}
+        """.strip()
+        else:
+            additional_str1 = f"""
+        #{cid} .dgcv-data-table {{
+        width: auto;
+        table-layout: fixed;
+        border-collapse: separate;
+        border-spacing: 0;
+        }}
+        #{cid} .dgcv-table-wrap {{
+        overflow-x: auto;
+        max-width: 100%;
+        }}
+        """.strip()
+
+        additional_str2 = f"""
+        #{cid} .dgcv-data-table td .table-cell {{
+        overflow-x: {'auto' if self.cell_scroll else 'visible'};
+        white-space: {'nowrap' if self.cell_scroll else 'normal'};
+        }}
+        """.strip()
         return f"""
 <style>
 #{cid} .dgcv-flex {{
   display: flex;
   flex-direction: {direction};
-  gap: {int(self.gap_px)}px;
+  gap: {gap}px;
   align-items: flex-start;
   justify-content: flex-start;
   flex-wrap: wrap;
 }}
-#{cid} .dgcv-main {{ flex: 0 1 auto; min-width: 0; margin: 0;}}
+#{cid} .dgcv-main {{ flex: 0 1 auto; max-width: calc(60% - {gap}px); min-width: 0; margin: 0;}}
 #{cid} .dgcv-side {{ flex: 0 0 {self.side_width}; max-width: 40%; box-sizing: border-box; overflow-y: visible; margin: 0;}}
-
-#{cid} .dgcv-data-table {{ width: auto; table-layout: fixed; border-collapse: separate; border-spacing: 0; }}
-#{cid} .dgcv-table-wrap {{ overflow-x: auto; max-width: 100%; }}
+{additional_str1}
+{additional_str2}
 
 #{cid} .dgcv-data-table,
 #{cid} .dgcv-data-table thead,
@@ -311,11 +351,12 @@ class TableView:
   display: block;
   align-items: stretch;
 }}
+#{cid} .dgcv-main {{max-width: 100%;}}
 #{cid} .dgcv-main, #{cid} .dgcv-side, #{cid} .dgcv-table-wrap, #{cid} .dgcv-side-panel {{
   display: block;
   width: 100%;
   box-sizing: border-box;
-  margin-bottom: {int(self.gap_px)}px;
+  margin-bottom: {gap}px;
 }}
 #{cid} .dgcv-table-wrap {{ margin: 0;}}
 #{cid} .dgcv-side {{
