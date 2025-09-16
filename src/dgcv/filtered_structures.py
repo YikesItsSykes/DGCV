@@ -109,10 +109,10 @@ class Tanaka_symbol():
             elif isinstance(nonnegParts,(list,tuple)):
                 NNPList = [nonnegParts]
         if isinstance(GLA.grading[0],(list,tuple)):
-            if _validated != retrieve_passkey() and not any(j==-1 for j in GLA.grading[0]):
-                raise TypeError(
-                    f"`Tanaka_symbol` expects `GLA` to be a Z-graded algebra (`algebra_class`, `algebra_subspace_class`, or `sualgebra_class` in particular) with the weight -1 among its weights in the first element of `GLA.grading`. Recieved grading data: {GLA.grading[0]}"
-                )
+            # if _validated != retrieve_passkey() and not any(j==-1 for j in GLA.grading[0]):
+            #     raise TypeError(
+            #         f"`Tanaka_symbol` expects `GLA` to be a Z-graded algebra (`algebra_class`, `algebra_subspace_class`, or `sualgebra_class` in particular) with the weight -1 among its weights in the first element of `GLA.grading`. Recieved grading data: {GLA.grading[0]}"
+            #     )
             primary_grading = GLA.grading[0]
         else:
             if _validated != retrieve_passkey() and not any(j==-1 for j in GLA.grading):
@@ -290,8 +290,8 @@ class Tanaka_symbol():
         self.assume_FGLA = assume_FGLA
         self.nonnegParts = nonnegParts
         negWeights = sorted([j for j in set(primary_grading) if j<0])
-        if negWeights[-1]!=-1:
-            raise AttributeError('`Tanaka_symbol` expects negatively graded LA to have a weight -1 component.')
+        # if negWeights[-1]!=-1:
+        #     raise AttributeError('`Tanaka_symbol` expects negatively graded LA to have a weight -1 component.')
         self.negWeights = tuple(negWeights)
         if isinstance(nonnegParts,dict):
             nonNegWeights = sorted([k for k,v in nonnegParts.items() if len(v)!=0])
@@ -434,7 +434,7 @@ class Tanaka_symbol():
                     eqns += list(derivation_rule.coeff_dict.values())
                 elif get_dgcv_category(derivation_rule)in {'algebra_element','subalgebra_element','vector_space_element'}:
                     eqns += derivation_rule.coeffs
-            if eqns == [0]:
+            if eqns == [0] or eqns == []:
                 solution = [{}]
             else:
                 solution = solve_dgcv(eqns,tVars)
@@ -617,7 +617,8 @@ class Tanaka_symbol():
         def _to_string(e, ul=False):
             if ul:
                 s = e._repr_latex_(verbose=False)
-                if s.startswith("$") and s.endswith("$"): s = s[1:-1]
+                if s.startswith("$") and s.endswith("$"): 
+                    s = s[1:-1]
                 s = s.replace(r"\\displaystyle","").replace(r"\displaystyle","").strip()
                 return f"${s}$"
             return str(e)
@@ -634,7 +635,6 @@ class Tanaka_symbol():
 
         columns = ["Weight", "Dimension", "Basis"]
 
-        # footer must be created AFTER columns & sum are known
         footer = [[{
             "html": f"Total dimension: {sum_computed_dimensions}",
             "attrs": {
@@ -667,8 +667,10 @@ class Tanaka_symbol():
             if sd.get("selector") == "table":
                 for k, v in sd.get("props", []):
                     if k in ("border-bottom","border-right","border-left","border-top","border"):
-                        border_val = v; break
-            if border_val: break
+                        border_val = v
+                        break
+            if border_val: 
+                break
         parts = (border_val or "1px solid #ccc").split()
         thickness    = parts[0] if parts else "1px"
         border_color = parts[-1] if parts else "#ccc"

@@ -1,4 +1,5 @@
 import numbers
+import random
 import warnings
 
 import sympy as sp
@@ -26,6 +27,7 @@ from ..tensors import mergeVS, tensorProduct
 from ..vmf import clearVar, listVar
 from .algebras_aux import _validate_structure_data
 from .algebras_core import (
+    _lazy_SD,
     algebra_class,
     algebra_element_class,
     algebra_subspace_class,
@@ -69,7 +71,7 @@ class subalgebra_class(algebra_subspace_class):
             self.structureData = tuple(
                 tuple(tuple(inner) for inner in middle) for middle in valSD
             )
-        self._structureData = tuple(map(tuple, self.structureData))
+        # self._structureData = tuple(map(tuple, self.structureData))
         self.subindices_to_ambiant_dict = {
             count: elem for count, elem in enumerate(basis)
         }
@@ -88,7 +90,7 @@ class subalgebra_class(algebra_subspace_class):
             self.basis_labels = [f"_e_{j+1}" for j in range(self.dimension)]
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "subalgebra"
-        # self.structureDataDict = {(i, j, k):self.structureData[i][j][k] for i in range(self.dimension) for j in range(self.dimension) for k in range(self.dimension)}
+        self.structureDataDict = _lazy_SD(self.structureData)
         if (
             simplify_products_by_default is True
             or self.ambiant.simplify_products_by_default is True
@@ -106,7 +108,14 @@ class subalgebra_class(algebra_subspace_class):
         self._lower_central_series_cache = None
         self._radical_cache = None
         self._Levi_deco_cache = None
+        self._is_semisimple_cache = None
+        self._is_simple_cache = None
+        self._is_nilpotent_cache = None
+        self._is_abelian_cache = None
+        self._is_solvable_cache = None
+        self._rank_approximation = None
         self._graded_components = None
+        self._special_type = None
 
     @property
     def zero_element(self):
@@ -132,7 +141,6 @@ class subalgebra_class(algebra_subspace_class):
             raise TypeError(
                 f"To access a subalgebra element or structure data component, provide one index for an element from the basis, two indices for a list of coefficients from the product  of two basis elements, or 3 indices for the corresponding entry in the structure array. Instead of an integer of list of integers, the following was given: {indices}"
             ) from None
-
 
     # (self,alg,coeffs,valence,ambiant_rep=None,_internalLock=None)
     def _class_builder(self, coeffs, valence):
@@ -509,7 +517,6 @@ class subalgebra_class(algebra_subspace_class):
     def is_semisimple(self, verbose=False, return_bool=True):
         """
         Checks if the algebra is semisimple.
-        Includes a warning for unregistered instances only if verbose=True.
         Nothing is returned if return_bool=False is set.
         """
         if not self.ambiant._registered and verbose:
@@ -522,7 +529,22 @@ class subalgebra_class(algebra_subspace_class):
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
+        if self._is_simple_cache is True:
+            self._is_semisimple_cache=True
+
+        if self._is_semisimple_cache is not None:
+            if verbose:
+                print(
+                    f"Cached result: {f'Previously verified {self.label} is a semisimple Lie algebra' if self._is_semisimple_cache else f'Previously verified {self.label} is not a semisimple Lie algebra.'}."
+                )
+            if return_bool is True:
+                return self._is_semisimple_cache
+            else:
+                return
+
+
         if not self.is_Lie_algebra(verbose=verbose):
+            self._is_semisimple_cache = False
             if return_bool is True:
                 return False
             else:
@@ -534,11 +556,42 @@ class subalgebra_class(algebra_subspace_class):
 
         if verbose:
             if det != 0:
+                self._is_semisimple_cache = True
+                self._special_type = 'semisimple'
+                self._is_nilpotent_cache = False
+                self._is_solvable_cache = False
                 print("The subalgebra is semisimple.")
             else:
+                self._is_semisimple_cache = False
+                self._is_simple_cache = False
                 print("The subalgebra is not semisimple.")
         if return_bool is True:
             return det != 0
+
+    def is_simple(self, verbose=False, bypass_semisimple_check=False):
+        if bypass_semisimple_check is False and self._is_semisimple_cache is None:
+            self.is_semisimple(verbose=verbose)
+        if self._is_simple_cache is None:
+            self.compute_simple_subalgebras(verbose=verbose)
+            if self._Levi_deco_cache['LD_components'][1].dimension == 0:
+                self._is_semisimple_cache = True
+                self._is_nilpotent_cache = False
+                self._is_solvable_cache = False
+                if len(self._Levi_deco_cache['simple_ideals'])==1:
+                    self._is_simple_cache = True
+                    self._special_type = 'simple'
+                else:
+                    self._is_simple_cache = False
+                    self._special_type = 'semisimple'
+            else:
+                self._is_semisimple_cache = False
+                self._is_simple_cache = False
+                if self._Levi_deco_cache['LD_components'][0].dimension==0:
+                    self._is_solvable_cache = True
+                    if self._special_type is None:
+                        self._special_type = 'solvable'
+        return self._is_simple_cache
+
 
     def is_subspace_subalgebra(
         self, elements, return_structure_data=False, check_linear_independence=False
@@ -687,6 +740,64 @@ class subalgebra_class(algebra_subspace_class):
             align_nested_bases=align_nested_bases,
         )
 
+    def is_nilpotent(self,**kwargs):
+        """
+        Checks if the algebra is nilpotent.
+
+        Returns
+        -------
+        bool
+            True if the algebra is nilpotent, False otherwise.
+        """
+        if self._is_nilpotent_cache is None:
+            series = self.lower_central_series()
+            if len(series[-1])<2: # to allow different conventions for formatting a trivial level basis
+                self._is_nilpotent_cache=True
+                self._special_type = 'nilpotent'
+                self._is_semisimple_cache=False
+                self._is_simple_cache=False
+            else:
+                self._is_nilpotent_cache=False
+                self._is_abelian_cache=True
+        return self._is_nilpotent_cache
+
+    def is_solvable(self,**kwargs):
+        """
+        Checks if the algebra is solvable.
+
+        Returns
+        -------
+        bool
+            True if the algebra is solvable, False otherwise.
+        """
+        if self._is_solvable_cache is None:
+            if self._is_nilpotent_cache is None:
+                series = self.derived_series()
+                if len(series[-1])<2: # to allow different conventions for formatting a trivial level basis
+                    self._is_solvable_cache=True
+                    self._is_semisimple_cache=False
+                    self._is_simple_cache=False
+                    self._special_type = 'solvable'
+                else:
+                    self._is_solvable_cache=False
+                    self._is_abelian_cache=False
+                    self._is_nilpotent_cache=False
+            else:
+                self._is_solvable_cache=self._is_nilpotent_cache
+        return self._is_solvable_cache
+
+
+    def is_abelian(self,**kwargs):
+        if self._is_abelian_cache is None:
+            self._is_abelian_cache = all(elem == 0 for elem in self.structureDataDict.values())
+            if self._is_abelian_cache is True:
+                self._special_type = 'abelian'
+                self._is_nilpotent_cache=True
+                self._is_solvable_cache=True
+                self._is_semisimple_cache=False
+                self._is_simple_cache=False
+        return self._is_abelian_cache
+
     def _require_lie_algebra(self, method_name):
         if not self.is_Lie_algebra():
             raise ValueError(
@@ -757,6 +868,44 @@ class subalgebra_class(algebra_subspace_class):
         if from_subalg is None:
             from_subalg=self
         return self.ambiant.weighted_component(weights, test_weights=test_weights, trust_test_weight_format=trust_test_weight_format, from_subalg=from_subalg)
+
+    def compute_simple_subalgebras(self,verbose=False):
+        _ = self.Levi_decomposition(decompose_semisimple_fully=True,verbose=verbose)
+        return self._Levi_deco_cache['simple_ideals']
+
+    def Levi_decomposition(self,        
+                           decompose_semisimple_fully = False,
+                           _bust_cache=False,
+                           assume_Lie_algebra=False,
+                           _try_multiple_times=None,
+                           verbose=False
+                           ):
+        return self.ambiant.Levi_decomposition(from_subalg=self,decompose_semisimple_fully=decompose_semisimple_fully,verbose=verbose,_bust_cache=_bust_cache,assume_Lie_algebra=assume_Lie_algebra,_try_multiple_times=_try_multiple_times)
+
+    def approximate_rank(self,check_semisimple=False,assume_semisimple=False,_default_to_cache=False,_use_cache=False):
+        if self.dimension==0:
+            self._rank_approximation=0
+            return 0
+        if _default_to_cache is True and self._rank_approximation is not None:
+            return self._rank_approximation
+        if check_semisimple is True:
+            ssc=self.is_semisimple()
+            if ssc is True:
+                assume_semisimple = True
+            elif assume_semisimple is True:
+                print('approximate_rank recieved parameters `check_semisimple=True` and `assume_semisimple=True`, but the semisimple check returned false. The algorithm is proceeding with the `assume_semisimple` logic applied, but this is likely not wanted, and should be prevented by setting those parameters differently. Note, just setting `check_semisimple=True` is enough to use optimized algorithms in the event that the semisimple check returns true, whereas `assume_semisimple` should only be used in applications where forgoing the semisimple check entirely is wanted.')
+        if _use_cache and self._rank_approximation is not None:
+            return self._rank_approximation
+        power=1 if (assume_semisimple or self._is_semisimple_cache is True) else self.dimension
+        elem = sp.Matrix(self.structureData[0])    # test element
+        bound=min(100,10*self.dimension)
+        for elem2 in self.structureData[1:]:
+            elem+=random.randint(0,bound)*sp.Matrix(elem2)
+        rank = self.dimension-(elem**power).rank()
+        if not isinstance(self._rank_approximation,numbers.Integral) or self._rank_approximation>rank:
+            self._rank_approximation=rank
+        return self._rank_approximation
+
 
 class subalgebra_element:
     def __init__(self, alg, coeffs, valence, ambiant_rep=None, _internalLock=None):
@@ -2807,7 +2956,6 @@ def createAlgebra(
             _basis_labels_parent=_basis_labels_parent
         )
     else:
-        _cached_caller_globals['DEBUGSD']=structure_data
         _markers = {k:v for k,v in _markers.items() if k!="lockKey"} if _markers.get("lockKey", None) == passkey else {}
         algebra_obj = algebra_class(
             structure_data=structure_data,

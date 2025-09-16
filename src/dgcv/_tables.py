@@ -2,7 +2,7 @@ import html as _html
 import re
 import uuid
 from html import escape as _esc
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 CSSRule = Dict[str, object]  # {"selector": str, "props": List[Tuple[str,str]]}
 
@@ -135,7 +135,7 @@ class TableView:
         truncate_chars: Optional[int] = None,
         truncate_msg: str = "output too long; raise `display_length` to see more.",
         nowrap: bool = False,
-        secondary_panel_html: Optional[Union[str, Callable[(), str]]] = None,
+        secondary_panel_html: Optional[Union[str, Callable[[], str]]] = None,
         layout: str = "row",
         gap_px: int = 16,
         side_width: Union[int, str] = "320px",
@@ -147,7 +147,8 @@ class TableView:
         lr: Union[int, str] = 10,
         ll: Union[int, str] = 10,
         table_scroll = False,
-        cell_scroll = False
+        cell_scroll = False,
+        show_headers: bool = True
     ):
         self.columns = columns
         self.rows = rows
@@ -177,6 +178,7 @@ class TableView:
         self.ll = f"{ll}px" if isinstance(ll, int) else str(ll)
         self.table_scroll = table_scroll
         self.cell_scroll = cell_scroll
+        self.show_headers = show_headers
 
         if column_align:
             name_to_idx = {name: i for i, name in enumerate(columns)}
@@ -218,6 +220,8 @@ class TableView:
         return _esc(self.truncate_msg) if self.escape_cells else self.truncate_msg
 
     def _thead_html(self) -> str:
+        if not self.show_headers:
+            return ""
         cols = []
         if self.index_labels is not None:
             cols.append('<th scope="col" class="row_heading"></th>')
@@ -268,44 +272,60 @@ class TableView:
         direction = "row" if self.layout == "row" else "column"
         r_tl, r_tr, r_br, r_bl = self.ul, self.ur, self.lr, self.ll
         if not self.footer_rows:
-            s_br,s_bl=r_br, r_bl
+            s_br, s_bl = r_br, r_bl
         else:
-            s_br,s_bl=0,0
-        gap=int(self.gap_px)
+            s_br, s_bl = 0, 0
+        gap = int(self.gap_px)
+
         if self.table_scroll:
             additional_str1 = f"""
-        #{cid} .dgcv-data-table {{
-        width: max-content;
-        min-width: 100%;
-        table-layout: fixed;
-        border-collapse: separate;
-        border-spacing: 0;
-        }}
-        #{cid} .dgcv-table-wrap {{
-        overflow-x: auto;
-        max-width: 100%;
-        }}
-        """.strip()
+            #{cid} .dgcv-data-table {{
+            width: max-content;
+            min-width: 100%;
+            table-layout: fixed;
+            border-collapse: separate;
+            border-spacing: 0;
+            }}
+            #{cid} .dgcv-table-wrap {{
+            overflow-x: auto;
+            max-width: 100%;
+            }}
+            """.strip()
         else:
             additional_str1 = f"""
-        #{cid} .dgcv-data-table {{
-        width: auto;
-        table-layout: fixed;
-        border-collapse: separate;
-        border-spacing: 0;
-        }}
-        #{cid} .dgcv-table-wrap {{
-        overflow-x: auto;
-        max-width: 100%;
-        }}
-        """.strip()
+            #{cid} .dgcv-data-table {{
+            width: auto;
+            table-layout: fixed;
+            border-collapse: separate;
+            border-spacing: 0;
+            }}
+            #{cid} .dgcv-table-wrap {{
+            overflow-x: auto;
+            max-width: 100%;
+            }}
+            """.strip()
 
         additional_str2 = f"""
-        #{cid} .dgcv-data-table td .table-cell {{
-        overflow-x: {'auto' if self.cell_scroll else 'visible'};
-        white-space: {'nowrap' if self.cell_scroll else 'normal'};
-        }}
-        """.strip()
+            #{cid} .dgcv-data-table td .table-cell {{
+            overflow-x: {'auto' if self.cell_scroll else 'visible'};
+            white-space: {'nowrap' if self.cell_scroll else 'normal'};
+            }}
+            """.strip()
+
+        if getattr(self, "show_headers", True):
+            tl_left_sel  = "thead tr:first-child th:first-child"
+            tl_right_sel = "thead tr:first-child th:last-child"
+            flex_tr_right_sel = "thead tr:first-child th:last-child"
+            media_tl_left_sel  = "thead tr:first-child th:first-child"
+            media_tl_right_sel = "thead tr:first-child th:last-child"
+        else:
+            has_index = self.index_labels is not None
+            tl_left_sel  = "tbody tr:first-child th.row_heading" if has_index else "tbody tr:first-child td:first-child"
+            tl_right_sel = "tbody tr:first-child td:last-child"
+            flex_tr_right_sel = "tbody tr:first-child td:last-child"
+            media_tl_left_sel  = tl_left_sel
+            media_tl_right_sel = tl_right_sel
+
         return f"""
 <style>
 #{cid} .dgcv-flex {{
@@ -328,20 +348,22 @@ class TableView:
 #{cid} .dgcv-data-table th,
 #{cid} .dgcv-data-table td {{ background-clip: padding-box; }}
 
-#{cid} .dgcv-data-table thead tr:first-child th:first-child {{ border-top-left-radius: {r_tl}; }}
-#{cid} .dgcv-data-table thead tr:first-child th:last-child  {{ border-top-right-radius: {r_tr}; }}
+#{cid} .dgcv-data-table {tl_left_sel}  {{ border-top-left-radius: {r_tl}; }}
+#{cid} .dgcv-data-table {tl_right_sel} {{ border-top-right-radius: {r_tr}; }}
 #{cid} .dgcv-data-table tfoot tr:last-child td:first-child    {{ border-bottom-left-radius: {r_bl}; }}
 #{cid} .dgcv-data-table tbody tr:last-child td:first-child    {{ border-bottom-left-radius: {s_bl}; }}
+#{cid} .dgcv-data-table tbody tr:last-child th.row_heading    {{ border-bottom-left-radius: {s_bl}; }}
 #{cid} .dgcv-data-table tfoot tr:last-child td:last-child     {{ border-bottom-right-radius: {r_br}; }}
 #{cid} .dgcv-data-table tbody tr:last-child td:last-child     {{ border-bottom-right-radius: {s_br}; }}
 
 #{cid} .dgcv-data-table {{ border-radius: {r_tl} {r_tr} {r_br} {r_bl}; overflow: hidden; }}
 
-#{cid} .dgcv-flex .dgcv-data-table thead tr:first-child th:last-child {{ border-top-right-radius: 0; }}
+#{cid} .dgcv-flex .dgcv-data-table {flex_tr_right_sel} {{ border-top-right-radius: 0; }}
 #{cid} .dgcv-flex .dgcv-data-table tfoot tr:last-child td:last-child,
 #{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child td:last-child   {{ border-bottom-right-radius: 0; }}
 #{cid} .dgcv-flex .dgcv-data-table tfoot tr:last-child td:first-child  {{ border-bottom-left-radius: {r_bl}; }}
 #{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child td:first-child  {{ border-bottom-left-radius: {s_bl}; }}
+#{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child th.row_heading  {{ border-bottom-left-radius: {s_bl}; }}
 #{cid} .dgcv-flex .dgcv-data-table {{ border-radius: {r_tl} 0 0 {r_bl}; overflow: hidden; }}
 #{cid} .dgcv-flex .dgcv-side-panel {{ border-radius: 0 {r_tr} {r_br} 0; }}
 
@@ -366,10 +388,11 @@ class TableView:
 }}
 
 #{cid} .dgcv-data-table {{ width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; }}
-#{cid} .dgcv-flex .dgcv-data-table thead tr:first-child th:first-child {{ border-top-left-radius: {r_tl}; }}
-#{cid} .dgcv-flex .dgcv-data-table thead tr:first-child th:last-child {{ border-top-right-radius: {r_tr}; }}
+#{cid} .dgcv-flex .dgcv-data-table {media_tl_left_sel}  {{ border-top-left-radius: {r_tl}; }}
+#{cid} .dgcv-flex .dgcv-data-table {media_tl_right_sel} {{ border-top-right-radius: {r_tr}; }}
 #{cid} .dgcv-flex .dgcv-data-table tfoot tr:last-child td:first-child,
 #{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child td:first-child {{ border-bottom-left-radius: 0; }}
+#{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child th.row_heading {{ border-bottom-left-radius: 0; }}
 #{cid} .dgcv-flex .dgcv-data-table tfoot tr:last-child td:last-child,
 #{cid} .dgcv-flex .dgcv-data-table tbody tr:last-child td:last-child {{ border-bottom-right-radius: 0; }}
 
@@ -460,6 +483,128 @@ class TableView:
                      for c in frow]
             lines.append(col_sep.join(cells))
         return "\n".join(lines)
+
+def _sanitize_html_str(s: str) -> str:
+    import re
+    s = re.sub(r"<\s*script\b[^>]*>.*?<\s*/\s*script\s*>", "", s, flags=re.IGNORECASE | re.DOTALL)
+    s = re.sub(r"\s+on[a-zA-Z]+\s*=\s*(['\"]).*?\1", "", s, flags=re.IGNORECASE | re.DOTALL)
+    return s
+
+class panel_view:
+    def __init__(
+        self,
+        *,
+        header: Union[str, Any],
+        primary_text: Optional[Union[str, Any]] = None,
+        itemized_text: Optional[Union[List[Union[str, Any]], tuple]] = None,
+        footer: Optional[Union[str, Any]] = None,
+        theme_styles: Optional[List["CSSRule"]] = None,
+        extra_styles: Optional[List["CSSRule"]] = None,
+        list_variant: str = "bulleted",
+        use_latex: bool = False,
+        sanitize: bool = True,
+        container_id: Optional[str] = None,
+        ul: Union[int, str] = 10,
+        ur: Union[int, str] = 10,
+        lr: Union[int, str] = 10,
+        ll: Union[int, str] = 10,
+    ):
+        self.header = header
+        self.primary_text = primary_text
+        self.itemized_text = list(itemized_text) if itemized_text else []
+        self.footer = footer
+        self.theme_styles = theme_styles or []
+        self.extra_styles = extra_styles or []
+        self.list_variant = list_variant
+        self.use_latex = use_latex
+        self.sanitize = sanitize
+        self.container_id = container_id or f"dgcv-panel-{uuid.uuid4().hex[:8]}"
+        self.ul = f"{ul}px" if isinstance(ul, int) else str(ul)
+        self.ur = f"{ur}px" if isinstance(ur, int) else str(ur)
+        self.lr = f"{lr}px" if isinstance(lr, int) else str(lr)
+        self.ll = f"{ll}px" if isinstance(ll, int) else str(ll)
+
+    def _coerce_block(self, x) -> str:
+        if x is None:
+            return ""
+        if hasattr(x, "to_html"):
+            s = x.to_html()
+        else:
+            s = _coerce_html(x, html_safe=False)
+        if self.sanitize:
+            s = _sanitize_html_str(s)
+        return s
+
+    def _panel_css(self) -> str:
+        base = styles_to_css(merge_styles(self.theme_styles, self.extra_styles))
+        scoped = _scoped_css(self.container_id, base)
+        return scoped
+
+    def _layout_css(self) -> str:
+        cid = self.container_id
+        r_tl, r_tr, r_br, r_bl = self.ul, self.ur, self.lr, self.ll
+        return f"""
+<style>
+#{cid} .dgcv-panel {{
+  border-radius: {r_tl} {r_tr} {r_br} {r_bl};
+  background-color: var(--bg-surface, transparent);
+  border: 1px solid var(--border-color, #ddd);
+  color: var(--text-title, inherit);
+  overflow: hidden;
+}}
+#{cid} .dgcv-panel-head {{ margin: 0; padding: 0.75rem 1rem; }}
+#{cid} .dgcv-panel-title {{ margin: 0; font-size: 1rem; line-height: 1.3; font-weight: 600; color: var(--text-title, inherit); }}
+#{cid} .dgcv-panel-rule {{ border: 0; height: 1px; background: var(--border-color, #ddd); margin: 0; }}
+#{cid} .dgcv-panel-body {{ padding: 0.75rem 1rem; }}
+#{cid} .dgcv-panel-footer {{ padding: 0.5rem 1rem; background: var(--bg-muted, transparent); border-top: 1px solid var(--border-color, #ddd); }}
+#{cid} .dgcv-panel-list {{ margin: 0.5rem 0 0; padding: 0; }}
+#{cid} .dgcv-panel-list ul, #{cid} .dgcv-panel-list ol {{ margin: 0.25rem 0 0 1.25rem; }}
+#{cid} .dgcv-inline {{ display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; padding: 0; margin-top: 0.5rem; }}
+#{cid} .dgcv-chips {{ display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; padding: 0; margin-top: 0.5rem; }}
+#{cid} .dgcv-chip {{ padding: 0.2rem 0.5rem; border-radius: 999px; background: var(--hover-bg, rgba(0,0,0,0.05)); border: 1px solid var(--border-color, #ddd); font-size: 0.9em; }}
+</style>
+""".strip()
+
+    def _header_html(self) -> str:
+        t = self._coerce_block(self.header)
+        return f'<div class="dgcv-panel-head"><h3 class="dgcv-panel-title">{t}</h3></div><hr class="dgcv-panel-rule"/>'
+
+    def _primary_html(self) -> str:
+        if not self.primary_text:
+            return ""
+        return f'<div class="dgcv-panel-primary">{self._coerce_block(self.primary_text)}</div>'
+
+    def _list_html(self) -> str:
+        if not self.itemized_text:
+            return ""
+        items = [self._coerce_block(it) for it in self.itemized_text]
+        if self.list_variant == "numbered":
+            lis = "".join(f"<li>{i}</li>" for i in items)
+            return f'<div class="dgcv-panel-list"><ol>{lis}</ol></div>'
+        if self.list_variant == "inline":
+            lis = "".join(f"<li>{i}</li>" for i in items)
+            return f'<div class="dgcv-panel-list"><ul class="dgcv-inline">{lis}</ul></div>'
+        if self.list_variant == "chips":
+            lis = "".join(f'<li class="dgcv-chip">{i}</li>' for i in items)
+            return f'<div class="dgcv-panel-list"><ul class="dgcv-chips">{lis}</ul></div>'
+        lis = "".join(f"<li>{i}</li>" for i in items)
+        return f'<div class="dgcv-panel-list"><ul>{lis}</ul></div>'
+
+    def _footer_html(self) -> str:
+        if not self.footer:
+            return ""
+        return f'<div class="dgcv-panel-footer">{self._coerce_block(self.footer)}</div>'
+
+    def to_html(self, *args, **kwargs) -> str:
+        theme_css = self._panel_css()
+        layout_css = self._layout_css()
+        head = self._header_html()
+        body = f'<div class="dgcv-panel-body">{self._primary_html()}{self._list_html()}</div>'
+        foot = self._footer_html()
+        return f'<div id="{self.container_id}">{layout_css}{theme_css}<aside class="dgcv-panel">{head}{body}{foot}</aside></div>'
+
+    def _repr_html_(self) -> str:
+        return self.to_html()
 
 # template builders
 def build_plain_table(

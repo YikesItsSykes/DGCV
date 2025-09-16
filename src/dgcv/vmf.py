@@ -834,7 +834,8 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
         var_system_labels.append(formatted_label)
         family_houses = system.get("family_houses", ("N/A", "N/A", "N/A", "N/A"))
         if isinstance(fn, (list, tuple)) and len(fn) == 4:
-            real_names = fn[2]; imag_names = fn[3]
+            real_names = fn[2]
+            imag_names = fn[3]
         else:
             real_names, imag_names = "N/A", "N/A"
         if use_latex:
