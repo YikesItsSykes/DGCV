@@ -13,6 +13,7 @@ from .._safeguards import (
     _cached_caller_globals,
     create_key,
     get_dgcv_category,
+    query_dgcv_categories,
     retrieve_passkey,
     retrieve_public_key,
     unique_label,
@@ -98,6 +99,7 @@ class subalgebra_class(algebra_subspace_class):
             self.simplify_products_by_default = True
         else:
             self.simplify_products_by_default = simplify_products_by_default
+        self._registered=self.ambiant._registered
         # cached_properties
         self._jacobi_identity_cache = None
         self._skew_symmetric_cache = None
@@ -115,7 +117,7 @@ class subalgebra_class(algebra_subspace_class):
         self._is_solvable_cache = None
         self._rank_approximation = None
         self._graded_components = None
-        self._special_type = None
+        self._educed_properties = dict()
 
     @property
     def zero_element(self):
@@ -205,7 +207,7 @@ class subalgebra_class(algebra_subspace_class):
             },
         )
 
-    def subalgebra(self, basis, grading=None, span_warning=False):
+    def subalgebra(self, basis, grading=None, span_warning=False, simplify_basis=False, simplify_products_by_default=None):
         elems = [
             (
                 elem.ambiant_rep
@@ -214,9 +216,7 @@ class subalgebra_class(algebra_subspace_class):
             )
             for elem in basis
         ]
-        return self.ambiant.subalgebra(
-            elems, grading=grading, span_warning=span_warning
-        )
+        return self.ambiant.subalgebra(elems, grading=grading, simplify_basis=simplify_basis, span_warning=span_warning, simplify_products_by_default=simplify_products_by_default)
 
     def subspace(self, basis, grading=None):
         elems = [
@@ -333,27 +333,27 @@ class subalgebra_class(algebra_subspace_class):
                 _calledFromCreator=retrieve_passkey(),
             )
 
-    def is_skew_symmetric(self, verbose=False):
+    def is_skew_symmetric(self, verbose=False, _return_proof_path=False):
         """
-        Checks if the subalgebra is skew-symmetric.
+        Checks if the algebra is skew-symmetric.
         """
-        if not self.ambiant._registered and verbose:
-            if self.ambiant._callLock == retrieve_passkey() and isinstance(
-                self.ambiant._print_warning, str
+        if not self._registered and verbose:
+            if self._callLock == retrieve_passkey() and isinstance(
+                self._print_warning, str
             ):
-                print(self.ambiant._print_warning)
+                print(self._print_warning)
             else:
                 print(
-                    "Warning: This subalgebra instance's ambiant algebra is unregistered. For more detailed information in printed output, initialize algebra objects with createFiniteAlg instead to register them."
+                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
+        if isinstance(self._educed_properties.get('is_skew',None),str):
+            t_message=self._educed_properties.get('is_skew',None)
+            self._skew_symmetric_cache = (True,None)
+        else:
+            t_message=''
+
         if self._skew_symmetric_cache is None:
-            if (
-                self.ambiant._skew_symmetric_cache is not None
-                and self.ambiant._skew_symmetric_cache[0] is True
-            ):
-                self._skew_symmetric_cache = (True, None)
-                result = True
             result, failure = self._check_skew_symmetric()
             self._skew_symmetric_cache = (result, failure)
         else:
@@ -361,13 +361,17 @@ class subalgebra_class(algebra_subspace_class):
 
         if verbose:
             if result:
-                print("The subalgebra is skew-symmetric.")
+                if self.label is None:
+                    print("The algebra is skew-symmetric.")
+                else:
+                    print(f"{self.label} is skew-symmetric.")
             else:
                 i, j, k = failure
                 print(
                     f"Skew symmetry fails for basis elements {i}, {j}, at coefficient index {k}."
                 )
-
+        if _return_proof_path is True:
+            return result, t_message
         return result
 
     def _check_skew_symmetric(self):
@@ -381,40 +385,47 @@ class subalgebra_class(algebra_subspace_class):
                         return False, (i, j, k)
         return True, None
 
-    def satisfies_jacobi_identity(self, verbose=False):
+    def satisfies_jacobi_identity(self, verbose=False, _return_proof_path=False):
         """
-        Checks if the subalgebra satisfies the Jacobi identity.
+        Checks if the algebra satisfies the Jacobi identity.
         Includes a warning for unregistered instances only if verbose=True.
         """
-        if not self.ambiant._registered and verbose:
-            if self.ambiant._callLock == retrieve_passkey() and isinstance(
-                self.ambiant._print_warning, str
+        if not self._registered and verbose:
+            if self._callLock == retrieve_passkey() and isinstance(
+                self._print_warning, str
             ):
-                print(self.ambiant._print_warning)
+                print(self._print_warning)
             else:
                 print(
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
+        if isinstance(self._educed_properties.get('satisfies_Jacobi_ID',None),str):
+            t_message=self._educed_properties.get('satisfies_Jacobi_ID',None)
+            self._jacobi_identity_cache = (True,None)
+        else:
+            t_message=''
+
+
         if self._jacobi_identity_cache is None:
-            if (
-                self.ambiant._jacobi_identity_cache is not None
-                and self.ambiant._jacobi_identity_cache[0] is True
-            ):
-                self._jacobi_identity_cache = (True, None)
-                result = True
-            else:
-                result, fail_list = self._check_jacobi_identity()
-                self._jacobi_identity_cache = (result, fail_list)
+            result, fail_list = self._check_jacobi_identity()
+            self._jacobi_identity_cache = (result, fail_list)
         else:
             result, fail_list = self._jacobi_identity_cache
 
         if verbose:
             if result:
-                print("The subalgebra satisfies the Jacobi identity.")
+                if self.label is None:
+                    print("The algebra satisfies the Jacobi identity.")
+                else:
+                    print(f"{self.label} satisfies the Jacobi identity.")
             else:
                 print(f"Jacobi identity fails for the following triples: {fail_list}")
+
+        if _return_proof_path is True:
+            return result, t_message
         return result
+
 
     def _check_jacobi_identity(self):
         skew = self.is_skew_symmetric()
@@ -454,9 +465,9 @@ class subalgebra_class(algebra_subspace_class):
             UserWarning,
         )
 
-    def is_Lie_algebra(self, verbose=False, return_bool=True):
+    def is_Lie_algebra(self, verbose=False, return_bool=True,_return_proof_path=False):
         """
-        Checks if the subalgebra is a Lie algebra.
+        Checks if the algebra is a Lie algebra.
         Includes a warning for unregistered instances only if verbose=True.
 
         Parameters
@@ -471,39 +482,59 @@ class subalgebra_class(algebra_subspace_class):
         bool or nothing
             True if the algebra is a Lie algebra, False otherwise. Nothing is returned if return_bool=False is set.
         """
-        if not self.ambiant._registered and verbose:
-            if self.ambiant._callLock == retrieve_passkey() and isinstance(
-                self.ambiant._print_warning, str
+        if not self._registered and verbose:
+            if self._callLock == retrieve_passkey() and isinstance(
+                self._print_warning, str
             ):
-                print(self.ambiant._print_warning)
+                print(self._print_warning)
             else:
                 print(
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
+        if isinstance(self._educed_properties.get('is_Lie_algebra',None),str):
+            t_message=self._educed_properties.get('is_Lie_algebra',None)
+            self._lie_algebra_cache = True
+            self._jacobi_identity_cache = True
+            self._skew_symmetric_cache = True
+        else:
+            t_message=''
+
         if self._lie_algebra_cache is not None:
             if verbose:
                 print(
-                    f"Cached result: {'Previously verified that the subalgebra is a Lie algebra' if self._lie_algebra_cache else 'Previously verified that the subalgebra is not a Lie algebra'}."
+                    f"Cached result: {f'Previously verified {self.label} is a Lie algebra' if self._lie_algebra_cache else f'Previously verified {self.label} is not a Lie algebra'}."
                 )
+            if _return_proof_path is True:
+                return self._lie_algebra_cache, t_message
             return self._lie_algebra_cache
 
         if not self.is_skew_symmetric(verbose=verbose):
             self._lie_algebra_cache = False
             if return_bool is True:
+                if _return_proof_path is True:
+                    return False, t_message
                 return False
         if not self.satisfies_jacobi_identity(verbose=verbose):
             self._lie_algebra_cache = False
             if return_bool is True:
+                if _return_proof_path is True:
+                    return False, t_message
                 return False
         if self._lie_algebra_cache is None:
             self._lie_algebra_cache = True
 
         if verbose:
-            print("The subalgebra is a Lie algebra.")
+            if self.label is None:
+                print("The algebra is a Lie algebra.")
+            else:
+                print(f"{self.label} is a Lie algebra.")
 
         if return_bool is True:
+            if _return_proof_path is True:
+                return self._lie_algebra_cache, t_message
             return self._lie_algebra_cache
+
 
     def _require_lie_algebra(self, method_name):
         """
@@ -557,7 +588,7 @@ class subalgebra_class(algebra_subspace_class):
         if verbose:
             if det != 0:
                 self._is_semisimple_cache = True
-                self._special_type = 'semisimple'
+                self._educed_properties['special_type'] = 'semisimple'
                 self._is_nilpotent_cache = False
                 self._is_solvable_cache = False
                 print("The subalgebra is semisimple.")
@@ -579,17 +610,17 @@ class subalgebra_class(algebra_subspace_class):
                 self._is_solvable_cache = False
                 if len(self._Levi_deco_cache['simple_ideals'])==1:
                     self._is_simple_cache = True
-                    self._special_type = 'simple'
+                    self._educed_properties['special_type'] = 'simple'
                 else:
                     self._is_simple_cache = False
-                    self._special_type = 'semisimple'
+                    self._educed_properties['special_type'] = 'semisimple'
             else:
                 self._is_semisimple_cache = False
                 self._is_simple_cache = False
                 if self._Levi_deco_cache['LD_components'][0].dimension==0:
                     self._is_solvable_cache = True
-                    if self._special_type is None:
-                        self._special_type = 'solvable'
+                    if self._educed_properties['special_type'] is None:
+                        self._educed_properties['special_type'] = 'solvable'
         return self._is_simple_cache
 
 
@@ -753,7 +784,7 @@ class subalgebra_class(algebra_subspace_class):
             series = self.lower_central_series()
             if len(series[-1])<2: # to allow different conventions for formatting a trivial level basis
                 self._is_nilpotent_cache=True
-                self._special_type = 'nilpotent'
+                self._educed_properties['special_type'] = 'nilpotent'
                 self._is_semisimple_cache=False
                 self._is_simple_cache=False
             else:
@@ -777,7 +808,7 @@ class subalgebra_class(algebra_subspace_class):
                     self._is_solvable_cache=True
                     self._is_semisimple_cache=False
                     self._is_simple_cache=False
-                    self._special_type = 'solvable'
+                    self._educed_properties['special_type'] = 'solvable'
                 else:
                     self._is_solvable_cache=False
                     self._is_abelian_cache=False
@@ -791,7 +822,7 @@ class subalgebra_class(algebra_subspace_class):
         if self._is_abelian_cache is None:
             self._is_abelian_cache = all(elem == 0 for elem in self.structureDataDict.values())
             if self._is_abelian_cache is True:
-                self._special_type = 'abelian'
+                self._educed_properties['special_type'] = 'abelian'
                 self._is_nilpotent_cache=True
                 self._is_solvable_cache=True
                 self._is_semisimple_cache=False
@@ -1179,6 +1210,7 @@ class simple_Lie_algebra(algebra_class):
             raise RuntimeError(
                 "`simple_Lie_algebra` class instances can only be initialized by internal `dgcv` functions indirectly. To instantiate a simple Lie algebra, use dgcv `creator` functions"
             ) from None
+        t_message='True by construction: instantiated from `simple_Lie_algebra` class constructor'
         super().__init__(
             structure_data,
             grading=grading,
@@ -1193,10 +1225,9 @@ class simple_Lie_algebra(algebra_class):
             _child_print_warning=_child_print_warning,
             _exclude_from_VMF=_exclude_from_VMF,
             _basis_labels_parent=_basis_labels_parent,
-            _markers={'simple':True}
+            _markers={'simple':True,'_educed_properties':{'is_simple':t_message,'is_Lie_algebra':t_message,'is_semisimple':t_message,'special_type':'simple','is_skew':t_message,'satisfies_Jacobi_ID':t_message}}
         )
 
-        # assuming grading vectors are complete and given relative to simple roots
         self.roots = []
         self.simpleRoots = []
         self.rootSpaces = {(0,) * len(self.grading): []}
@@ -1587,7 +1618,6 @@ def createSimpleLieAlgebra(
     -----
     - Currently supports only the A,B, and D series (special linear Lie algebras: A_n = sl(n+1), etc.).
     """
-    # Extract series type and rank
     try:
         series_type, rank = series[0], int(series[1:])
         series_type = "".join(c.upper() if c.islower() else c for c in series_type)
@@ -1664,34 +1694,43 @@ def createSimpleLieAlgebra(
                 reSign = 1
             p10, p11, p12 = indexingKey[idx1]
             p20, p21, p22 = indexingKey[idx2]
-            if p12 == 0:
+            if p12 == 0:    # implies p10 = p11
                 if p22 == 1:
-                    coeffs[idx2] += reSign * (
-                        int(p10 == p20)
-                        - int(p10 == p21)
-                        + int(p10 + 1 == p21)
-                        - int(p10 + 1 == p20)
-                    )
+                    if p20<=p10 and p21>p10:
+                        coeffs[idx2] = reSign
+                    elif p21<=p10 and p20>p10:
+                        coeffs[idx2] = -reSign
             elif p12 == 1:
                 if p22 == 1:
                     if p11 == p20:
                         if p10 == p21:
                             if p10 < p11:
-                                for idx in range(p10, p11):
-                                    coeffs[indexingKeyRev[(idx, idx, 0)]] = reSign
+                                if 0<p10:
+                                    coeffs[indexingKeyRev[(p10-1, p10-1, 0)]] = -reSign
+                                if p10==p11-1:
+                                    coeffs[indexingKeyRev[(p10, p10, 0)]] = 2*reSign
+                                else:
+                                    coeffs[indexingKeyRev[(p10, p10, 0)]] = reSign
+                                    coeffs[indexingKeyRev[(p11-1, p11-1, 0)]] = reSign
+                                if p11<n:
+                                    coeffs[indexingKeyRev[(p11, p11, 0)]] = -reSign
                             else:
-                                for idx in range(p11, p10):
-                                    coeffs[indexingKeyRev[(idx, idx, 0)]] = -reSign
+                                if 0<p11:
+                                    coeffs[indexingKeyRev[(p11-1, p11-1, 0)]] = reSign
+                                if p11==p10-1:
+                                    coeffs[indexingKeyRev[(p11, p11, 0)]] = -2*reSign
+                                else:
+                                    coeffs[indexingKeyRev[(p11, p11, 0)]] = -reSign
+                                    coeffs[indexingKeyRev[(p10-1, p10-1, 0)]] = -reSign
+                                if p10<n:
+                                    coeffs[indexingKeyRev[(p10, p10, 0)]] = reSign
                         else:
                             coeffs[indexingKeyRev[(p10, p21, 1)]] = reSign
                     elif p10 == p21:
                         coeffs[indexingKeyRev[(p20, p11, 1)]] = -reSign
             return coeffs
 
-        _structure_data = [
-            [_structureCoeffs(k, j) for j in range(LADimension)]
-            for k in range(LADimension)
-        ]
+        _structure_data = [[_structureCoeffs(k, j) for j in range(LADimension)] for k in range(LADimension)]
         CartanSubalg = list(hBasis["elems"].values())
         matrixBasis = CartanSubalg + list(offDiag["elems"].values())
         gradingVecs = list(hBasis["grading"].values()) + list(
@@ -2720,16 +2759,19 @@ def createAlgebra(
         If True, provides information during the creation process.
     """
     notes={}
+    _markers['_educed_properties']=dict()
     if get_dgcv_category(obj) == "Tanaka_symbol":
+        t_message='True by construction: data --> `Tanaka_symbol` --> `createAlgebra`'
+        _markers['_educed_properties']['is_Lie_algebra']=t_message
+        _markers['_educed_properties']['is_skew']=t_message
+        _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
         if grading is not None:
             warnings.warn(
                 "When processing a `Tanaka_symbol` object, `createAlgebra` uses the symbol's internally defined grading rather than a manually supplied grading. You are getting this warning because an additional grading was manually supplied. To apply the custom grading instead, extract the symbol object's structure data using `Tanaka_symbol.export_algebra_data()`, and then pass that to `createAlgebra` -- create the algebra first and extract the data from the created `algebra_class` attributes."
             )
         symbolData = obj.export_algebra_data(_internal_call_lock=retrieve_passkey())
         if isinstance(symbolData, str):
-            raise TypeError(
-                symbolData + " So no `createAlgebra` did not instantiate a new algebra."
-            ) from None
+            raise TypeError(symbolData + " So no `createAlgebra` did not instantiate a new algebra.") from None
         obj = symbolData["structure_data"]
         grading = symbolData["grading"]
 
@@ -2740,10 +2782,7 @@ def createAlgebra(
             label = unique_label(label)
         else:
             label, _markers['_tex_label'] = unique_label(label, tex_label=incoming_tex_label)
-    if (
-        label in listVar(algebras_only=True)
-        and get_dgcv_settings_registry()["forgo_warnings"] is not True
-    ):
+    if (label in listVar(algebras_only=True) and get_dgcv_settings_registry()["forgo_warnings"] is not True):
         if isinstance(_simple, dict) and _simple.get("lockKey", None) == passkey:
             callFunction = "createSimpleLieAlgebra"
         else:
@@ -2753,7 +2792,7 @@ def createAlgebra(
         )
         clearVar(label)
 
-    def extract_structure_from_elements(elements):
+    def extract_structure_from_elements(elements,markers):
         """
         Computes structure constants and validates linear independence from a list of algebra_element_class.
 
@@ -2773,21 +2812,23 @@ def createAlgebra(
             If the elements are not linearly independent or not closed under the algebra product.
         """
         if isinstance(elements, (list, tuple)):
-            elements = [
-                (
-                    elem.ambiant_rep
-                    if get_dgcv_category(elem) == "subalgebra_element"
-                    else elem
-                )
-                for elem in elements
-            ]
-        if not elements or not all(
-            isinstance(el, algebra_element_class) for el in elements
-        ):
+            elements = [(elem.ambiant_rep if get_dgcv_category(elem) == "subalgebra_element" else elem) for elem in elements]
+        if not elements or not all(isinstance(el, algebra_element_class) for el in elements):
             raise ValueError(
                 "Invalid input: All elements must be instances of algebra_element_class."
             ) from None
         parent_algebra = elements[0].algebra
+        if parent_algebra._lie_algebra_cache is True:
+            t_message='True by inheritance: subalgebra of Lie algebra'
+            markers['_educed_properties']['is_Lie_algebra']=t_message
+            markers['_educed_properties']['is_skew']=t_message
+            markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
+        else:
+            if parent_algebra._jacobi_identity_cache is True:
+                markers['_educed_properties']['satisfies_Jacobi_ID']='True by inheritance: subalgebra of Jacobi satisfying algebra'
+            if parent_algebra._skew_symmetric_cache is True:
+                markers['_educed_properties']['is_skew']='True by inheritance: subalgebra of a skew symmetric algebra'
+
         if not all(el.algebra == parent_algebra for el in elements):
             raise ValueError("All algebra_element_class instances must share the same parent algebra.") from None
         try:
@@ -2806,9 +2847,17 @@ def createAlgebra(
 
     if isinstance(obj,numbers.Integral):
         obj=(((0,)*obj,)*obj,)*obj
-    if isinstance(obj, algebra_class):
+        t_message='True by construction: abelian data --> `createAlgebra`'
+        _markers['_educed_properties']['is_Lie_algebra']=t_message
+        _markers['_educed_properties']['is_skew']=t_message
+        _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
+        _markers['_educed_properties']['is_nilpotent']=t_message
+        _markers['_educed_properties']['is_solvable']=t_message
+        _markers['_educed_properties']['special_type']='abelian'
+    if get_dgcv_category(obj)in {'algebra','subalgebra'}:
         if verbose:
             print(f"Using existing algebra instance: {label}")
+        _markers['_educed_properties']=obj._markers['_educed_properties']
         structure_data = obj.structureData
         dimension = obj.dimension
         if grading is None:
@@ -2819,7 +2868,7 @@ def createAlgebra(
     elif isinstance(obj, (list, tuple)) and all(get_dgcv_category(el) in {'algebra_element_class','subalgebra_element_class'} for el in obj):
         if verbose:
             print("Creating algebra from list of algebra_element_class instances.")
-        structure_data = extract_structure_from_elements(obj)
+        structure_data = extract_structure_from_elements(obj,_markers)
         dimension = len(obj)
     elif (isinstance(obj, (list, tuple)) and all(get_dgcv_category(el) == 'tensorProduct' for el in obj)):
         notes['process_tensor_rep']=True
@@ -2847,11 +2896,20 @@ def createAlgebra(
                 basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,
             )
             if vsd[-1]=='matrix':
+                t_message='True by construction: list of matrices --> `createAlgebra`'
+                _markers['_educed_properties']['is_Lie_algebra']=t_message
+                _markers['_educed_properties']['is_skew']=t_message
+                _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
                 structure_data,matrix_representation = vsd[0][0],vsd[0][1]
             elif vsd[-1]=='tensor':
                 notes['process_tensor_rep']=True
                 structure_data, tensor_representation = vsd[0][0], vsd[0][1]
             else:
+                if isinstance(obj,(list,tuple)) and len(obj)>1 and query_dgcv_categories(obj[-1],'vector_field'):
+                    t_message='True by construction: list of vector fields --> `createAlgebra`'
+                    _markers['_educed_properties']['is_Lie_algebra']=t_message
+                    _markers['_educed_properties']['is_skew']=t_message
+                    _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
                 structure_data=vsd
 
         except dgcv_exception_note as e:
@@ -2956,7 +3014,12 @@ def createAlgebra(
             _basis_labels_parent=_basis_labels_parent
         )
     else:
-        _markers = {k:v for k,v in _markers.items() if k!="lockKey"} if _markers.get("lockKey", None) == passkey else {}
+        if _markers.get("lockKey", None) == passkey:
+            _markers = {k:v for k,v in _markers.items() if k!="lockKey"}  
+        elif '_educed_properties' in _markers: 
+            _markers={'_educed_properties':_markers['_educed_properties']}
+        else:
+            _markers=dict()
         algebra_obj = algebra_class(
             structure_data=structure_data,
             grading=grading,

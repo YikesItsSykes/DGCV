@@ -86,7 +86,10 @@ class algebra_class:
         self.structureData = tuple(tuple(tuple(inner) for inner in middle) for middle in validated_structure_data)
         self._tex_label=None
         self._tex_basis_labels=None
+        self._educed_properties = dict()
         if _calledFromCreator == retrieve_passkey():
+            if isinstance(_markers.get('_educed_properties',None),dict):
+                self._educed_properties=_markers.get('_educed_properties',False)
             if _markers.get('endo',False):
                 if _label is None:
                     self.label = f'gl_{_markers.get('endo_label','')}'
@@ -363,7 +366,7 @@ class algebra_class:
         self._Levi_deco_cache = None
         self._graded_components = None
         self._endomorphisms = None
-        self._special_type = None
+
 
     def _class_builder(self, coeffs, valence, format_sparse=False):
         return algebra_element_class(self, coeffs, valence, format_sparse=format_sparse)
@@ -714,7 +717,7 @@ class algebra_class:
         else:
             return f"algebra_class(dim={self.dimension})"
 
-    def is_skew_symmetric(self, verbose=False):
+    def is_skew_symmetric(self, verbose=False, _return_proof_path=False):
         """
         Checks if the algebra is skew-symmetric.
         """
@@ -727,6 +730,12 @@ class algebra_class:
                 print(
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
+
+        if isinstance(self._educed_properties.get('is_skew',None),str):
+            t_message=self._educed_properties.get('is_skew',None)
+            self._skew_symmetric_cache = (True,None)
+        else:
+            t_message=''
 
         if self._skew_symmetric_cache is None:
             result, failure = self._check_skew_symmetric()
@@ -745,7 +754,8 @@ class algebra_class:
                 print(
                     f"Skew symmetry fails for basis elements {i}, {j}, at coefficient index {k}."
                 )
-
+        if _return_proof_path is True:
+            return result, t_message
         return result
 
     def _check_skew_symmetric(self):
@@ -759,7 +769,7 @@ class algebra_class:
                         return False, (i, j, k)
         return True, None
 
-    def satisfies_jacobi_identity(self, verbose=False):
+    def satisfies_jacobi_identity(self, verbose=False, _return_proof_path=False):
         """
         Checks if the algebra satisfies the Jacobi identity.
         Includes a warning for unregistered instances only if verbose=True.
@@ -773,6 +783,13 @@ class algebra_class:
                 print(
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
+
+        if isinstance(self._educed_properties.get('satisfies_Jacobi_ID',None),str):
+            t_message=self._educed_properties.get('satisfies_Jacobi_ID',None)
+            self._jacobi_identity_cache = (True,None)
+        else:
+            t_message=''
+
 
         if self._jacobi_identity_cache is None:
             result, fail_list = self._check_jacobi_identity()
@@ -789,6 +806,8 @@ class algebra_class:
             else:
                 print(f"Jacobi identity fails for the following triples: {fail_list}")
 
+        if _return_proof_path is True:
+            return result, t_message
         return result
 
     def _check_jacobi_identity(self):
@@ -838,7 +857,7 @@ class algebra_class:
         )
         return self.is_Lie_algebra(verbose=False, return_bool=True)
 
-    def is_Lie_algebra(self, verbose=False, return_bool=True):
+    def is_Lie_algebra(self, verbose=False, return_bool=True,_return_proof_path=False):
         """
         Checks if the algebra is a Lie algebra.
         Includes a warning for unregistered instances only if verbose=True.
@@ -865,20 +884,34 @@ class algebra_class:
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
+        if isinstance(self._educed_properties.get('is_Lie_algebra',None),str):
+            t_message=self._educed_properties.get('is_Lie_algebra',None)
+            self._lie_algebra_cache = True
+            self._jacobi_identity_cache = True
+            self._skew_symmetric_cache = True
+        else:
+            t_message=''
+
         if self._lie_algebra_cache is not None:
             if verbose:
                 print(
                     f"Cached result: {f'Previously verified {self.label} is a Lie algebra' if self._lie_algebra_cache else f'Previously verified {self.label} is not a Lie algebra'}."
                 )
+            if _return_proof_path is True:
+                return self._lie_algebra_cache, t_message
             return self._lie_algebra_cache
 
         if not self.is_skew_symmetric(verbose=verbose):
             self._lie_algebra_cache = False
             if return_bool is True:
+                if _return_proof_path is True:
+                    return False, t_message
                 return False
         if not self.satisfies_jacobi_identity(verbose=verbose):
             self._lie_algebra_cache = False
             if return_bool is True:
+                if _return_proof_path is True:
+                    return False, t_message
                 return False
         if self._lie_algebra_cache is None:
             self._lie_algebra_cache = True
@@ -890,6 +923,8 @@ class algebra_class:
                 print(f"{self.label} is a Lie algebra.")
 
         if return_bool is True:
+            if _return_proof_path is True:
+                return self._lie_algebra_cache, t_message
             return self._lie_algebra_cache
 
     def _require_lie_algebra(self, method_name):
@@ -911,7 +946,7 @@ class algebra_class:
                 f"{method_name} can only be applied to Lie algebras."
             ) from None
 
-    def is_semisimple(self, verbose=False, return_bool=True):
+    def is_semisimple(self, verbose=False, return_bool=True, _return_proof_path=False):
         """
         Checks if the algebra is semisimple.
         Nothing is returned if return_bool=False is set.
@@ -924,8 +959,41 @@ class algebra_class:
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
-        if self._is_simple_cache is True:
-            self._is_semisimple_cache=True
+        if isinstance(self._educed_properties.get('is_simple',None),str):
+            t_message=self._educed_properties.get('is_simple',None)
+            self._is_simple_cache = True
+            self._is_semisimple_cache = True
+            self._educed_properties['special_type'] = 'simple'
+            self._is_nilpotent_cache = False
+            self._is_solvable_cache = False
+        elif isinstance(self._educed_properties.get('is_semisimple',None),str):
+            t_message=self._educed_properties.get('is_semisimple',None)
+            self._is_semisimple_cache = True
+            self._educed_properties['special_type'] = self._educed_properties.get('special_type',None) or 'semisimple'
+            self._is_nilpotent_cache = False
+            self._is_solvable_cache = False
+        else:
+            t_message=''
+
+        if self._is_semisimple_cache is None:
+            if self._is_simple_cache is True:   # shouldn't happen since cache corollaries should always be updated 
+                self._is_semisimple_cache=True
+                self._is_solvable_cache=False
+                self._is_abelian_cache=False
+                self._is_nilpotent_cache=False
+            elif self._Levi_deco_cache is not None:
+                LC, MSI = self._Levi_deco_cache['LD_components']
+                if getattr(MSI,'dimension',None) == 0 and self.dimension>0:
+                    self._is_semisimple_cache=True
+                    self._is_solvable_cache=False
+                    self._is_abelian_cache=False
+                    self._is_nilpotent_cache=False
+                elif getattr(MSI,'dimension',None) != 0:
+                    self._is_semisimple_cache=False
+                    self._is_simple_cache=True
+                    if getattr(LC,'dimension',None)==0:
+                        self._is_solvable_cache=True
+
 
         if self._is_semisimple_cache is not None:
             if verbose:
@@ -933,14 +1001,24 @@ class algebra_class:
                     f"Cached result: {f'Previously verified {self.label} is a semisimple Lie algebra' if self._is_semisimple_cache else f'Previously verified {self.label} is not a semisimple Lie algebra.'}."
                 )
             if return_bool is True:
-                return self._is_semisimple_cache
+                if _return_proof_path is True:
+                    return self._is_semisimple_cache, t_message
+                else:
+                    return self._is_semisimple_cache
+            elif _return_proof_path is True:
+                return t_message
             else:
                 return
 
         if not self.is_Lie_algebra(verbose=verbose):
             self._is_semisimple_cache = False
             if return_bool is True:
-                return False
+                if _return_proof_path is True:
+                    return False, 'not a Lie algebra'
+                else:
+                    return False
+            elif _return_proof_path is True:
+                return 'not a Lie algebra'
             else:
                 return
 
@@ -951,7 +1029,7 @@ class algebra_class:
         if verbose:
             if det != 0:
                 self._is_semisimple_cache = True
-                self._special_type = 'semisimple'
+                self._educed_properties['special_type'] = 'semisimple'
                 self._is_nilpotent_cache = False
                 self._is_solvable_cache = False
                 if self.label is None:
@@ -966,9 +1044,21 @@ class algebra_class:
                 else:
                     print(f"{self.label} is not semisimple.")
         if return_bool is True:
+            if _return_proof_path is True:
+                return det != 0, t_message
             return det != 0
 
-    def is_simple(self, verbose=False, bypass_semisimple_check=False):
+    def is_simple(self, verbose=False, bypass_semisimple_check=False,_return_proof_path=False):
+        if isinstance(self._educed_properties.get('is_simple',None),str):
+            t_message=self._educed_properties.get('is_simple',None)
+            self._is_simple_cache = True
+            self._is_semisimple_cache = True
+            self._educed_properties['special_type'] = 'simple'
+            self._is_nilpotent_cache = False
+            self._is_solvable_cache = False
+        else:
+            t_message=''
+
         if bypass_semisimple_check is False and self._is_semisimple_cache is None:
             self.is_semisimple(verbose=verbose)
         if self._is_simple_cache is None:
@@ -979,17 +1069,19 @@ class algebra_class:
                 self._is_solvable_cache = False
                 if len(self._Levi_deco_cache['simple_ideals'])==1:
                     self._is_simple_cache = True
-                    self._special_type = 'simple'
+                    self._educed_properties['special_type'] = 'simple'
                 else:
                     self._is_simple_cache = False
-                    self._special_type = 'semisimple'
+                    self._educed_properties['special_type'] = 'semisimple'
             else:
                 self._is_semisimple_cache = False
                 self._is_simple_cache = False
                 if self._Levi_deco_cache['LD_components'][0].dimension==0:
                     self._is_solvable_cache = True
-                    if self._special_type is None:
-                        self._special_type = 'solvable'
+                    if self._educed_properties['special_type'] is None:
+                        self._educed_properties['special_type'] = 'solvable'
+        if _return_proof_path is True:
+            return self._is_simple_cache, t_message
         return self._is_simple_cache
 
 
@@ -1704,7 +1796,7 @@ class algebra_class:
             series = self.lower_central_series()
             if len(series[-1])<2: # to allow different conventions for formatting a trivial level basis
                 self._is_nilpotent_cache=True
-                self._special_type = 'nilpotent'
+                self._educed_properties['special_type'] = 'nilpotent'
                 self._is_semisimple_cache=False
                 self._is_simple_cache=False
             else:
@@ -1728,7 +1820,7 @@ class algebra_class:
                     self._is_solvable_cache=True
                     self._is_semisimple_cache=False
                     self._is_simple_cache=False
-                    self._special_type = 'solvable'
+                    self._educed_properties['special_type'] = 'solvable'
                 else:
                     self._is_solvable_cache=False
                     self._is_abelian_cache=False
@@ -1738,15 +1830,22 @@ class algebra_class:
         return self._is_solvable_cache
 
 
-    def is_abelian(self,**kwargs):
+    def is_abelian(self,**kwargs):            
         if self._is_abelian_cache is None:
-            self._is_abelian_cache = all(elem == 0 for elem in self.structureDataDict.values())
-            if self._is_abelian_cache is True:
-                self._special_type = 'abelian'
+            if self._educed_properties.get('special_type',None) == 'abelian':
+                self._is_abelian_cache is True
                 self._is_nilpotent_cache=True
                 self._is_solvable_cache=True
                 self._is_semisimple_cache=False
                 self._is_simple_cache=False
+            else:
+                self._is_abelian_cache = all(elem == 0 for elem in self.structureDataDict.values())
+                if self._is_abelian_cache is True:
+                    self._educed_properties['special_type'] = 'abelian'
+                    self._is_nilpotent_cache=True
+                    self._is_solvable_cache=True
+                    self._is_semisimple_cache=False
+                    self._is_simple_cache=False
         return self._is_abelian_cache
 
     def get_structure_matrix(self, table_format=True, style=None):
@@ -2022,9 +2121,7 @@ class algebra_class:
                         if count in subIndices:
                             new_li.append(elem)
                         elif elem != 0:
-                            raise TypeError(
-                                "The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead."
-                            ) from None
+                            raise TypeError("The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead.") from None
                     return new_li
                 return [li[j] for j in subIndices]
 
@@ -2053,9 +2150,8 @@ class algebra_class:
             )
         testStruct = self.is_subspace_subalgebra(basis, return_structure_data=True)
         if testStruct["closed_under_product"] is not True:
-            raise TypeError(
-                "The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead."
-            ) from None
+            _cached_caller_globals['DEBUGs']= testStruct,basis,self
+            raise TypeError("The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead.") from None
         return subalgebra_class(
             basis,
             self,
@@ -2168,7 +2264,7 @@ class algebra_class:
             attempts = int(_try_multiple_times)
             _bust_cache = True
         elif _try_multiple_times is True:
-            attempts = 100  # cap to avoid infinite loop... !!! to remove eventually, but harmless for now
+            attempts = 100  # testing... cap to avoid infinite loop... !!! to remove eventually, but harmless for now
             _bust_cache = True
         else:
             attempts = 1
@@ -2187,119 +2283,124 @@ class algebra_class:
                     refAlg._lower_central_series_cache = None
                     refAlg._derived_subalg_cache = None
                 if refAlg._Levi_deco_cache is None:
-                    if verbose is True:
-                        print('Deriving (or retrieving) maximal solvable ideal...')
-                    rad = refAlg.radical(assume_Lie_algebra=assume_Lie_algebra)
-                    if len(rad.basis)>0:
-                        if verbose is True:
-                            print('Finding a semisimple complement to the max. solvable ideal...')
-                        rad_seq = rad.derived_series(align_nested_bases=True)
-                        discrep = refAlg.dimension - len(rad_seq[0])
-                        naiveBasis = []
-                        augment_NB = list(rad_seq[0])
-                        for elem in refAlg.basis:
-                            if len(naiveBasis) == discrep:
-                                break
-                            if _indep_check(augment_NB, elem):
-                                augment_NB.append(elem)
-                                naiveBasis.append(elem)
-                        ss_dim = len(naiveBasis)
-                        for idx in range(len(rad_seq)):
-                            if idx == len(rad_seq) - 1:
-                                compare_set = rad_seq[idx]
-                                quot_set = []
-                            else:   # relying on nesting alignment
-                                rad_discrep = len(rad_seq[idx]) - len(rad_seq[idx + 1])
-                                compare_set = rad_seq[idx][:rad_discrep]
-                                quot_set = rad_seq[idx][rad_discrep:]
-                            compLen = len(compare_set)
-                            tailLen = len(quot_set)
-                            pref = create_key(prefix="v")
-                            vars = []
-                            basis_modifiers = []
-                            for count, w in enumerate(naiveBasis):
-                                w_vars = [sp.Symbol(f"{pref}_{count}_{j}") for j in range(compLen)]
-                                vars += w_vars
-                                w_modifiers = [var * el for var, el in zip(w_vars, compare_set)]
-                                if compLen > 1:
-                                    basis_modifiers.append(sum(w_modifiers[1:], w_modifiers[0]))
-                                elif compLen > 0:
-                                    basis_modifiers.append(w_modifiers[0])
-                                else:   ###!!! review
-                                    basis_modifiers.append(0 * naiveBasis[0])
-
-                            leading_coeffs = {}
-                            trailing_coeffs = {}
-                            eqns = []
-                            for idx1 in range(ss_dim):
-                                for idx2 in range(idx1 + 1, ss_dim):
-                                    w1, w2 = naiveBasis[idx1], naiveBasis[idx2]
-                                    lb = w1 * w2
-                                    lb_decomp = _indep_check(
-                                        naiveBasis + rad_seq[0],
-                                        lb,
-                                        return_decomp_coeffs=True,
-                                    )
-                                    lb_decomp=lb_decomp[1][0]
-                                    leading_coeffs[(idx1, idx2)] = lb_decomp[:ss_dim]
-                                    trailing_coeffs[(idx1, idx2)] = lb_decomp[
-                                        ss_dim : ss_dim + compLen
-                                    ]
-                            for idxs in leading_coeffs:
-                                oldV = [
-                                    coe * el
-                                    for coe, el in zip(trailing_coeffs[idxs], compare_set)
-                                ]
-                                vTerms = [
-                                    -coe * el
-                                    for coe, el in zip(
-                                        leading_coeffs[idxs], basis_modifiers
-                                    )
-                                ]
-                                newV = (
-                                    naiveBasis[idxs[0]] * basis_modifiers[idxs[1]]
-                                    - naiveBasis[idxs[1]] * basis_modifiers[idxs[0]]
-                                )
-                                t_vars = [
-                                    sp.Symbol(f"t{pref}_{idxs[0]}_{idxs[1]}_{j}")
-                                    for j in range(tailLen)
-                                ]
-                                vars += t_vars
-                                qTerms = [var * el for var, el in zip(t_vars, quot_set)]
-                                eqns.append(sum(oldV + vTerms + qTerms, newV))
-                            sol = solve_dgcv(eqns, vars)
-                            if len(sol) == 0:
-                                if all(getattr(eqn, "is_zero", True) for eqn in eqns):
-                                    _cached_caller_globals["DEBUGOuter"] = {
-                                        var: 0 for var in vars
-                                    }
-                                else:
-                                    _cached_caller_globals["DEBUGOuter"] = sol, eqns, vars
-                                    raise RuntimeError(
-                                        "solver failed; This is likely related to an unresolved known bug in the dgcv Levi decomposition algorithm. The following work-around sometimes works and will be available until the bug is fixed in a future dgcv patch: re-run Levi_decomposition with the optional keyword setting `_bust_cache=True`, i.e., run [algebra_class_instance].Levi_decomposition(_bust_cache=True). This clears the cached computations that an algebra_class instance stores, forcing many values to be re-computed. If the workaround fails on the first attempt then (surprisingly) it can still succeed on subsequent attempts. The root of this bug is that somewhere an un-ordered set is being processed by a solve algorithm in somewhat unpredictable ways. Repeating the method with _bust_cache=True seems to shuffle the processing ordering, which sometimes results in success."
-                                    )
-                            new_basis = [
-                                (w + v).subs(sol[0])
-                                for w, v in zip(naiveBasis, basis_modifiers)
-                            ]
-                            free_variables = set()
-                            for nb in new_basis:
-                                free_variables |= set.union(
-                                    *[getattr(j, "free_symbols", set()) for j in nb.coeffs]
-                                )
-                            if len(free_variables) > 0:
-                                target = next(iter(free_variables))
-                                new_basis = [
-                                    bv.subs({target: 1}).subs(
-                                        {var: 0 for var in free_variables}
-                                    )
-                                    for bv in new_basis
-                                ]
-                            naiveBasis = new_basis
-                        Levi_component = self.subalgebra(naiveBasis, span_warning=True, simplify_basis=True)
+                    if refAlg._educed_properties.get('special_type',None) in {'simple','semisimple'}:
+                        refAlg._Levi_deco_cache = {'LD_components':(refAlg, refAlg.subalgebra([])),'simple_ideals':None}
+                    elif refAlg._educed_properties.get('special_type',None) in {'nilpotent','solvable','abelian'}:
+                        refAlg._Levi_deco_cache = {'LD_components':(refAlg.subalgebra([]),refAlg),'simple_ideals':None}
                     else:
-                        Levi_component=refAlg
-                    refAlg._Levi_deco_cache = {'LD_components':(Levi_component, rad),'simple_ideals':None}
+                        if verbose is True:
+                            print('Deriving (or retrieving) maximal solvable ideal...')
+                        rad = refAlg.radical(assume_Lie_algebra=assume_Lie_algebra)
+                        if len(rad.basis)>0:
+                            if verbose is True:
+                                print('Finding a semisimple complement to the max. solvable ideal...')
+                            rad_seq = rad.derived_series(align_nested_bases=True)
+                            discrep = refAlg.dimension - len(rad_seq[0])
+                            naiveBasis = []
+                            augment_NB = list(rad_seq[0])
+                            for elem in refAlg.basis:
+                                if len(naiveBasis) == discrep:
+                                    break
+                                if _indep_check(augment_NB, elem):
+                                    augment_NB.append(elem)
+                                    naiveBasis.append(elem)
+                            ss_dim = len(naiveBasis)
+                            for idx in range(len(rad_seq)):
+                                if idx == len(rad_seq) - 1:
+                                    compare_set = rad_seq[idx]
+                                    quot_set = []
+                                else:   # relying on nesting alignment
+                                    rad_discrep = len(rad_seq[idx]) - len(rad_seq[idx + 1])
+                                    compare_set = rad_seq[idx][:rad_discrep]
+                                    quot_set = rad_seq[idx][rad_discrep:]
+                                compLen = len(compare_set)
+                                tailLen = len(quot_set)
+                                pref = create_key(prefix="v")
+                                vars = []
+                                basis_modifiers = []
+                                for count, w in enumerate(naiveBasis):
+                                    w_vars = [sp.Symbol(f"{pref}_{count}_{j}") for j in range(compLen)]
+                                    vars += w_vars
+                                    w_modifiers = [var * el for var, el in zip(w_vars, compare_set)]
+                                    if compLen > 1:
+                                        basis_modifiers.append(sum(w_modifiers[1:], w_modifiers[0]))
+                                    elif compLen > 0:
+                                        basis_modifiers.append(w_modifiers[0])
+                                    else:   ###!!! review
+                                        basis_modifiers.append(0 * naiveBasis[0])
+
+                                leading_coeffs = {}
+                                trailing_coeffs = {}
+                                eqns = []
+                                for idx1 in range(ss_dim):
+                                    for idx2 in range(idx1 + 1, ss_dim):
+                                        w1, w2 = naiveBasis[idx1], naiveBasis[idx2]
+                                        lb = w1 * w2
+                                        lb_decomp = _indep_check(
+                                            naiveBasis + rad_seq[0],
+                                            lb,
+                                            return_decomp_coeffs=True,
+                                        )
+                                        lb_decomp=lb_decomp[1][0]
+                                        leading_coeffs[(idx1, idx2)] = lb_decomp[:ss_dim]
+                                        trailing_coeffs[(idx1, idx2)] = lb_decomp[
+                                            ss_dim : ss_dim + compLen
+                                        ]
+                                for idxs in leading_coeffs:
+                                    oldV = [
+                                        coe * el
+                                        for coe, el in zip(trailing_coeffs[idxs], compare_set)
+                                    ]
+                                    vTerms = [
+                                        -coe * el
+                                        for coe, el in zip(
+                                            leading_coeffs[idxs], basis_modifiers
+                                        )
+                                    ]
+                                    newV = (
+                                        naiveBasis[idxs[0]] * basis_modifiers[idxs[1]]
+                                        - naiveBasis[idxs[1]] * basis_modifiers[idxs[0]]
+                                    )
+                                    t_vars = [
+                                        sp.Symbol(f"t{pref}_{idxs[0]}_{idxs[1]}_{j}")
+                                        for j in range(tailLen)
+                                    ]
+                                    vars += t_vars
+                                    qTerms = [var * el for var, el in zip(t_vars, quot_set)]
+                                    eqns.append(sum(oldV + vTerms + qTerms, newV))
+                                sol = solve_dgcv(eqns, vars)
+                                if len(sol) == 0:
+                                    if all(getattr(eqn, "is_zero", True) for eqn in eqns):
+                                        _cached_caller_globals["DEBUGOuter"] = {
+                                            var: 0 for var in vars
+                                        }
+                                    else:
+                                        _cached_caller_globals["DEBUGOuter"] = sol, eqns, vars
+                                        raise RuntimeError(
+                                            "solver failed; This is likely related to an unresolved known bug in the dgcv Levi decomposition algorithm. The following work-around sometimes works and will be available until the bug is fixed in a future dgcv patch: re-run Levi_decomposition with the optional keyword setting `_bust_cache=True`, i.e., run [algebra_class_instance].Levi_decomposition(_bust_cache=True). This clears the cached computations that an algebra_class instance stores, forcing many values to be re-computed. If the workaround fails on the first attempt then (surprisingly) it can still succeed on subsequent attempts. The root of this bug is that somewhere an un-ordered set is being processed by a solve algorithm in somewhat unpredictable ways. Repeating the method with _bust_cache=True seems to shuffle the processing ordering, which sometimes results in success."
+                                        )
+                                new_basis = [
+                                    (w + v).subs(sol[0])
+                                    for w, v in zip(naiveBasis, basis_modifiers)
+                                ]
+                                free_variables = set()
+                                for nb in new_basis:
+                                    free_variables |= set.union(
+                                        *[getattr(j, "free_symbols", set()) for j in nb.coeffs]
+                                    )
+                                if len(free_variables) > 0:
+                                    target = next(iter(free_variables))
+                                    new_basis = [
+                                        bv.subs({target: 1}).subs(
+                                            {var: 0 for var in free_variables}
+                                        )
+                                        for bv in new_basis
+                                    ]
+                                naiveBasis = new_basis
+                            Levi_component = self.subalgebra(naiveBasis, span_warning=True, simplify_basis=True)
+                        else:
+                            Levi_component=refAlg
+                        refAlg._Levi_deco_cache = {'LD_components':(Levi_component, rad),'simple_ideals':None}
                 if decompose_semisimple_fully is True and refAlg._Levi_deco_cache.get('LD_components', None) is not None and refAlg._Levi_deco_cache.get('simple_ideals',1) is None:
                     if verbose is True:
                         print('Decomposing semisimple subalgebra into simple subalgebras...')
@@ -2309,7 +2410,7 @@ class algebra_class:
                     simple_ideals = []
                     for comp in simples:
                         new_basis+=comp
-                        simple_ideals.append(Levi_component.subalgebra(comp))
+                        simple_ideals.append(Levi_component.subalgebra(comp,simplify_basis=True))
                     Levi_component=Levi_component.subalgebra(new_basis)
                     refAlg._Levi_deco_cache['LD_components'] = (Levi_component, rad)
                     refAlg._Levi_deco_cache['simple_ideals'] = tuple(simple_ideals)
@@ -2679,7 +2780,7 @@ class algebra_class:
         lie = getattr(self, "_lie_algebra_cache", None)
         if lie is True:
             items.append("Lie algebra: true")
-            special_property=getattr(self,'_special_type', None)
+            special_property=getattr(self,'_educed_properties', dict()).get('special_type',None)
             if special_property is not None:
                 items.append(f'special properties: {special_property}')
             elif getattr(self,'_is_semisimple_cache', None) is False and getattr(self,'_is_solvable_cache', None) is False:
@@ -4028,7 +4129,7 @@ def decompose_semisimple_algebra(alg, assume_semisimple=False, format_as_lists_o
         return [alg]
     if assume_semisimple is False and not alg.is_semisimple():
         raise TypeError('decompose_semisimple_algebra was given a non-semisimple algebra to decompose.')
-    mbasis = [sp.Matrix(j) for j in alg.structureData]
+    mbasis = [sp.Matrix(j).transpose() for j in alg.structureData]
     pref = create_key('_var')
     vars = [sp.Symbol(f'{pref}{j}') for j in range((alg.dimension)**2)]
     vMat = sp.Matrix(alg.dimension,alg.dimension,vars)
@@ -4039,10 +4140,12 @@ def decompose_semisimple_algebra(alg, assume_semisimple=False, format_as_lists_o
     for entry in solMat:
         free_vars|=entry.free_symbols
     if len(free_vars)<2:
+        _cached_caller_globals['DEGUBfv1']=free_vars,solMat
         simples = [alg]
     else:
         bound = max(100, 10*alg.dimension)
-        solMat = solMat.subs({var:random.randint(0,bound) for var in free_vars})
+        _cached_caller_globals['DEGUBfv']=free_vars,solMat
+        solMat = solMat.subs({var:random.randint(1,bound) for var in free_vars})
         bases = [j[2] for j in solMat.eigenvects()]
         simples = []
         for base in bases:
@@ -4087,20 +4190,15 @@ def killingForm(alg, list_processing=False, assume_Lie_algebra=False):
             "killingForm expected to receive an algebra instance."
         ) from None
 
-
 def adjointRepresentation(alg, list_format=False, assume_Lie_algebra=False):
     if get_dgcv_category(alg) in {"algebra", "subalgebra"}:
         if assume_Lie_algebra is False and not alg.is_Lie_algebra():
-            warnings.warn(
-                "Caution: The algebra passed to `adjointRepresentation` is not a Lie algebra."
-            )
+            warnings.warn("Caution: The algebra passed to `adjointRepresentation` is not a Lie algebra.")
         if list_format:
             return alg.structureData
-        return [sp.Matrix(j) for j in alg.structureData]
+        return [sp.Matrix(j).transpose() for j in alg.structureData]
     else:
-        raise Exception(
-            "adjointRepresentation expected to receive an algebra instance."
-        ) from None
+        raise Exception("adjointRepresentation expected to receive an algebra instance.") from None
 
 
 ############## misc
