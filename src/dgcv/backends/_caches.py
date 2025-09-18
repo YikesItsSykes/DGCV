@@ -6,6 +6,7 @@ from ._sage_backend import get_sage_module, is_sage_available
 
 _expr_types_cache = None
 _expr_numeric_types = None
+_fast_scalar_types = None
 _atomic_predicate = None
 
 def _get_expr_types():
@@ -24,6 +25,18 @@ def _get_expr_num_types():
     if _expr_numeric_types is None:
         _expr_numeric_types = (numbers.Number,)+_get_expr_types()
     return _expr_numeric_types
+
+def _get_fast_scalar_types():
+    global _fast_scalar_types
+    if _fast_scalar_types is None:
+        types = [sp.Integer, sp.Rational]
+        if is_sage_available():
+            get_sage_module()
+            from sage.rings.integer import Integer as SageInteger
+            from sage.rings.rational import Rational as SageRational
+            types.extend([SageInteger, SageRational])
+        _fast_scalar_types = tuple(types)
+    return _fast_scalar_types
 
 def _is_atomic(expr):
     global _atomic_predicate

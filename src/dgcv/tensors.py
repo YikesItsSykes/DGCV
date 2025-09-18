@@ -849,7 +849,6 @@ class tensorProduct:
             else:
                 homogeneous_dicts[deg]={key:value}
             if value != 0:
-                _cached_caller_globals['DEBUG']=key,value,coeff_dict
                 processed_dict[key] = processed_dict.get(key,0)+value
                 if min_degree<0 or 3*min_degree>kl:
                     min_degree = deg

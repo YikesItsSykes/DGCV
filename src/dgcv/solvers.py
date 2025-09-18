@@ -2,7 +2,7 @@ from itertools import combinations
 
 import sympy as sp
 
-from ._config import _cached_caller_globals, get_dgcv_settings_registry
+from ._config import get_dgcv_settings_registry
 from ._safeguards import check_dgcv_category
 from .backends._sage_backend import get_sage_module
 from .backends._symbolic_api import get_free_symbols
@@ -169,9 +169,7 @@ def solve_dgcv(
         # SymPy-first strategy (unchanged)
         if method == "linsolve":
             try:
-                _cached_caller_globals["DEBUG"] = [processed_eqns, processed_eqns]
                 sol_set = sp.linsolve(processed_eqns, *processed_eqns)
-                _cached_caller_globals["DEBUG2"] = ("linsolve", sol_set)
                 if sol_set:
                     try:
                         sol_tuple = next(iter(sol_set))
@@ -194,7 +192,6 @@ def solve_dgcv(
                 preformatted_solutions = sp.solve(
                     processed_eqns, system_vars, dict=True
                 )
-                _cached_caller_globals["DEBUG2"] = ("solve", preformatted_solutions)
             except Exception:
                 preformatted_solutions = []
         elif method == "auto":
@@ -202,14 +199,6 @@ def solve_dgcv(
                 sol_set = sp.linsolve(processed_eqns, *system_vars)
                 if sol_set:
                     sol_tuple = next(iter(sol_set))
-                    _cached_caller_globals["DEBUG2"] = ("auto-linsolve", sol_set)
-                    _cached_caller_globals["DEBUG3"] = {
-                        "sol_tuple": sol_tuple,
-                        "system_vars": system_vars,
-                        "tuple_length": len(sol_tuple),
-                        "vars_length": len(system_vars),
-                        "zipped": list(zip(system_vars, sol_tuple)),
-                    }
                     if isinstance(sol_tuple, (tuple, list)) or hasattr(
                         sol_tuple, "__iter__"
                     ):
@@ -221,21 +210,14 @@ def solve_dgcv(
                     else:
                         preformatted_solutions = []
                 else:
-                    _cached_caller_globals["DEBUG3"] = "sol_set was empty"
                     preformatted_solutions = []
-            except Exception as e:
-                _cached_caller_globals["DEBUG3"] = f"exception: {e}"
+            except Exception:
                 preformatted_solutions = []
             if not preformatted_solutions:
                 try:
                     preformatted_solutions = sp.solve(
                         processed_eqns, system_vars, dict=True
                     )
-                    if preformatted_solutions:
-                        _cached_caller_globals["DEBUG2"] = (
-                            "auto-solve",
-                            preformatted_solutions,
-                        )
                 except Exception:
                     preformatted_solutions = []
         else:

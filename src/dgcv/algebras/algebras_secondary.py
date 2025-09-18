@@ -1,5 +1,4 @@
 import numbers
-import random
 import warnings
 
 import sympy as sp
@@ -913,29 +912,28 @@ class subalgebra_class(algebra_subspace_class):
                            ):
         return self.ambiant.Levi_decomposition(from_subalg=self,decompose_semisimple_fully=decompose_semisimple_fully,verbose=verbose,_bust_cache=_bust_cache,assume_Lie_algebra=assume_Lie_algebra,_try_multiple_times=_try_multiple_times)
 
-    def approximate_rank(self,check_semisimple=False,assume_semisimple=False,_default_to_cache=False,_use_cache=False):
-        if self.dimension==0:
-            self._rank_approximation=0
-            return 0
-        if _default_to_cache is True and self._rank_approximation is not None:
-            return self._rank_approximation
-        if check_semisimple is True:
-            ssc=self.is_semisimple()
-            if ssc is True:
-                assume_semisimple = True
-            elif assume_semisimple is True:
-                print('approximate_rank recieved parameters `check_semisimple=True` and `assume_semisimple=True`, but the semisimple check returned false. The algorithm is proceeding with the `assume_semisimple` logic applied, but this is likely not wanted, and should be prevented by setting those parameters differently. Note, just setting `check_semisimple=True` is enough to use optimized algorithms in the event that the semisimple check returns true, whereas `assume_semisimple` should only be used in applications where forgoing the semisimple check entirely is wanted.')
-        if _use_cache and self._rank_approximation is not None:
-            return self._rank_approximation
-        power=1 if (assume_semisimple or self._is_semisimple_cache is True) else self.dimension
-        elem = sp.Matrix(self.structureData[0])    # test element
-        bound=min(100,10*self.dimension)
-        for elem2 in self.structureData[1:]:
-            elem+=random.randint(0,bound)*sp.Matrix(elem2)
-        rank = self.dimension-(elem**power).rank()
-        if not isinstance(self._rank_approximation,numbers.Integral) or self._rank_approximation>rank:
-            self._rank_approximation=rank
-        return self._rank_approximation
+    def approximate_rank(self,check_semisimple=False,assume_semisimple=False,_use_cache=False,**kwargs):
+        return self.ambiant.approximate_rank(check_semisimple=check_semisimple,assume_semisimple=assume_semisimple,_use_cache=_use_cache,from_subalg=self)
+        # if self.dimension==0:
+        #     self._rank_approximation=0
+        #     return 0
+        # if check_semisimple is True:
+        #     ssc=self.is_semisimple()
+        #     if ssc is True:
+        #         assume_semisimple = True
+        #     elif assume_semisimple is True:
+        #         print('approximate_rank recieved parameters `check_semisimple=True` and `assume_semisimple=True`, but the semisimple check returned false. The algorithm is proceeding with the `assume_semisimple` logic applied, but this is likely not wanted, and should be prevented by setting those parameters differently. Note, just setting `check_semisimple=True` is enough to use optimized algorithms in the event that the semisimple check returns true, whereas `assume_semisimple` should only be used in applications where forgoing the semisimple check entirely is wanted.')
+        # if _use_cache and self._rank_approximation is not None:
+        #     return self._rank_approximation
+        # power=1 if (assume_semisimple or self._is_semisimple_cache is True) else self.dimension
+        # elem = sp.Matrix(self.structureData[0])    # test element
+        # bound=min(100,10*self.dimension)
+        # for elem2 in self.structureData[1:]:
+        #     elem+=random.randint(0,bound)*sp.Matrix(elem2)
+        # rank = self.dimension-(elem**power).rank()
+        # if not isinstance(self._rank_approximation,numbers.Integral) or self._rank_approximation>rank:
+        #     self._rank_approximation=rank
+        # return self._rank_approximation
 
 
 class subalgebra_element:
@@ -2160,9 +2158,6 @@ def createSimpleLieAlgebra(
         )
         indexingKeyRev = {j: k for k, j in indexingKey.items()}
         LADimension = len(indexingKey)
-
-        _cached_caller_globals['DEBUG']=indexingKey,indexingKeyRev,LADimension
-
 
         def minmaxtuple(id1,id2,id3):
             if id1<id2:

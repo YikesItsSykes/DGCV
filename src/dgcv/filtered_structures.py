@@ -424,7 +424,6 @@ class Tanaka_symbol():
             tVars = _cached_caller_globals[varLabel]    # pointer to tuple of coef vars
 
             general_elem = sum([tVars[j]*ambiant_basis[j] for j in range(1, len(tVars))],tVars[0]*ambiant_basis[0])
-            _cached_caller_globals['DEBUGT']=[ambiant_basis,general_elem,self.test_commutators,tVars]
             eqns = []
             for triple in self.test_commutators:
                 derivation_rule = (general_elem*(triple[0]))*triple[1]+triple[0]*(general_elem*(triple[1]))-general_elem*(triple[2])

@@ -1,4 +1,5 @@
 ############## dependencies
+import math
 import numbers
 import random
 import re
@@ -27,7 +28,7 @@ from .._safeguards import (
     unique_label,
 )
 from .._tables import build_matrix_table, panel_view
-from ..backends._caches import _get_expr_num_types
+from ..backends._caches import _get_expr_num_types, _get_fast_scalar_types
 from ..dgcv_core import variableProcedure
 from ..morphisms import homomorphism
 from ..solvers import simplify_dgcv, solve_dgcv
@@ -2150,7 +2151,6 @@ class algebra_class:
             )
         testStruct = self.is_subspace_subalgebra(basis, return_structure_data=True)
         if testStruct["closed_under_product"] is not True:
-            _cached_caller_globals['DEBUGs']= testStruct,basis,self
             raise TypeError("The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead.") from None
         return subalgebra_class(
             basis,
@@ -2370,12 +2370,7 @@ class algebra_class:
                                     eqns.append(sum(oldV + vTerms + qTerms, newV))
                                 sol = solve_dgcv(eqns, vars)
                                 if len(sol) == 0:
-                                    if all(getattr(eqn, "is_zero", True) for eqn in eqns):
-                                        _cached_caller_globals["DEBUGOuter"] = {
-                                            var: 0 for var in vars
-                                        }
-                                    else:
-                                        _cached_caller_globals["DEBUGOuter"] = sol, eqns, vars
+                                    if not all(getattr(eqn, "is_zero", True) for eqn in eqns):
                                         raise RuntimeError(
                                             "solver failed; This is likely related to an unresolved known bug in the dgcv Levi decomposition algorithm. The following work-around sometimes works and will be available until the bug is fixed in a future dgcv patch: re-run Levi_decomposition with the optional keyword setting `_bust_cache=True`, i.e., run [algebra_class_instance].Levi_decomposition(_bust_cache=True). This clears the cached computations that an algebra_class instance stores, forcing many values to be re-computed. If the workaround fails on the first attempt then (surprisingly) it can still succeed on subsequent attempts. The root of this bug is that somewhere an un-ordered set is being processed by a solve algorithm in somewhat unpredictable ways. Repeating the method with _bust_cache=True seems to shuffle the processing ordering, which sometimes results in success."
                                         )
@@ -2601,27 +2596,32 @@ class algebra_class:
     def dual(self,invert_grad_weights=True):
         return algebra_dual(self,invert_grad_weights=invert_grad_weights)
 
-    def approximate_rank(self,check_semisimple=False,assume_semisimple=False,_use_cache=False):
-        if self.dimension==0:
-            self._rank_approximation=0
+    def approximate_rank(self,check_semisimple=False,assume_semisimple=False,_use_cache=False,from_subalg=None):
+        if get_dgcv_category(from_subalg) == "subalgebra":
+            refAlg = from_subalg
+        else:
+            refAlg = self
+        if refAlg.dimension==0:
+            refAlg._rank_approximation=0
             return 0
         if check_semisimple is True:
-            ssc=self.is_semisimple()
+            ssc=refAlg.is_semisimple()
             if ssc is True:
                 assume_semisimple = True
             elif assume_semisimple is True:
                 print('approximate_rank recieved parameters `check_semisimple=True` and `assume_semisimple=True`, but the semisimple check returned false. The algorithm is proceeding with the `assume_semisimple` logic applied, but this is likely not wanted, and should be prevented by setting those parameters differently. Note, just setting `check_semisimple=True` is enough to use optimized algorithms in the event that the semisimple check returns true, whereas `assume_semisimple` should only be used in applications where forgoing the semisimple check entirely is wanted.')
-        if _use_cache and self._rank_approximation is not None:
-            return self._rank_approximation
-        power=1 if (assume_semisimple or self._is_semisimple_cache is True) else self.dimension
-        elem = sp.Matrix(self.structureData[0])    # test element
-        bound=max(100,10*self.dimension)
-        for elem2 in self.structureData[1:]:
+        if _use_cache and refAlg._rank_approximation is not None:
+            return refAlg._rank_approximation
+        power=1 if (assume_semisimple or refAlg._is_semisimple_cache is True) else refAlg.dimension
+        elem = sp.Matrix(refAlg.structureData[0])    # test element
+        bound=max(100,10*refAlg.dimension)
+        for elem2 in refAlg.structureData[1:]:
             elem+=random.randint(0,bound)*sp.Matrix(elem2)
-        rank = self.dimension-(elem**power).rank()
-        if not isinstance(self._rank_approximation,numbers.Integral) or self._rank_approximation>rank:
-            self._rank_approximation=rank
-        return self._rank_approximation
+        rank = refAlg.dimension-fast_rank(elem**power)
+        if not isinstance(refAlg._rank_approximation,numbers.Integral) or refAlg._rank_approximation>rank:
+            refAlg._rank_approximation=rank
+        return refAlg._rank_approximation
+
 
     def summary(self, generate_full_report=False, style=None, use_latex=None):
         dgcvSR = get_dgcv_settings_registry()
@@ -2643,9 +2643,9 @@ class algebra_class:
                     self.is_simple(verbose=True)
                 elif self.is_solvable(verbose=True):
                     self.is_nilpotent(verbose=True)
-            print('Computing ranks of simple subalgebras (with non-deterministic algorithm works almost always)...')
+            print('Computing ranks of simple subalgebras (with non-deterministic algorithm that works almost always)...')
             for alg in self._Levi_deco_cache['simple_ideals']:
-                alg.approximate_rank()
+                alg.approximate_rank(assume_semisimple=True)
             print('Computing derived series of the maximal solvable ideal...')
             self._Levi_deco_cache['LD_components'][1].derived_series()
             print('Computing the lower central series of the maximal solvable ideal...')
@@ -2921,7 +2921,7 @@ class algebra_class:
                             BL=', '.join([f'${elem._repr_latex_(raw=True)}$' for elem in alg.basis])
                         else:
                             BL=', '.join([f'{elem.__repr__()}' for elem in alg.basis])
-                        rank=alg.approximate_rank(_use_cache=True)
+                        rank=alg.approximate_rank(_use_cache=True,assume_semisimple=True)
                         dim=alg.dimension
                         if (rank+1)**2-1==dim:
                             IC = f'$\\mathfrak{{sl}}_{{{rank+1}}}$' if use_latex else f'A_{rank}'
@@ -4266,6 +4266,21 @@ def multiply_matrices(A, B):
             for k in range(cols_A):
                 result[i][j] += A[i][k] * B[k][j]
     return result
+
+def fast_rank(mat: sp.Matrix) -> int:
+    if mat.rows == 0 or mat.cols == 0:
+        return 0
+    fast_types = _get_fast_scalar_types()
+    if all(isinstance(a, fast_types) for a in mat):
+        lcm = 1
+        for a in mat:
+            num, den = a.as_numer_denom()
+            lcm = math.lcm(lcm, int(den))
+        M = (mat * lcm).applyfunc(int) if lcm != 1 else mat.applyfunc(int)
+        _, pivots = M.rref(iszerofunc=lambda x: x == 0, simplify=False)
+        return len(pivots)
+    _, pivots = mat.rref(iszerofunc=lambda x: x == 0, simplify=False)
+    return len(pivots)
 
 
 def trace_matrix(A):
