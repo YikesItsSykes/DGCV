@@ -703,7 +703,6 @@ def _zeroFormFactory(label, index_set={}, assumeReal=False, coframe=None, cofram
                 return f"{label}" + str(lower[0])
             else:
                 return f"{label}"
-        _cached_caller_globals['DEBUG']=index_combinations,verbose_labeling
         family_names = [labeler(index_pair,verbose_labeling) for index_pair in index_combinations]
     else:
         family_names = [label]

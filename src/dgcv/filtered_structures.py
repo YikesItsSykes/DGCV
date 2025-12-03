@@ -881,10 +881,6 @@ class Tanaka_symbol:
             tVars = [sp.Symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))]
             general_elem = sum([tVars[j] * ambient_basis[j] for j in range(len(tVars))])
 
-            ###DEBUG
-            # pr = cProfile.Profile()
-            # pr.enable()
-
             eqns = []
             for triple in self.test_commutators:
                 derivation_rule = (general_elem * (triple[0])) * triple[1] + triple[0] * (general_elem * (triple[1])) - general_elem * (triple[2])
@@ -898,16 +894,6 @@ class Tanaka_symbol:
                     "vector_space_element",
                 }:
                     eqns += derivation_rule.coeffs
-
-            # pr.disable()
-            # _cached_caller_globals['PROFILE'] = _cached_caller_globals.get('PROFILE',[])+[pr]
-            # s = io.StringIO()
-            # ps = pstats.Stats(pr, stream=s)
-            # ps = ps.strip_dirs()
-            # ps = ps.sort_stats(pstats.SortKey.CUMULATIVE)
-            # ps.print_stats()
-            # print(s.getvalue())
-            ###DEBUG
 
             if eqns == [0] or eqns == []:
                 solution = [{}]
@@ -1547,7 +1533,6 @@ class Tanaka_symbol:
             eqns = [newElem - general_elem]
             sol = solve_dgcv(eqns, tVars)
             if len(sol) == 0:
-                _cached_caller_globals['DEBUG']=[w1,w2,self.levels[w1][sId1],self.levels[w2][sId2],sol,ambient_basis,newElem]
                 return "NoSol"
             coeffVec = [var.subs(sol[0]) for var in tVars]
             clearVar(*listVar(temporary_only=True), report=False)
