@@ -31,7 +31,9 @@ from .algebras_core import (
     algebra_class,
     algebra_element_class,
     algebra_subspace_class,
+    homomorphism,
     killingForm,
+    linear_representation,
 )
 
 
@@ -58,24 +60,36 @@ class subalgebra_class(algebra_subspace_class):
             span_warning=span_warning,
             simplify_basis=False,
         )
+
+        _markers['_educed_properties']=dict()
+
+
+
         basis = self.filtered_basis
         self.structureData = None
+        params=set()
+        def _tuple_scan(elems,par:set):
+            for elem in elems:
+                par|=getattr(elem,"free_symbols",set())
+            return tuple(elems)
+
         if _internal_lock == retrieve_passkey():
             if _compressed_structure_data is not None:
                 self.structureData = tuple(
-                    tuple(tuple(inner) for inner in middle)
+                    tuple(_tuple_scan(inner,params) for inner in middle)
                     for middle in _compressed_structure_data
                 )  ###!!! optimize by always preprocessing _compressed_structure_data elsewhere
         if self.structureData is None:
             valSD = self.is_subalgebra(return_structure_data=True)["structure_data"]
             self.structureData = tuple(
-                tuple(tuple(inner) for inner in middle) for middle in valSD
+                tuple(_tuple_scan(inner,params) for inner in middle) for middle in valSD
             )
         # self._structureData = tuple(map(tuple, self.structureData))
-        self.subindices_to_ambiant_dict = {
+        self._parameters=params
+        self.subindices_to_ambient_dict = {
             count: elem for count, elem in enumerate(basis)
         }
-        self.basis_in_ambiant_alg = tuple(basis)
+        self.basis_in_ambient_alg = tuple(basis)
         self.basis = [
             subalgebra_element(
                 self,
@@ -84,7 +98,7 @@ class subalgebra_class(algebra_subspace_class):
             )
             for count, elem in enumerate(basis)
         ]
-        if all(elem in self.ambiant for elem in basis):
+        if all(elem in self.ambient for elem in basis):
             self.basis_labels = [elem.__str__() for elem in self.basis]
         else:
             self.basis_labels = [f"_e_{j+1}" for j in range(self.dimension)]
@@ -93,12 +107,12 @@ class subalgebra_class(algebra_subspace_class):
         self.structureDataDict = _lazy_SD(self.structureData)
         if (
             simplify_products_by_default is True
-            or self.ambiant.simplify_products_by_default is True
+            or self.ambient.simplify_products_by_default is True
         ):
             self.simplify_products_by_default = True
         else:
             self.simplify_products_by_default = simplify_products_by_default
-        self._registered=self.ambiant._registered
+        self._registered=self.ambient._registered
         # cached_properties
         self._jacobi_identity_cache = None
         self._skew_symmetric_cache = None
@@ -117,6 +131,20 @@ class subalgebra_class(algebra_subspace_class):
         self._rank_approximation = None
         self._graded_components = None
         self._educed_properties = dict()
+        ep = getattr(self.ambient,'_educed_properties',dict())
+        t_message='True by inheritance: parent algebra --> subalgebra'
+        if ep.get('is_Lie_algebra',None) is not None:
+            self._educed_properties['is_Lie_algebra']=t_message
+        if ep.get('is_skew',None) is not None:
+            self._educed_properties['is_skew']=t_message
+        if ep.get('satisfies_Jacobi_ID',None) is not None:
+            self._educed_properties['satisfies_Jacobi_ID']=t_message
+        if ep.get('is_nilpotent',None) is not None:
+            self._educed_properties['is_nilpotent']=t_message
+        if ep.get('is_solvable',None) is not None:
+            self._educed_properties['is_solvable']=t_message
+        if ep.get('special_type',None) in {'abelian','solvable','nilpotent'}:
+            self._educed_properties['special_type']=ep.get('special_type',None)
 
     @property
     def zero_element(self):
@@ -143,7 +171,7 @@ class subalgebra_class(algebra_subspace_class):
                 f"To access a subalgebra element or structure data component, provide one index for an element from the basis, two indices for a list of coefficients from the product  of two basis elements, or 3 indices for the corresponding entry in the structure array. Instead of an integer of list of integers, the following was given: {indices}"
             ) from None
 
-    # (self,alg,coeffs,valence,ambiant_rep=None,_internalLock=None)
+    # (self,alg,coeffs,valence,ambient_rep=None,_internalLock=None)
     def _class_builder(self, coeffs, valence):
         return subalgebra_element(self, coeffs, valence)
 
@@ -171,13 +199,13 @@ class subalgebra_class(algebra_subspace_class):
         self, elements=None, restrict_to_subspace=False, style=None, use_latex=None
     ):
         if elements is None:
-            newElements = [elem.ambiant_rep for elem in self.basis]
+            newElements = [elem.ambient_rep for elem in self.basis]
         elif isinstance(elements, (list, tuple)):
             warningMessage = ""
             newElements = []
             for elem in elements:
                 elemTest = (
-                    elem.ambiant_rep if isinstance(elem, subalgebra_element) else elem
+                    elem.ambient_rep if isinstance(elem, subalgebra_element) else elem
                 )
                 if self.contains(elemTest) is False:
                     if warningMessage == "":
@@ -195,7 +223,7 @@ class subalgebra_class(algebra_subspace_class):
                 "If provided, the `elements` parameter in `subalgebra_class.multiplication_table` must be a list."
             ) from None
 
-        return self.ambiant.multiplication_table(
+        return self.ambient.multiplication_table(
             elements=newElements,
             restrict_to_subspace=restrict_to_subspace,
             style=style,
@@ -209,24 +237,24 @@ class subalgebra_class(algebra_subspace_class):
     def subalgebra(self, basis, grading=None, span_warning=False, simplify_basis=False, simplify_products_by_default=None):
         elems = [
             (
-                elem.ambiant_rep
+                elem.ambient_rep
                 if get_dgcv_category(elem) == "subalgebra_element"
                 else elem
             )
             for elem in basis
         ]
-        return self.ambiant.subalgebra(elems, grading=grading, simplify_basis=simplify_basis, span_warning=span_warning, simplify_products_by_default=simplify_products_by_default)
+        return self.ambient.subalgebra(elems, grading=grading, simplify_basis=simplify_basis, span_warning=span_warning, simplify_products_by_default=simplify_products_by_default)
 
-    def subspace(self, basis, grading=None):
+    def subspace(self, basis:list|tuple=[], grading=None, span_warning=True):
         elems = [
             (
-                elem.ambiant_rep
+                elem.ambient_rep
                 if get_dgcv_category(elem) == "subalgebra_element"
                 else elem
             )
             for elem in basis
         ]
-        return self.ambiant.subspace(elems, grading=grading)
+        return self.ambient.subspace(elems, grading=grading, span_warning=span_warning)
 
     def contains(
         self, items, return_basis_coeffs=False
@@ -237,31 +265,25 @@ class subalgebra_class(algebra_subspace_class):
             if get_dgcv_category(item) == "subalgebra_element":
                 if item.algebra == self:
                     bas = self.basis
-                elif item.algebra.ambiant == self.ambiant:
-                    item = item.ambiant_rep
-                    bas = self.basis_in_ambiant_alg
+                elif item.algebra.ambient == self.ambient:
+                    item = item.ambient_rep
+                    bas = self.basis_in_ambient_alg
                 else:
                     return False
             elif (
                 get_dgcv_category(item) == "algebra_element"
-                and item.algebra == self.ambiant
+                and item.algebra == self.ambient
             ):
-                bas = self.basis_in_ambiant_alg
+                bas = self.basis_in_ambient_alg
             else:
                 return False
             if item not in bas:
+                if len(bas)==0:
+                    return False
                 tempVarLabel = "T" + retrieve_public_key()
-                variableProcedure(tempVarLabel, len(bas), _tempVar=retrieve_passkey())
-                genElement = sum(
-                    [
-                        _cached_caller_globals[tempVarLabel][j + 1] * elem
-                        for j, elem in enumerate(bas[1:])
-                    ],
-                    _cached_caller_globals[tempVarLabel][0] * (bas[0]),
-                )
-                sol = solve_dgcv(
-                    item - genElement, _cached_caller_globals[tempVarLabel]
-                )
+                vars=variableProcedure(tempVarLabel, len(bas), _tempVar=retrieve_passkey(),return_created_object=True)[0]
+                genElement = sum([vars[j + 1] * elem for j, elem in enumerate(bas[1:])], vars[0] * (bas[0]))
+                sol = solve_dgcv(item - genElement, vars)
                 if len(sol) == 0:
                     clearVar(*listVar(temporary_only=True), report=False)
                     return False
@@ -270,7 +292,7 @@ class subalgebra_class(algebra_subspace_class):
                     idx = bas.index(item)
                     return [1 if _ == idx else 0 for _ in range(len(bas))]
         if return_basis_coeffs is True:
-            vec = [var.subs(sol[0]) for var in _cached_caller_globals[tempVarLabel]]
+            vec = [var.subs(sol[0]) for var in vars]
             clearVar(*listVar(temporary_only=True), report=False)
             return vec
         clearVar(*listVar(temporary_only=True), report=False)
@@ -309,7 +331,7 @@ class subalgebra_class(algebra_subspace_class):
                 else 1
             )
             basis_labels = [f"{pref}{i+IIdx}" for i in range(self.dimension)]
-        if getattr(self._grading, "len", 0) == 0:
+        if not isinstance(self._grading,(list,tuple)) or len(self._grading) == 0:
             grad = None
         else:
             grad = self._grading
@@ -360,14 +382,14 @@ class subalgebra_class(algebra_subspace_class):
 
         if verbose:
             if result:
-                if self.label is None:
+                if self.ambient.label is None:
                     print("The algebra is skew-symmetric.")
                 else:
-                    print(f"{self.label} is skew-symmetric.")
+                    print(f"The subalgebra in {self.ambient.label} is skew-symmetric.")
             else:
                 i, j, k = failure
                 print(
-                    f"Skew symmetry fails for basis elements {i}, {j}, at coefficient index {k}."
+                    f"Skew symmetry fails for basis elements {i} and {j}, at coefficient index {k}."
                 )
         if _return_proof_path is True:
             return result, t_message
@@ -414,17 +436,16 @@ class subalgebra_class(algebra_subspace_class):
 
         if verbose:
             if result:
-                if self.label is None:
-                    print("The algebra satisfies the Jacobi identity.")
+                if self.ambient.label is None:
+                    print("The subalgebra satisfies the Jacobi identity.")
                 else:
-                    print(f"{self.label} satisfies the Jacobi identity.")
+                    print(f"The subalgebra in {self.ambient.label} satisfies the Jacobi identity.")
             else:
                 print(f"Jacobi identity fails for the following triples: {fail_list}")
 
         if _return_proof_path is True:
             return result, t_message
         return result
-
 
     def _check_jacobi_identity(self):
         skew = self.is_skew_symmetric()
@@ -502,7 +523,7 @@ class subalgebra_class(algebra_subspace_class):
         if self._lie_algebra_cache is not None:
             if verbose:
                 print(
-                    f"Cached result: {f'Previously verified {self.label} is a Lie algebra' if self._lie_algebra_cache else f'Previously verified {self.label} is not a Lie algebra'}."
+                    f"Cached result: {'Previously verified the subalgebra is a Lie algebra' if self._lie_algebra_cache else 'Previously verified the subalgebra is not a Lie algebra'}."
                 )
             if _return_proof_path is True:
                 return self._lie_algebra_cache, t_message
@@ -524,16 +545,15 @@ class subalgebra_class(algebra_subspace_class):
             self._lie_algebra_cache = True
 
         if verbose:
-            if self.label is None:
+            if self.ambient.label is None:
                 print("The algebra is a Lie algebra.")
             else:
-                print(f"{self.label} is a Lie algebra.")
+                print(f"The subalgebra in {self.ambient.label} is a Lie algebra.")
 
         if return_bool is True:
             if _return_proof_path is True:
                 return self._lie_algebra_cache, t_message
             return self._lie_algebra_cache
-
 
     def _require_lie_algebra(self, method_name):
         """
@@ -549,11 +569,11 @@ class subalgebra_class(algebra_subspace_class):
         Checks if the algebra is semisimple.
         Nothing is returned if return_bool=False is set.
         """
-        if not self.ambiant._registered and verbose:
-            if self.ambiant._callLock == retrieve_passkey() and isinstance(
-                self.ambiant._print_warning, str
+        if not self.ambient._registered and verbose:
+            if self.ambient._callLock == retrieve_passkey() and isinstance(
+                self.ambient._print_warning, str
             ):
-                print(self.ambiant._print_warning)
+                print(self.ambient._print_warning)
             else:
                 print(
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
@@ -582,7 +602,7 @@ class subalgebra_class(algebra_subspace_class):
 
         if verbose is True:
             print("Progress update: computing determinant of the Killing form...")
-        det = sp.simplify(killingForm(self).det())
+        det = sp.simplify(killingForm(self).det())  ###!!! Optimize, removing simplify
 
         if verbose:
             if det != 0:
@@ -622,7 +642,6 @@ class subalgebra_class(algebra_subspace_class):
                         self._educed_properties['special_type'] = 'solvable'
         return self._is_simple_cache
 
-
     def is_subspace_subalgebra(
         self, elements, return_structure_data=False, check_linear_independence=False
     ):
@@ -651,13 +670,13 @@ class subalgebra_class(algebra_subspace_class):
 
         elems = [
             (
-                elem.ambiant_rep
+                elem.ambient_rep
                 if get_dgcv_category(elem) == "subalgebra_element"
                 else elem
             )
             for elem in elements
         ]
-        return self.ambiant.is_subspace_subalgebra(
+        return self.ambient.is_subspace_subalgebra(
             elems,
             return_structure_data=return_structure_data,
             check_linear_independence=check_linear_independence,
@@ -736,7 +755,7 @@ class subalgebra_class(algebra_subspace_class):
     def compute_derived_algebra(self, from_subalg=None):
         if from_subalg is None:
             from_subalg = self
-        return self.ambiant.compute_derived_algebra(from_subalg=from_subalg)
+        return self.ambient.compute_derived_algebra(from_subalg=from_subalg)
 
     def lower_central_series(
         self,
@@ -747,7 +766,7 @@ class subalgebra_class(algebra_subspace_class):
     ):
         if from_subalg is None:
             from_subalg = self
-        return self.ambiant.lower_central_series(
+        return self.ambient.lower_central_series(
             max_depth=max_depth,
             format_as_subalgebras=format_as_subalgebras,
             from_subalg=from_subalg,
@@ -763,7 +782,7 @@ class subalgebra_class(algebra_subspace_class):
     ):
         if from_subalg is None:
             from_subalg = self
-        return self.ambiant.derived_series(
+        return self.ambient.derived_series(
             max_depth=max_depth,
             format_as_subalgebras=format_as_subalgebras,
             from_subalg=from_subalg,
@@ -816,7 +835,6 @@ class subalgebra_class(algebra_subspace_class):
                 self._is_solvable_cache=self._is_nilpotent_cache
         return self._is_solvable_cache
 
-
     def is_abelian(self,**kwargs):
         if self._is_abelian_cache is None:
             self._is_abelian_cache = all(elem == 0 for elem in self.structureDataDict.values())
@@ -837,7 +855,7 @@ class subalgebra_class(algebra_subspace_class):
     def radical(self, from_subalg=None, assume_Lie_algebra=False):
         if from_subalg is None:
             from_subalg = self
-        return self.ambiant.radical(
+        return self.ambient.radical(
             from_subalg=from_subalg, assume_Lie_algebra=assume_Lie_algebra
         )
 
@@ -857,6 +875,15 @@ class subalgebra_class(algebra_subspace_class):
             self._graded_components=gc
         return self._graded_components
 
+    def compute_graded_component_wrt_weight_index(self,idx=0):
+        if idx not in range(len(self.grading)):
+            warnings.warn('The provided index is out of range. `compute_graded_component_wrt_weight_index` is using 0 instead.')
+            idx=0
+        wc = dict()
+        for idxs,comp in self.graded_components.items():
+            wc[idxs[idx]]=wc.get(idxs[idx],self.subspace([]))+comp 
+        return wc
+
     def grading_summary(self):
         from .._dgcv_display import show
 
@@ -873,9 +900,10 @@ class subalgebra_class(algebra_subspace_class):
             prefi = f"{pref}_"
         strings = []
         for k, v in graded_components.items():
-            strings.append(
-                f' $$ {prefi}{{{''.join(str(j) for j in k)}}} = {v._repr_latex_().replace('$','').replace(r'\displaystyle','')},$$'
-            )
+            inner = ''.join(str(j) for j in k)
+            latex = v._repr_latex_()
+            latex = latex.replace('$', '').replace('\\displaystyle', '')
+            strings.append(f" $$ {prefi}{{{inner}}} = {latex},$$")
         if len(strings) > 1:
             strings.insert(-1, "and")
         strings[-1] = strings[-1][:-3] + ".$$"
@@ -897,7 +925,7 @@ class subalgebra_class(algebra_subspace_class):
     def weighted_component(self, weights, test_weights=None, trust_test_weight_format=False, from_subalg=None):
         if from_subalg is None:
             from_subalg=self
-        return self.ambiant.weighted_component(weights, test_weights=test_weights, trust_test_weight_format=trust_test_weight_format, from_subalg=from_subalg)
+        return self.ambient.weighted_component(weights, test_weights=test_weights, trust_test_weight_format=trust_test_weight_format, from_subalg=from_subalg)
 
     def compute_simple_subalgebras(self,verbose=False):
         _ = self.Levi_decomposition(decompose_semisimple_fully=True,verbose=verbose)
@@ -910,10 +938,10 @@ class subalgebra_class(algebra_subspace_class):
                            _try_multiple_times=None,
                            verbose=False
                            ):
-        return self.ambiant.Levi_decomposition(from_subalg=self,decompose_semisimple_fully=decompose_semisimple_fully,verbose=verbose,_bust_cache=_bust_cache,assume_Lie_algebra=assume_Lie_algebra,_try_multiple_times=_try_multiple_times)
+        return self.ambient.Levi_decomposition(from_subalg=self,decompose_semisimple_fully=decompose_semisimple_fully,verbose=verbose,_bust_cache=_bust_cache,assume_Lie_algebra=assume_Lie_algebra,_try_multiple_times=_try_multiple_times)
 
     def approximate_rank(self,check_semisimple=False,assume_semisimple=False,_use_cache=False,**kwargs):
-        return self.ambiant.approximate_rank(check_semisimple=check_semisimple,assume_semisimple=assume_semisimple,_use_cache=_use_cache,from_subalg=self)
+        return self.ambient.approximate_rank(check_semisimple=check_semisimple,assume_semisimple=assume_semisimple,_use_cache=_use_cache,from_subalg=self)
         # if self.dimension==0:
         #     self._rank_approximation=0
         #     return 0
@@ -935,9 +963,151 @@ class subalgebra_class(algebra_subspace_class):
         #     self._rank_approximation=rank
         # return self._rank_approximation
 
+    def direct_sum(self,other,grading=None,label=None,basis_labels=None,register_in_vmf=False,initial_basis_index=None,simplify_products_by_default=None,build_all_gradings=False):
+        if get_dgcv_category(other) in {'algebra','vectorspace','subalgebra','algebra_subspace','vector_subspace'}:
+            _markers={'sum':True,'lockKey':retrieve_passkey()}
+            if build_all_gradings is not True:
+                grad1 = self.grading[:1] or [[0]*self.dimension]
+                grad2 = other.grading[:1] or [[0]*other.dimension]
+            else:
+                grad1 = self.grading or [[0]*self.dimension]
+                grad2 = other.grading or [[0]*other.dimension]
+            builtG=[]
+            for gl1 in grad1:
+                for gl2 in grad2:
+                    builtG.append(list(gl1)+list(gl2))
+            if not isinstance(grading,(list,tuple)):
+                grading=[]
+            if isinstance(grading, (list,tuple)):
+                if all(isinstance(elem,(list,tuple)) for elem in grading):
+                    grading = [list(elem) for elem in grading]+builtG
+                elif all(isinstance(elem,_get_expr_num_types()) for elem in grading):
+                    grading = [list(grading)]+builtG
+                elif grading is not None:
+                    warnings.warn('The supplied grading data format is incompatible, and was ignored.')
+                    grading=builtG
+                else:
+                    grading=builtG
+
+
+            if label is None:
+                label = f'{self.label}_plus_{other.label}'
+                _markers['_tex_label']=f'{self._repr_latex_(raw=True,abbrev=True)}\\oplus {other._repr_latex_(raw=True,abbrev=True)}'
+            if basis_labels is None:
+                basis_labels = [elem.__repr__() for elem in self.basis]+[elem.__repr__() for elem in other.basis]
+                _markers['_tex_basis_labels']=[elem._repr_latex_(raw=True) for elem in self.basis]+[elem._repr_latex_(raw=True) for elem in other.basis]
+
+            return linear_representation(homomorphism(self,other.endomorphism_algebra)).semidirect_sum(grading=grading,label=label,basis_labels=basis_labels,register_in_vmf=register_in_vmf,initial_basis_index=initial_basis_index,simplify_products_by_default=simplify_products_by_default,_markers=_markers)
+        else: 
+            return NotImplemented
+
+    def __add__(self,other):
+        if other==0 or getattr(other,'is_zero',False):
+            return self
+        if get_dgcv_category(other) in {'algebra','vectorspace','subalgebra','algebra_subspace','vector_subspace'}:
+            return self.direct_sum(other)
+        return NotImplemented
+
+    def __radd__(self,other):
+        if other==0 or getattr(other,'is_zero',False):
+            return self
+        return NotImplemented
+
+    def tensor_product(self,other,grading=None,label=None,basis_labels=None,register_in_vmf=False,initial_basis_index=None,simplify_products_by_default=None,build_all_gradings=False):
+        if get_dgcv_category(other) in {'algebra','vectorspace','subalgebra','algebra_subspace','vector_subspace'}: 
+            if simplify_products_by_default is None:
+                simplify_products_by_default = getattr(self,'simplify_products_by_default',False)
+            if build_all_gradings is not True:
+                grad1 = self.grading[:1] or [[0]*self.dimension]
+                grad2 = other.grading[:1] or [[0]*other.dimension]
+            else:
+                grad1 = self.grading or [[0]*self.dimension]
+                grad2 = other.grading or [[0]*other.dimension]
+            builtG=[]
+            for gl1 in grad1:
+                for gl2 in grad2:
+                    builtG.append([w1+w2 for w1 in gl1 for w2 in gl2])
+            if not isinstance(grading,(list,tuple)):
+                grading=[]
+            if isinstance(grading, (list,tuple)):
+                if all(isinstance(elem,(list,tuple)) for elem in grading):
+                    grading = [list(elem) for elem in grading]+builtG
+                elif all(isinstance(elem,_get_expr_num_types()) for elem in grading):
+                    grading = [list(grading)]+builtG
+                elif grading is not None:
+                    warnings.warn('The supplied grading data format is incompatible, and was ignored.')
+                    grading=builtG
+                else:
+                    grading=builtG
+
+            if isinstance(basis_labels, (tuple, list)):
+                if (
+                    not all(isinstance(elem, str) for elem in basis_labels)
+                    or len(basis_labels) != self.dimension*other.dimension
+                ):
+                    warnings.warn(
+                        f"`basis_labels` is in an unsupported format and was ignored. Recieved {basis_labels}, types: {[type(lab) for lab in basis_labels]}, target length {self.dimension}*{other.dimension}"
+                    )
+                    basis_labels = None
+            _markers={'prod':True,'lockKey':retrieve_passkey(),'tensor_decomposition':(self,other)}
+            if label is None:
+                label = f'{self.label}_tensor_{other.label}'
+                _markers['_tex_label']=f'{self._repr_latex_(raw=True,abbrev=True)}\\otimes {other._repr_latex_(raw=True,abbrev=True)}'
+            if basis_labels is None or not isinstance(basis_labels,str):
+                basis_labels = [f'{elem1.__repr__()}_tensor_{elem2.__repr__()}' for elem1 in self.basis for elem2 in other.basis]
+                _markers['_tex_basis_labels']=[f'{elem1._repr_latex_(raw=True)}\\otimes {elem2._repr_latex_(raw=True)}' for elem1 in self.basis for elem2 in other.basis]
+            if isinstance(basis_labels,str):
+                pref = basis_labels
+                IIdx = (
+                    initial_basis_index
+                    if isinstance(initial_basis_index, numbers.Integral)
+                    else 1
+                )
+                basis_labels = [f"{pref}{i+IIdx}" for i in range(self.dimension*other.dimension)]
+            if not isinstance(label, str) or label == "":
+                label = "Alg_" + create_key()
+
+            if register_in_vmf is True:
+                from .algebras_secondary import createAlgebra
+                return createAlgebra(
+                    self.dimension*other.dimension,
+                    label,
+                    basis_labels=basis_labels,
+                    grading=grading,
+                    return_created_obj=True,
+                    simplify_products_by_default=simplify_products_by_default,
+                    _markers=_markers
+                )
+            else:
+                _markers['registered'] = False
+                return algebra_class(
+                    self.dimension*other.dimension,
+                    grading=grading,
+                    simplify_products_by_default=simplify_products_by_default,
+                    _label=label,
+                    _basis_labels=basis_labels,
+                    _calledFromCreator=retrieve_passkey(),
+                    _markers=_markers
+                )
+        elif isinstance(other,_get_expr_num_types()):
+            return self._convert_to_tp().__matmul__(other)
+        else:
+            return NotImplemented
+
+    def __matmul__(self,other):
+        if get_dgcv_category(other) in {'algebra','vectorspace','subalgebra','algebra_subspace','vector_subspace'}:
+            return self.tensor_product(other)
+        return NotImplemented
+
+    def __rmatmul__(self,other):
+        if isinstance(other,_get_expr_num_types()):
+            return self._convert_to_tp().__rmatmul__(other)
+
+    def summary(self, generate_full_report=False, style=None, use_latex=None):
+        return self.ambient.summary(generate_full_report=generate_full_report, style=style, use_latex=use_latex, _from_subalg=self, _IL=retrieve_passkey())
 
 class subalgebra_element:
-    def __init__(self, alg, coeffs, valence, ambiant_rep=None, _internalLock=None):
+    def __init__(self, alg, coeffs, valence, ambient_rep=None, _internalLock=None):
         self.algebra = alg
         self.vectorSpace = alg
         if valence not in (0, 1):
@@ -950,24 +1120,25 @@ class subalgebra_element:
                 "subalgebra_element expects coeffs to be a list or tuple."
             ) from None
         if _internalLock == retrieve_passkey():
-            self._ambiant_rep = ambiant_rep
+            self._ambient_rep = ambient_rep
         else:
-            self._ambiant_rep = None
+            self._ambient_rep = None
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "subalgebra_element"
         self.dgcv_vs_id=self.vectorSpace.dgcv_vs_id
+        self._natural_weight=None
 
     @property
-    def ambiant_rep(self):
-        if self._ambiant_rep is None:
-            self._ambiant_rep = sum(
+    def ambient_rep(self):
+        if self._ambient_rep is None:
+            self._ambient_rep = sum(
                 [
-                    coeff * self.algebra.subindices_to_ambiant_dict[j + 1]
+                    coeff * self.algebra.subindices_to_ambient_dict[j + 1]
                     for j, coeff in enumerate(self.coeffs[1:])
                 ],
-                self.coeffs[0] * self.algebra.subindices_to_ambiant_dict[0],
+                self.coeffs[0] * self.algebra.subindices_to_ambient_dict[0],
             )
-        return self._ambiant_rep
+        return self._ambient_rep
 
     def __eq__(self, other):
         if not isinstance(other, subalgebra_element):
@@ -982,22 +1153,22 @@ class subalgebra_element:
         return hash((self.algebra, self.coeffs, self.valence))
 
     def __str__(self):
-        return self.ambiant_rep.__str__()
+        return self.ambient_rep.__str__()
 
     def _repr_latex_(self, verbose=False, raw=False):
-        return self.ambiant_rep._repr_latex_(verbose=verbose,raw=raw)
+        return self.ambient_rep._repr_latex_(verbose=verbose,raw=raw)
 
     def _latex(self, printer=None):
         return self._repr_latex_()
 
     def _sympystr(self):
-        return self.ambiant_rep._sympystr()
+        return self.ambient_rep._sympystr()
 
     def _latex_verbose(self, printer=None):
-        return self.ambiant_rep._latex_verbose(printer=printer)
+        return self.ambient_rep._latex_verbose(printer=printer)
 
     def __repr__(self):
-        return self.ambiant_rep.__repr__()
+        return self.ambient_rep.__repr__()
 
     @property
     def label(self):
@@ -1037,30 +1208,49 @@ class subalgebra_element:
     def _recursion_contract_hom(self, other):
         return self._convert_to_tp()._recursion_contract_hom(other)
 
+    def _fast_add(self, other):
+        """
+        Internal-only: assumes `other` is a subalgebra_element_class
+        from the same subalgebra with the same valence.
+        No type or safety checks.
+        No simplification.
+        """
+        coeffs = [a + b for a, b in zip(self.coeffs, other.coeffs)]
+        return subalgebra_element(
+            self.algebra,
+            coeffs,
+            self.valence,
+            format_sparse=self.is_sparse,
+        )
+
     def __add__(self, other):
         if getattr(other, "is_zero", False) or other==0:
             return self
         if get_dgcv_category(other)=='subalgebra_element':
             if self.algebra == other.algebra and self.valence == other.valence:
+                coeffs = [a + b for a, b in zip(self.coeffs, other.coeffs)]
                 return subalgebra_element(
                     self.algebra,
-                    [self.coeffs[j] + other.coeffs[j] for j in range(len(self.coeffs))],
-                    self.valence,
+                    coeffs,
+                    self.valence
                 )
-            elif other.algebra.ambiant==self.algebra.ambiant:
-                return self.ambiant_rep+self.ambiant_rep
+            elif other.algebra.ambient==self.algebra.ambient:
+                return self.ambient_rep+self.ambient_rep
             else:
                 other = other._convert_to_tp()
         if get_dgcv_category(other) in {'algebra_element','vector_space_element','tensorProduct'} or isinstance(other,_get_expr_num_types()):
-            if self.algebra.ambiant==getattr(other,'algebra',None):
-                return self.ambiant_rep+other
+            if self.algebra.ambient==getattr(other,'algebra',None):
+                return self.ambient_rep+other
             return self._convert_to_tp()+other
-        return self.ambiant_rep.__add__(other)
+        if get_dgcv_category(other)=='fastTensorProduct':
+            return other+self
+        return self.ambient_rep.__add__(other)
     def __radd__(self, other):
         if getattr(other, "is_zero", False) or other==0:
             return self
         if isinstance(other,_get_expr_num_types()):
             return self._convert_to_tp().__radd__(other)
+        return NotImplemented
 
     def __sub__(self, other):
         return (self).__add__(-other)
@@ -1071,37 +1261,49 @@ class subalgebra_element:
     def __mul__(self, other):
         if get_dgcv_category(other)== 'subalgebra_element':
             if self.algebra == other.algebra and self.valence == other.valence:
-                result_coeffs = [0] * self.algebra.dimension
-                for i in range(self.algebra.dimension):
-                    for j in range(self.algebra.dimension):
-                        scalar_product = self.coeffs[i] * other.coeffs[j]
-                        structure_vector_product = [
-                            scalar_product * element
-                            for element in self.algebra.structureData[i][j]
-                        ]
-                        result_coeffs = [
-                            self._si_wrap(
-                                result_coeffs[k] + structure_vector_product[k]
-                            )
-                            for k in range(len(result_coeffs))
-                        ]
+                sign = 1 if self.valence == 1 else -1
+                alg = self.algebra
+                dim = alg.dimension
+                coeffs1 = self.coeffs
+                coeffs2 = other.coeffs
+                struct = alg.structureData
+                raw_result = [0] * dim
+                for i in range(dim):
+                    ci = coeffs1[i]
+                    if ci == 0:
+                        continue
+                    for j in range(dim):
+                        cj = coeffs2[j]
+                        if cj == 0:
+                            continue
+                        scalar = sign * ci * cj
+                        row = struct[i][j]
+                        for k in range(dim):
+                            c_ijk = row[k]
+                            if c_ijk != 0:
+                                raw_result[k] += scalar * c_ijk
+                if self.algebra.simplify_products_by_default:
+                    result_coeffs = [self._si_wrap(c) for c in raw_result]
+                else:
+                    result_coeffs = raw_result
                 return subalgebra_element(self.algebra, result_coeffs, self.valence)
-            elif other.algebra.ambiant==self.algebra.ambiant:
-                return self.ambiant_rep*other.ambiant_rep
+            elif other.algebra.ambient==self.algebra.ambient:
+                return self.ambient_rep*other.ambient_rep
             else:
                 return self._convert_to_tp().__mul__(other)
         elif isinstance(other, _get_expr_num_types()):
             new_coeffs = [self._si_wrap(coeff * other) for coeff in self.coeffs]
             return subalgebra_element(self.algebra, new_coeffs, self.valence)
         elif get_dgcv_category(other)=='algebra_element':
-            return self.ambiant_rep*other
+            return self.ambient_rep*other
         elif get_dgcv_category(other) in {'vector_space_element','tensorProduct'}:
             return self._convert_to_tp().__mul__(other)
+        return NotImplemented
 
     def __rmul__(self, other):
         if isinstance(other, _get_expr_num_types()):
             return self * other
-
+        return NotImplemented
     def __truediv__(self, other):
         if isinstance(other, numbers.Number):
             return self._si_wrap(sp.Rational(1, other) * self)
@@ -1114,6 +1316,10 @@ class subalgebra_element:
 
     def __matmul__(self, other):
         """Overload @ operator for tensor product."""
+        if get_dgcv_category(other)=='tensorProduct':
+            return self._convert_to_tp() @ other
+        if isinstance(other,_get_expr_num_types()):
+            return other*self
         if get_dgcv_category(other) not in {'algebra_element','subalgebra_element','vector_space_element'}:
             return self._convert_to_tp().__matmul__(other)
         new_dict = {
@@ -1123,6 +1329,8 @@ class subalgebra_element:
         }
         return self._si_wrap(tensorProduct(mergeVS([self.dgcv_vs_id],[other.dgcv_vs_id]), new_dict))
     def __rmatmul__(self,other):
+        if isinstance(other,_get_expr_num_types()):
+            return other*self
         return self._convert_to_tp().__rmatmul__(other) 
 
     def __xor__(self, other):
@@ -1140,11 +1348,11 @@ class subalgebra_element:
         ):
             return sum([j * k for j, k in zip(self.coeffs, other.coeffs)])
         else:
-            return self.ambiant_rep(other)
+            return self.ambient_rep(other)
 
     def check_element_weight(self, test_weights=None, flatten_weights=False):
         """
-        Determines the weight vector of this subalgebra_element with respect to its ambiant algebra's grading vectors.
+        Determines the weight vector of this subalgebra_element with respect to its ambient algebra's grading vectors.
 
         Returns
         -------
@@ -1185,6 +1393,9 @@ class subalgebra_element:
                 terms.append(c*self.algebra.basis[idx])
             self._terms=[self] if len(terms)<2 else terms
         return self._terms
+
+    def dual_pairing(self,other):
+        return self._convert_to_tp().dual_pairing(other)
 
 class simple_Lie_algebra(algebra_class):
     def __init__(
@@ -1476,7 +1687,7 @@ class simple_Lie_algebra(algebra_class):
         label=None,
         basis_labels=None,
         register_in_vmf=None,
-        return_Alg=False,
+        return_created_obj=False,
         use_non_positive_weights=False,
         format_as_subalgebra_class=False,
     ):
@@ -1497,7 +1708,7 @@ class simple_Lie_algebra(algebra_class):
         if not isinstance(use_non_positive_weights, bool):
             use_non_positive_weights = False
         # With H_i dual to simple roots, self.grading stores the simple-root coefficients n_i.
-        # Σ = marked nodes. Standard parabolic keeps Σ-height ≥ 0; opposite keeps Σ-height ≤ 0.
+        # Sigma = marked nodes. Standard parabolic keeps Sigma-height ≥ 0; opposite keeps Sigma-height ≤ 0.
         sign = -1 if use_non_positive_weights else 1
         for count, weight in enumerate(newGrading):
             if sign * weight >= 0:
@@ -1518,9 +1729,7 @@ class simple_Lie_algebra(algebra_class):
 
         structureData = truncateBySubInd(self.structureData)
         structureData = [truncateBySubInd(plane) for plane in structureData]
-        structureData = [
-            [truncateBySubInd(li) for li in plane] for plane in structureData
-        ]
+        structureData = [[truncateBySubInd(li) for li in plane] for plane in structureData]
         if format_as_subalgebra_class is True:
             ignoredList = []
             if label is not None:
@@ -1545,8 +1754,8 @@ class simple_Lie_algebra(algebra_class):
                 parabolic,
                 self,
                 grading=[filtered_grading],
-                _compressed_structure_data=structureData,
-                _internal_lock=retrieve_passkey(),
+                # _compressed_structure_data=structureData,
+                # _internal_lock=retrieve_passkey(),
             )
         if isinstance(label, str) or isinstance(basis_labels, (list, tuple, str)):
             register_in_vmf = True
@@ -1568,13 +1777,13 @@ class simple_Lie_algebra(algebra_class):
                 basis_labels=basis_labels,
                 grading=filtered_grading,
             )
-            if return_Alg is True:
+            if return_created_obj is True:
                 return _cached_caller_globals[label]
-        if return_Alg is True:
+        if return_created_obj is True:
             return algebra_class(structureData, grading=[filtered_grading])
         elif register_in_vmf is not True:
             warnings.warn(
-                "Optional keywords for the `parabolic_subalgebra` method indicate that nothing should be return returned or registered in the vmf. Probably that is not intended, in which case at least one keyword `label`, `basis_labels`, `register_in_vmf`, `return_Alg`, or `format_as_subalgebra_class` should be set differently."
+                "Optional keywords for the `parabolic_subalgebra` method indicate that nothing should be return returned or registered in the vmf. Probably that is not intended, in which case at least one keyword `label`, `basis_labels`, `register_in_vmf`, `return_created_obj`, or `format_as_subalgebra_class` should be set differently."
             )
 
 def createSimpleLieAlgebra(
@@ -1582,6 +1791,8 @@ def createSimpleLieAlgebra(
     label: str = None,
     basis_labels: list = None,
     build_standard_mat_rep=False,
+    return_created_obj=False,
+    forgo_vmf_registry=False
 ):
     """
     Creates a simple (with 2 exceptions) complex Lie algebra specified from the classical
@@ -1874,7 +2085,7 @@ def createSimpleLieAlgebra(
         indexingKeyRev = {j: k for k, j in indexingKey.items()}
         LADimension = len(indexingKey)
         CSDict = {
-            idx: {0: 1, n - 1: 1} if idx == 0 else {idx: 1, idx - 1: -1}
+            idx: {0: 1} if idx == 0 else {idx: 1, idx - 1: -1}
             for idx in range(n)
         }  # Cartan subalgebra basis transform indexing
         CSDictInv = {
@@ -1902,10 +2113,7 @@ def createSimpleLieAlgebra(
                         )
                     elif p22 == -1:
                         sign = -reSign if p20 < p21 else reSign
-                        coeffs[idx2] += (
-                            scale
-                            * sign
-                            * (int(term == p20) + int(term == p21))
+                        coeffs[idx2] += (scale * sign * (int(term == p20) + int(term == p21))
                         )
                     elif p22 == 2:
                         coeffs[idx2] += (
@@ -2386,10 +2594,13 @@ def createSimpleLieAlgebra(
         )
         indexingKeyRev = {j: k for k, j in indexingKey.items()}
         LADimension = len(indexingKey)
-        CSDict = {
-            idx: {0: 1, n - 1: 1} if idx == 0 else {idx: 1, idx - 1: -1}
-            for idx in range(n)
-        }  # Cartan subalgebra basis transform indexing
+        if n==1:
+            CSDict = {0:{0:2}}  # Cartan subalgebra basis transform indexing
+        elif n==2:
+            CSDict = {0:{0:1,1:1},1:{0:-1,1:1}}
+        else:
+            CSDict = {idx: {0: 1} if idx == 0 else {idx: 1, idx - 1: -1}
+                for idx in range(n-2)} | {n-2:{n-2:1,n-1:1,n-3:-1},n-1:{n-2:-1,n-1:1}}
         CSDictInv = {
             idx: {j: 0 if j > idx else 1 for j in range(n)} for idx in range(n - 2)
         } | {n - 1: {j: sp.Rational(1, 2) for j in range(n)}}
@@ -2547,6 +2758,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
+                return_created_obj=return_created_obj,
+                forgo_vmf_registry=forgo_vmf_registry
             )
         else:
             return createAlgebra(
@@ -2560,6 +2773,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
+                return_created_obj=return_created_obj,
+                forgo_vmf_registry=forgo_vmf_registry
             )
 
     elif series_type == "B":
@@ -2581,6 +2796,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
+                return_created_obj=return_created_obj,
+                forgo_vmf_registry=forgo_vmf_registry
             )
         else:
             return createAlgebra(
@@ -2594,6 +2811,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
+                return_created_obj=return_created_obj,
+                forgo_vmf_registry=forgo_vmf_registry
             )
 
     elif series_type == "C":
@@ -2615,6 +2834,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
+                return_created_obj=return_created_obj,
+                forgo_vmf_registry=forgo_vmf_registry
             )
         else:
             return createAlgebra(
@@ -2628,6 +2849,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
+                return_created_obj=return_created_obj,
+                forgo_vmf_registry=forgo_vmf_registry
             )
 
     elif series_type == "D":
@@ -2649,6 +2872,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
+                return_created_obj=return_created_obj,
+                forgo_vmf_registry=forgo_vmf_registry
             )
         else:
             return createAlgebra(
@@ -2662,6 +2887,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
+                return_created_obj=return_created_obj,
+                forgo_vmf_registry=forgo_vmf_registry
             )
 
     elif series_type + str(rank) in {"G2", "F4", "E6", "E7", "E8"}:
@@ -2673,6 +2900,7 @@ def createSimpleLieAlgebra(
         raise ValueError(
             f"Invalid series parameter format: {series}. Expected a letter 'A', 'B', 'C', 'D', 'E', 'F', or 'G' followed by a positive integer, like 'A1', 'B5', etc. For the exceptional LA labels 'E', 'F', and 'G' the integer must be among the classified types (i.e., only 'G2', 'F4', 'E6', 'E7', and 'E8' are admissible)."
         ) from None
+
 
 def createFiniteAlg(
     obj,
@@ -2725,8 +2953,10 @@ def createAlgebra(
     basis_order_for_supplied_str_eqns=None,
     _simple=None,
     return_created_obj=False,
+    forgo_vmf_registry=False,
     simplify_products_by_default=None,
     initial_basis_index=1,
+    allow_natural_basis_reordering:bool|None=None,
     _basis_labels_parent=None,
     _markers={}
 ):
@@ -2764,7 +2994,10 @@ def createAlgebra(
             warnings.warn(
                 "When processing a `Tanaka_symbol` object, `createAlgebra` uses the symbol's internally defined grading rather than a manually supplied grading. You are getting this warning because an additional grading was manually supplied. To apply the custom grading instead, extract the symbol object's structure data using `Tanaka_symbol.export_algebra_data()`, and then pass that to `createAlgebra` -- create the algebra first and extract the data from the created `algebra_class` attributes."
             )
-        symbolData = obj.export_algebra_data(_internal_call_lock=retrieve_passkey())
+        if allow_natural_basis_reordering is None:
+            allow_natural_basis_reordering=False
+        preserve_negative_part_basis = not allow_natural_basis_reordering
+        symbolData = obj.export_algebra_data(_internal_call_lock=retrieve_passkey(),preserve_negative_part_basis=preserve_negative_part_basis)
         if isinstance(symbolData, str):
             raise TypeError(symbolData + " So no `createAlgebra` did not instantiate a new algebra.") from None
         obj = symbolData["structure_data"]
@@ -2807,7 +3040,7 @@ def createAlgebra(
             If the elements are not linearly independent or not closed under the algebra product.
         """
         if isinstance(elements, (list, tuple)):
-            elements = [(elem.ambiant_rep if get_dgcv_category(elem) == "subalgebra_element" else elem) for elem in elements]
+            elements = [(elem.ambient_rep if get_dgcv_category(elem) == "subalgebra_element" else elem) for elem in elements]
         if not elements or not all(isinstance(el, algebra_element_class) for el in elements):
             raise ValueError(
                 "Invalid input: All elements must be instances of algebra_element_class."
@@ -2840,7 +3073,13 @@ def createAlgebra(
             raise ValueError("The input elements are not closed under the algebra product. ") from None
         return result["structure_data"]
 
-    if isinstance(obj,numbers.Integral):
+    if get_dgcv_category(obj) == 'algebra_subspace':
+        try:
+            obj=obj.ambient.subalgebra(obj)
+        except dgcv_exception_note as e:
+           raise SystemExit(e)
+
+    if isinstance(obj,numbers.Integral) and obj>=0:
         obj=(((0,)*obj,)*obj,)*obj
         t_message='True by construction: abelian data --> `createAlgebra`'
         _markers['_educed_properties']['is_Lie_algebra']=t_message
@@ -2849,10 +3088,10 @@ def createAlgebra(
         _markers['_educed_properties']['is_nilpotent']=t_message
         _markers['_educed_properties']['is_solvable']=t_message
         _markers['_educed_properties']['special_type']='abelian'
-    if get_dgcv_category(obj)in {'algebra','subalgebra'}:
+    if get_dgcv_category(obj) in {'algebra','subalgebra'}:
         if verbose:
             print(f"Using existing algebra instance: {label}")
-        _markers['_educed_properties']=obj._markers['_educed_properties']
+        _markers['_educed_properties']=getattr(obj,'_educed_properties',dict())
         structure_data = obj.structureData
         dimension = obj.dimension
         if grading is None:
@@ -2895,9 +3134,11 @@ def createAlgebra(
                 _markers['_educed_properties']['is_Lie_algebra']=t_message
                 _markers['_educed_properties']['is_skew']=t_message
                 _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
+                _markers['parameters']=vsd[0][2]
                 structure_data,matrix_representation = vsd[0][0],vsd[0][1]
             elif vsd[-1]=='tensor':
                 notes['process_tensor_rep']=True
+                _markers['parameters']=vsd[0][2]
                 structure_data, tensor_representation = vsd[0][0], vsd[0][1]
             else:
                 if isinstance(obj,(list,tuple)) and len(obj)>1 and query_dgcv_categories(obj[-1],'vector_field'):
@@ -2905,7 +3146,8 @@ def createAlgebra(
                     _markers['_educed_properties']['is_Lie_algebra']=t_message
                     _markers['_educed_properties']['is_skew']=t_message
                     _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
-                structure_data=vsd
+                structure_data=vsd[0]
+                _markers['parameters']=vsd[1]
 
         except dgcv_exception_note as e:
             raise SystemExit(e)
@@ -3012,9 +3254,9 @@ def createAlgebra(
         if _markers.get("lockKey", None) == passkey:
             _markers = {k:v for k,v in _markers.items() if k!="lockKey"}  
         elif '_educed_properties' in _markers: 
-            _markers={'_educed_properties':_markers['_educed_properties']}
+            _markers={'_educed_properties':_markers['_educed_properties'],'parameters':_markers.get('parameters',set())}
         else:
-            _markers=dict()
+            _markers={'parameters':_markers.get('parameters',set())}
         algebra_obj = algebra_class(
             structure_data=structure_data,
             grading=grading,
@@ -3031,32 +3273,30 @@ def createAlgebra(
             _markers=_markers
         )
 
-    assert (
-        algebra_obj.basis is not None
-    ), "Algebra object basis elements must be initialized."
+    if forgo_vmf_registry is False:
+        _cached_caller_globals.update({label: algebra_obj})
+        _cached_caller_globals.update(zip(basis_labels, algebra_obj.basis))
 
-    _cached_caller_globals.update({label: algebra_obj})
-    _cached_caller_globals.update(zip(basis_labels, algebra_obj.basis))
-
-    variable_registry = get_variable_registry()
-    variable_registry["finite_algebra_systems"][label] = {
-        "family_type": "algebra",
-        "family_names": tuple(basis_labels),
-        "family_values": tuple(algebra_obj.basis),
-        "dimension": dimension,
-        "grading": grading,
-        "basis_labels": basis_labels,
-        "structure_data": structure_data,
-    }
-    variable_registry["_labels"][label] = {
-        "path": ("finite_algebra_systems", label),
-        "children": set(basis_labels),
-    }
+        variable_registry = get_variable_registry()
+        variable_registry["finite_algebra_systems"][label] = {
+            "family_type": "algebra",
+            "family_names": tuple(basis_labels),
+            "family_values": tuple(algebra_obj.basis),
+            "dimension": dimension,
+            "grading": grading,
+            "basis_labels": basis_labels,
+            "structure_data": structure_data,
+        }
+        variable_registry["_labels"][label] = {
+            "path": ("finite_algebra_systems", label),
+            "children": set(basis_labels),
+        }
 
     if verbose:
-        print(f"Algebra '{label}' registered successfully.")
+        if forgo_vmf_registry is False:
+            print(f"Algebra '{label}' registered successfully.")
         print(
-            f"Dimension: {dimension}, Grading: {grading}, Basis Labels: {basis_labels}"
+            f"Created an algebra with the following properties. Dimension: {dimension}, Grading: {grading}, Basis Labels: {basis_labels}"
         )
     if return_created_obj is True:
-        return _cached_caller_globals[label]
+        return algebra_obj

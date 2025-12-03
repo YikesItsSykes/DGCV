@@ -24,7 +24,6 @@ License:
 """
 
 ############## dependencies
-from functools import reduce
 
 import sympy as sp
 
@@ -42,8 +41,8 @@ from .dgcv_core import (
     variableProcedure,
 )
 from .polynomials import createMultigradedPolynomial
-from .solvers import solve_dgcv
-from .vector_fields_and_differential_forms import assembleFromHolVFC
+from .solvers import simplify_dgcv, solve_dgcv
+from .vector_fields_and_differential_forms import assembleFromHolVFC, get_VF
 from .vmf import clearVar, listVar
 
 
@@ -59,9 +58,9 @@ def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, da
     -----------
     vf : VFClass
         A holomorphic vector field in the complex coordinate 
-    CR_defining_expr : sympy expression
+    CR_defining_expr : sympy expression (or list of expressions)
         A defining function of the CR hypersurface, expressed in holomorphic or real variables.
-    graph_variable : sympy symbol
+    graph_variable : sympy symbol (or list of variables)
         The real variable whose value is set equal to the defining function to define the hypersurface.
     simplify : bool, optional
         If True, applies sp.simplify to the final result.
@@ -78,43 +77,59 @@ def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, da
     TypeError
         If the first argument is not a VFClass instance with dgcvType='complex'.
     """
+    if not isinstance(CR_defining_expr,(list,tuple)):
+        CR_defining_expr=[CR_defining_expr]
+    if not isinstance(graph_variable,(list,tuple)):
+        graph_variable=[graph_variable]
     if data_already_in_real_coor is not True:
-        graph_variable = allToReal(graph_variable)
+        graph_variable = [allToReal(j) for j in graph_variable]
         vf = allToReal(vf)
-        CR_defining_expr = allToReal(CR_defining_expr)
+        CR_defining_expr = [allToReal(j) for j in CR_defining_expr]
 
     if not (isinstance(vf, VFClass) and vf.dgcvType == "complex"):
         raise TypeError(
             "`tangencyObstruction` requires its first argument to be a VFClass instance with dgcvType='complex'"
         )
-    real_eval = realPartOfVF(vf)(graph_variable - CR_defining_expr)
-    substituted_expr = real_eval.subs(graph_variable, CR_defining_expr)
-    result_expr = substituted_expr
+    rVF=realPartOfVF(vf)
+    real_eval = [rVF(j - k) for j,k in zip(graph_variable,CR_defining_expr)]
+    if len(graph_variable)>1:
+        varset=set(graph_variable)
+        gv_presence=[varset.intersection(expr.free_symbols) for expr in CR_defining_expr]
+        def _presence(var):
+            return len([s for s in gv_presence if var in s])
+        sorted_gv = sorted(graph_variable,key=lambda x:_presence(x))
+        substituted_expr=[]
+        for j in real_eval:
+            term=j
+            for var in sorted_gv:
+                term=term.subs({var:CR_defining_expr[graph_variable.index(var)]})
+            substituted_expr.append(term)
+    else:
+        substituted_expr = [j.subs(dict(zip(graph_variable, CR_defining_expr))) for j in real_eval]
 
     if simplify:
-        result_expr = sp.simplify(result_expr)
-    return result_expr
+        substituted_expr = [simplify_dgcv(j) for j in substituted_expr]
+    return substituted_expr
 
 
 def weightedHomogeneousVF(
-    arg1, arg2, arg3, arg4, degreeCap=0, _tempVar=None, assumeReal=None
+    varSpace, weight, weights, varLabel, degreeCap=0, _tempVar=None, assumeReal=None
 ):
     """
     Creates a weighted homogeneous vector field in a given coordinate space.
 
     This function generates a general weighted homogeneous vector field in the space of variables provided
-    in *arg1*, with weights specified in *arg3*. The polynomial degree of variables with zero weight can
-    be bounded by *degreeCap*.
+    in *varSpace*, with weights specified in *weights*. The polynomial degree of variables with zero weight can be bounded by *degreeCap*.
 
     Parameters:
     -----------
-    arg1 : tuple or list
+    varSpace : tuple or list
         A tuple or list of variables, initialized by *varWithVF* or *complexVarProc*.
-    arg2 : int
+    weight : int
         An integer specifying the weight of the vector field.
-    arg3 : list of int
+    weights : list of int
         A list of non-negative integer weights corresponding to the variables in *arg1*.
-    arg4 : str
+    varLabel : str
         A string label for the variables in the returned vector field.
     degreeCap : int, optional
         Maximum polynomial degree for zero-weight variables (default is 0).
@@ -133,32 +148,26 @@ def weightedHomogeneousVF(
     NA
     """
     pListLoc = []
-    if not isinstance(arg2, (list,tuple)):
-        arg2 = [arg2]
-    if not isinstance(arg3[0],(list,tuple)):
-        arg3 = [arg3]
-    if not all(len(weightList)==len(arg1) for weightList in arg3):
+    if not isinstance(weight, (list,tuple)):
+        weight = [weight]
+    if not isinstance(weights[0],(list,tuple)):
+        weights = [weights]
+    if not all(len(weightList)==len(varSpace) for weightList in weights):
         raise KeyError('weight systems given to weightedHomogeneousVF must be lists whose length is the number of variables given.')
-    for j in range(len(arg1)):
+    for j in range(len(varSpace)):
         pListLoc.append(
             createMultigradedPolynomial(
-                arg4 + "_" + str(j) + "_",
-                [d + L[j] for d,L in zip(arg2,arg3)],
-                arg1,
-                arg3,
+                varLabel + "_" + str(j) + "_",
+                [d + L[j] for d,L in zip(weight,weights)],
+                varSpace,
+                weights,
                 degreeCap=degreeCap,
                 _tempVar=_tempVar,
                 assumeReal=assumeReal,
                 report=False
             )
         )
-    return reduce(
-        addVF,
-        [
-            scaleVF(pListLoc[j], eval("D_" + str(arg1[j]), _cached_caller_globals))
-            for j in range(len(arg1))
-        ],
-    )
+    return sum([scaleVF(pListLoc[j], get_VF(varSpace[j])[0]) for j in range(len(varSpace))])
 
 
 def findWeightedCRSymmetries_old(
@@ -308,7 +317,8 @@ def findWeightedCRSymmetries(
     returnAllformats = False,
     simplifyingFactor = None,
     assume_polynomial = False,
-    simplify=False
+    simplify=False,
+    parameters = None
 ):
     """
     """
@@ -346,7 +356,9 @@ def findWeightedCRSymmetries(
         ),
     )
     tanObst = tangencyObstruction(VFLoc, graph_function, graph_variable, simplify=simplify)
-    varLoc = tanObst.atoms(sp.Symbol)
+    varLoc = set() 
+    for TO in tanObst:
+        varLoc|=TO.atoms(sp.Symbol)
     varLoc1 = varLoc.copy()
     varComp = extractRIVar(holomorphic_coordinates)
     varLoc.difference_update(varComp)
@@ -382,20 +394,21 @@ def findWeightedCRSymmetries(
     if not assume_polynomial:
         if varLoc1 == set():
             varLoc1 = set(holomorphic_coordinates)
-        numer = sp.cancel(tanObst).as_numer_denom()[0]
-        coefList = sp.poly_from_expr(sp.expand(numer), *varLoc1)[0].coeffs()
-        # coefList = sp.poly_from_expr(sp.expand(sp.numer(tanObst)), *varLoc1)[0].coeffs()
+        coefList=[]
+        for TO in tanObst:
+            numer = sp.cancel(TO).as_numer_denom()[0]
+            coefList += list(sp.poly_from_expr(sp.expand(numer), *varLoc1)[0].coeffs())
+            # coefList = sp.poly_from_expr(sp.expand(sp.numer(tanObst)), *varLoc1)[0].coeffs()
         solutions = solve_dgcv(coefList, varLoc, method="auto")
     else:
         if varLoc1 == set():
             varLoc1 = set(holomorphic_coordinates)
-
-        coefList = sp.poly_from_expr(
-            sp.expand(tanObst), *varLoc1
-        )[0].coeffs()
+        coefList=[]
+        for TO in tanObst:
+            coefList += list(sp.poly_from_expr(sp.expand(TO), *varLoc1)[0].coeffs())
         solutions = solve_dgcv(coefList, varLoc, method="auto")
     if len(solutions) == 0:
-        if tanObst!=0:
+        if set(tanObst)!={0}:
             clearVar(*listVar(temporary_only=True), report=False)
             raise ValueError(f"no solution to this system: {coefList}")
         else:
@@ -411,21 +424,16 @@ def findWeightedCRSymmetries(
         if hasattr(term, 'atoms'):
             subVar |= term.atoms(sp.Symbol)
     subVar.difference_update(set(holomorphic_coordinates))
+    if parameters is not None:
+        subVar.difference_update(set(parameters))
     variableProcedure(coeff_label, len(subVar), assumeReal=True)
     coeff_vars = _cached_caller_globals[coeff_label]
-    VFCLoc = [
-        j.subs(dict(zip(subVar, coeff_vars))) if hasattr(j,'subs') else j for j in VFCLoc
-    ]
+    VFCLoc = [j.subs(dict(zip(subVar, coeff_vars))) if hasattr(j,'subs') else j for j in VFCLoc]
     clearVar(*listVar(temporary_only=True), report=False)
     if returnVectorFieldBasis:
         VFListLoc = []
         for j in coeff_vars:
-            VFCLocTemp = [
-                k.subs(j, 1).subs(
-                    [(ll, 0) for ll in coeff_vars]
-                )
-                for k in VFCLoc
-            ]
+            VFCLocTemp = [k.subs(j, 1).subs([(ll, 0) for ll in coeff_vars]) for k in VFCLoc]
             VFListLoc.append(assembleFromHolVFC(VFCLocTemp, holomorphic_coordinates))
         clearVar(coeff_label, report=False)
         if returnAllformats:

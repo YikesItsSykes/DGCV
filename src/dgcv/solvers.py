@@ -4,6 +4,7 @@ import sympy as sp
 
 from ._config import get_dgcv_settings_registry
 from ._safeguards import check_dgcv_category
+from .backends._caches import _get_expr_num_types
 from .backends._sage_backend import get_sage_module
 from .backends._symbolic_api import get_free_symbols
 from .eds.eds import (
@@ -89,179 +90,153 @@ def solve_carefully(eqns, vars_to_solve, dict=True):
     # If no subset worked, raise the error
     raise NotImplementedError(f"No valid subset found for variables {vars_to_solve}")
 
-
 def solve_dgcv(
-    eqns, vars_to_solve=None, verbose=False, method="auto", simplify_result=True
+    eqns, vars_to_solve=None, verbose=False, method="auto",
+    simplify_result=True, print_solve_stats=False
 ):
-    """
-    Solve a dgcv-compatible system of equations.
+    import time
+    t0 = time.perf_counter()
 
-    Parameters:
-        eqns: One or more SymPy equations.
-        vars_to_solve: Variables to solve for (inferred if None).
-        verbose: If True, also return system_vars and extra_vars.
-        method: One of 'auto', 'linsolve', or 'solve'.
-        simplify_result: Whether to simplify the final results.
+    def _log(*a):
+        if print_solve_stats:
+            print("[solve_dgcv]", *a)
 
-    Returns:
-        List of dictionaries mapping variables to solutions.
-        If verbose=True, returns (solutions, system_vars, extra_vars).
-    """
+    if isinstance(eqns,(list,tuple)) and len(eqns)==0:
+        if isinstance(vars_to_solve, (list,tuple)):
+            return [{var:var for var in vars_to_solve}]
+        elif isinstance(vars_to_solve,_get_expr_num_types()):
+            return [{vars_to_solve:vars_to_solve}]
+        else:
+            return [dict()]
+
     eqns, vars_to_solve = normalize_equations_and_vars(eqns, vars_to_solve)
     processed_eqns, system_vars, extra_vars, variables_dict = _equations_preprocessing(
         eqns, vars_to_solve
     )
 
+    def _simplify(x):
+        return x if not simplify_result else sp.simplify(x)
+
+    def _expr_reformatting(expr):
+        if isinstance(expr, (int, float)) or not hasattr(expr, "subs"):
+            return expr
+        dgcv_var_dict = {v[1][0]: v[0] for _, v in variables_dict.items()}
+        if not isinstance(expr, sp.Expr) or isinstance(expr, zeroFormAtom):
+            return expr.subs(dgcv_var_dict)
+        regular_var_dict = {k: v for k, v in dgcv_var_dict.items() if isinstance(k, sp.Symbol)}
+        if not all(isinstance(v, (int, float, sp.Expr)) for v in regular_var_dict.values()):
+            return abstract_ZF(_sympy_to_abstract_ZF(expr, regular_var_dict))
+        return expr.subs(regular_var_dict)
+
+    def _extract_reformatting(var):
+        return variables_dict[str(var)][0] if str(var) in variables_dict else var
+
+    def _linsolve_to_dicts(solset, vars_):
+        if not solset:
+            return []
+        out = []
+        for tup in solset:
+            tup = tuple(tup) if hasattr(tup, "__iter__") else ()
+            if len(tup) == len(vars_):
+                out.append(dict(zip(vars_, tup)))
+        return out
+
     use_sage = (
         get_dgcv_settings_registry().get("default_symbolic_engine", "").lower()
         == "sage"
     )
+    _log(f"engine={'sage' if use_sage else 'sympy'} method={method} #eqns={len(processed_eqns)} #vars={len(system_vars)}")
+
+    preformatted_solutions = []
+
     if use_sage:
         orig_expr_vars = set(system_vars)
-        for eqn in processed_eqns:
-            orig_expr_vars |= get_free_symbols(eqn)
-        # Build Sage symbol map
+        for e in processed_eqns:
+            orig_expr_vars |= get_free_symbols(e)
         sage = get_sage_module()
         symbol_map = {}
         for sym in orig_expr_vars:
-            if getattr(sym, "is_real", False):
-                s = sage.var(str(sym), domain="real")
-            else:
-                s = sage.var(str(sym))
+            s = sage.var(str(sym), domain="real") if getattr(sym, "is_real", False) else sage.var(str(sym))
             symbol_map[sym] = s
-        # Convert SymPy eqns and vars into Sage
         s_eqns = [sage.SR(str(e)) for e in processed_eqns]
         s_vars = [symbol_map[v] for v in system_vars]
 
-    preformatted_solutions = []
-    if use_sage:
-        # Sage-first strategy: atomic conversion already done above
-        if method in ("linsolve", "auto"):
+        if method == "linsolve":
             try:
                 A, b = sage.linear_equations_matrix(s_eqns, s_vars)
+                _log(f"matrix_shape={A.nrows()}x{A.ncols()}")
                 sol_vector = A.solve_right(b)
                 sol_set = [dict(zip(s_vars, sol_vector))]
             except Exception:
                 sol_set = []
-            if method == "auto" and not sol_set:
-                sol_set = sage.solve(s_eqns, s_vars, solution_dict=True)
         elif method == "solve":
-            sol_set = sage.solve(s_eqns, s_vars, solution_dict=True)
+            try:
+                sol_set = sage.solve(s_eqns, s_vars, solution_dict=True)
+            except Exception:
+                sol_set = []
+        elif method == "auto":
+            try:
+                A, b = sage.linear_equations_matrix(s_eqns, s_vars)
+                _log(f"matrix_shape={A.nrows()}x{A.ncols()}")
+                sol_vector = A.solve_right(b)
+                sol_set = [dict(zip(s_vars, sol_vector))]
+            except Exception:
+                try:
+                    sol_set = sage.solve(s_eqns, s_vars, solution_dict=True)
+                except Exception:
+                    sol_set = []
         else:
-            raise ValueError(
-                f"Unknown method '{method}'. Use 'auto', 'linsolve', or 'solve'."
-            )
-        # Convert Sage solutions back to SymPy
+            raise ValueError(f"Unknown method '{method}'. Use 'auto', 'linsolve', or 'solve'.")
+
         inv_map = {v_sage: sym for sym, v_sage in symbol_map.items()}
         for sol in sol_set:
             sol_py = {}
             for v_sage, val_sage in sol.items():
-                # key: original SymPy symbol
                 sym = inv_map.get(v_sage, sp.sympify(str(v_sage), evaluate=False))
-                # value: convert to SymPy and then replace atoms
                 val = sp.sympify(str(val_sage), evaluate=False)
-                # subs fresh symbols back to original ones
                 subs_map = {sp.Symbol(str(orig)): orig for orig in symbol_map.keys()}
                 val = val.subs(subs_map)
                 sol_py[sym] = val
             preformatted_solutions.append(sol_py)
+
     else:
-        # SymPy-first strategy (unchanged)
         if method == "linsolve":
             try:
-                sol_set = sp.linsolve(processed_eqns, *processed_eqns)
-                if sol_set:
-                    try:
-                        sol_tuple = next(iter(sol_set))
-                        if hasattr(sol_tuple, "__len__") and len(sol_tuple) == len(
-                            system_vars
-                        ):
-                            preformatted_solutions = [
-                                dict(zip(system_vars, tuple(sol_tuple)))
-                            ]
-                        else:
-                            preformatted_solutions = []
-                    except Exception:
-                        preformatted_solutions = []
-                else:
-                    preformatted_solutions = []
+                sols = sp.linsolve(processed_eqns, tuple(system_vars))
+                preformatted_solutions = _linsolve_to_dicts(sols, tuple(system_vars))
             except Exception:
                 preformatted_solutions = []
         elif method == "solve":
             try:
-                preformatted_solutions = sp.solve(
-                    processed_eqns, system_vars, dict=True
-                )
+                sols = sp.solve(processed_eqns, system_vars, dict=True)
+                preformatted_solutions = sols if isinstance(sols, list) else ([sols] if isinstance(sols, dict) else [])
             except Exception:
                 preformatted_solutions = []
         elif method == "auto":
             try:
-                sol_set = sp.linsolve(processed_eqns, *system_vars)
-                if sol_set:
-                    sol_tuple = next(iter(sol_set))
-                    if isinstance(sol_tuple, (tuple, list)) or hasattr(
-                        sol_tuple, "__iter__"
-                    ):
-                        sol_tuple = tuple(sol_tuple)
-                        if len(sol_tuple) == len(system_vars):
-                            preformatted_solutions = [dict(zip(system_vars, sol_tuple))]
-                        else:
-                            preformatted_solutions = []
-                    else:
-                        preformatted_solutions = []
-                else:
-                    preformatted_solutions = []
+                sols = sp.linsolve(processed_eqns, tuple(system_vars))
+                preformatted_solutions = _linsolve_to_dicts(sols, tuple(system_vars))
             except Exception:
                 preformatted_solutions = []
             if not preformatted_solutions:
                 try:
-                    preformatted_solutions = sp.solve(
-                        processed_eqns, system_vars, dict=True
-                    )
+                    sols = sp.solve(processed_eqns, system_vars, dict=True)
+                    preformatted_solutions = sols if isinstance(sols, list) else ([sols] if isinstance(sols, dict) else [])
                 except Exception:
                     preformatted_solutions = []
         else:
-            raise ValueError(
-                f"Unknown method '{method}'. Use 'auto', 'linsolve', or 'solve'."
-            )
+            raise ValueError(f"Unknown method '{method}'. Use 'auto', 'linsolve', or 'solve'.")
 
-    # Reformat solutions back into dgcv form
-    solutions_formatted = []
+    solutions_formatted = [
+        {
+            _extract_reformatting(var): _expr_reformatting(_simplify(expr))
+            for var, expr in solution.items()
+        }
+        for solution in preformatted_solutions
+    ]
 
-    for solution in preformatted_solutions:
-
-        def extract_reformatting(var):
-            return variables_dict[str(var)][0] if str(var) in variables_dict else var
-
-        def expr_reformatting(expr):
-            if isinstance(expr, (int, float)) or not hasattr(expr, "subs"):
-                return expr
-            dgcv_var_dict = {v[1][0]: v[0] for _, v in variables_dict.items()}
-            if not isinstance(expr, sp.Expr) or isinstance(expr, zeroFormAtom):
-                return expr.subs(dgcv_var_dict)
-            regular_var_dict = {
-                k: v for k, v in dgcv_var_dict.items() if isinstance(k, sp.Symbol)
-            }
-            if not all(
-                isinstance(v, (int, float, sp.Expr)) for v in regular_var_dict.values()
-            ):
-                return abstract_ZF(_sympy_to_abstract_ZF(expr, regular_var_dict))
-            return expr.subs(regular_var_dict)
-
-        solutions_formatted.append(
-            {
-                extract_reformatting(var): expr_reformatting(
-                    expr if not simplify_result else sp.simplify(expr)
-                )
-                for var, expr in solution.items()
-            }
-        )
-
-    if verbose:
-        return solutions_formatted, system_vars, extra_vars
-    else:
-        return solutions_formatted
-
+    _log(f"solutions={len(solutions_formatted)} elapsed_s={time.perf_counter()-t0:.6f}")
+    return (solutions_formatted, system_vars, extra_vars) if verbose else solutions_formatted
 
 def _equations_preprocessing(eqns: tuple | list, vars: tuple | list):
     processed_eqns = []

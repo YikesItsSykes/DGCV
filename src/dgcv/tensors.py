@@ -119,7 +119,7 @@ class vector_space_class:
     def zero_element(self):
         return vector_space_element(self,(0,)*self.dimension,1)
     @property
-    def ambiant(self):
+    def ambient(self):
         return self
 
     def update_grading(self,new_weight_vectors_list,replace_instead_of_add=False):
@@ -789,8 +789,13 @@ class tensorProduct:
                 f"{result if 'result' in locals() else 'Function did not return any value.'}")
             raise
         processed_coeff_dict, max_degree, min_degree, prolongation_type, homogeneous_dicts, vector_spaces, spring, replacements = result
-        self.vector_space = from_vsr(vector_spaces[0]) if len(vector_spaces)>0 else from_vsr(0) ### depricate soon
+        if len(vector_spaces)==0 and len(processed_coeff_dict)>0:
+            for pcKey in processed_coeff_dict:
+                if len(pcKey)>0:
+                    vector_spaces = list(set(pcKey[2*(len(pcKey)//3):]))
+                    break
         self.vector_spaces = vector_spaces
+        self.vector_space = from_vsr(vector_spaces[0]) if len(vector_spaces)>0 else from_vsr(0) ### depricate soon
         self._vs_spring = spring.keys()
         self._unpromoted_spring = {}
         if replacements:
@@ -884,7 +889,7 @@ class tensorProduct:
                     for elem in terms:
                         kidx,kv,kvs,kval=elem[:deg],elem[deg:2*deg],elem[2*deg:3*deg],elem[3*deg]
                         elidx,tgtvs=kidx[c],kvs[c]
-                        coeffs = from_vsr(tgtvs).basis[elidx].ambiant_rep.coeffs
+                        coeffs = from_vsr(tgtvs).basis[elidx].ambient_rep.coeffs
                         for cou,co in enumerate(coeffs):
                             if co==0:
                                 continue
@@ -945,7 +950,7 @@ class tensorProduct:
     def free_vectors(self):
         vec_idx = set()
         for idx_t in self.coeff_dict:
-            vec_idx = vec_idx | set(tuple(zip(idx_t[:len(idx_t//3)],idx_t[len(2*idx_t//3):])))
+            vec_idx = vec_idx | set(tuple(zip(idx_t[:len(idx_t)//3],idx_t[len(2*idx_t)//3:])))
         return set([from_vsr(self.vector_spaces[idx[1]]).basis[idx[0]] for idx in vec_idx])
 
     @property
@@ -1006,7 +1011,7 @@ class tensorProduct:
                 mw=len(test_weights)
                 test_weights={idx:test_weights for idx in self.vector_spaces}   # supporting old format
             else:
-                mw = len(next(iter(test_weights.items())))
+                mw = len(next(iter(test_weights.values())))
         if default_test is False or self._weights is None:
             weight_dict = {}
             for key, _ in self.coeff_dict.items():  # algo requires valence 1 for vec and 0 for covec
@@ -1059,8 +1064,10 @@ class tensorProduct:
         """Tensor product with another tensorProduct."""
         if get_dgcv_category(other) in {'subalgebra_element','algebra_element','vector_space_element'}:
             other = other._convert_to_tp()
+        if isinstance(other,_get_expr_num_types()):
+            return other*self
         if not isinstance(other, tensorProduct):
-            raise ValueError("The other object must be a tensorProduct instance or vector space element related class.")
+            raise ValueError(f"The other object must be a tensorProduct instance or vector space element related class. Revieved {type(other)} instead.")
 
         # Compute new coefficient dictionary
         new_coeff_dict = {}
@@ -1118,7 +1125,7 @@ class tensorProduct:
 
     def __add__(self,other):
         if get_dgcv_category(other) in {'algebra_element','vector_space_element','subalgebra_element'}:
-            other = other.ambiant_rep._convert_to_tp()
+            other = other.ambient_rep._convert_to_tp()
         if isinstance(other, _get_expr_num_types()):
             other = tensorProduct('_',{tuple():other})
         if not isinstance(other,tensorProduct):
@@ -1191,7 +1198,7 @@ class tensorProduct:
         raise ValueError("Invalid operation. Use `^''` to denote the dual.") from None
 
     @property
-    def ambiant_rep(self):
+    def ambient_rep(self):
         return tensorProduct('_',self.coeff_dict,_amb_prom=True)
 
     def contract_call(self, other):
@@ -1221,7 +1228,7 @@ class tensorProduct:
             return tensorProduct(self.vector_spaces, new_dict)
 
         if get_dgcv_category(other)=='subalgebra_element' and other.algebra != self.vector_space:
-            other = other.ambiant_rep
+            other = other.ambient_rep
 
         elif hasattr(other, "algebra") and self.vector_space == other.algebra:
             if self.trailing_valence != 0:
@@ -1278,7 +1285,7 @@ class tensorProduct:
         if other.is_zero:
             return 0*self
         if get_dgcv_category(other)=='subalgebra_element' and other.algebra != self.vector_space:
-            other = other.ambiant_rep
+            other = other.ambient_rep
         if isinstance(other, tensorProduct):
             if len(self.vector_spaces)!=1 or tuple(self.vector_spaces) != tuple(other.vector_spaces):
                 raise ValueError("In `tensorProduct._bracket` both tensors must be defined w.r.t. the same vector_space.")
@@ -1362,7 +1369,7 @@ class tensorProduct:
         if other.is_zero:
             return 0*self
         if get_dgcv_category(other)=='subalgebra_element':
-            other = other.ambiant_rep
+            other = other.ambient_rep
         if isinstance(other, tensorProduct):
             new_dict = {}
             for key1, value1 in self.coeff_dict.items():
@@ -1445,7 +1452,7 @@ class tensorProduct:
     def _contraction_product(self,other, include_Lie_brackets=True):
         if len(self.terms)>1:
             tl=[term._contraction_product(other) for term in self.terms]
-            return sum(tl[1:],tl[0])
+            return sum(tl)
         k, v = next(iter(self.coeff_dict.items()))
         deg=len(k)//3
         if deg==0:
@@ -1456,21 +1463,21 @@ class tensorProduct:
                     elem = v*(from_vsr(k[2]).basis[k[0]]) if k[1]==1 else v*(from_vsr(k[2]).basis[k[0]].dual())
                     if k[2]==other.dgcv_vs_id:
                         return elem*other
-                    elif k[2]==other.ambiant_rep.dgcv_vs_id:
-                        return elem*(other.ambiant_rep)
-                    elif getattr(elem,'ambiant',elem).dgcv_vs_id==other.ambiant_rep.dgcv_vs_id:
-                        return (elem.ambiant_rep)*(other.ambiant_rep)
+                    elif k[2]==other.ambient_rep.dgcv_vs_id:
+                        return elem*(other.ambient_rep)
+                    elif getattr(elem,'ambient',elem).dgcv_vs_id==other.ambient_rep.dgcv_vs_id:
+                        return (elem.ambient_rep)*(other.ambient_rep)
                     else:
                         return 0*other
                 else:
                     if k[2]==other.dgcv_vs_id:
                         return v*other.coeffs[k[0]]
-                    elif k[2]==other.ambiant_rep.dgcv_vs_id:
-                        return v*other.ambiant_rep.coeffs[k[0]]
+                    elif k[2]==other.ambient_rep.dgcv_vs_id:
+                        return v*other.ambient_rep.coeffs[k[0]]
                     else:
                         elem = v*(from_vsr(k[2]).basis[k[0]]) if k[1]==1 else v*(from_vsr(k[2]).basis[k[0]].dual())
-                        if getattr(elem,'ambiant',elem).dgcv_vs_id==other.ambiant_rep.dgcv_vs_id:
-                            return elem.ambiant_rep._convert_to_tp()._contraction_product(other.ambiant_rep)
+                        if getattr(elem,'ambient',elem).dgcv_vs_id==other.ambient_rep.dgcv_vs_id:
+                            return elem.ambient_rep._convert_to_tp()._contraction_product(other.ambient_rep)
                         else:
                             return 0*self
             elif get_dgcv_category(other)=='algebra_element':
@@ -1479,8 +1486,8 @@ class tensorProduct:
                     if k[2]==other.dgcv_vs_id:
                         return elem*other
                     else:
-                        if getattr(elem,'ambiant',elem).dgcv_vs_id==other.dgcv_vs_id:
-                            return (elem.ambiant_rep)*(other)
+                        if getattr(elem,'ambient',elem).dgcv_vs_id==other.dgcv_vs_id:
+                            return (elem.ambient_rep)*(other)
                         else:
                             return 0*self
                 else:
@@ -1488,8 +1495,8 @@ class tensorProduct:
                         return v*other.coeffs[k[0]]
                     else:
                         elem = v*(from_vsr(k[2]).basis[k[0]]) if k[1]==1 else v*(from_vsr(k[2]).basis[k[0]].dual())
-                        if getattr(elem,'ambiant',elem).dgcv_vs_id==other.dgcv_vs_id:
-                            return elem.ambiant_rep._convert_to_tp()._contraction_product(other)
+                        if getattr(elem,'ambient',elem).dgcv_vs_id==other.dgcv_vs_id:
+                            return elem.ambient_rep._convert_to_tp()._contraction_product(other)
                         else:
                             return 0*self
             elif get_dgcv_category(other)=='vectorSpace':
@@ -1500,8 +1507,8 @@ class tensorProduct:
                         return v*other.coeffs[k[0]]
                     else:
                         elem = from_vsr(k[2])
-                        if getattr(elem,'ambiant',elem).dgcv_vs_id==other.dgcv_vs_id:
-                            return elem.ambiant_rep._convert_to_tp()._contraction_product(other)
+                        if getattr(elem,'ambient',elem).dgcv_vs_id==other.dgcv_vs_id:
+                            return elem.ambient_rep._convert_to_tp()._contraction_product(other)
                         else:
                             return 0*self
             elif get_dgcv_category(other)=='tensorProduct':
@@ -1533,7 +1540,7 @@ class tensorProduct:
                             if k[2]==_vsr_inh_idx(k[2]):
                                 nd=self._contraction_product(tensorProduct('_',{k2:v2},_amb_prom=True))
                             else:
-                                nd=self.ambiant_rep._contraction_product(tensorProduct('_',{k2:v2},_amb_prom=True))
+                                nd=self.ambient_rep._contraction_product(tensorProduct('_',{k2:v2},_amb_prom=True))
                             if hasattr(nd,'_convert_to_tp'):
                                 nd=nd._convert_to_tp().coeff_dict
                             elif hasattr(nd,'coeff_dict'):
@@ -1553,7 +1560,7 @@ class tensorProduct:
                                 if k[2]==_vsr_inh_idx(k[2]):
                                     nd=self._contraction_product(tensorProduct('_',{k2:v2},_amb_prom=True))
                                 else:
-                                    nd=self.ambiant_rep._contraction_product(tensorProduct('_',{k2:v2},_amb_prom=True))
+                                    nd=self.ambient_rep._contraction_product(tensorProduct('_',{k2:v2},_amb_prom=True))
                                 if hasattr(nd,'_convert_to_tp'):
                                     nd=nd._convert_to_tp().coeff_dict
                                 elif hasattr(nd,'coeff_dict'):
@@ -1572,7 +1579,7 @@ class tensorProduct:
                                 if k[2]==_vsr_inh_idx(k[2]):
                                     nd=self._contraction_product(tensorProduct('_',{k2:v2},_amb_prom=True))
                                 else:
-                                    nd=self.ambiant_rep._contraction_product(tensorProduct('_',{k2:v2},_amb_prom=True))
+                                    nd=self.ambient_rep._contraction_product(tensorProduct('_',{k2:v2},_amb_prom=True))
                                 if hasattr(nd,'_convert_to_tp'):
                                     nd=nd._convert_to_tp().coeff_dict
                                 elif hasattr(nd,'coeff_dict'):
@@ -1586,18 +1593,18 @@ class tensorProduct:
                 return tensorProduct('_',newDict)
         else:
             if get_dgcv_category(other) in {'subalgebra_element','algebra_element','vectorSpace'}:
-                if _vsr_inh_idx(k[3*deg-1])!=k[3*deg-1] and getattr(other,'ambiant_rep',other).dgcv_vs_id == _vsr_inh_idx(k[3*deg-1]):
-                    return self.ambiant_rep._contraction_product(other)
-                if _vsr_inh_idx(k[2*deg])!=k[2*deg] and getattr(other,'ambiant_rep',other).dgcv_vs_id == _vsr_inh_idx(k[2*deg]) :
-                    return self.ambiant_rep._contraction_product(other)
+                if _vsr_inh_idx(k[-1])!=k[-1] and k[-1]!=other.dgcv_vs_id and k[2*deg-1]!=other.valence and getattr(other,'ambient_rep',other).dgcv_vs_id == _vsr_inh_idx(k[-1]):
+                    return self.ambient_rep._contraction_product(other)
+                if _vsr_inh_idx(k[2*deg])!=k[2*deg] and k[deg]!=other.valence and k[2*deg]!=other.dgcv_vs_id and getattr(other,'ambient_rep',other).dgcv_vs_id == _vsr_inh_idx(k[2*deg]) :
+                    return self.ambient_rep._contraction_product(other)
                 newDict=Counter()
 
                 if k[2*deg-1]!=other.valence:
-                    locElem=other.ambiant_rep if k[-1]==other.algebra.ambiant.dgcv_vs_id else other
+                    locElem=other.ambient_rep if k[-1]==other.algebra.ambient.dgcv_vs_id else other
                     if k[-1]==locElem.dgcv_vs_id:
                         newDict[tuple(k[j] for j in range(3*deg-1) if j not in {deg-1,2*deg-1})]+=locElem.coeffs[k[deg-1]]*v
                 if k[deg]!=other.valence:
-                    locElem=other.ambiant_rep if k[2*deg]==other.algebra.ambiant.dgcv_vs_id else other
+                    locElem=other.ambient_rep if k[2*deg]==other.algebra.ambient.dgcv_vs_id else other
                     if k[2*deg]==locElem.dgcv_vs_id:
                         newDict[tuple(k[j] for j in range(1,3*deg) if j not in {deg,2*deg})]+=-locElem.coeffs[k[0]]*v
                 return tensorProduct('_',newDict)
@@ -1605,9 +1612,9 @@ class tensorProduct:
                 newDict=Counter()
                 for key,val in self._unpromoted_spring:
                     if val in other.vector_spaces:
-                        return self.ambiant_rep._contraction_product(other)
+                        return self.ambient_rep._contraction_product(other)
                     elif val in other._vs_spring and key not in other._unpromoted_spring:
-                        return self.ambiant_rep._contraction_product(other.ambiant_rep)
+                        return self.ambient_rep._contraction_product(other.ambient_rep)
 
                 bound_k=tuple((k[idx],k[idx+deg],k[idx+2*deg]) for idx in range(deg)) 
                 for k2,v2 in other.coeff_dict.items():
@@ -1667,6 +1674,29 @@ class tensorProduct:
                                     newDict[key]+=new_value
             return tensorProduct(self.vector_spaces, newDict)
 
+    @property
+    def free_symbols(self):
+        fs = set()
+        for c in self.coeff_dict.values():
+            fs |= getattr(c, "free_symbols", set())
+        return fs
+
+    def dual_pairing(self,other):
+        if get_dgcv_category(other) in {'algebra_element','subalgebra_element','vectorpace_element'}:
+            other=other._convert_to_tp()
+        if get_dgcv_category(other)!='tensorProduct':
+            raise TypeError(f'cannot apply dual_pairing to type {type(other)}')
+        terms1,terms2 = self.terms, other.terms
+        result = 0
+        for t1 in terms1:
+            for t2 in terms2:
+                cd1,cd2=next(iter(t1.coeff_dict)),next(iter(t2.coeff_dict))
+                deg1,deg2=len(cd1)//3,len(cd2)//3
+                if deg1!=deg2:
+                    continue
+                if all(j==k for j,k in zip(cd1[:deg1],cd2[:deg2])) and all(j+k==1 for j,k in zip(cd1[deg1:2*deg1],cd2[deg2:2*deg2])) and all(j==k for j,k in zip(cd1[2*deg1:],cd2[2*deg2:])):
+                    result+=t1.coeff_dict[cd1]*t2.coeff_dict[cd2]
+        return result
 
 
 
@@ -1752,7 +1782,7 @@ class tensorProduct:
     #     if isinstance(other, _get_expr_num_types()):
     #         return self.__mul__(other)
     #     if get_dgcv_category(other)=='subalgebra_element' and other.algebra != self.vector_space:
-    #         other = other.ambiant_rep
+    #         other = other.ambient_rep
     #     if hasattr(other, "_convert_to_tp"):
     #         return other._convert_to_tp()*self
     #     else:
@@ -1804,7 +1834,7 @@ class tensorProduct:
             factor=0
         elif isinstance(getattr(elem,'dgcv_vs_id',None),numbers.Integral):
             if kvs[idx]==_vsr_inh_idx(elem.dgcv_vs_id) and elem.dgcv_vs_id!=_vsr_inh_idx(elem.dgcv_vs_id):
-                elem=elem.ambiant_rep
+                elem=elem.ambient_rep
             if kvs[idx]==elem.dgcv_vs_id:
                 coeffs=getattr(elem,'coeffs',[])
                 if isinstance(coeffs,(list,tuple)) and len(coeffs)>kc[idx]:
@@ -1868,6 +1898,16 @@ class tensorProduct:
         #     return term
         # else:
         #     return tensorProduct(self.vector_spaces,new_cd)
+
+def multi_tensor_product(*tp):
+    product = 1
+    tpTypes = {'tensorProduct','algebra_element','subalgebra_element','vector_space_element'}
+    for elem in tp:
+        if get_dgcv_category(elem) not in tpTypes:
+            raise TypeError(f'multi_tensor_product only excepts arguments that `dgcv` can process as factors in a tensor product. Recieved type {type(elem)}')
+        product = product @ elem
+    return product
+
 
 
 KeyFlat = Tuple[Any, ...]
@@ -2063,8 +2103,6 @@ class _tensor_structure_data(MutableMapping):
         for k, v in it:
             self.add(k, -v)
         return self
-
-
 
 
 def mergeVS(L1,L2):

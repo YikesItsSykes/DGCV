@@ -81,6 +81,7 @@ from ._config import (
     get_variable_registry,
 )
 from ._safeguards import (
+    create_key,
     protected_caller_globals,
     retrieve_passkey,
     retrieve_public_key,
@@ -89,7 +90,7 @@ from ._safeguards import (
 from ._tensor_field_printers import tensor_field_latex, tensor_field_printer
 from .backends._caches import _get_expr_num_types, _get_expr_types, _is_atomic
 from .backends._symbolic_api import get_free_symbols
-from .combinatorics import carProd, permSign
+from .combinatorics import build_nd_array, carProd, permSign
 from .vmf import _coeff_dict_formatter, clearVar
 
 ############## classes
@@ -729,12 +730,20 @@ class tensorField(sp.Basic):
         """
         Adds two tensorField instances using addTensorFields.
         """
+        if other==0 or getattr(other,'is_zero',False):
+            return self
         if isinstance(other, tensorField):
             return addTensorFields(self, other)
         else:
             raise TypeError(
                 f"Unsupported operand type(s) for +: `tensorField' and '{type(other).__name__}'"
             )
+
+    def __radd__(self,other):
+        if other==0 or getattr(other,'is_zero',False):
+            return self
+        else:
+            return NotImplemented
 
     def __sub__(self, other):
         """
@@ -1178,10 +1187,18 @@ class DFClass(tensorField):
         >>> print(d_sum)
         d_x1 + d_x2
         """
+        if other==0 or getattr(other,'is_zero',False):
+            return self
         if isinstance(other, DFClass):
             return addDF(self, other)
         else:
             raise TypeError("Unsupported operand type(s) for + with DFClass")
+
+    def __radd__(self,other):
+        if other==0 or getattr(other,'is_zero',False):
+            return self
+        else:
+            return NotImplemented
 
     def __sub__(self, other):
         """
@@ -1545,10 +1562,18 @@ class VFClass(tensorField):
         )
 
     def __add__(self, other):
+        if other==0 or getattr(other,'is_zero',False):
+            return self
         if isinstance(other, VFClass):
             return addVF(self, other)
         else:
             raise TypeError("Unsupported operand type(s) for + with VFClass")
+
+    def __radd__(self,other):
+        if other==0 or getattr(other,'is_zero',False):
+            return self
+        else:
+            return NotImplemented
 
     def __sub__(self, other):
         if isinstance(other, VFClass):
@@ -1850,10 +1875,18 @@ class STFClass(tensorField):
         TypeError
             If the argument `other` is not an instance of `STFClass`.
         """
+        if other==0 or getattr(other,'is_zero',False):
+            return self
         if isinstance(other, STFClass):
             return addSTF(self, other)
         else:
             raise TypeError("Unsupported operand type(s) for + with DFClass")
+
+    def __radd__(self,other):
+        if other==0 or getattr(other,'is_zero',False):
+            return self
+        else:
+            return NotImplemented
 
     def __sub__(self, other):
         """
@@ -2141,6 +2174,65 @@ class dgcvPolyClass(sp.Basic):
             format=format,
             return_coeffs=True,
         )
+
+    def scale_to_have_int_coeffs(self, return_scale_only=False):
+        coeffs = [sp.sympify(c) for c in self.get_coeffs()]
+
+        def sign_for_count(c):
+            c = sp.sympify(c)
+            if c.is_zero:
+                return 0
+
+            re = sp.re(c)
+            im = sp.im(c)
+
+            if im.is_zero:
+                if re.is_negative:
+                    return -1
+                if re.is_positive:
+                    return 1
+                return 0
+
+            if re.is_zero:
+                if im.is_negative:
+                    return -1
+                if im.is_positive:
+                    return 1
+                return 0
+
+            neg_corner = (
+                re.is_nonpositive and im.is_nonpositive and
+                (re.is_negative or im.is_negative)
+            )
+            pos_corner = (
+                re.is_nonnegative and im.is_nonnegative and
+                (re.is_positive or im.is_positive)
+            )
+
+            if neg_corner:
+                return -1
+            if pos_corner:
+                return 1
+            return 0
+
+        n_neg = sum(1 for c in coeffs if sign_for_count(c) == -1)
+        flip = -1 if n_neg > len(coeffs) // 2 else 1
+
+        denoms = []
+        for c in coeffs:
+            c = sp.sympify(c)
+            if c.is_zero:
+                continue
+            _, d = c.as_numer_denom()
+            denoms.append(int(d))
+        if denoms:
+            scale = flip if len(denoms)==1 else flip * sp.ilcm(*denoms)
+        else:
+            scale = flip
+
+        if return_scale_only:
+            return scale
+        return scale * self
 
     @property
     def holomorphic_part(self):
@@ -2477,6 +2569,8 @@ class dgcvPolyClass(sp.Basic):
         dgcvPolyClass
             A new dgcvPolyClass instance with the added expression.
         """
+        if other==0 or getattr(other,'is_zero',False):
+            return self
         if isinstance(other, dgcvPolyClass):
             # Combine varSpaces, preserving order and removing duplicates
             new_varSpace = tuple(dict.fromkeys(self.varSpace + other.varSpace))
@@ -2495,6 +2589,12 @@ class dgcvPolyClass(sp.Basic):
             )
 
         return NotImplemented
+
+    def __radd__(self,other):
+        if other==0 or getattr(other,'is_zero',False):
+            return self
+        else:
+            return NotImplemented
 
     def __sub__(self, other):
         """
@@ -2628,6 +2728,7 @@ def createVariables(
     return_created_object=None,
     remove_guardrails=None,
     default_var_format=None,
+    temporary_variables=False
 ):
     """
     This function serves as the default interface for creating variables within the dgcv package. It supports creating both standard variable systems and complex variable systems, with options for initializing coordinate vector fields and differential forms. Variables created through `createVariables` are automatically tracked within dgcv’s Variable Management Framework (VMF) and are assigned labels validated through a safeguards routine that prevents overwriting important labels.
@@ -2721,7 +2822,7 @@ def createVariables(
             or default_var_format == "complex"
         ):
             warnings.warn(
-                "A value for `multiindex_shape` was provided, so a standard variable system without vector fields or differential forms was created alligned with the multiindex_shape value. Multiindex variable labeling is not yet supported by dgcv's automated variable creation with vector fields or for complex variable systems. It will be in future dgcv updates. "
+                "A value for `multiindex_shape` was provided, so a standard variable system without vector fields or differential forms was created alligned with the multiindex_shape value. Multiindex variable labeling is not yet supported by dgcv's automated variable creation with vector fields or for complex variable systems. It will be added in future dgcv updates. "
             )
             real_label = None
             imaginary_label = None
@@ -2823,20 +2924,21 @@ def createVariables(
             return_created_object=return_created_object,
         )
     else:
+        pk=retrieve_passkey() if temporary_variables else None
         rv = variableProcedure(
             variable_label,
             number_of_variables=number_of_variables,
             initialIndex=initialIndex,
             assumeReal=assumeReal,
             multiindex_shape=multiindex_shape,
-            _tempVar=False,
+            _tempVar=pk,
             _doNotUpdateVar=None,
             _calledFromCVP=None,
             remove_guardrails=remove_guardrails,
             return_created_object=return_created_object,
         )
     if rv is not None:
-        return [_cached_caller_globals[j] for j in rv]
+        return rv
 
 
 ############## variable factories
@@ -2981,8 +3083,6 @@ def variableProcedure(
             labelLoc = validate_label(j)
         else:
             labelLoc = j
-        if return_created_object is True:
-            rco.append(labelLoc)
 
         # Clear variable if necessary and if _doNotUpdateVar is not set.
         if _doNotUpdateVar != passkey:
@@ -3013,7 +3113,7 @@ def variableProcedure(
 
             # Batch update globals.
             new_globals = dict(zip(var_names, vars))
-            new_globals[labelLoc] = vars
+            new_globals[labelLoc] = build_nd_array(vars,multiindex_shape)
             globals_cache.update(new_globals)
 
             # Create parent dictionary for the multi-indexed variables.
@@ -3132,6 +3232,10 @@ def variableProcedure(
             raise ValueError(
                 "variableProcedure expected its second argument number_of_variables (optional) to be a positive integer, if provided."
             )
+
+        if return_created_object is True:
+            rco.append(globals_cache[labelLoc])
+
     rv = rco if return_created_object is True else None
     return rv
 
@@ -4073,6 +4177,29 @@ def complexVarProc(
     rv = rco if return_created_object is True else None
     return rv
 
+def temporaryVariables(
+    variable_label:str=None,
+    number_of_variables=None,
+    initialIndex=1,
+    multiindex_shape=None,
+    assumeReal=None,
+    return_created_object=True,
+    register_in_vmf:bool=False,
+    remove_guardrails=None,
+    ):
+    if isinstance(variable_label,numbers.Integral) and number_of_variables is None:
+        variable_label,number_of_variables=None,variable_label
+    if not isinstance(variable_label,str):
+        variable_label=create_key('tvar',avoid_caller_globals=register_in_vmf,key_length=6)
+    if register_in_vmf:
+        newObj=createVariables(variable_label=variable_label,number_of_variables=number_of_variables,initialIndex=initialIndex,multiindex_shape=multiindex_shape,assumeReal=assumeReal,return_created_object=return_created_object,temporary_variables=True,remove_guardrails=remove_guardrails)
+        if isinstance(newObj,(list,tuple)) and len(newObj)==1:
+            newObj=newObj[0]
+        return newObj
+    newObj=variableProcedure(variables_label=variable_label,number_of_variables=number_of_variables,initialIndex=initialIndex,multiindex_shape=multiindex_shape,assumeReal=assumeReal,return_created_object=return_created_object,_tempVar=retrieve_passkey(),remove_guardrails=remove_guardrails)
+    if isinstance(newObj,(list,tuple)) and len(newObj)==1:
+        newObj=newObj[0]
+    return newObj
 
 def _format_complex_coordinates(
     coordinate_tuple, default_var_format="complex", pass_error_report=None

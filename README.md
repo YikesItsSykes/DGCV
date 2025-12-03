@@ -44,4 +44,4 @@ Depending on Python install configurations, the above command can vary. The key 
 
 ### Future Development
 
-**dgcv** is always growing and updated regularly. I frequently make new functions for personal projects, and add the ones with general utility for others to the public versions of **dgcv**. Contributions, requests for additions to the library, and feedback from anyone interested are very much welcome. –D.S.
+**dgcv** is always growing and updated regularly. I regularly make new functions for personal projects, and add the ones with general utility for others to the public versions of **dgcv**. Contributions, requests for additions to the library, and feedback from anyone interested are very much welcome. –D.S.

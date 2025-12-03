@@ -36,8 +36,12 @@ def _validate_structure_data(data, process_matrix_rep=False, assume_skew=False, 
                 f"matrix representation prcessing requires a list of square matrices. Recieved: {data}"
             )
 
-    if isinstance(data,(list,tuple)) and len(data)>0 and all(isinstance(obj, VFClass) for obj in data):
-        return algebraDataFromVF(data)
+    if isinstance(data,(list,tuple)):
+        if len(data)>0: 
+            if all(isinstance(obj, VFClass) for obj in data):
+                return algebraDataFromVF(data)
+        else:
+            return tuple(), set()
     try:
         if isinstance(data, dict):
             if all(isinstance(key,tuple) and len(key)==2 and all(_is_atomic(idx) for idx in key) for key in data):
@@ -97,11 +101,16 @@ def _validate_structure_data(data, process_matrix_rep=False, assume_skew=False, 
                 data = [[list(data.get((j,k),[0]*base_dim)) for j in range(base_dim)] for k in range(base_dim)]
             else:
                 raise ValueError("If initializing an algebra algebra with structure data from a dictionairy, its keys should be (i,j) index tuples and its values should be tuples of coefficients from the product of i and j basis elements. All values tuples must have the same length in particular.")
-
+        params=set()
+        def _tuple_scan(elems,par:set):
+            for elem in elems:
+                par|=getattr(elem,"free_symbols",set())
+            return tuple(elems)
         # Check that the data is a 3D list-like structure
         if isinstance(data, (list,tuple)) and len(data) > 0 and isinstance(data[0], (list,tuple)):
             if len(data) == len(data[0]) == len(data[0][0]):
-                return tuple(tuple(tuple(inner) for inner in outer) for outer in data)  # Return as a validated 3D list as tuples
+                sd=tuple(tuple(_tuple_scan(inner,params) for inner in outer) for outer in data)
+                return sd, params
             else:
                 raise ValueError("Structure data must be a list with 3D shape of size (x, x, x). Or it can a  dictionairy of the (i,j) entries for the structure data. Set `process_matrix_rep=True` to initialize from a matrix representation, or provide a list of vector fields to initialize from a VF rep.")
         else:
@@ -144,10 +153,10 @@ def algebraDataFromVF(vector_fields):
     dim=len(vector_fields)
     variableProcedure(tempVarLabel, dim, _tempVar=retrieve_passkey())
     combiVFLoc = addVF(*[_cached_caller_globals[tempVarLabel][j] * vector_fields[j] for j in range(len(_cached_caller_globals[tempVarLabel]))])
-
-    def computeBracket(j, k):
+    params=set()
+    def computeBracket(j, k, par):
         if k <= j:
-            return [0] * dim
+            return [0] * dim, params
 
         bracket = VF_bracket(vector_fields[j], vector_fields[k]) - combiVFLoc
 
@@ -167,9 +176,12 @@ def algebraDataFromVF(vector_fields):
 
         solutions = list(solve_dgcv(bracketVals, _cached_caller_globals[tempVarLabel]))
         if len(solutions) == 1:
-            sol_values = solutions[0]
-            substituted_constants = [expr.subs(sol_values) for expr in _cached_caller_globals[tempVarLabel]]
-            return substituted_constants
+            coeffs=[]
+            for var in _cached_caller_globals[tempVarLabel]:
+                coeff=var.subs(solutions[0])
+                par|=getattr(coeff,"free_symbols",set())
+                coeffs.append(coeff)
+            return coeffs
         else:
             raise Exception(f"Fields at positions {j} and {k} are not closed under Lie brackets.")
 
@@ -177,12 +189,12 @@ def algebraDataFromVF(vector_fields):
 
     for j in range(len(vector_fields)):
         for k in range(j + 1, len(vector_fields)):
-            structure_data[j][k] = computeBracket(j, k)         # CHECK index order!!!
+            structure_data[j][k] = computeBracket(j, k, params)         # CHECK index order!!!
             structure_data[k][j] = [-elem for elem in structure_data[j][k]]
 
     clearVar(*listVar(temporary_only=True), report=False)
 
-    return structure_data
+    return structure_data,params
 
 def algebraDataFromMatRep(mat_list):
     """
@@ -206,16 +218,17 @@ def algebraDataFromMatRep(mat_list):
     Exception
         If the matrices do not span a Lie algebra, or if the matrices are not square and of the same size.
     """
-    if isinstance(mat_list, list):
+    if isinstance(mat_list, (list,tuple)):
         mListLoc = [sp.Matrix(j) for j in mat_list]
         shapeLoc = mListLoc[0].shape[0]
         indexRangeCap=len(mat_list)
 
         if all(j.shape == (shapeLoc, shapeLoc) for j in mListLoc):
             tempVarLabel = "T" + retrieve_public_key()
-            variableProcedure(tempVarLabel, indexRangeCap, _tempVar=retrieve_passkey())
-            combiMatLoc = sum([_cached_caller_globals[tempVarLabel][j] * mListLoc[j] for j in range(indexRangeCap)],sp.zeros(shapeLoc, shapeLoc))
-            def pairValue(j, k):
+            vars=variableProcedure(tempVarLabel, indexRangeCap,return_created_object=True, _tempVar=retrieve_passkey())[0]
+            combiMatLoc = sum([vars[j] * mListLoc[j] for j in range(indexRangeCap)],sp.zeros(shapeLoc, shapeLoc))
+            params=set()
+            def pairValue(j, k, par):
                 """
                 Compute the commutator [m_j, m_k] and match with the combination matrix.
 
@@ -228,11 +241,15 @@ def algebraDataFromMatRep(mat_list):
                 bracketVals = list(set([*mat]))
                 if len(bracketVals)==1 and bracketVals[0]==0:
                     return [0]*indexRangeCap
-                solLoc = list(solve_dgcv(bracketVals, _cached_caller_globals[tempVarLabel]))
+                solLoc = list(solve_dgcv(bracketVals, vars))
 
                 if len(solLoc) == 1:
-                    result = [var.subs(solLoc[0]) for var in _cached_caller_globals[tempVarLabel]]
-                    return result
+                    coeffs=[]
+                    for var in vars:
+                        coeff=var.subs(solLoc[0])
+                        par|=getattr(coeff,"free_symbols",set())
+                        coeffs.append(coeff)
+                    return coeffs
                 else:
                     clearVar(*listVar(temporary_only=True),report=False)
                     raise Exception(
@@ -240,14 +257,14 @@ def algebraDataFromMatRep(mat_list):
                         f"Problem matrices are in positions {j} and {k}."
                     )
 
-            structure_data = [[[0]*indexRangeCap if k<=j else pairValue(k, j) for j in range(indexRangeCap)] for k in range(indexRangeCap)]
+            structure_data = [[[0]*indexRangeCap if k<=j else pairValue(k, j, params) for j in range(indexRangeCap)] for k in range(indexRangeCap)]
             for k in range(indexRangeCap):
                 for j in range(k+1,indexRangeCap):
                     structure_data[k][j]=[-entry for entry in structure_data[j][k]]
 
             clearVar(*listVar(temporary_only=True), report=False)
 
-            return structure_data,mat_list ###!!! filter the mat_list for independence
+            return structure_data,mat_list,params ###!!! filter the mat_list for independence
         else:
             raise Exception("algorithm for extracting algebra data from matrices expects a list of square matrices of the same size.")
     else:
@@ -271,30 +288,35 @@ def algebraDataFromTensorRep(tensor_list):
     tempVarLabel = "T" + create_key()
     dim=len(tensor_list)
     if dim==0:
-        return [[[]]],tensor_list
-    variableProcedure(tempVarLabel, dim, _tempVar=retrieve_passkey())
-    vars=_cached_caller_globals[tempVarLabel]
+        return [[[]]],tensor_list,set()
+    vars=variableProcedure(tempVarLabel, dim,return_created_object=True,_tempVar=retrieve_passkey())[0]
     gen_elem = sum([vars[j] * tensor_list[j] for j in range(1,dim)],vars[0]*tensor_list[0])
 
-    def computeBracket(j, k):
+    params = set()
+    def computeBracket(j, k, par):
         if k < j:
             return [0] * dim
         product = (tensor_list[j]*tensor_list[k]) - gen_elem
         solutions = solve_dgcv(product, vars)
         if len(solutions) > 0:
             sol_values = solutions[0]
-            coeffs = [var.subs(sol_values) for var in vars]
+            coeffs=[]
+            for var in vars:
+                coeff=var.subs(sol_values)
+                par|=getattr(coeff,"free_symbols",set())
+                coeffs.append(coeff)
             return coeffs
         else:
+            clearVar(*listVar(temporary_only=True),report=False)
             raise Exception(f"Contraction product of tensors at positions {j} and {k} are not in the given tensor list.")
 
     structure_data = [[[0 for _ in tensor_list] for _ in tensor_list] for _ in tensor_list]
 
     for j in range(dim):
         for k in range(j):
-            structure_data[k][j] = computeBracket(k, j)         # CHECK index order!!!
+            structure_data[k][j] = computeBracket(k, j, params)         # CHECK index order!!!
             structure_data[j][k] = [-elem for elem in structure_data[k][j]]
 
     clearVar(*listVar(temporary_only=True), report=False)
 
-    return structure_data,tensor_list   # filter independants
+    return structure_data,tensor_list,params   # filter independants

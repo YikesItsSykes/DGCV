@@ -484,6 +484,12 @@ class TableView:
             lines.append(col_sep.join(cells))
         return "\n".join(lines)
 
+    def __str__(self) -> str:
+        return self.to_text()
+
+    def to_plain_text(self, col_sep: str = " | ") -> str:
+        return self.to_text(col_sep=col_sep)
+
 def _sanitize_html_str(s: str) -> str:
     import re
     s = re.sub(r"<\s*script\b[^>]*>.*?<\s*/\s*script\s*>", "", s, flags=re.IGNORECASE | re.DOTALL)

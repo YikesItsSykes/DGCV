@@ -3,33 +3,13 @@ dgcv: Differential Geometry with Complex Variables
 
 This module provides various combinatorial functions used throughout the dgcv package, 
 primarily focusing on efficient computation of Cartesian products, permutations, and 
-related operations. These functions are optimized for performance and designed to 
-handle large inputs by utilizing generators where possible.
-
-Key Functions
--------------
-- carProd: Computes the Cartesian product of multiple lists.
-- carProdWithOrder: Computes the Cartesian product while removing equivalent permutations.
-- carProdWithoutRepl: Computes the Cartesian product, excluding repeated elements.
-- chooseOp: Generates combinations with optional order, replacement, and homogeneity degree filtering.
-- permSign: Calculates the signature of a permutation.
-- permuteTupleEntries: Applies a permutation to the entries of a tuple or list.
-- permuteTuple: Applies a permutation to reorder a tuple or list.
-- permuteArray: Applies a permutation to the indices of a k-dimensional array.
-- alternatingPartOfArray: Computes the alternating part of a multilinear operator represented by an array.
-
-Dependencies
-------------
-- sympy: For arrays (MutableDenseNDimArray) and mathematical operations.
-
-Notes
------
-This module minimizes dependencies and is critical for handling combinatorics within the dgcv package's computationally intensive operations.
-
+related operations. These functions are tuned for specialized backend dgcv tasks and not intended for general use otherwise.
 """
 
 ############## dependencies
 import numbers
+from functools import lru_cache
+from math import gcd
 
 from sympy import MutableDenseNDimArray
 
@@ -273,6 +253,53 @@ def chooseOp(
         return (j for j in resultLoc if sum(j) == restrictHomogeneity)
     else:
         return resultLoc
+
+def split_number(n, nums=[1]):
+    if n < 0 or not nums or any(x <= 0 for x in nums):
+        return []
+    g = 0
+    for x in nums:
+        g = gcd(g, x)
+    if n % g != 0:
+        return []
+    order = sorted(range(len(nums)), key=lambda i: nums[i], reverse=True)
+    vals = [nums[i] for i in order]
+    m = len(vals)
+    back = [0] * (m + 1)
+    for i in range(m - 1, -1, -1):
+        back[i] = gcd(back[i + 1], vals[i])
+
+    @lru_cache(maxsize=None)
+    def step(i, r):
+        if r % back[i] != 0:
+            return ()
+        if i == m - 1:
+            v = vals[i]
+            if r % v == 0:
+                c = r // v
+                a = [0] * m
+                a[i] = c
+                return (tuple(a),)
+            return ()
+        v = vals[i]
+        out = []
+        for c in range(r // v, -1, -1):
+            new_r = r - c * v
+            tails = step(i + 1, new_r)
+            for t in tails:
+                a = list(t)
+                a[i] = c
+                out.append(tuple(a))
+        return tuple(out)
+
+    out_sorted = step(0, n)
+    out_final = []
+    for s in out_sorted:
+        a = [0] * m
+        for pos, idx in enumerate(order):
+            a[idx] = s[pos]
+        out_final.append(a)
+    return out_final
 
 def permSign(arg1, returnSorted=False, **kwargs):
     """
@@ -669,3 +696,27 @@ def alternatingPartOfArray(arg1):
             return resultArray
 
     raise ValueError("Input array must have equal dimensions.")
+
+def build_nd_array(entries_list, shape,
+                   use_lists_instead_of_tuples=False, pad=0):
+
+    total = 1
+    for s in shape:
+        total *= s
+
+    flat = list(entries_list[:total])
+    if len(flat) < total:
+        flat.extend([pad] * (total - len(flat)))
+
+    def build(level, offset):
+        if level == len(shape):
+            return flat[offset]
+        size = shape[level]
+        stride = 1
+        for s in shape[level+1:]:
+            stride *= s
+        items = [build(level+1, offset + i*stride)
+                 for i in range(size)]
+        return items if use_lists_instead_of_tuples else tuple(items)
+
+    return build(0, 0)

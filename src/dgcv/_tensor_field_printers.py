@@ -262,10 +262,14 @@ def tensor_latex_helper(tp):
             valence = vec[len(vec)//3:2*len(vec)//3]
             vs = vec[2*len(vec)//3:]
             idxs = vec[:len(vec)//3]
+            def pwrap(x):
+                if "^" in x and x[-1]!=")":
+                    return f"\\left({x}\\right)"
+                return x
             basis_elements = [
                 f"{labler(idxs[j],vs[j])}"
                 if valence[j] == 1
-                else f"{labler(idxs[j],vs[j])}^*"
+                else f"{pwrap(labler(idxs[j],vs[j]))}^*"
                 for j in range(len(valence))
             ]
             basis_element = '\\otimes '.join(basis_elements)

@@ -45,6 +45,7 @@ from ._dgcv_display import (
     LaTeX,
     LaTeX_eqn_system,
     LaTeX_list,
+    clean_LaTeX,
     display_DGCV,
     show,
 )
@@ -64,9 +65,10 @@ from .algebras.algebras_secondary import (
     createFiniteAlg,  # deprecated
     createSimpleLieAlgebra,
     subalgebra_class,
+    subalgebra_element,
 )
 from .backends._sage_backend import get_sage_module, is_sage_available
-from .combinatorics import carProd, chooseOp, permSign
+from .combinatorics import carProd, chooseOp, permSign, split_number
 from .complex_structures import Del, DelBar, KahlerStructure
 from .coordinate_maps import coordinate_map
 from .CR_geometry import (
@@ -121,6 +123,7 @@ from .dgcv_core import (
     scaleVF,
     symToHol,
     symToReal,
+    temporaryVariables,
     tensor_product,
     tensorField,
 )
@@ -158,6 +161,7 @@ from .solvers import simplify_dgcv, solve_dgcv
 from .styles import get_DGCV_themes, get_dgcv_themes  # get_DGCV_themes is deprecated
 from .tensors import (
     createVectorSpace,
+    multi_tensor_product,
     tensorProduct,
     vector_space_class,
     vector_space_element,
@@ -186,6 +190,7 @@ __all__ = [
     "LaTeX_eqn_system",  # Custom LaTeX renderer for dictionaries
     # or lists representing equation systems
     "LaTeX_list",
+    "clean_LaTeX",
     "display_DGCV",  # deprecated
     "show",  # Augments IPython.display.display
     # with support for dgcv object like
@@ -198,6 +203,7 @@ __all__ = [
     "carProd",  # Cartesian product
     "chooseOp",  # Choose operation
     "permSign",  # Permutation sign
+    "split_number",
     # From complexStructures
     "Del",  # Holomorphic derivative operator
     "DelBar",  # Anti-holomorphic derivative operator
@@ -206,6 +212,7 @@ __all__ = [
     "canonicalize",  # Reformat supported objects canonically
     # From algebras
     "algebra_element_class",  # Algebra element class
+    "subalgebra_element",
     "algebra_subspace_class",  # Algebra subspace class
     "algebra_class",  # Finite dimensional algebra
     "adjointRepresentation",  # Adjoint representation of algebra
@@ -262,6 +269,7 @@ __all__ = [
     "conjugate_DGCV",  # deprecated
     "conjugate_dgcv",  # Conjugate dgcv objects
     "createVariables",  # Initialize variables in dgcv's VMF
+    "temporaryVariables",
     "exteriorProduct",  # Compute exterior product
     "holToReal",  # Convert holomorphic to real format
     "holToSym",  # Convert holomorphic to symbolic conjugates format
@@ -322,6 +330,7 @@ __all__ = [
     "vector_space_class",  # Class representing vector spaces
     "vector_space_element",  # Class representing elements in a vector space
     "tensorProduct",  # Class representing elements in tensor products (of VS elements)
+    "multi_tensor_product", #Form tensorProduct from multiple factors
     # of vector space and their dual spaces
     "createVectorSpace",  # Create vector_space_class class instances with labeling
     # From vectorFieldsAndDifferentialForms

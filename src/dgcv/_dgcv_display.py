@@ -8,6 +8,7 @@ This module provides functions for adjusting display formatting in Jupyter noteb
 
 ############# for printing
 import numbers
+import re
 import warnings
 
 import sympy as sp
@@ -29,6 +30,16 @@ from .filtered_structures import Tanaka_symbol
 from .Riemannian_geometry import metricClass
 
 
+def clean_LaTeX(word: str, replacements: dict[str, str] | None = None) -> str:
+    word = re.sub(r"\\displaystyle\s*", "", word)
+    word = _dollars.sub(r"\\[\1\\]", word)
+    word = _collapse_double_braces(word)
+    word = _format_display_math(word)
+    if replacements:
+        for old, new in replacements.items():
+            word = word.replace(old, new)
+    return word
+
 def LaTeX(obj, removeBARs=False):
     """
     Custom LaTeX function for dgcv. Extends sympy.latex() to support application to dgcv classes.
@@ -47,7 +58,7 @@ def LaTeX(obj, removeBARs=False):
     def filter(term):
         if removeBARs:
             return sp.latex(term)
-        if isinstance(term, (DFClass, VFClass, STFClass, tensorField, dgcvPolyClass)):
+        if isinstance(term, (DFClass, VFClass, STFClass, tensorField)):
             if term._varSpace_type == "real":
                 return sp.latex(symToReal(term))
             elif term._varSpace_type == "complex":
@@ -60,6 +71,8 @@ def LaTeX(obj, removeBARs=False):
             return _alglabeldisplayclass(term.algebra.label, term)._repr_latex_()
         elif isinstance(term, Tanaka_symbol):
             return "Tanaka_symbol Class"
+        elif isinstance(term,dgcvPolyClass):
+            return sp.latex(term)
         else:
             return sp.latex(symToHol(term))
 
@@ -341,3 +354,54 @@ def dgcv_init_printing(*args, **kwargs):
 
     kwargs["latex_printer"] = DGCV_latex_printer
     init_printing(*args, **kwargs)
+
+_dollars = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
+
+def _collapse_double_braces(s: str) -> str:
+    out = []
+    i = 0
+    n = len(s)
+    while i < n:
+        if s[i] == "{" and i + 1 < n and s[i + 1] == "{":
+            depth = 0
+            j = i
+            last = None
+            while j < n:
+                c = s[j]
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        last = j
+                        break
+                j += 1
+            if last is not None and last > i + 1 and s[last - 1] == "}":
+                inner = s[i+2:last-1]
+                inner = _collapse_double_braces(inner)
+                out.append("{")
+                out.append(inner)
+                out.append("}")
+                i = last + 1
+                continue
+        out.append(s[i])
+        i += 1
+    return "".join(out)
+
+def _format_display_math(s: str) -> str:
+    out = []
+    i = 0
+    n = len(s)
+    while i < n:
+        if s[i] == "\\" and i + 1 < n and s[i+1] in ("[", "]"):
+            if out and out[-1] != "\n":
+                out.append("\n")
+            out.append("\\")
+            out.append(s[i+1])
+            if i + 2 < n and s[i+2] != "\n":
+                out.append("\n")
+            i += 2
+            continue
+        out.append(s[i])
+        i += 1
+    return "".join(out)

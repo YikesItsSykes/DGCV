@@ -230,7 +230,7 @@ def from_vsr(idx):
 
 def _vsr_inh_idx(idx):
     vs=from_vsr(idx)
-    return getattr(vs,'ambiant',vs).dgcv_vs_id
+    return getattr(vs,'ambient',vs).dgcv_vs_id
 
 def clear_variable_registry():
     global variable_registry
