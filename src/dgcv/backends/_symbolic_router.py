@@ -53,32 +53,41 @@ def get_free_symbols(expr):
 def simplify(expr, method=None, **kwargs):
     f = getattr(expr, "__dgcv_simplify__", None)
     if callable(f):
-        return f(method=method, **kwargs)
+        try:
+            return f(method=method, **kwargs)
+        except Exception:
+            return expr
 
     kind = engine_kind()
 
     if kind == "sympy":
         sp = engine_module()
-        if method is None or method == "simplify":
-            return sp.simplify(expr, **kwargs)
-        fn = getattr(sp, method, None)
-        if fn is None:
-            raise ValueError(f"Unknown sympy simplify method {method!r}")
-        return fn(expr, **kwargs)
+        try:
+            if method is None or method == "simplify":
+                return sp.simplify(expr, **kwargs)
+            fn = getattr(sp, method, None)
+            if callable(fn):
+                return fn(expr, **kwargs)
+            return expr
+        except Exception:
+            return expr
 
     if kind == "sage":
-        if method is None or method == "simplify":
-            f = getattr(expr, "simplify_full", None)
-            if f is not None:
-                return f(**kwargs)
-            f = getattr(expr, "simplify", None)
-            if f is not None:
+        try:
+            if method is None or method == "simplify":
+                f = getattr(expr, "simplify_full", None)
+                if callable(f):
+                    return f(**kwargs)
+                f = getattr(expr, "simplify", None)
+                if callable(f):
+                    return f(**kwargs)
+                return expr
+            f = getattr(expr, method, None)
+            if callable(f):
                 return f(**kwargs)
             return expr
-        f = getattr(expr, method, None)
-        if f is None:
-            raise ValueError(f"Unknown sage simplify method {method!r}")
-        return f(**kwargs)
+        except Exception:
+            return expr
 
     return expr
 

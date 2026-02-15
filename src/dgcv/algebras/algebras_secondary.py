@@ -1372,6 +1372,10 @@ class subalgebra_element(dgcv_class):
         else:
             return obj
 
+    def __dgcv_simplify__(self, *args, **kwargs):
+        newCoeffs = [simplify(j) for j in self.coeffs]
+        return subalgebra_element(self.algebra, newCoeffs, self.valence)
+
     def _eval_simplify(self, *args, **kwargs):
         newCoeffs = [simplify(j) for j in self.coeffs]
         return subalgebra_element(self.algebra, newCoeffs, self.valence)
@@ -3460,6 +3464,11 @@ def createAlgebra(
                     _markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
                 structure_data = vsd[0]
                 _markers["parameters"] = vsd[1]
+                simplify_products_by_default = (
+                    False
+                    if simplify_products_by_default is None
+                    else simplify_products_by_default
+                )
 
         except dgcv_exception_note as e:
             raise SystemExit(e)

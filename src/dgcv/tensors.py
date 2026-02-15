@@ -17,8 +17,6 @@ from collections import Counter
 from collections.abc import MutableMapping
 from typing import Any, Iterable, Iterator, Mapping, Optional, Tuple, Union
 
-import sympy as sp
-
 from ._config import (
     _cached_caller_globals,
     _vsr_inh_idx,
@@ -33,8 +31,10 @@ from ._safeguards import (
     validate_label,
     validate_label_list,
 )
-from .backends._caches import _get_expr_num_types
-from .backends._symbolic_router import get_free_symbols, simplify
+from .backends._caches import expr_numeric_types
+from .backends._symbolic_router import get_free_symbols, simplify, subs
+from .backends._types_and_constants import expr_numeric_types, rational
+from .base import dgcv_class
 from .combinatorics import permSign, shufflings
 from .printing import (
     lincomb_latex,
@@ -56,7 +56,7 @@ __all__ = [
 # -----------------------------------------------------------------------------
 # classes
 # -----------------------------------------------------------------------------
-class vector_space_class:
+class vector_space_class(dgcv_class):
     def __init__(
         self,
         dimension,
@@ -83,7 +83,7 @@ class vector_space_class:
             self._registered = False
 
         def validate_and_adjust_grading_vector(vector, dimension):
-            if not isinstance(vector, (list, tuple, sp.Tuple)):
+            if not isinstance(vector, (list, tuple)):
                 raise ValueError(
                     "Grading vector must be a list, tuple, or SymPy Tuple."
                 )
@@ -105,19 +105,19 @@ class vector_space_class:
                 vector = vector[:dimension]
 
             for i, component in enumerate(vector):
-                if not isinstance(component, (int, float, sp.Basic)):
+                if not isinstance(component, (int, float)):
                     raise ValueError(
                         f"Invalid component in grading vector at index {i}: {component}. "
                         f"Expected int, float, or sympy.Expr."
                     )
 
-            return sp.Tuple(*vector)
+            return tuple(*vector)
 
         if grading is None:
             self.grading = (tuple([0] * self.dimension),)
         else:
             if isinstance(grading, (list, tuple)) and all(
-                isinstance(g, (list, tuple, sp.Tuple)) for g in grading
+                isinstance(g, (list, tuple)) for g in grading
             ):
                 # Multiple grading vectors provided
                 self.grading = tuple(
@@ -284,33 +284,9 @@ class vector_space_class:
         list of vector_space_element
             basis of subspace
         """
-
-        if (
-            not all(isinstance(j, vector_space_element) for j in elements)
-            or not all(j.vectorSpace == self for j in elements)
-            or len(set([j.valence for j in elements])) != 1
-        ):
-            raise TypeError(
-                "vector_space_class.subspace_basis expects a list of elements from the calling vector_space_class instance."
-            )
-
-        # Perform linear independence check
-        span_matrix = sp.Matrix.hstack(*[el.coeffs for el in elements])
-        linearly_independent = span_matrix.rank() == len(elements)
-
-        if linearly_independent:
-            return elements
-
-        rref_matrix, pivot_columns = span_matrix.rref()
-
-        # Extract the linearly independent basis
-        return [
-            vector_space_element(
-                self,
-                elements[i],
-            )
-            for i in pivot_columns
-        ]
+        warnings.warn(
+            "vector_space_class not supported in current dgcv. use abelian algebra instead. subspace_basis was ignored."
+        )
 
     def check_element_weight(self, element, test_weights=None, flatten_weights=False):
         """
@@ -353,18 +329,18 @@ class vector_space_class:
         if test_weights:
             if not isinstance(test_weights, (list, tuple)):
                 raise TypeError(
-                    "`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or sp.Expr)."
+                    "`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float,)."
                 ) from None
             for weight in test_weights:
                 if not isinstance(weight, (list, tuple)):
                     raise TypeError(
-                        "`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or sp.Expr)."
+                        "`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float)."
                     ) from None
                 if self.dimension != len(weight) or not all(
-                    [isinstance(j, (int, float, sp.Expr)) for j in weight]
+                    [isinstance(j, (int, float)) for j in weight]
                 ):
                     raise TypeError(
-                        "`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or sp.Expr)."
+                        "`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float)."
                     ) from None
             GVs = test_weights
         else:
@@ -475,7 +451,7 @@ class vector_space_element:
     @property
     def is_zero(self):
         for j in self.coeffs:
-            if sp.simplify(j) != 0:
+            if simplify(j) != 0:
                 return False
         else:
             return True
@@ -530,7 +506,15 @@ class vector_space_element:
         return self._convert_to_tp()._recursion_contract_hom(other)
 
     def subs(self, subsData):
-        newCoeffs = [sp.sympify(j).subs(subsData) for j in self.coeffs]
+        newCoeffs = [subs(j, subsData) for j in self.coeffs]
+        return vector_space_element(self.vectorSpace, newCoeffs)
+
+    def _eval_simplify(self, *args, **kwargs):
+        newCoeffs = [simplify(j) for j in self.coeffs]
+        return vector_space_element(self.vectorSpace, newCoeffs)
+
+    def __dgcv_simplify__(self, *args, **kwargs):
+        newCoeffs = [simplify(j) for j in self.coeffs]
         return vector_space_element(self.vectorSpace, newCoeffs)
 
     def __call__(self, other):
@@ -595,7 +579,7 @@ class vector_space_element:
         Returns:
             vector_space_element: The result of the multiplication.
         """
-        if isinstance(other, (int, float, sp.Expr)):
+        if isinstance(other, expr_numeric_types()):
             new_coeffs = [coeff * other for coeff in self.coeffs]
             return vector_space_element(self.vectorSpace, new_coeffs, self.valence)
         else:
@@ -605,7 +589,7 @@ class vector_space_element:
 
     def __rmul__(self, other):
         if isinstance(
-            other, (int, float, sp.Expr)
+            other, expr_numeric_types()
         ):  # Handles numeric types and SymPy scalars
             return self * other
         else:
@@ -615,7 +599,7 @@ class vector_space_element:
 
     def __matmul__(self, other):
         """Overload @ operator for tensor product."""
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             return self.__matmul__(tensorProduct("_", {tuple(): other}))
         if get_dgcv_category(other) not in {
             "vector_space_element",
@@ -771,7 +755,7 @@ class tensorProduct:
                 kl % 3 != 0
                 or not all(j == 0 or j == 1 for j in key[deg : 2 * deg])
                 or not all(isinstance(j, numbers.Integral) for j in key[2 * deg :])
-                or not all(isinstance(j, _get_expr_num_types()) for j in key[:deg])
+                or not all(isinstance(j, expr_numeric_types()) for j in key[:deg])
             ):
                 raise ValueError(
                     f"Keys in coeff_dict must be tuples of length divisible by 3 whose middle third contains only 0s and 1s (indicating valence of the first third). Reicieved keys: {list(coeff_dict.keys())}"
@@ -1076,7 +1060,7 @@ class tensorProduct:
             "vector_space_element",
         }:
             other = other._convert_to_tp()
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             return other * self
         if not isinstance(other, tensorProduct):
             raise ValueError(
@@ -1142,8 +1126,12 @@ class tensorProduct:
         new_dict = {j: simplify(k) for j, k in self.coeff_dict.items()}
         return tensorProduct(self.vector_spaces, new_dict)
 
-    def _eval_simplify(self, ratio=1.7, measure=None, rational=True, **kwargs):
-        new_dict = {key: sp.simplify(value) for key, value in self.coeff_dict.items()}
+    def __dgcv_simplify__(self, *args, **kwargs):
+        new_dict = {key: simplify(value) for key, value in self.coeff_dict.items()}
+        return tensorProduct(self.vector_spaces, new_dict)
+
+    def _eval_simplify(self, *args, **kwargs):
+        new_dict = {key: simplify(value) for key, value in self.coeff_dict.items()}
         return tensorProduct(self.vector_spaces, new_dict)
 
     def __add__(self, other):
@@ -1153,7 +1141,7 @@ class tensorProduct:
             "subalgebra_element",
         }:
             other = other.ambient_rep._convert_to_tp()
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             other = tensorProduct("_", {tuple(): other})
         if not isinstance(other, tensorProduct):
             raise TypeError(
@@ -1168,7 +1156,7 @@ class tensorProduct:
         return tensorProduct(self.vector_spaces, new_dict)
 
     def __radd__(self, other):
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             return tensorProduct("_", {tuple(): other}) + self
 
     def __sub__(self, other):
@@ -1178,7 +1166,7 @@ class tensorProduct:
             "subalgebra_element",
         }:
             other = other._convert_to_tp()
-        elif isinstance(other, _get_expr_num_types()):
+        elif isinstance(other, expr_numeric_types()):
             other = tensorProduct("_", {tuple(): other})
         if not isinstance(other, tensorProduct):
             raise TypeError(
@@ -1193,13 +1181,13 @@ class tensorProduct:
         return tensorProduct(self.vector_spaces, new_dict)
 
     def __rsub__(self, other):
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             return tensorProduct("_", {tuple(): other}) - self
 
     def __truediv__(self, other):
         if isinstance(other, numbers.Integral):
-            return sp.Rational(1, other) * self
-        if isinstance(other, (float, sp.Expr)):
+            return rational(1, other) * self
+        if isinstance(other, expr_numeric_types()):
             return (1 / other) * self
 
     def __matmul__(self, other):
@@ -1208,7 +1196,7 @@ class tensorProduct:
 
     def __rmatmul__(self, other):
         """Overload @ operator for tensor product."""
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             return tensorProduct("_", {tuple(): other}).__matmul__(self)
         elif get_dgcv_category(other) == "tensorProduct":
             return other.__matmul__(self)
@@ -1764,7 +1752,7 @@ class tensorProduct:
                                     nd = nd._convert_to_tp().coeff_dict
                                 elif hasattr(nd, "coeff_dict"):
                                     nd = nd.coeff_dict
-                                elif isinstance(nd, _get_expr_num_types()):
+                                elif isinstance(nd, expr_numeric_types()):
                                     nd = {tuple(), nd}
                                 else:
                                     raise RuntimeError(
@@ -1785,7 +1773,7 @@ class tensorProduct:
                                 nd = nd._convert_to_tp().coeff_dict
                             elif hasattr(nd, "coeff_dict"):
                                 nd = nd.coeff_dict
-                            elif isinstance(nd, _get_expr_num_types()):
+                            elif isinstance(nd, expr_numeric_types()):
                                 nd = {tuple(), nd}
                             else:
                                 raise RuntimeError(
@@ -1817,7 +1805,7 @@ class tensorProduct:
                                     nd = nd._convert_to_tp().coeff_dict
                                 elif hasattr(nd, "coeff_dict"):
                                     nd = nd.coeff_dict
-                                elif isinstance(nd, _get_expr_num_types()):
+                                elif isinstance(nd, expr_numeric_types()):
                                     nd = {tuple(), nd}
                                 else:
                                     raise RuntimeError(
@@ -1848,7 +1836,7 @@ class tensorProduct:
                                     nd = nd._convert_to_tp().coeff_dict
                                 elif hasattr(nd, "coeff_dict"):
                                     nd = nd.coeff_dict
-                                elif isinstance(nd, _get_expr_num_types()):
+                                elif isinstance(nd, expr_numeric_types()):
                                     nd = {tuple(), nd}
                                 else:
                                     raise RuntimeError(
@@ -1940,7 +1928,7 @@ class tensorProduct:
                             nd = nd.coeff_dict
                         elif hasattr(nd, "_convert_to_tp"):
                             nd = nd._convert_to_tp().coeff_dict
-                        elif isinstance(nd, _get_expr_num_types()):
+                        elif isinstance(nd, expr_numeric_types()):
                             nd = {tuple(), nd}
                         else:
                             raise RuntimeError(
@@ -2048,7 +2036,7 @@ class tensorProduct:
 
     def __mul__(self, other):
         """Overload * to compute the contraction product, with special logic for algebra_element."""
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             new_coeff_dict = {
                 key: value * other for key, value in self.coeff_dict.items()
             }
@@ -2066,7 +2054,7 @@ class tensorProduct:
             )
 
     def __rmul__(self, other):
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             new_coeff_dict = {
                 key: value * other for key, value in self.coeff_dict.items()
             }
@@ -2516,7 +2504,7 @@ def createVectorSpace(obj, label, basis_labels=None, grading=None, verbose=False
     if grading is None:
         grading = [(0,) * dimension]  # Default grading: all zeros
     elif isinstance(grading, (list, tuple)) and all(
-        isinstance(w, (int, sp.Expr)) for w in grading
+        isinstance(w, expr_numeric_types()) for w in grading
     ):
         # Single grading vector
         if len(grading) != dimension:

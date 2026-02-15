@@ -4903,6 +4903,14 @@ class algebra_element_class(dgcv_class):
     def ambient_rep(self):
         return self
 
+    def __dgcv_simplify__(self, *args, **kwargs):
+        return algebra_element_class(
+            self.algebra,
+            [simplify(c) for c in self.coeffs],
+            self.valence,
+            format_sparse=self.is_sparse,
+        )
+
     def _eval_simplify(self, *args, **kwargs):
         return algebra_element_class(
             self.algebra,
