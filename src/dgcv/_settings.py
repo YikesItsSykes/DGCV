@@ -25,7 +25,7 @@ from .backends._engine import (
     is_sage_available,
     is_sympy_available,
 )
-from .backends._notebooks import invalidate_notebook_cache
+from .backends._notebooks import invalidate_notebook_cache, is_ipython_available
 from .backends._updates import needs_sympy_hook
 from .base import dgcv_class
 
@@ -225,8 +225,26 @@ def set_dgcv_settings(
             _apply_keyval("print_style", print_style)
 
     if force_rich_display is not None:
-        if print_style is not None:
-            _apply_keyval("force_rich_display", force_rich_display)
+        _apply_keyval("force_rich_display", force_rich_display)
+
+        if force_rich_display:
+            try:
+                if not is_ipython_available():
+                    warnings.warn(
+                        "force_rich_display=True was requested, but IPython does not "
+                        "appear to be available. Some outputs may render as raw "
+                        "HTML or unformatted objects.",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+            except Exception:
+                warnings.warn(
+                    "force_rich_display=True was requested, but display environment "
+                    "could not be verified. Some outputs may render as raw HTML "
+                    "or unformatted objects.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
 
     if preferred_variable_format is not None:
         if preferred_variable_format in {"real", "complex"}:

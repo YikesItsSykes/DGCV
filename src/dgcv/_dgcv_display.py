@@ -21,10 +21,6 @@ from ._safeguards import check_dgcv_category, get_dgcv_category
 from .backends._display import latex as _backend_latex
 from .backends._display_engine import is_rich_displaying_available
 from .backends._engine import _get_sympy_module, is_sympy_available
-from .backends._notebooks import (
-    can_rich_display_latex,
-    is_ipython_available,
-)
 from .backends._notebooks import display_html as _nb_display_html
 from .backends._notebooks import display_latex as _nb_display_latex
 from .backends._types_and_constants import expr_types
@@ -436,57 +432,48 @@ def show(*args):
 
 
 def _display_dgcv_single(arg: Any) -> None:
-    if not can_rich_display_latex():
-        print(_coerce_to_str(arg))
-        return
-
     if isinstance(arg, str):
-        _nb_display_latex(arg)
-        return
-
-    # If already an HTML-capable object, dispatch IPython
-    if is_ipython_available():
         try:
-            from IPython.display import display
-
-            if hasattr(arg, "_repr_html_") or hasattr(arg, "to_html"):
-                display(arg)
+            ok = _nb_display_latex(arg)
+            if ok:
                 return
         except Exception:
             pass
+        print(_coerce_to_str(arg))
+        return
 
-    if _is_engine_expr(arg):
+    # If already an HTML-capable object, attempt IPython display
+    try:
+        if hasattr(arg, "_repr_html_") or hasattr(arg, "to_html"):
+            from IPython.display import display  # local optional import
+
+            display(arg)
+            return
+    except Exception:
+        pass
+
+    if _is_engine_expr(arg) or isinstance(arg, dgcv_class) or check_dgcv_category(arg):
         _complexDisplay(arg)
         return
 
-    if isinstance(arg, dgcv_class) or check_dgcv_category(arg):
-        _complexDisplay(arg)
-        return
+    try:
+        from IPython.display import Math, display
 
-    if is_ipython_available():
+        display(Math(f"$\\displaystyle {LaTeX(arg)}$"))
+        return
+    except Exception:
         try:
-            from IPython.display import Math, display
+            from IPython.display import display
 
-            display(Math(f"$\\displaystyle {LaTeX(arg)}$"))
+            display(arg)
             return
         except Exception:
-            try:
-                from IPython.display import display
-
-                display(arg)
-                return
-            except Exception:
-                pass
+            pass
 
     print(_coerce_to_str(arg))
 
 
 def _complexDisplay(*args):
-    if not can_rich_display_latex():
-        for j in args:
-            print(_coerce_to_str(j))
-        return
-
     def _to_math_payload(x: Any) -> str:
         if getattr(x, "_varSpace_type", None) in ("real", "complex"):
             try:
@@ -499,15 +486,14 @@ def _complexDisplay(*args):
 
     converted = [_to_math_payload(j) for j in args]
 
-    if is_ipython_available():
-        try:
-            from IPython.display import Math, display
+    try:
+        from IPython.display import Math, display  # local optional import
 
-            for expr in converted:
-                display(Math(expr))
-            return
-        except Exception:
-            pass
+        for expr in converted:
+            display(Math(expr))
+        return
+    except Exception:
+        pass
 
     for j in converted:
         print(_coerce_to_str(j))
@@ -517,10 +503,11 @@ def load_fonts():
     """
     Inject google fonts in an IPython environment.
 
-    If IPython isn't available, do nothing (no error).
+    If IPython isn't available, do nothing.
     """
-    if not can_rich_display_latex():
+    if not is_rich_displaying_available():
         return
+
     font_links = """
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Press+Start+2P&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <style>
@@ -529,7 +516,10 @@ def load_fonts():
     }
     </style>
     """
-    _nb_display_html(font_links)
+    try:
+        _nb_display_html(font_links)
+    except Exception:
+        pass
 
 
 def dgcv_init_printing(minimal_scope: bool = False, *args, **kwargs):
