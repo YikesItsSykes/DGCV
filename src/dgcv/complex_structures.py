@@ -1,548 +1,469 @@
 """
-dgcv: Differential Geometry with Complex Variables
+package: dgcv - Differential Geometry with Complex Variables
+module: complex_structures
 
-This module provides tools uniquely relevant for complex differential geometry within the dgcv package. It includes Dolbeault operators (Del and DelBar) and a class for constructing and analyzing Kähler structures.
+Description: This module provides tools uniquely relevant for complex differential geometry within the dgcv package. It includes Dolbeault operators (Del and DelBar) and a class for constructing and analyzing Kähler structures.
 
 Key Functions:
     - Del(): Applies the holomorphic Dolbeault operator ∂ to a differential form or scalar.
     - DelBar(): Applies the antiholomorphic Dolbeault operator ∂̅ to a differential form or scalar.
 
 Key Classes:
-    - KahlerStructure: Represents a Kähler structure, with properties and attributes to compute many of their invariants. 
+    - KahlerStructure: Represents a Kähler structure, with properties and attributes to compute many of their invariants.
 
-Author: David Sykes (https://github.com/YikesItsSykes)
-
-Dependencies:
-    - sympy
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
 
 License:
     MIT License
 """
 
-############## dependencies
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
+from __future__ import annotations
 
-import warnings
+from typing import Any, Dict, List, Literal, Sequence, Tuple
 
-import sympy as sp
-
-from ._config import get_variable_registry
-from .backends._caches import _get_expr_num_types
+from ._safeguards import get_dgcv_category, query_dgcv_categories, retrieve_passkey
+from .backends._symbolic_router import get_free_symbols, simplify
+from .backends._types_and_constants import expr_numeric_types, rational
+from .base import dgcv_class
+from .conversions import allToReal, allToSym
 from .dgcv_core import (
-    DFClass,
-    STFClass,
-    addDF,
-    allToSym,
-    changeDFBasis,
     complex_struct_op,
-    realToSym,
-    symToReal,
-    tensorField,
+    differential_form_class,
+    tensor_field_class,
 )
 from .Riemannian_geometry import metricClass
-from .vector_fields_and_differential_forms import exteriorDerivative, makeZeroForm
+from .vector_fields_and_differential_forms import (
+    _prep_symb_set_for_ext_der,
+    exteriorDerivative,
+    makeZeroForm,
+)
+from .vmf import vmf_lookup
 
-############## Dolbeault operators
+
+# -----------------------------------------------------------------------------
+# Dolbeault operators
+# -----------------------------------------------------------------------------
+def _dolbeault_relevant_atoms(form, *, want: str):
+    rv = get_free_symbols(form)
+    if rv:
+        params = getattr(form, "parameters", None)
+        if params:
+            rv = set(rv) - set(params)
+    else:
+        rv = set()
+
+    rel = _prep_symb_set_for_ext_der(rv)
+
+    picked = {}
+    for syslbl, sysreg in rel.items():
+        for atom, pair in sysreg.items():
+            if not isinstance(pair, tuple) or len(pair) < 2:
+                continue
+            h, a = pair[0], pair[1]
+            if want == "holo":
+                target = h
+            elif want == "anti":
+                target = a
+            else:
+                raise ValueError("want must be 'holo' or 'anti'")
+            if target is None:
+                continue
+            picked[target] = True
+
+    if not picked:
+        return tuple()
+
+    bad = []
+    out = []
+    for atom in picked.keys():
+        info = vmf_lookup(atom, relatives=False)
+        if info.get("type") != "coordinate":
+            continue
+        st = info.get("sub_type")
+        if st == "standard":
+            bad.append(atom)
+            continue
+        out.append(atom)
+
+    if bad:
+        raise TypeError(
+            "`Del`/`DelBar` require complex coordinates registered in the VMF (holo/anti/real/imag). "
+            "Suggestion: initialize complex coordinate systems with `createVariables(..., complex=True)`."
+        )
+
+    return tuple(out)
 
 
 def Del(arg1):
-    """
-    Applies the holomorphic Dolbeault operator ∂ (Del) to a differential form or scalar.
-
-    The Del operator takes a differential form or scalar and returns the result of applying the
-    exterior derivative with respect to the holomorphic coordinates.
-
-    Parameters:
-    -----------
-    arg1 : DFClass or sympy.Expr
-        A differential form (DFClass) with dgcvType='complex', or a scalar (interpreted as a zero-form).
-
-    Returns:
-    --------
-    DFClass
-        The result of applying the Del operator, which is a differential form.
-
-    Raises:
-    -------
-    TypeError
-        If the input is not a DFClass or scalar (sympy.Expr), or if the DFClass has dgcvType='standard'.
-    """
-    variable_registry = get_variable_registry()
-    # Ensure arg1 is a DFClass or convert it into a zero-form
-    if not isinstance(arg1, DFClass) and isinstance(arg1, _get_expr_num_types()):
-        arg1 = allToSym(arg1)
-        varSpace = tuple(
-            [
-                j
-                for j in sp.sympify(arg1).free_symbols
-                if variable_registry["conversion_dictionaries"]["symToReal"]
-            ]
-        )
-        intermediateDF = makeZeroForm(
-            arg1, varSpace=varSpace, dgcvType="complex", default_var_format="complex"
-        )
-        arg1 = makeZeroForm(
-            arg1,
-            intermediateDF.compVarSpace,
-            dgcvType="complex",
-            default_var_format="complex",
-        )
-
-    elif isinstance(arg1, DFClass):
-        if arg1.dgcvType == "standard":
-            raise TypeError(
-                "`Del` only operates on DFClass differential forms with dgcvType='complex' (and scalars like sympy.Expr, which it interprets as 0-forms). Tip: set 'complex=True' in the `createVariables` variable creation function to initialize a coframe with `dgcvType='complex'.`"
-            )
+    obj = arg1
+    if get_dgcv_category(obj) != "tensor_field":
+        if isinstance(obj, expr_numeric_types()):
+            obj = makeZeroForm(obj, dgcvType="complex")
         else:
-            arg1 = realToSym(symToReal(arg1))
-    else:
-        raise TypeError(
-            "`Del` only operate on differential forms, DFClass (and scalars like sympy.Expr, which it interprets as 0-forms)."
-        )
+            raise TypeError("`Del` expects a differential form or scalar expression.")
 
-    # Helper function to compute the exterior derivative of a zero-form
-    def DelOfZeroForm(arg1):
-        HVSpace = arg1.holVarSpace
-        sparseDataLoc = {
-            (j,): sp.diff(allToSym(arg1.coeffsInKFormBasis[0]), HVSpace[j])
-            for j in range(len(HVSpace))
-        }
-        return DFClass(arg1.varSpace, sparseDataLoc, 1, dgcvType="complex")
+    if not query_dgcv_categories(obj, {"differential_form"}):
+        raise TypeError("`Del` expects a differential form or scalar expression.")
 
-    # Handle zero-forms
-    if arg1.degree == 0:
-        return DelOfZeroForm(arg1)
+    form = obj
+    atoms = _dolbeault_relevant_atoms(form, want="holo")
 
-    # Handle higher-degree forms
-    minDataLoc = arg1.DFClassDataMinimal
-    coeffsTo1Forms = [
-        DelOfZeroForm(makeZeroForm(j[1], varSpace=arg1.varSpace, dgcvType="complex"))
-        for j in minDataLoc
-    ]
-    # Construct the corresponding basis k-forms
-    basisOfCoeffs = [
-        DFClass(arg1.varSpace, {tuple(j[0]): 1}, arg1.degree, dgcvType="complex")
-        for j in minDataLoc
-    ]
-    # Multiply the one-forms by the basis and sum them
-    return addDF(
-        *[coeffsTo1Forms[j] * basisOfCoeffs[j] for j in range(len(minDataLoc))]
-    )
+    accumulation = 0
+    for atom in atoms:
+        ds = vmf_lookup(atom, differential_system=True).get("differential_system")
+        if ds is None:
+            continue
+        vf = ds.get("vf")
+        df = ds.get("df")
+        if vf is None or df is None:
+            continue
+        accumulation = accumulation + df * (form.apply(vf))
+
+    return accumulation
 
 
 def DelBar(arg1):
-    """
-    Applies the antiholomorphic Dolbeault operator ∂̅ (DelBar) to a differential form or scalar.
-
-    The DelBar operator takes a differential form or scalar and returns the result of applying the
-    exterior derivative with respect to the antiholomorphic coordinates.
-
-    Parameters:
-    -----------
-    arg1 : DFClass or sympy.Expr
-        A differential form (DFClass) with dgcvType='complex', or a scalar (interpreted as a zero-form).
-
-    Returns:
-    --------
-    DFClass
-        The result of applying the DelBar operator, which is a differential form.
-
-    Raises:
-    -------
-    TypeError
-        If the input is not a DFClass or scalar (sympy.Expr), or if the DFClass has dgcvType='standard'.
-    """
-    variable_registry = get_variable_registry()
-    # Ensure arg1 is a DFClass or convert it into a zero-form
-    if not isinstance(arg1, DFClass) and isinstance(arg1, _get_expr_num_types()):
-        arg1 = allToSym(arg1)
-        varSpace = tuple(
-            [
-                j
-                for j in sp.sympify(arg1).free_symbols
-                if variable_registry["conversion_dictionaries"]["symToReal"]
-            ]
-        )
-        intermediateDF = makeZeroForm(
-            arg1, varSpace=varSpace, dgcvType="complex", default_var_format="complex"
-        )
-        arg1 = makeZeroForm(
-            arg1,
-            intermediateDF.compVarSpace,
-            dgcvType="complex",
-            default_var_format="complex",
-        )
-
-    if isinstance(arg1, DFClass):
-        if arg1.dgcvType == "standard":
-            raise TypeError(
-                "`DelBar` only operates on DFClass differential forms with dgcvType='complex' (and scalars like sympy.Expr, which it interprets as 0-forms). Tip: set 'complex=True' in the `createVariables` variable creation function to initialize a coframe with `dgcvType='complex'.`"
-            )
-        else:
-            arg1 = allToSym(symToReal(arg1))
-    else:
-        raise TypeError(
-            "`DelBar` only operate on differential forms, DFClass (and scalars like sympy.Expr, which it interprets as 0-forms)."
-        )
-
-    # Helper function to compute the exterior derivative of a zero-form
-    def DelBarOfZeroForm(arg1):
-        AHVspace = arg1.antiholVarSpace
-        CDim = len(AHVspace)
-        sparseDataLoc = {
-            (j + CDim,): sp.diff(allToSym(arg1.coeffsInKFormBasis[0]), AHVspace[j])
-            for j in range(CDim)
-        }
-        return DFClass(arg1.varSpace, sparseDataLoc, 1, dgcvType="complex")
-
-    # Handle zero-forms
-    if arg1.degree == 0:
-        return DelBarOfZeroForm(arg1)
-
-    # Handle higher-degree forms
-    minDataLoc = arg1.DFClassDataMinimal
-    coeffsTo1Forms = [
-        DelBarOfZeroForm(makeZeroForm(j[1], varSpace=arg1.varSpace, dgcvType="complex"))
-        for j in minDataLoc
-    ]
-    # Construct the corresponding basis k-forms
-    basisOfCoeffs = [
-        DFClass(arg1.varSpace, {tuple(j[0]): 1}, arg1.degree, dgcvType="complex")
-        for j in minDataLoc
-    ]
-
-    # Multiply the one-forms by the basis and sum them
-    return addDF(
-        *[coeffsTo1Forms[j] * basisOfCoeffs[j] for j in range(len(minDataLoc))]
-    )
-
-
-############## Kahler geometry
-
-
-class KahlerStructure(sp.Basic):
-    r"""
-    Represents a Kähler structure, including its metric, , and Bochner tensor.
-
-    The Kähler structure is defined by a symplectic form (Kähler form) and a coordinate space. The class
-    provides methods to compute various geometric objects associated with Kähler manifolds, including the
-    its metric, Holomorphic Riemann and Ricci Curvatures, and the Bochner tensor.
-
-    Parameters:
-    -----------
-    varSpace : tuple of sympy.Symbol
-        A tuple of variables from dgcv's complex coordinate systems representing the coordinate space of the manifold.
-    kahlerForm : DFClass
-        A Kähler form representing the symplectic structure.
-
-    Attributes:
-    -----------
-    metric : metricClass
-        The Riemannian metric associated with the Kähler structure.
-    holRiemann : TFClass
-        The (0,4) Riemann curvature tensor with the complex structure operator hooked into it second and fourth positions.
-    holRicci : TFClass
-        The Ricci curvature tensor with the complex structure operator hooked into its second position
-    Bochner : TFClass
-        The Bochner tensor in \( T^{1,0}M \otimes T^{0,1}M \otimes T^{1,0}M \otimes T^{0,1}M \).
-
-    Raises:
-    -------
-    TypeError
-        If the variable space includes a mixture of real and holomorphic coordinates.
-    """
-
-    def __new__(cls, varSpace, kahlerForm):
-        # Call Basic.__new__ with only the positional arguments
-        obj = sp.Basic.__new__(cls, varSpace, kahlerForm)
-        return obj
-
-    def __init__(self, varSpace, kahlerForm):
-        variable_registry = get_variable_registry()
-        if all(
-            var in variable_registry["conversion_dictionaries"]["realToSym"]
-            for var in varSpace
-        ):
-            self._varSpace_type = "real"
-        elif all(
-            var in variable_registry["conversion_dictionaries"]["symToReal"]
-            for var in varSpace
-        ):
-            self._varSpace_type = "complex"
+    obj = arg1
+    if get_dgcv_category(obj) != "tensor_field":
+        if isinstance(obj, expr_numeric_types()):
+            obj = makeZeroForm(obj, dgcvType="complex")
         else:
             raise TypeError(
-                "The variable space given to the Kahler structure initialer has a mixture of real and holomorphic coordinates, which is not a supported data format."
+                "`DelBar` expects a differential form or scalar expression."
             )
-        variableSpaces = KahlerStructure.validate(varSpace)
-        self.realVarSpace = variableSpaces[0]
-        self.compVarSpace = variableSpaces[1] + variableSpaces[2]
-        self.holVarSpace = variableSpaces[1]
-        self.antiholVarSpace = variableSpaces[2]
-        if self._varSpace_type == "real":
-            self.varSpace = self.realVarSpace
-        else:
-            self.varSpace = self.compVarSpace
-        self.kahlerForm = changeDFBasis(kahlerForm, self.varSpace)
-        VFBasis = []
-        for var in self.varSpace:
-            varStr = str(var)
-            for parent in variable_registry["complex_variable_systems"]:
-                if (
-                    varStr
-                    in variable_registry["complex_variable_systems"][parent][
-                        "variable_relatives"
-                    ]
-                ):
-                    VFBasis = VFBasis + [
-                        variable_registry["complex_variable_systems"][parent][
-                            "variable_relatives"
-                        ][varStr]["VFClass"]
-                    ]
-        self.coor_frame = VFBasis
-        if self._varSpace_type == "real":
-            self.coor_frame_real = self.coor_frame
-            VFBasisHol = []
-            for var in self.compVarSpace:
-                varStr = str(var)
-                for parent in variable_registry["complex_variable_systems"]:
-                    if (
-                        varStr
-                        in variable_registry["complex_variable_systems"][parent][
-                            "variable_relatives"
-                        ]
-                    ):
-                        VFBasisHol = VFBasisHol + [
-                            variable_registry["complex_variable_systems"][parent][
-                                "variable_relatives"
-                            ][varStr]["VFClass"]
-                        ]
-            self.coor_frame_complex = VFBasisHol
-        else:
-            self.coor_frame_complex = self.coor_frame
-            VFBasisReal = []
-            for var in self.compVarSpace:
-                varStr = str(var)
-                for parent in variable_registry["complex_variable_systems"]:
-                    if (
-                        varStr
-                        in variable_registry["complex_variable_systems"][parent][
-                            "variable_relatives"
-                        ]
-                    ):
-                        VFBasisReal = VFBasisReal + [
-                            variable_registry["complex_variable_systems"][parent][
-                                "variable_relatives"
-                            ][varStr]["VFClass"]
-                        ]
-            self.coor_frame_real = VFBasisReal
 
-        self._metric = None
+    if not query_dgcv_categories(obj, {"differential_form"}):
+        raise TypeError("`DelBar` expects a differential form or scalar expression.")
+
+    form = obj
+    atoms = _dolbeault_relevant_atoms(form, want="anti")
+
+    accumulation = 0
+    for atom in atoms:
+        ds = vmf_lookup(atom, differential_system=True).get("differential_system")
+        if ds is None:
+            continue
+        vf = ds.get("vf")
+        df = ds.get("df")
+        if vf is None or df is None:
+            continue
+        accumulation = accumulation + df * (form.apply(vf))
+
+    return accumulation
+
+
+# -----------------------------------------------------------------------------
+# Kahler geometry
+# -----------------------------------------------------------------------------
+def _as_tuple(x: Any) -> Tuple[Any, ...]:
+    if x is None:
+        return tuple()
+    if isinstance(x, tuple):
+        return x
+    if isinstance(x, (list, set)):
+        return tuple(x)
+    return (x,)
+
+
+def _coerce_manual_varSpace_holo_only(varSpace: Sequence[Any]) -> Tuple[Any, ...]:
+    vs = tuple(varSpace)
+    if len(vs) != len(set(vs)):
+        raise TypeError("varSpace must have distinct variables (no duplicates).")
+
+    out: List[Any] = []
+    for v in vs:
+        info = vmf_lookup(v, relatives=True)
+        if info.get("type") != "coordinate":
+            raise TypeError("varSpace entries must be VMF-registered coordinates.")
+        rel = info.get("relatives") or {}
+        holo = _as_tuple(rel.get("holo"))
+        if not (len(holo) == 1 and holo[0] == v):
+            raise TypeError(
+                "Manual varSpace must consist only of holomorphic coordinates from dgcv complex systems."
+            )
+        out.append(v)
+    return tuple(out)
+
+
+def _expand_holo_varSpace(
+    holo_vs: Sequence[Any],
+    *,
+    formatting: Literal["complex", "real"],
+) -> Tuple[Any, ...]:
+    first: List[Any] = []
+    second: List[Any] = []
+
+    for v in holo_vs:
+        info = vmf_lookup(v, relatives=True)
+        if info.get("type") != "coordinate":
+            raise TypeError("varSpace entries must be VMF-registered coordinates.")
+        rel = info.get("relatives") or {}
+
+        holo = _as_tuple(rel.get("holo"))
+        anti = _as_tuple(rel.get("anti"))
+        real = _as_tuple(rel.get("real"))
+        imag = _as_tuple(rel.get("imag"))
+
+        if not (len(holo) == 1 and holo[0] == v):
+            raise TypeError(
+                "Manual varSpace must consist only of holomorphic coordinates from dgcv complex systems."
+            )
+
+        if formatting == "complex":
+            if len(anti) != 1 or anti[0] is None:
+                raise TypeError("Could not resolve antiholomorphic partner from VMF.")
+            first.append(holo[0])
+            second.append(anti[0])
+        else:
+            if len(real) != 1 or len(imag) != 1 or real[0] is None or imag[0] is None:
+                raise TypeError("Could not resolve real/imag partners from VMF.")
+            first.append(real[0])
+            second.append(imag[0])
+
+    out = tuple(first + second)
+    if len(out) != len(set(out)):
+        raise TypeError("Manual varSpace expansion produced duplicates.")
+    return out
+
+
+class KahlerStructure(dgcv_class):
+    def __init__(
+        self,
+        Kahler_form: differential_form_class,
+        *,
+        varSpace: None | Sequence[Any] = None,
+        variable_inference_behavior: Literal["max", "min"] = "min",
+        formatting: Literal["complex", "real"] = "complex",
+    ):
+        if not query_dgcv_categories(Kahler_form, {"differential_form"}):
+            raise TypeError(
+                "KahlerStructure expects a dgcv differential_form_class object."
+            )
+
+        if formatting == "real":
+            omega = allToReal(Kahler_form)
+        elif formatting == "complex":
+            omega = allToSym(Kahler_form)
+        else:
+            raise TypeError("formatting must be 'complex' or 'real'.")
+
+        if variable_inference_behavior not in ("max", "min"):
+            raise TypeError("variable_inference_behavior must be 'min' or 'max'.")
+
+        if varSpace is None:
+            if variable_inference_behavior == "min":
+                min_any = tuple(omega.infer_minimal_varSpace())
+            else:
+                min_any = tuple(omega.infer_varSpace(formatting="any"))
+
+            if not min_any:
+                raise TypeError(
+                    "KahlerStructure could not determine a nonempty varSpace."
+                )
+
+            vs_complex = tuple(omega.infer_varSpace(formatting="complex"))
+            vs_real = tuple(omega.infer_varSpace(formatting="real"))
+        else:
+            holo_only = _coerce_manual_varSpace_holo_only(varSpace)
+            vs_complex = _expand_holo_varSpace(holo_only, formatting="complex")
+            vs_real = _expand_holo_varSpace(holo_only, formatting="real")
+            min_any = tuple(omega.infer_minimal_varSpace())
+
+        if formatting == "complex":
+            self.varSpace = tuple(vs_complex)
+            want_fmt = "complex"
+        else:
+            self.varSpace = tuple(vs_real)
+            want_fmt = "real"
+
+        if not self.varSpace:
+            raise TypeError(
+                "KahlerStructure could not determine a nonempty expanded varSpace."
+            )
+
+        min_any_set = set(min_any)
+        bad = [v for v in self.varSpace if v not in min_any_set]
+        if bad:
+            raise TypeError(
+                "KahlerStructure varSpace contains variables not present in the (converted) Kahler form."
+            )
+
+        self.kahlerForm = omega
+        self.formatting = formatting
+        self.variable_inference_behavior = variable_inference_behavior
+        self._varSpace_type = want_fmt
+
+        vs_sorted_r, vs_map_r = omega.infer_varSpace(
+            formatting="real", return_dict=True
+        )
+        vs_sorted_c, vs_map_c = omega.infer_varSpace(
+            formatting="complex", return_dict=True
+        )
+
+        self.varSpace_real = tuple(vs_sorted_r)
+        self.varSpace_complex = tuple(vs_sorted_c)
+        self._vs_map_real = dict(vs_map_r)
+        self._vs_map_complex = dict(vs_map_c)
+
+        self._vf_cache: Dict[Any, Any] = {}
+        for v in set(self.varSpace_real) | set(self.varSpace_complex):
+            self._vf_cache[v] = self._vf_from_coord(v)
+
+        self.coor_frame = tuple(self._vf_cache[v] for v in self.varSpace)
+        self.coor_frame_complex = tuple(
+            self._vf_cache[v] for v in self.varSpace_complex
+        )
+
+        use_map = self._vs_map_complex if formatting == "complex" else self._vs_map_real
+
+        metric_cd: Dict[Tuple[Any, ...], Any] = {}
+        half = rational(1, 2)
+        for vi, vf_i in zip(self.varSpace, self.coor_frame):
+            sys_i, idx_i = use_map[vi]
+            for vj, vf_j in zip(self.varSpace, self.coor_frame):
+                sys_j, idx_j = use_map[vj]
+                val = half * self.kahlerForm(vf_i, complex_struct_op(vf_j))
+                if not val:
+                    continue
+
+                k = (idx_i, idx_j, 0, 0, sys_i, sys_j)
+                ks = (idx_j, idx_i, 0, 0, sys_j, sys_i)
+
+                if ks in metric_cd:
+                    metric_cd[ks] = metric_cd.get(ks, 0) + val
+                else:
+                    metric_cd[k] = metric_cd.get(k, 0) + val
+
+        metric_tf = tensor_field_class(
+            coeff_dict=metric_cd if metric_cd else {tuple(): 0},
+            data_shape="symmetric",
+            dgcvType="complex" if formatting == "complex" else "standard",
+            variable_spaces=getattr(self.kahlerForm, "_variable_spaces", None),
+            parameters=getattr(self.kahlerForm, "parameters", set()),
+        )
+
+        self.metric = metricClass(
+            metric_tf,
+            varSpace=self.varSpace,
+            variable_inference_behavior=variable_inference_behavior,
+            formatting=formatting,
+        )
+
         self._is_closed = None
-        self._holRiemann = None  # holomorphic Riemann tensor
-        self._holRicci = None  # holomorphic Ricci tensor
-        self._Bochner = None  # Bochner tensor
+        self._holRiemann = None
+        self._holRicci = None
+        self._Bochner = None
+
+        self._dgcv_class_check = retrieve_passkey()
+        self._dgcv_category = "kahler_structure"
 
     @staticmethod
-    def validate(varSpace):  # validates and organizes given varspace
-        """
-        Validates and organizes a given variable space into real, holomorphic, and antiholomorphic components.
-
-        This method checks the input variable space and categorizes the variables into real, holomorphic,
-        and antiholomorphic components, based on the relationships between the variables.
-
-        Parameters:
-        -----------
-        varSpace : tuple of sympy.Symbol
-            A tuple of complex variables representing the coordinate space.
-
-        Returns:
-        --------
-        list of tuples
-            A list containing the real and imaginary variable spaces, holomorphic variable space, and
-            antiholomorphic variable space.
-        """
-        variable_registry = get_variable_registry()
-        CVS = variable_registry["complex_variable_systems"]
-        if all(
-            var in variable_registry["conversion_dictionaries"]["realToSym"]
-            for var in varSpace
-        ):
-            _varSpace_type = "real"
-        elif all(
-            var in variable_registry["conversion_dictionaries"]["symToReal"]
-            for var in varSpace
-        ):
-            _varSpace_type = "complex"
-
-        exhaust1 = list(varSpace)
-        populate = {
-            "holVarDict": dict(),
-            "antiholVarDict": dict(),
-            "realVarDict": dict(),
-            "imVarDict": dict(),
-        }
-        if _varSpace_type == "real":
-            for var in varSpace:
-                varStr = str(var)
-                if var in exhaust1:
-                    for parent in CVS.values():
-                        if varStr in parent["variable_relatives"]:
-                            cousin = (
-                                set(
-                                    parent["variable_relatives"][varStr][
-                                        "complex_family"
-                                    ][2:]
-                                )
-                                - {var}
-                            ).pop()
-                            if cousin in exhaust1:
-                                exhaust1.remove(cousin)
-                            if (
-                                parent["variable_relatives"][varStr][
-                                    "complex_positioning"
-                                ]
-                                == "real"
-                            ):
-                                realVar = var
-                                exhaust1.remove(var)
-                                imVar = cousin
-                            else:
-                                realVar = cousin
-                                exhaust1.remove(var)
-                                imVar = var
-                            holVar = parent["variable_relatives"][varStr][
-                                "complex_family"
-                            ][0]
-                            antiholVar = parent["variable_relatives"][varStr][
-                                "complex_family"
-                            ][1]
-                            populate["holVarDict"][holVar] = [realVar, imVar]
-                            populate["antiholVarDict"][antiholVar] = [realVar, imVar]
-                            populate["realVarDict"][realVar] = [holVar, antiholVar]
-                            populate["imVarDict"][imVar] = [holVar, antiholVar]
-        else:  # self._varSpace_type == 'complex'
-            for var in varSpace:
-                varStr = str(var)
-                if var in exhaust1:
-                    for parent in CVS.values():
-                        if varStr in parent["variable_relatives"]:
-                            cousin = (
-                                set(
-                                    parent["variable_relatives"][varStr][
-                                        "complex_family"
-                                    ][:2]
-                                )
-                                - {var}
-                            ).pop()
-                            if cousin in exhaust1:
-                                exhaust1.remove(cousin)
-                            if (
-                                parent["variable_relatives"][varStr][
-                                    "complex_positioning"
-                                ]
-                                == "holomorphic"
-                            ):
-                                holVar = var
-                                exhaust1.remove(var)
-                                antiholVar = cousin
-                            else:
-                                holVar = cousin
-                                exhaust1.remove(var)
-                                antiholVar = var
-                            realVar = parent["variable_relatives"][varStr][
-                                "complex_family"
-                            ][2]
-                            imVar = parent["variable_relatives"][varStr][
-                                "complex_family"
-                            ][3]
-                            populate["holVarDict"][holVar] = [realVar, imVar]
-                            populate["antiholVarDict"][antiholVar] = [realVar, imVar]
-                            populate["realVarDict"][realVar] = [holVar, antiholVar]
-                            populate["imVarDict"][imVar] = [holVar, antiholVar]
-        _realVarSpace = tuple(populate["realVarDict"].keys())
-        _holVarSpace = tuple(populate["holVarDict"].keys())
-        _antiholVarSpace = tuple(populate["antiholVarDict"].keys())
-        _imVarSpace = tuple(populate["imVarDict"].keys())
-
-        return [_realVarSpace + _imVarSpace, _holVarSpace, _antiholVarSpace]
+    def _vf_from_coord(a: Any):
+        info = vmf_lookup(a, differential_system=True)
+        ds = info.get("differential_system", None)
+        if not isinstance(ds, dict):
+            raise TypeError(
+                "KahlerStructure requires coordinates registered in VMF with differential objects."
+            )
+        vf = ds.get("vf", None)
+        if vf is None or not query_dgcv_categories(vf, {"vector_field"}):
+            raise TypeError(
+                "KahlerStructure requires coordinates registered in VMF with vector fields."
+            )
+        return vf
 
     @property
-    def metric(self):
-        if self._metric is None:
-            if not self.is_closed:
-                warnings.warn(
-                    "The provided symplectic form does not define a Kahler structure, so the associated metric tensor may not actually describe a metric."
-                )
-
-            coeffData = {
-                (j, k): self.kahlerForm(
-                    self.coor_frame[j], complex_struct_op(self.coor_frame[k])
-                )
-                for j in range(len(self.coor_frame))
-                for k in range(j, len(self.coor_frame))
-            }
-            self._metric = metricClass(
-                STFClass(self.varSpace, coeffData, 2, dgcvType="complex")
+    def is_closed(self):
+        if self._is_closed is None:
+            self._is_closed = bool(
+                getattr(exteriorDerivative(self.kahlerForm), "is_zero", False)
             )
-        return self._metric
+        return self._is_closed
 
     @property
     def holRiemann(self):
-        """
-        The holomorphic Riemann curvature tensor, defined by hooking the complex structure operator into the second and fourth positions of the Kahler structure's metric's (0,4)-type Riemann curvature tensor.
-        """
         if self._holRiemann is None:
-
-            dim = len(self.coor_frame)
+            VFBasis = self.coor_frame_complex
+            dim = len(VFBasis)
             R = self.metric.RiemannCurvature
 
-            VFBasis = self.coor_frame
+            cd: Dict[Tuple[Any, ...], Any] = {}
+            for j in range(dim):
+                vj = self.varSpace_complex[j]
+                sj, ij = self._vs_map_complex[vj]
+                for k in range(dim):
+                    vk = self.varSpace_complex[k]
+                    sk, ik = self._vs_map_complex[vk]
+                    for L in range(dim):
+                        vL = self.varSpace_complex[L]
+                        sL, iL = self._vs_map_complex[vL]
+                        for m in range(dim):
+                            vm = self.varSpace_complex[m]
+                            sm, im = self._vs_map_complex[vm]
+                            val = simplify(
+                                R(
+                                    VFBasis[j],
+                                    complex_struct_op(VFBasis[k]),
+                                    VFBasis[L],
+                                    complex_struct_op(VFBasis[m]),
+                                )
+                            )
+                            if not val:
+                                continue
+                            key = (ij, ik, iL, im, 0, 0, 0, 0, sj, sk, sL, sm)
+                            cd[key] = cd.get(key, 0) + val
 
-            def entry_rule(a, b, c, d):
-                return sp.simplify(R(a, complex_struct_op(b), c, complex_struct_op(d)))
-
-            coeffData = {
-                (j, k, L, m): entry_rule(VFBasis[j], VFBasis[k], VFBasis[L], VFBasis[m])
-                for j in range(dim)
-                for k in range(j, dim)
-                for L in range(dim)
-                for m in range(dim)
-            }
-            self._holRiemann = tensorField(self.varSpace, coeffData, valence=(0,0,0,0), dgcvType="complex")
+            self._holRiemann = tensor_field_class(
+                coeff_dict=cd if cd else {tuple(): 0},
+                data_shape="general",
+                dgcvType="complex",
+                variable_spaces=getattr(
+                    self.metric.SymTensorField, "_variable_spaces", None
+                ),
+                parameters=getattr(self.metric.SymTensorField, "parameters", set()),
+            )
         return self._holRiemann
 
     @property
     def holRicci(self):
-        """
-        The holomorphic Ricci curvature tensor, defined by hooking the complex structure operator into the second position of the Kahler structure's metric's Ricci curvature tensor.
-        """
         if self._holRicci is None:
-
-            dim = len(self.coor_frame)
+            VFBasis = self.coor_frame_complex
+            dim = len(VFBasis)
             Ric = self.metric.RicciTensor
 
-            VFBasis = self.coor_frame
+            cd: Dict[Tuple[Any, ...], Any] = {}
+            for j in range(dim):
+                vj = self.varSpace_complex[j]
+                sj, ij = self._vs_map_complex[vj]
+                for k in range(dim):
+                    vk = self.varSpace_complex[k]
+                    sk, ik = self._vs_map_complex[vk]
+                    val = simplify(Ric(VFBasis[j], complex_struct_op(VFBasis[k])))
+                    if not val:
+                        continue
+                    key = (ij, ik, 0, 0, sj, sk)
+                    cd[key] = cd.get(key, 0) + val
 
-            def entry_rule(a, b):
-                return sp.simplify(Ric(a, complex_struct_op(b)))
-
-            coeffData = {
-                (j, k): entry_rule(VFBasis[j], VFBasis[k])
-                for j in range(dim)
-                for k in range(j, dim)
-            }
-            self._holRicci = tensorField(self.varSpace, coeffData, valence=(0,0), dgcvType="complex")
+            self._holRicci = tensor_field_class(
+                coeff_dict=cd if cd else {tuple(): 0},
+                data_shape="general",
+                dgcvType="complex",
+                variable_spaces=getattr(
+                    self.metric.SymTensorField, "_variable_spaces", None
+                ),
+                parameters=getattr(self.metric.SymTensorField, "parameters", set()),
+            )
         return self._holRicci
 
     @property
     def Bochner(self):
-        r"""
-        The Bochner curvature tensor in $T^{1,0}M\otimes T^{0,1}M\otimes T^{1,0}M\otimes T^{0,1}M$.
-        """
         if self._Bochner is None:
-
             VFBasis = self.coor_frame_complex
             dim = len(VFBasis)
-            compDim = int(sp.Rational(dim, 2))
+            compDim = int(rational(dim, 2))
 
             g = self.metric.SymTensorField
             R = self.metric.RiemannCurvature
@@ -551,7 +472,7 @@ class KahlerStructure(sp.Basic):
 
             def entry_rule(j, h, L, k):
                 term1 = R(j, h, L, k)
-                term2 = sp.Rational(1, compDim + 2) * (
+                term2 = rational(1, compDim + 2) * (
                     (g(j, k)) * (Ric(L, h))
                     + (g(L, k)) * (Ric(j, h))
                     + (g(L, h)) * (Ric(j, k))
@@ -559,34 +480,47 @@ class KahlerStructure(sp.Basic):
                 )
                 term3 = (
                     S
-                    * sp.Rational(1, 2 * (compDim + 1) * (compDim + 2))
+                    * rational(1, 2 * (compDim + 1) * (compDim + 2))
                     * (g(L, h) * g(j, k) + g(j, h) * g(L, k))
                 )
-                return sp.simplify(term1 + term2 - term3)
+                return simplify(term1 + term2 - term3)
 
-            coeffData = {
-                (j, k, L, m): entry_rule(VFBasis[j], VFBasis[k], VFBasis[L], VFBasis[m])
-                for j in range(compDim)
-                for k in range(compDim, dim)
-                for L in range(compDim)
-                for m in range(compDim, dim)
-            }
-            self._Bochner = tensorField(
-                self.varSpace,
-                coeffData,
-                valence=(0,0,0,0),
+            cd: Dict[Tuple[Any, ...], Any] = {}
+            for j in range(compDim):
+                vj = self.varSpace_complex[j]
+                sj, ij = self._vs_map_complex[vj]  # system name, index from vj
+                for k in range(compDim, dim):
+                    vk = self.varSpace_complex[k]
+                    sk, ik = self._vs_map_complex[vk]  # system name, index from vk
+                    for L in range(compDim):
+                        vL = self.varSpace_complex[L]
+                        sL, iL = self._vs_map_complex[vL]  # system name, index from vL
+                        for m in range(compDim, dim):
+                            vm = self.varSpace_complex[m]
+                            sm, im = self._vs_map_complex[
+                                vm
+                            ]  # system name, index from vm
+
+                            val = entry_rule(
+                                VFBasis[j], VFBasis[k], VFBasis[L], VFBasis[m]
+                            )
+                            if val == 0:
+                                continue
+                            key = (ij, ik, iL, im, 0, 0, 0, 0, sj, sk, sL, sm)
+                            cd[key] = cd.get(key, 0) + val
+
+            self._Bochner = tensor_field_class(
+                coeff_dict=cd if cd else {tuple(): 0},
+                data_shape="general",
                 dgcvType="complex",
                 _simplifyKW={
                     "simplify_rule": None,
                     "simplify_ignore_list": None,
                     "preferred_basis_element": (0, compDim, 0, compDim),
                 },
+                variable_spaces=getattr(
+                    self.metric.SymTensorField, "_variable_spaces", None
+                ),
+                parameters=getattr(self.metric.SymTensorField, "parameters", set()),
             )
-
         return self._Bochner
-
-    @property
-    def is_closed(self):
-        if self._is_closed is None:
-            self._is_closed = exteriorDerivative(self.kahlerForm).is_zero
-        return self._is_closed

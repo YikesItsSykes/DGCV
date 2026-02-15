@@ -1,20 +1,31 @@
 """
-dgcv: Differential Geometry with Complex Variables
+package: dgcv - Differential Geometry with Complex Variables
+module: combinatorics
 
-This module provides various combinatorial functions used throughout the dgcv package, 
-primarily focusing on efficient computation of Cartesian products, permutations, and 
+description: This module provides various combinatorial functions used throughout the dgcv package,
+primarily focusing on efficient computation of Cartesian products, permutations, and
 related operations. These functions are tuned for specialized backend dgcv tasks and not intended for general use otherwise.
+
+
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
+
+License:
+    MIT License
 """
 
-############## dependencies
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
 import numbers
 from functools import lru_cache
 from math import gcd
 
-from sympy import MutableDenseNDimArray
+__all__ = ["carProd", "chooseOp", "permSign", "weightedPermSign", "shufflings"]
 
 
-############## general combinatorics
+# -----------------------------------------------------------------------------
+# general combinatorics
+# -----------------------------------------------------------------------------
 def carProd(*args):
     """
     Compute the Cartesian product of a variable number of lists.
@@ -43,6 +54,7 @@ def carProd(*args):
         for j in range(1, len(args)):
             resultLoc = carProdTwo(resultLoc, args[j])
         return resultLoc
+
 
 def carProd_with_weights_without_R(*args):
     """
@@ -73,6 +85,7 @@ def carProd_with_weights_without_R(*args):
             resultLoc = prodOfTwo(resultLoc, list(args[j + 1]))
         return resultLoc
 
+
 def carProdWithOrder(*args):
     """
     Compute the Cartesian product of lists, excluding permutations.
@@ -101,6 +114,7 @@ def carProdWithOrder(*args):
         if sorted_combo not in seen:
             seen.add(sorted_combo)
             yield sorted_combo
+
 
 def carProdWithoutRepl(*args):
     """
@@ -136,6 +150,7 @@ def carProdWithoutRepl(*args):
         If any of the input arguments are not iterable.
     """
     return (j for j in carProd(*args) if len(set(j)) == len(j))
+
 
 def carProdWithOrderWithoutRepl(*args):
     """
@@ -185,6 +200,7 @@ def carProdWithOrderWithoutRepl(*args):
                 seen.add(sorted_combo)
                 yield sorted_combo
 
+
 def chooseOp(
     arg1, arg2, withOrder=False, withoutReplacement=False, restrictHomogeneity=None
 ):
@@ -232,7 +248,7 @@ def chooseOp(
     TypeError
         If the arguments are not in the correct format.
     """
-    if arg2==0:
+    if arg2 == 0:
         return (0 for _ in range(0))
     arg1 = [list(arg1)]
 
@@ -253,6 +269,7 @@ def chooseOp(
         return (j for j in resultLoc if sum(j) == restrictHomogeneity)
     else:
         return resultLoc
+
 
 def split_number(n, nums=[1]):
     if n < 0 or not nums or any(x <= 0 for x in nums):
@@ -301,29 +318,32 @@ def split_number(n, nums=[1]):
         out_final.append(a)
     return out_final
 
-def permSign(arg1, returnSorted=False, **kwargs):
-    """
-    Compute the signature of a permutation of list of integers, and sort it.
 
-    Computation is based on the *merge-sort* algorithm described here:
+def permSign(sortable, returnSorted=False, key=None, **kwargs):
+    """
+    Compute the signature (sign) of a permutation and, optionally, return the sorted list.
+
+    The computation uses a merge-sort inversion count:
     https://en.wikipedia.org/wiki/Merge_sort
 
-    The signature (or sign) of a permutation is 1 if the permutation is even,
-    and -1 if the permutation is odd.
+    The signature is 1 for even permutations and -1 for odd permutations.
 
     Parameters
     ----------
-    arg1 : list
-        A list containing a permutation of sortable elements
-    
+    sortable : list
+        A list containing a permutation of sortable elements.
+
     returnSorted : bool (optional), default is False
-        If true, the sorted list is also returned
+        If True, also return the sorted list.
+
+    key : callable (optional), default is None
+        A key function used for comparisons, like in Python's `sorted(..., key=key)`.
 
     Returns
     -------
-    int (or (int,list) if returnSorted==True)
-        The signature of the permutation, either 1 (even permutation) or -1 (odd permutation).
-        If returnSorted==True then (sign, sorted_list) is returned
+    int (or (int, list) if returnSorted is True)
+        The signature of the permutation, either 1 (even) or -1 (odd).
+        If returnSorted is True, returns (sign, sorted_list).
     """
 
     def merge_sort(permutation):
@@ -352,7 +372,7 @@ def permSign(arg1, returnSorted=False, **kwargs):
     def merge_and_count(left, right):
         # we'll build the sorted merge in a list
         merged = []
-        # and count the number of swaps performed as we build it 
+        # and count the number of swaps performed as we build it
         # (starting with parity = 0)
         parity = 0
 
@@ -362,7 +382,9 @@ def permSign(arg1, returnSorted=False, **kwargs):
         # all elements from one list are pulled into merged.
         i = j = 0
         while i < len(left) and j < len(right):
-            if left[i] <= right[j]:
+            li = key(left[i]) if key else left[i]
+            rj = key(right[j]) if key else right[j]
+            if li <= rj:
                 merged.append(left[i])
                 i += 1
             else:
@@ -371,18 +393,17 @@ def permSign(arg1, returnSorted=False, **kwargs):
                 # pulling in the leading element from the right list
                 # requires swapping it with the remaining elements in the
                 # left list. Upate parity accordingly
-                parity += (len(left) - i)
+                parity += len(left) - i
 
-        # one of the sublists may not have been exhaust, so add what 
+        # one of the sublists may not have been exhaust, so add what
         # remains to the end of the merged list.
         merged.extend(left[i:])
         merged.extend(right[j:])
 
         return merged, parity
 
-
     # Count inversions in the permutation and get the sorted list
-    sorted_list, inversions = merge_sort(arg1)
+    sorted_list, inversions = merge_sort(sortable)
 
     # Compute the sign based on the number of inversions
     sign = 1 if inversions % 2 == 0 else -1
@@ -393,7 +414,10 @@ def permSign(arg1, returnSorted=False, **kwargs):
     else:
         return sign
 
-def weightedPermSign(permutation, weights, returnSorted=False, use_degree_attribute=False):
+
+def weightedPermSign(
+    permutation, weights, returnSorted=False, use_degree_attribute=False
+):
     def merge_sort(permutation, weights):
         # Base case: single element or empty list
         if len(permutation) <= 1:
@@ -408,7 +432,9 @@ def weightedPermSign(permutation, weights, returnSorted=False, use_degree_attrib
 
         # Recursively sort and count parities
         left_sorted, left_weights_sorted, left_parity = merge_sort(left, left_weights)
-        right_sorted, right_weights_sorted, right_parity = merge_sort(right, right_weights)
+        right_sorted, right_weights_sorted, right_parity = merge_sort(
+            right, right_weights
+        )
 
         # Merge sorted parts while counting weighted parity
         merged_list, merged_weights, merge_parity = merge_and_count(
@@ -419,7 +445,6 @@ def weightedPermSign(permutation, weights, returnSorted=False, use_degree_attrib
         sorting_parity = (left_parity + right_parity + merge_parity) % 2
 
         return merged_list, merged_weights, sorting_parity
-
 
     def merge_and_count(left, right, left_weights, right_weights):
         merged = []
@@ -437,7 +462,10 @@ def weightedPermSign(permutation, weights, returnSorted=False, use_degree_attrib
                 merged_weights.append(right_weights[j])
                 # Weighted parity calculation
                 if use_degree_attribute:
-                    parity += (sum([mu.degree for mu in left_weights[i:]]) * (right_weights[j].degree)) % 2
+                    parity += (
+                        sum([mu.degree for mu in left_weights[i:]])
+                        * (right_weights[j].degree)
+                    ) % 2
                 else:
                     parity += (sum(left_weights[i:]) * right_weights[j]) % 2
                 j += 1
@@ -461,12 +489,13 @@ def weightedPermSign(permutation, weights, returnSorted=False, use_degree_attrib
     else:
         return sign
 
+
 def shufflings(list1: list | tuple, list2: list | tuple):
     """
     Yield all order-preserving shufflings of list1 and list2.
 
     This is achieved by recursively building a tree of incrementally longer lists,
-    starting from the empty list []. Each step appends the next unused element 
+    starting from the empty list []. Each step appends the next unused element
     from either list1 or list2, preserving the relative order within each list.
 
     Parameters
@@ -487,6 +516,7 @@ def shufflings(list1: list | tuple, list2: list | tuple):
     [[1, 2, 'a', 'b'], [1, 'a', 2, 'b'], [1, 'a', 'b', 2],
      ['a', 1, 2, 'b'], ['a', 1, 'b', 2], ['a', 'b', 1, 2]]
     """
+
     def treeCrawl(path, i, j):
         if i == len(list1) and j == len(list2):
             yield path
@@ -499,7 +529,9 @@ def shufflings(list1: list | tuple, list2: list | tuple):
     yield from treeCrawl([], 0, 0)
 
 
-############## for tensor caculus
+# -----------------------------------------------------------------------------
+# for tensor caculus
+# -----------------------------------------------------------------------------
 def permuteTupleEntries(arg1, arg2):
     """
     Apply a permutation to the entries of a tuple or list.
@@ -541,6 +573,7 @@ def permuteTupleEntries(arg1, arg2):
         )
 
     return tuple(arg2[arg1[j]] for j in range(len(arg1)))
+
 
 def permuteTuple(arg1, arg2):
     """
@@ -585,121 +618,8 @@ def permuteTuple(arg1, arg2):
 
     return tuple(arg1[j] for j in arg2)
 
-def permuteArray(arg1, arg2):
-    """
-    Permute the indices of a k-dimensional array representing a multilinear operator.
 
-    This function takes a k-dimensional array *arg1* that represents a multilinear operator
-    on n-dimensional space, and applies the permutation *arg2* (a permutation of the
-    coordinate indices [0, 1, ..., k-1]) to the index coordinate tuples of the array. The
-    result is a new array with permuted indices.
-
-    Parameters
-    ----------
-    arg1 : array-like
-        A k-dimensional array representing a multilinear operator.
-    arg2 : list
-        A permutation of the coordinate indices [0, 1, ..., k-1].
-
-    Returns
-    -------
-    MutableDenseNDimArray
-        A new k-dimensional array with permuted indices.
-
-    Examples
-    --------
-    >>> from sympy import MutableDenseNDimArray
-    >>> A = MutableDenseNDimArray.zeros(2, 2, 2)
-    >>> A[0, 1, 0] = 5
-    >>> A[1, 0, 1] = 7
-    >>> permuteArray(A, [2, 0, 1])
-    MutableDenseNDimArray([[[0, 5], [0, 0]], [[0, 0], [7, 0]]])
-
-    Notes
-    -----
-    - The length of *arg2* must match the number of dimensions of *arg1*.
-    - The permutation is applied to the indices of the array, not its values.
-
-    Raises
-    ------
-    ValueError
-        If *arg2* is not a valid permutation of the indices.
-    """
-    if len(arg2) != len(arg1.shape):
-        raise ValueError(
-            "The length of arg2 must match the number of dimensions of arg1."
-        )
-
-    # Create a new array to store permuted values
-    newArray = MutableDenseNDimArray.zeros(*arg1.shape)
-
-    # Process the generator returned by chooseOp lazily
-    for iListLoc in chooseOp(range(arg1.shape[0]), len(arg1.shape)):
-        newListLoc = permuteTuple(iListLoc, arg2)
-        newArray[newListLoc] = arg1[iListLoc]
-
-    return newArray
-
-def alternatingPartOfArray(arg1):
-    """
-    Calculate the alternating part of a multilinear operator.
-
-    This function computes the alternating part of a k-dimensional array
-    representing a multilinear operator. The alternating part is calculated by
-    summing over all possible permutations of the array’s indices, applying
-    the permutation sign (even or odd).
-
-    Parameters
-    ----------
-    arg1 : Array-like
-        A k-dimensional array representing a multilinear operator. The
-        dimensions of the array must be equal (e.g., a square array).
-
-    Returns
-    -------
-    MutableDenseNDimArray
-        The alternating part of the input array.
-
-    Examples
-    --------
-    >>> from sympy import MutableDenseNDimArray
-    >>> A = MutableDenseNDimArray.zeros(3, 3, 3)
-    >>> A[0, 1, 2] = 5
-    >>> alternatingPartOfArray(A)
-    MutableDenseNDimArray([[[0, 0, 0], [0, 0, 5], [0, -5, 0]], [[0, 0, -5], [0, 0, 0], [5, 0, 0]], [[0, 5, 0], [-5, 0, 0], [0, 0, 0]]])
-
-    Notes
-    -----
-    - The input array must have equal dimensions.
-    - The result is obtained by summing over all possible permutations of
-      the indices, weighted by the permutation sign.
-
-    Raises
-    ------
-    ValueError
-        If the input array is not square or has unequal dimensions.
-    """
-    if isinstance(arg1, MutableDenseNDimArray):
-        if len(set(arg1.shape)) == 1:
-            permListLoc = chooseOp(
-                range(len(arg1.shape)),
-                len(arg1.shape),
-                withoutReplacement=True,
-                withOrder=True,
-            )
-            resultArray = MutableDenseNDimArray.zeros(*arg1.shape)
-
-            # Process permutations lazily from the generator
-            for perm in permListLoc:
-                resultArray += permSign(perm) * permuteArray(arg1, perm)
-
-            return resultArray
-
-    raise ValueError("Input array must have equal dimensions.")
-
-def build_nd_array(entries_list, shape,
-                   use_lists_instead_of_tuples=False, pad=0):
-
+def build_nd_array(entries_list, shape, use_lists_instead_of_tuples=False, pad=0):
     total = 1
     for s in shape:
         total *= s
@@ -713,10 +633,9 @@ def build_nd_array(entries_list, shape,
             return flat[offset]
         size = shape[level]
         stride = 1
-        for s in shape[level+1:]:
+        for s in shape[level + 1 :]:
             stride *= s
-        items = [build(level+1, offset + i*stride)
-                 for i in range(size)]
+        items = [build(level + 1, offset + i * stride) for i in range(size)]
         return items if use_lists_instead_of_tuples else tuple(items)
 
     return build(0, 0)

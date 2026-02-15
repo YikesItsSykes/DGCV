@@ -1,185 +1,313 @@
 """
-dgcv: Differential Geometry with Complex Variables
+package: dgcv - Differential Geometry with Complex Variables
+module: dgcv_core
 
-This module defines the core classes and functions for the dgcv package, handling the creation
-and manipulation of vector fields, differential forms, tensor fields, algebras, and more. It includes
-tools for managing relationships between real and complex coordinate systems, object creation function,
-and basic operations for its classes.
+Description: This module defines the core classes and functions for the dgcv package, handling the
+creation and manipulation of vector fields, differential forms, tensor fields, algebras, and more.
+It includes tools for managing relationships between real and complex coordinate systems, object
+creation function, and basic operations for its classes.
 
-Key Classes:
-    - DFClass: Represents differential forms.
-    - VFClass: Represents vector fields.
-    - STFClass: Represents symmetric tensor fields.
-    - tensorField: Represents general tensor fields.
-    - dgcvPolyClass: Hooks dgcv's complex variable handling into SymPy's Poly tools.
-
-Key Functions:
-
-Object Creation:
-    - createVariables(): Initializes and labels coordinate systems of various types and
-    registers them within dgcv's Variable Management Framework.
-
-Coordinate Conversion:
-    - holToReal(): Converts holomorphic coordinates to their real counterparts.
-    - realToSym(): Converts real coordinates to holomorphic with symbolic conjugate representations.
-    - symToHol(): Converts symbolic conjugate coordinate representations to standard holomorphic coordinates.
-    - holToSym(): Converts holomorphic coordinates to holomorphic with symbolic conjugate representations.
-    - realToHol(): Converts real coordinates to holomorphic coordinates.
-    - symToReal(): Converts symbolic conjugate coordinate representations to real coordinates.
-    - allToReal(): Converts all types of coordinates to real coordinates.
-    - allToHol(): Converts all types of coordinates to holomorphic coordinates.
-    - allToSym(): Converts all types of coordinates to holomorphic with symbolic conjugate representations.
-
-Structure Operations:
-    - complex_struct_op(): Applies the complex structure operator to a vector field.
-    - changeVFBasis(): Changes the coordinates space of a vector field.
-    - changeDFBasis(): Changes the coordinates space of a differential form.
-    - changeTensorFieldBasis(): Changes the coordinates space of a tensor field.
-    - changeSTFBasis(): Changes the coordinates space of a symmetric tensor field.
-    - VF_bracket(): Computes the Lie bracket of two vector fields.
-    - exteriorProduct(): Computes the exterior product of differential forms.
-    - tensor_product(): Computes the tensor product of tensor fields.
-    - scaleDF(): Scales a differential form.
-    - addDF(): Adds two differential forms.
-    - addVF(): Adds two vector fields.
-    - scaleVF(): Scales a vector field.
-    - addSTF(): Adds two symmetric tensor fields.
-    - addTF(): Adds two tensor fields.
-    - scaleTF(): Scales a tensor field.
-
-Coefficients and Decompositions:
-    - VF_coeffs(): Returns the coefficients of a vector field w.r.t. given coordinate vector
-    fields.
-    - holVF_coeffs(): Returns the holomorphic coefficients of a vector field w.r.t. given
-    coordinate vector fields.
-    - antiholVF_coeffs(): Returns the antiholomorphic coefficients of a vector field w.r.t.
-    given coordinate vector fields.
-    - complexVFC(): Returns the holomorphic and antiholomorphic coefficients of a vector
-    field w.r.t. given coordinate vector fields.
-    - realPartOfVF(): Extracts the real part of a vector field.
-
-Author: David Sykes (https://github.com/YikesItsSykes)
-
-Dependencies:
-    - sympy
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
 
 License:
     MIT License
 """
 
-############## dependencies
-import itertools
-import numbers
-import warnings
-from math import prod
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
+from __future__ import annotations
 
-import sympy as sp
-from sympy import I
+import itertools
+import warnings
+from math import gcd, prod
+from numbers import Integral, Number
+from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 
 from ._config import (
     _cached_caller_globals,
+    get_dgcv_settings_registry,
     get_variable_registry,
 )
 from ._safeguards import (
+    check_dgcv_category,
     create_key,
+    get_dgcv_category,
     protected_caller_globals,
+    query_dgcv_categories,
     retrieve_passkey,
     retrieve_public_key,
     validate_label,
 )
-from ._tensor_field_printers import tensor_field_latex, tensor_field_printer
-from .backends._caches import _get_expr_num_types, _get_expr_types, _is_atomic
-from .backends._symbolic_api import get_free_symbols
+from .arrays import _spool, array_dgcv
+from .backends._calculus import diff, integrate
+from .backends._display import latex as _backend_latex
+from .backends._engine import engine_kind
+from .backends._exact_arith import exact_reciprocal
+from .backends._polynomials import (
+    _stable_dedupe,
+    make_poly,
+    poly_coeffs,
+    poly_gens,
+    poly_monoms,
+    poly_total_degree,
+)
+from .backends._symbolic_router import (
+    _scalar_is_zero,
+    as_numer_denom,
+    cancel,
+    conjugate,
+    expand,
+    factor,
+    get_free_symbols,
+    ilcm,
+    im,
+    ratio,
+    re,
+    simplify,
+    subs,
+)
+from .backends._types_and_constants import (
+    check_dgcv_scalar,
+    imag_unit,
+    integer,
+    is_atomic,
+    one,
+    rational,
+    symbol,
+    verify_conjugates_free,
+    zero,
+)
+from .base import dgcv_class
 from .combinatorics import build_nd_array, carProd, permSign
-from .vmf import _coeff_dict_formatter, clearVar
+from .conversions import (
+    _coeff_dict_formatter,
+    allToHol,
+    allToReal,
+    allToSym,
+    holToReal,
+    realToHol,
+    realToSym,
+    symToHol,
+    symToReal,
+)
+from .printing import _unwrap_math_delims, tensor_field_latex2, tensor_field_printer2
+from .vmf import clearVar, vmf_lookup
 
-############## classes
+__all__ = [
+    "tensor_field_class",
+    "vector_field_class",
+    "differential_form_class",
+    "assemble_tensor_field",
+    "polynomial_dgcv",
+    "createVariables",
+    "complex_struct_op",
+    "exteriorProduct",
+    "realPartOfVF",
+    "tensor_product",
+]
 
 
-class TFClass:
-    def __init__(self):
-        pass
+# -----------------------------------------------------------------------------
+# constants
+# -----------------------------------------------------------------------------
+half = rational(1, 2)
 
 
-class tensorField(sp.Basic):
-    def __new__(
-        cls,
-        varSpace,
-        coeff_dict,
-        valence=None,
-        data_shape="general",
-        dgcvType="standard",
-        _simplifyKW=None,
-    ):
-        varSpace = tuple(varSpace)
+# -----------------------------------------------------------------------------
+# tensor fields
+# -----------------------------------------------------------------------------
+class tensor_field_class(dgcv_class):
+    """
+    The primary class for representing tensor fields in dgcv. Vector fields
+    and differential forms are defined as subclass, for example.
 
-        if not isinstance(coeff_dict, dict):
-            raise TypeError("`coeff_dict` must be a dictionary.")
+    Parameters
+    ----------
+    coeff_dict : dict, optional
+        Coefficient dictionary describing the tensor field. In the standard
+        format, keys are “tripled” tuples:
 
-        if valence is None:
-            if not coeff_dict:
-                valence = tuple()
-            else:
-                first_key = next(iter(coeff_dict))
-                if not isinstance(first_key, tuple):
-                    raise TypeError(
-                        "Keys in `coeff_dict` must be tuples representing tensor indices."
-                    )
-                valence = (0,) * len(first_key)  # Default to all covariant
+            (local_coordinate_indices, valence_indices, local_coordinate_labels)
 
-        valence = tuple(valence)
+        where each component is a tuple of equal length. Values are scalar
+        expressions.
 
-        if not all(v in (0, 1) for v in valence):
-            raise ValueError("`valence` must contain only 0s and 1s.")
+        Special case: a scalar may be provided via a scalar-style coeff_dict
+        (e.g. `{(): scalar}`), which initializes a degree-0 tensor field with
+        `data_shape="all"`.
 
-        if len(set(valence)) > 1 and data_shape in ["symmetric", "skew"]:
-            raise ValueError(
-                f"Mixed type/valence and `data_shape={data_shape}` is not supported."
-            )
+    data_shape : {"general","symmetric","skew","all"}, default "general"
+        Declared symmetry of the tensor coefficients. If an invalid value is
+        provided, it is treated as "general".
 
-        if _simplifyKW is None:
-            _simplifyKW = {
-                "simplify_rule": None,
-                "simplify_ignore_list": None,
-                "preferred_basis_element": None,
-            }
+    variable_spaces : dict, optional
+        Optional mapping to local coordinate spaces from thier labels. If not
+        provided, it is automatically inferred from `coeff_dict`. The only
+        reason to provide it is bypassing the inference overhead, but this
+        must be given in very precise formatting. I.e., Ignore if unsure.
 
-        total_degree = len(valence)
-        processed_coeff_dict = cls._process_coeffs_dict(
-            coeff_dict, data_shape, total_degree
-        )
+    parameters : set-like, optional
+        Free symbols treated by dgcv as parameters (i.e. not part of relevant
+        coordinate systems). Stored as `self.parameters`.
 
-        obj = sp.Basic.__new__(
-            cls,
-            varSpace,
-            processed_coeff_dict,
-            valence,
-            data_shape,
-            dgcvType,
-            _simplifyKW,
-        )
-        obj.valence = valence
+    varSpace : optional
+        DO NOT USE (depricated). Legacy initialization input. If `varSpace`
+        or `valence` is provided, the initializer may switch to old-format
+        parsing.
 
-        return obj
+    valence : optional
+        DO NOT USE (depricated). Legacy initialization input. If `varSpace`
+        or `valence` is provided, the initializer may switch to old-format
+        parsing.
+
+    _simplifyKW : dict, optional
+        Internal simplification configuration. If None, defaults are used.
+
+    _inheritance : dict, optional
+        Internal initialization hook used when constructing an instance from
+        another tensor field and inheriting cached/validated format metadata.
+
+    Notes
+    -----
+    - If neither `varSpace` nor `valence` is provided, initialization proceeds
+      in the new standard format.
+    - Mixed-format coefficient dictionaries (using both holomorphic and real
+      parts of complex coordinate systems) will be converted to a single
+      preferred format (real or complex) based on dgcv settings.
+
+    Attributes
+    ----------
+    coeff_dict : dict
+        Canonical coefficient dictionary for the tensor field. Its format
+        is shape-aware sparse. e.g., "skew" or "symmetric" shapes store
+        at most one index tuple from a multi-index permutation class.
+    data_shape : str
+        Shape tag: "general", "symmetric", "skew", or "all".
+    parameters : set
+        Set of dgcv parameter symbols regarded as non-coordinate variables.
+    max_degree : int
+        Maximum tensor degree present in `coeff_dict` (cached). For homogeneous
+        objects this matches `total_degree`.
+
+    min_degree : int
+        Minimum tensor degree present in `coeff_dict` (cached).
+
+    total_degree : int
+        Alias for `max_degree`.
+
+    free_symbols : set
+        Union of symbols appearing in the coefficient expressions and symbols
+        appearing in the registered variable spaces referenced by this tensor
+        field.
+
+    coeff_free_symbols : set
+        Set of symbols appearing in the coefficient expressions only.
+
+    expanded_coeff_dict : dict
+        Coefficient dictionary expanded to general shape. I.e., a shape-unaware
+        space coefficient dictionary.
+
+    homogeneous_parts : list[tensor_field_class]
+        Decomposition of the tensor into homogeneous parts, grouped by valence
+        profile induced by the tripled-key structure.
+    varSpace : tuple
+        ONLY FOR DEPRICATED COMPATIBILITY. Associated variable space.
+        Not meaningful in general
+    valence : tuple
+        ONLY FOR DEPRICATED COMPATIBILITY. Tensor valence.
+        Not meaningful in general
+
+    Methods
+    -------
+    infer_varSpace(formatting="complex", *, return_dict=False)
+        Infer an ordered variable space from the variable systems referenced by
+        the tensor. `formatting` may be "real", "complex", or "any". If
+        `return_dict=True`, also returns a dictionary mapping variables to
+        (system_label, local_index) pairs.
+
+    infer_minimal_varSpace(*, return_dict=False)
+        Infer a minimal variable space containing only variables whose system
+        indices actually occur in `coeff_dict`. If `return_dict=True`, also
+        returns the same variable-to-location dictionary format as
+        `infer_varSpace`.
+
+    apply(func, *, drop_zeros=True, data_shape=None, dgcvType=None, ...)
+        Apply a callable to every coefficient value and return a new tensor
+        field. By default, zero coefficients are dropped.
+
+    holomorphic_part()
+    antiholomorphic_part()
+    mixed_term_component()
+    pure_standard_coordinate_terms()
+    real_part()
+    imaginary_part()
+        Extract components by coordinate-format type when the tensor is stored
+        in (or convertible to) complex/real mixed formats.
+
+    swap_tensor_valence()
+        Toggle covariant/contravariant valence per tensor index. E.g., vector
+        fields become differential forms, type (p,q) tensors become (q,p), etc.
+        Returns `vector_field_class` or `differential_form_class`
+        when applicable.
+
+    tensor_product(*others)
+    symmetric_product(*others)
+    skew_product(*others) / wedge(*others)
+        Tensor products with shape control. `wedge` is an alias for
+        `skew_product`.
+
+    __call__(*args, strict_left_to_right=False)
+        Contract the tensor against dgcv tensor fields (and scalars). Supports
+        iterative contraction when multiple arguments are provided.
+
+    is_zero : bool
+        True if the tensor is identically zero (including the scalar case).
+
+    subs(substitutions)
+        Substitute into coefficient expressions and return a new tensor field.
+    """
+
+    format_combinations = {
+        ("standard", "standard"): "standard",
+        ("complex", "complex"): "complex",
+        ("standard", "complex"): "complex",
+        ("complex", "standard"): "complex",
+        ("real", "real"): "real",
+        ("standard", "real"): "real",
+        ("real", "standard"): "real",
+        ("complex", "real"): "mixed",
+        ("real", "complex"): "mixed",
+    }
+    format_filter = {
+        "ss": "standard",
+        "ch": "complex",
+        "ca": "complex",
+        "rr": "real",
+        "ri": "real",
+        "standard": "standard",
+        "complex": "complex",
+        "real": "real",
+    }
 
     def __init__(
         self,
-        varSpace,
-        coeff_dict,
+        varSpace=None,
+        coeff_dict=None,
         valence=None,
-        data_shape="general",
-        dgcvType="standard",
+        data_shape: str = "general",
+        dgcvType: str = "standard",
         _simplifyKW=None,
+        variable_spaces: Optional[dict] = None,
+        parameters=set(),
+        _inheritance=None,
     ):
-        self.varSpace = varSpace
-        self.data_shape = data_shape
-        self.dgcvType = dgcvType
-
-        self.total_degree = len(self.valence)
-        self.contravariant_degree = sum(self.valence)
-        self.covariant_degree = self.total_degree - self.contravariant_degree
-
-        self.coeff_dict = coeff_dict
+        if data_shape not in ("general", "symmetric", "skew", "all"):
+            data_shape = "general"
+        if coeff_dict is None:
+            coeff_dict = {}
+        if not isinstance(coeff_dict, dict):
+            raise TypeError("`coeff_dict` must be a dictionary.")
 
         if _simplifyKW is None:
             _simplifyKW = {
@@ -187,363 +315,1352 @@ class tensorField(sp.Basic):
                 "simplify_ignore_list": None,
                 "preferred_basis_element": None,
             }
+
+        self.dgcvType = dgcvType
         self._simplifyKW = _simplifyKW
+        self._dgcv_class_check = retrieve_passkey()
+        self._dgcv_category = "tensor_field"
+        self.parameters = set(parameters)
 
-        self._preferred_basis_element = self._compute_preferred_basis_element()
+        self._variable_spaces = (
+            dict(variable_spaces) if isinstance(variable_spaces, dict) else {}
+        )
+        self._system_index_cache: Dict[str, Dict[Any, int]] = {}
+        self._shape_checked = False
 
-        self._set_varSpace_type()
-
-        # Initialize caches
-        self._coeffArray = None
+        self._preferred_basis_element = None
         self._expanded_coeff_dict = None
+        self._coeffArray = None
+
+        self._cd_formats = None
         self._realVarSpace = None
         self._holVarSpace = None
         self._antiholVarSpace = None
         self._imVarSpace = None
-        self._cd_formats = None
-        self._dgcv_class_check = retrieve_passkey()
-        self._dgcv_category = "tensor_field"
+        self._varSpace_type = "standard"
+        self._variable_spaces_types = None
+        self._key_profiles = {}  # str values "s", "r", "c" tuples for standard, real, complex
+        self._conj_key_profiles = {}  # numeric value index shif for conjugation
+        self._coordinate_format = None
+        self._free_symbols = None
+        self._coeff_free_symbols = None
+        self._max_degree = None
+        self._min_degree = None
+        self._validated_format: Literal[
+            "open", "standard", "complex", "real", "mixed"
+        ] = "open"
 
-    def _sage_(self):
-        raise AttributeError
+        if coeff_dict == {}:
+            coeff_dict = {tuple(): 0}
 
-    def _set_varSpace_type(self):
-        """Determine the type of variable space (real, complex, or standard)."""
-        variable_registry = get_variable_registry()
-        if self.dgcvType == "complex":
-            if all(
-                var in variable_registry["conversion_dictionaries"]["realToSym"]
-                for var in self.varSpace
-            ):
-                self._varSpace_type = "real"
-            elif all(
-                var in variable_registry["conversion_dictionaries"]["symToReal"]
-                for var in self.varSpace
-            ):
-                self._varSpace_type = "complex"
-            else:
-                raise KeyError(
-                    f"To initialize a `tensorField` instance with `dgcvType='complex'`, `varSpace` must contain only variables from dgcv's complex variable systems. All variables in `varSpace` must be either simultaneously among the real and imaginary types, or simultaneously among the holomorphic and antiholomorphic types. \n Recieved: {self.varSpace}\n Use `createVariables` to easily create dgcv's complex coordinate systems."
+        old_mode = (varSpace is not None) or (valence is not None)
+
+        if (not old_mode) and self._is_scalar_coeff_dict(coeff_dict):
+            self.varSpace = tuple() if varSpace is None else tuple(varSpace)
+            self.valence = tuple()
+            self.coeff_dict = {tuple(): coeff_dict.get(tuple(), 0)}
+            self.data_shape = "all"
+            self._shape_checked = True
+        else:
+            if old_mode:
+                self.varSpace, self.valence, self.coeff_dict, self.data_shape = (
+                    self._init_from_old_format(
+                        varSpace, coeff_dict, valence, data_shape
+                    )
                 )
-        else:
-            self._varSpace_type = "standard"
-
-    def _compute_preferred_basis_element(self, _simplifyKW=None):
-        """
-        Compute the preferred basis element for printing trivial tensor fields.
-
-        Parameters
-        ----------
-        _simplifyKW : dict, optional
-            Dictionary containing "preferred_basis_element" key.
-
-        Returns
-        -------
-        list of str
-        """
-        # Determine preferred basis indices
-        if _simplifyKW is None or _simplifyKW.get("preferred_basis_element") is None:
-            if self.varSpace:
-                preferred_basis_indices = [
-                    i % len(self.varSpace) for i in range(self.total_degree)
-                ]
             else:
-                preferred_basis_indices = [0 for _ in range(self.total_degree)]
-        else:
-            preferred_basis_indices = _simplifyKW["preferred_basis_element"]
-            if not (
-                isinstance(preferred_basis_indices, (list, tuple))
-                and len(preferred_basis_indices) == self.total_degree
-            ):
-                raise TypeError(
-                    "`preferred_basis_element` must be None or a list/tuple matching the total degree of the tensor field."
+                self._variable_spaces = self._infer_variable_spaces_from_coeff_dict(
+                    coeff_dict, self._variable_spaces
                 )
-            if not all(0 <= j < len(self.varSpace) for j in preferred_basis_indices):
-                raise ValueError("`preferred_basis_element` contains invalid indices.")
+                (
+                    self.varSpace,
+                    self.valence,
+                    self.coeff_dict,
+                    self.data_shape,
+                    self._validated_format,
+                ) = self._init_from_standard_data(
+                    varSpace, coeff_dict, data_shape, self._variable_spaces
+                )
+                if _inheritance:
+                    self._validated_format = _inheritance.get(
+                        "_validated_format", self._validated_format
+                    )
 
-        # Generate labels for contravariant and covariant components
-        if self.varSpace:
-            frameLabels = [f"D_{j}" for j in self.varSpace]
-            coframeLabels = [f"d_{j}" for j in self.varSpace]
+                if self.coeff_dict and self._validated_format == "mixed":
+                    if (
+                        get_dgcv_settings_registry().get(
+                            "preferred_variable_format", None
+                        )
+                        == "real"
+                    ):
+                        new_cd = tensor_field_class._to_real_algo(
+                            cd=self.coeff_dict,
+                            vst=tensor_field_class._variable_spaces_types_algo(
+                                self._variable_spaces
+                            ),
+                        )
+                    else:
+                        new_cd = tensor_field_class._to_complex_algo(
+                            cd=self.coeff_dict,
+                            vst=tensor_field_class._variable_spaces_types_algo(
+                                self._variable_spaces
+                            ),
+                        )
+
+                    self.coeff_dict, self._validated_format = new_cd, "complex"
+            self._shape_checked = True
+
+    def _set_degrees(self):
+        m, mm = None, None
+        for key in self.coeff_dict:
+            lk = len(key) // 3
+            if m is None:
+                m = lk
+                mm = lk
+            else:
+                m = max(m, lk)
+                mm = min(mm, lk)
+        self._max_degree, self._min_degree = m, mm
+
+    @property
+    def max_degree(self):
+        if self._max_degree is None:
+            self._set_degrees()
+        return self._max_degree
+
+    @property
+    def min_degree(self):
+        if self._min_degree is None:
+            self._set_degrees()
+        return self._min_degree
+
+    @property
+    def total_degree(self):
+        return self.max_degree
+
+    @staticmethod
+    def _is_scalar_coeff_dict(d: Dict[Any, Any]) -> bool:
+        return isinstance(d, dict) and (
+            not d or (tuple() in d and all(k == tuple() for k in d))
+        )
+
+    def _init_from_old_format(self, varSpace, coeff_dict, valence, data_shape):
+        if varSpace is None:
+            raise TypeError("`varSpace` is required when `valence` is provided.")
+        varSpace_t = tuple(varSpace)
+
+        if valence is None:
+            if not coeff_dict:
+                valence_t = tuple()
+            else:
+                first_key = next(iter(coeff_dict))
+                if not isinstance(first_key, tuple):
+                    raise TypeError("Keys in `coeff_dict` must be tuples.")
+                valence_t = (0,) * len(first_key)
         else:
-            frameLabels = ["NULL"]
-            coframeLabels = ["NULL"]
+            valence_t = tuple(valence)
 
-        # Choose labels based on valence
-        return [
-            (
-                frameLabels[preferred_basis_indices[i]]
-                if self.valence[i] == 1
-                else coframeLabels[preferred_basis_indices[i]]
+        if not all(v in (0, 1) for v in valence_t):
+            raise ValueError("`valence` must contain only 0s and 1s.")
+
+        if len(set(valence_t)) > 1 and data_shape in ("symmetric", "skew"):
+            raise ValueError(
+                "Symmetry constraints require pure covariant or pure contravariant valence."
             )
-            for i in range(self.total_degree)
+
+        new_cd, inferred_type = self._convert_old_coeff_dict(
+            varSpace_t, coeff_dict, valence_t
+        )
+
+        if self.dgcvType == "complex" and inferred_type != "complex":
+            self.dgcvType = "standard"
+
+        processed_cd, eff_shape, formatting = self._process_coeffs_dict_new(
+            new_cd, data_shape, formatting=True
+        )
+        return varSpace_t, valence_t, processed_cd, eff_shape
+
+    def _init_from_standard_data(
+        self, varSpace, coeff_dict, data_shape, variable_spaces
+    ):
+        varSpace_t = tuple() if varSpace is None else tuple(varSpace)
+
+        if not coeff_dict:
+            return varSpace_t, tuple(), {tuple(): 0}, "all"
+
+        first_key = next(iter(coeff_dict))
+        deg = len(first_key) // 3
+        valence_t = tuple(first_key[deg : 2 * deg])
+
+        processed_cd, eff_shape, formatting = self._process_coeffs_dict_new(
+            coeff_dict,
+            data_shape,
+            variable_spaces,
+            formatting=True,
+        )
+        return varSpace_t, valence_t, processed_cd, eff_shape, formatting
+
+    @staticmethod
+    def _infer_variable_spaces_from_coeff_dict(coeff_dict: dict, seed: dict) -> dict:
+        out = dict(seed) if isinstance(seed, dict) else {}
+        for key in coeff_dict.keys():
+            if not isinstance(key, tuple):
+                continue
+            kl = len(key)
+            if kl == 0 or kl % 3 != 0:
+                continue
+            deg = kl // 3
+            coord_ids = key[2 * deg :]
+            for cid in coord_ids:
+                if not isinstance(cid, str):
+                    continue
+                if cid in out:
+                    continue
+                info = vmf_lookup(
+                    cid, path=True, relatives=True, flattened_relatives=True
+                )
+                if info.get("type") != "coordinate":
+                    raise KeyError(
+                        f"tensorField: coord_id '{cid}' is not registered in the VMF."
+                    )
+                flat = info.get("flattened_relatives", None)
+                if not isinstance(flat, tuple) or len(flat) == 0:
+                    raise KeyError(
+                        f"tensorField: coord_id '{cid}' did not yield a usable variable space."
+                    )
+                out[cid] = flat
+        return out
+
+    def _require_cached_system(self, system_label: str) -> Tuple[Any, ...]:
+        cached = self._variable_spaces.get(system_label, None)
+        if isinstance(cached, tuple):
+            self._system_index_cache.setdefault(
+                system_label, {v: i for i, v in enumerate(cached)}
+            )
+            return cached
+        if isinstance(cached, list):
+            vs = tuple(cached)
+            self._variable_spaces[system_label] = vs
+            self._system_index_cache[system_label] = {v: i for i, v in enumerate(vs)}
+            return vs
+        raise KeyError(self._missing_system_msg(system_label))
+
+    @property
+    def free_symbols(self):
+        if self._free_symbols is None:
+            fs = set()
+            for atoms in self._variable_spaces.values():
+                fs.update(atoms)
+
+            for v in self.coeff_dict.values():
+                fs |= get_free_symbols(v)
+
+            self._free_symbols = fs
+        return self._free_symbols
+
+    @property
+    def coeff_free_symbols(self):
+        if self._coeff_free_symbols is None:
+            fs = set()
+            for v in self.coeff_dict.values():
+                fs |= get_free_symbols(v)
+            self._coeff_free_symbols = fs
+        return self._coeff_free_symbols
+
+    @property
+    def homogeneous_parts(self):
+        new_dicts = dict()
+        for k, v in self.coeff_dict.items():
+            deg = len(k) // 3
+            valence = tuple(k[deg : 2 * deg])
+            new_dicts[valence] = new_dicts.get(deg, dict())
+            new_dicts[valence][k] = v
+        return [
+            self.__class__(
+                coeff_dict=cd,
+                data_shape=self.data_shape,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=self._variable_spaces,
+                parameters=self.parameters,
+            )
+            for cd in new_dicts.values()
         ]
 
     @staticmethod
-    def _process_coeffs_dict(data, shape, total_degree):
-        """
-        Process the data_dict based on the specified shape.
-        For recognized shapes, use the appropriate formatter.
-        Defaults to general handling for unrecognized shapes.
-        """
-        if shape == "symmetric":
-            return tensorField._format_symmetric_data(data, total_degree)
-        elif shape == "skew":
-            return tensorField._format_skew_data(data, total_degree)
+    def _missing_system_msg(system_label: str) -> str:
+        return (
+            f"tensor_field_class: coordinate system '{system_label}' is not available in cached `variable_spaces`. "
+            "Re-initialize with `variable_spaces={...}`."
+        )
+
+    @staticmethod
+    def _format_combinator(formats, seed=None):
+        fc = tensor_field_class.format_combinations
+        ff = tensor_field_class.format_filter
+        if len(formats) == 0:
+            return seed if seed else "open"
+        if seed:
+            formatting = ff.get(seed, formats[0])
         else:
-            # Remove key-value pairs where value == 0
-            processed_data = {key: value for key, value in data.items() if value != 0}
+            formatting = formats[0]
+        for format2 in formats:
+            f1 = ff.get(formatting, "mixed")
+            f2 = ff.get(format2, "mixed")
+            formatting = fc.get((f1, f2), "mixed")
+        return formatting
 
-            # If all values are removed, fallback to default 0 dict
-            if not processed_data:
-                return {(0,) * total_degree: 0}
+    def _convert_old_coeff_dict(
+        self,
+        varSpace_t: Tuple[Any, ...],
+        old_cd: Dict[Tuple[int, ...], Any],
+        valence_t: Tuple[int, ...],
+    ) -> Tuple[Dict[Tuple[Any, ...], Any], str]:
+        inferred = "standard"
+        sys_for_var = {}
+        for v in varSpace_t:
+            info = vmf_lookup(v, path=True, relatives=False)
+            p = info.get("path")
+            if not (isinstance(p, tuple) and len(p) >= 2):
+                raise KeyError(
+                    f"tensor_field_class: variable '{v}' is not registered in the VMF."
+                )
+            branch, system_label = p[0], p[1]
+            if branch == "complex_variable_systems":
+                inferred = "complex"
+            sys_for_var[v] = system_label
 
-            return processed_data
+        for system_label in set(sys_for_var.values()):
+            if system_label not in self._variable_spaces:
+                info = vmf_lookup(
+                    system_label, path=True, relatives=True, flattened_relatives=True
+                )
+                flat = info.get("flattened_relatives", None)
+                if not isinstance(flat, tuple) or len(flat) == 0:
+                    raise KeyError(self._missing_system_msg(system_label))
+                self._variable_spaces[system_label] = flat
+            self._require_cached_system(system_label)
+
+        new_cd: Dict[Tuple[Any, ...], Any] = {}
+        for key, value in old_cd.items():
+            if _scalar_is_zero(value):
+                continue
+            if not isinstance(key, tuple):
+                raise TypeError("Keys in `coeff_dict` must be tuples.")
+            if len(key) != len(valence_t):
+                raise ValueError("`coeff_dict` keys must match tensor degree.")
+
+            idxs = []
+            syslbls = []
+
+            for i in key:
+                if not isinstance(i, Integral):
+                    raise TypeError("Old-style indices must be integers.")
+                ii = int(i)
+                if ii < 0 or ii >= len(varSpace_t):
+                    raise ValueError("Old-style index out of range.")
+                var = varSpace_t[ii]
+                sys_label = sys_for_var[var]
+                syslbls.append(sys_label)
+
+                idx_map = self._system_index_cache.get(sys_label)
+                if idx_map is None:
+                    self._require_cached_system(sys_label)
+                    idx_map = self._system_index_cache[sys_label]
+
+                j = idx_map.get(var)
+                if j is None:
+                    raise KeyError(
+                        f"tensor_field_class: variable '{var}' not found in cached system '{sys_label}'."
+                    )
+                idxs.append(j)
+
+            nk = tuple(idxs + list(valence_t) + syslbls)
+            new_cd[nk] = new_cd.get(nk, 0) + value
+
+        new_cd = {k: v for k, v in new_cd.items() if not _scalar_is_zero(v)}
+        if not new_cd:
+            return {tuple(): 0}, inferred
+
+        return new_cd, inferred
 
     @staticmethod
-    def _format_symmetric_data(data, total_degree):
-        coeffs = {}
-        for key, value in data.items():
-            # Sort the key to enforce symmetry
-            sorted_key = tuple(sorted(key))
-            if sorted_key in coeffs:
-                # Check for consistency in values
-                if sp.simplify(coeffs[sorted_key]) != sp.simplify(value):
-                    raise TypeError(
-                        "The tensorField initializer was given non-symmetric data"
-                        "but it was called with `data_shape='symmetric'`."
-                    )
+    def _process_coeffs_dict_new(
+        data: Dict[Tuple[Any, ...], Any],
+        shape: str,
+        variable_spaces=None,
+        formatting: bool = False,
+    ) -> Tuple[Dict[Tuple[Any, ...], Any], str]:
+        if shape not in ("general", "symmetric", "skew", "all"):
+            shape = "general"
+
+        if not isinstance(data, dict):
+            raise TypeError("`coeff_dict` must be a dictionary.")
+
+        def _parse_key(k, find_format=True, seed=None, inference_dict=None):
+            deg = len(k) // 3
+            if find_format:
+                kf = tensor_field_class._profile_key_full_inference(
+                    k, inference_dict=inference_dict
+                )
+                out_format = tensor_field_class._format_combinator(kf, seed=seed)
+                return (deg, k, out_format)
+            return (deg, k)
+
+        def _sort_slot_key(slot):
+            idx, valence, syslbl = slot
+            idx_key = int(idx)
+            return (str(syslbl), idx_key, int(valence))
+
+        def _slotify(k, deg):
+            idxs = k[:deg]
+            valence_tuple = k[deg : 2 * deg]
+            syslbls = k[2 * deg :]
+            return tuple((idxs[i], valence_tuple[i], syslbls[i]) for i in range(deg))
+
+        def _unslotify(slots):
+            idxs = tuple(s[0] for s in slots)
+            valence_tuple = tuple(s[1] for s in slots)
+            syslbls = tuple(s[2] for s in slots)
+            return idxs + valence_tuple + syslbls
+
+        canon: Dict[Tuple[Any, ...], Any] = {}
+        if formatting:
+            out_format = "open"
+        for k, v in data.items():
+            if _scalar_is_zero(v):
+                continue
+            if formatting is False or out_format == "mixed":
+                deg, kk = _parse_key(
+                    k, find_format=False, inference_dict=variable_spaces
+                )
             else:
-                coeffs[sorted_key] = value
+                deg, kk, out_format = _parse_key(
+                    k, seed=out_format, inference_dict=variable_spaces
+                )
+            if deg <= 1 or shape == "general":
+                canon[kk] = canon.get(kk, 0) + v
+                continue
 
-        # If empty fallback to a default zero dict
-        if not coeffs:
-            coeffs = {(0,) * total_degree: 0}
+            slots = _slotify(kk, deg)
 
-        return coeffs
+            if shape == "skew" and len(set(slots)) < len(slots):
+                continue
+
+            if shape == "symmetric":
+                sorted_slots = tuple(sorted(slots, key=_sort_slot_key))
+                nk = _unslotify(sorted_slots)
+                vv = v
+            else:
+                sign, sorted_slots = tuple(
+                    permSign(slots, returnSorted=True, key=_sort_slot_key)
+                )
+                nk = _unslotify(sorted_slots)
+                vv = sign * v
+
+            canon[nk] = canon.get(nk, 0) + vv
+
+        canon = {k: v for k, v in canon.items() if not _scalar_is_zero(v)}
+        if not canon:
+            if formatting:
+                return {tuple(): 0}, "all", "open"
+            return {tuple(): 0}, "all"
+
+        if formatting:
+            return canon, shape, out_format
+        return canon, shape
 
     @staticmethod
-    def _format_skew_data(data, total_degree):
-        formatted_data = {}
-        for key, value in data.items():
-            # Determine the sign and sorted form of the key
-            perm_sign, sorted_key = permSign(key, returnSorted=True)
-            sorted_key = tuple(sorted_key)
+    def _expand_special_to_general(
+        data: Dict[Tuple[Any, ...], Any], shape: str
+    ) -> Dict[Tuple[Any, ...], Any]:
+        if shape not in ("general", "symmetric", "skew", "all"):
+            raise ValueError("Invalid data_shape.")
 
-            # Check for consistency in values
-            if sorted_key in formatted_data:
-                if sp.simplify(formatted_data[sorted_key]) != sp.simplify(
-                    perm_sign * value
-                ):
-                    raise TypeError(
-                        "The tensorField initializer was given non-skew-symmetric data"
-                        " but it was called with `data_shape='skew'`."
-                    )
-            else:
-                if len(set(sorted_key)) < len(sorted_key) and value != 0:
-                    raise TypeError(
-                        "The tensorField initializer was given non-skew-symmetric data"
-                        " but it was called with `data_shape='skew'`."
-                    )
-                formatted_data[sorted_key] = perm_sign * value
+        if not isinstance(data, dict):
+            raise TypeError("`coeff_dict` must be a dictionary.")
 
-        # For empty list fallback to a default zero value
-        if not formatted_data:
-            formatted_data = {(0,) * total_degree: 0}
+        if shape in ("general", "all"):
+            return {k: v for k, v in data.items() if not _scalar_is_zero(v)}
 
-        return formatted_data
+        nz = {k: v for k, v in data.items() if not _scalar_is_zero(v)}
+        if not nz:
+            return {}
 
-    @property
-    def expanded_coeff_dict(self):
-        if self._expanded_coeff_dict:
-            return self._expanded_coeff_dict
-        if self.data_shape == "symmetric":
+        out: Dict[Tuple[Any, ...], Any] = {}
 
-            def expand_method_A(coeff_dict):
-                expanded_dict = {}
-                for key, value in coeff_dict.items():
-                    for perm in set(
-                        itertools.permutations(key)
-                    ):  # Use set to avoid duplicates
-                        expanded_dict[perm] = value
-                return expanded_dict
+        first_key = next(iter(nz))
+        if not isinstance(first_key, tuple) or len(first_key) % 3 != 0:
+            raise ValueError("Invalid coeff_dict key format.")
 
-            def expand_method_B(coeff_dict, dimension, total_degree):
-                expanded_dict = {}
-                for index_tuple in itertools.product(
-                    range(dimension), repeat=total_degree
-                ):
-                    sorted_tuple = tuple(sorted(index_tuple))
-                    if sorted_tuple in coeff_dict:
-                        expanded_dict[index_tuple] = coeff_dict[sorted_tuple]
-                return expanded_dict
+        deg = len(first_key) // 3
 
-            # Use different method depending on data density
-            if len(self.coeff_dict) * sp.factorial(self.total_degree) < len(
-                self.varSpace
-            ) ** (self.total_degree):
-                # Use Method A
-                self._expanded_coeff_dict = expand_method_A(self.coeff_dict)
-            else:
-                # Use Method B
-                self._expanded_coeff_dict = expand_method_B(
-                    self.coeff_dict, len(self.varSpace), self.total_degree
-                )
-            return self._expanded_coeff_dict
+        def slotify(k):
+            idxs = k[:deg]
+            valence_tuple = k[deg : 2 * deg]
+            syslbls = k[2 * deg :]
+            return tuple((idxs[i], valence_tuple[i], syslbls[i]) for i in range(deg))
 
-        if self.data_shape == "skew":
+        def unslotify(slots):
+            idxs = tuple(s[0] for s in slots)
+            valence_tuple = tuple(s[1] for s in slots)
+            syslbls = tuple(s[2] for s in slots)
+            return idxs + valence_tuple + syslbls
 
-            def expand_method_A(coeff_dict):
-                expanded_dict = {}
-                for key, value in coeff_dict.items():
-                    for perm in set(
-                        itertools.permutations(key)
-                    ):  # Use set to avoid duplicates
-                        expanded_dict[perm] = permSign(perm) * value
-                return expanded_dict
+        for k, v in nz.items():
+            slots = slotify(k)
 
-            def expand_method_B(coeff_dict, dimension, total_degree):
-                expanded_dict = {}
-                for index_tuple in itertools.product(
-                    range(dimension), repeat=total_degree
-                ):
-                    sorted_tuple = tuple(sorted(index_tuple))
-                    if sorted_tuple in coeff_dict:
-                        expanded_dict[index_tuple] = (
-                            permSign(index_tuple) * coeff_dict[sorted_tuple]
-                        )
-                return expanded_dict
+            for perm in itertools.permutations(range(deg)):
+                perm_slots = tuple(slots[i] for i in perm)
+                nk = unslotify(perm_slots)
 
-            # Use different method depending on data density
-            if len(self.coeff_dict) * sp.factorial(self.total_degree) < len(
-                self.varSpace
-            ) ** (self.total_degree):
-                # Use Method A
-                self._expanded_coeff_dict = expand_method_A(self.coeff_dict)
-            else:
-                # Use Method B
-                self._expanded_coeff_dict = expand_method_B(
-                    self.coeff_dict, len(self.varSpace), self.total_degree
-                )
-            return self._expanded_coeff_dict
-
-        self._expanded_coeff_dict = self.coeff_dict
-        return self._expanded_coeff_dict
-
-    @property
-    def coeffArray(self):
-        """
-        Returns the tensor coefficients as a SymPy Immutable Sparse Array.
-        """
-        if self._coeffArray is None:
-
-            def entry_rule(indexTuple):
-                """
-                Retrieves the coefficient for a given index tuple.
-                sorts if symmetric
-                """
-                sortedTuple = (
-                    tuple(sorted(indexTuple))
-                    if self.data_shape == "symmetric"
-                    else indexTuple
-                )
-                return self.expanded_coeff_dict.get(sortedTuple, 0)
-
-            def generate_indices(shape):
-                """Recursively generates all index tuples for an arbitrary dimensional array."""
-                if len(shape) == 1:
-                    return [(i,) for i in range(shape[0])]
+                if shape == "symmetric":
+                    vv = v
                 else:
-                    return [
-                        (i,) + t
-                        for i in range(shape[0])
-                        for t in generate_indices(shape[1:])
-                    ]
+                    vv = permSign(perm) * v
 
-            # Tensor shape is determined by the number of variables and tensor rank (valence length)
-            shape = (len(self.varSpace),) * len(self.valence)
+                out[nk] = out.get(nk, 0) + vv
 
-            # Build the sparse data dictionary
-            sparse_data = {
-                indices: entry_rule(indices) for indices in generate_indices(shape)
-            }
+        return {k: v for k, v in out.items() if not _scalar_is_zero(v)}
 
-            # Store as immutable sparse array
-            self._coeffArray = sp.ImmutableSparseNDimArray(sparse_data, shape)
+    @staticmethod
+    def _variable_spaces_types_algo(vs={}):
+        out = {}
+        if not isinstance(vs, dict):
+            vs = {}
+        for system, coordinates in vs.items():
+            info = vmf_lookup(system)
+            sys_type = info.get("sub_type", "standard")
+            if sys_type == "complex":
+                L = len(coordinates)
+                fourth = L // 4
+                breaks = [fourth, 2 * fourth, 3 * fourth]
+                out[system] = {"type": sys_type, "breaks": breaks}
+            else:
+                out[system] = {"type": sys_type}
+        return out
 
-        return self._coeffArray
+    @property
+    def variable_spaces_types(self):
+        if self._variable_spaces_types is None:
+            self._variable_spaces_types = (
+                tensor_field_class._variable_spaces_types_algo(
+                    getattr(self, "_variable_spaces", {})
+                )
+            )
+        return self._variable_spaces_types
+
+    @staticmethod
+    def _slot_allowed(plan, syslbl, idx):
+        if not plan:
+            return True
+
+        if syslbl in plan.get("skip_systems", ()):
+            return False
+
+        si = plan.get("skip_indices", {}).get(syslbl)
+        if si and idx in si:
+            return False
+
+        scoped = plan.get("systems", {}).get(syslbl, None)
+        if scoped is None:
+            return True
+        return idx in scoped
+
+    def infer_varSpace(
+        self,
+        formatting: Literal["real", "complex", "any"] = "complex",
+        *,
+        return_dict: bool = False,
+    ):
+        cache = getattr(self, "_infer_varSpace_cache", None)
+        if cache is None:
+            cache = self._infer_varSpace_cache = {}
+
+        key = (formatting, bool(return_dict))
+        hit = cache.get(key, None)
+        if hit is not None:
+            return hit
+
+        if formatting not in ("real", "complex", "any"):
+            raise ValueError("formatting must be one of: 'real', 'complex', 'any'")
+
+        systems = getattr(self, "_variable_spaces", None)
+        if not isinstance(systems, dict) or not systems:
+            out = (tuple(), {}) if return_dict else tuple()
+            cache[key] = out
+            return out
+
+        std_bucket = []
+        holo_bucket = []
+        anti_bucket = []
+        real_bucket = []
+        imag_bucket = []
+
+        sys_info_cache: Dict[Any, dict] = {}
+        for syslbl in sorted(systems.keys(), key=lambda x: str(x)):
+            info = vmf_lookup(
+                syslbl, path=True, relatives=True, flattened_relatives=True
+            )
+            sys_info_cache[syslbl] = info
+
+            if info.get("type") != "coordinate":
+                continue
+
+            sub = info.get("sub_type", None)
+            rel = info.get("relatives") or {}
+
+            if sub != "complex":
+                st = rel.get("standard", None)
+                if isinstance(st, tuple) and st:
+                    std_bucket.append((syslbl, st))
+                continue
+
+            h = rel.get("holo", None)
+            a = rel.get("anti", None)
+            r = rel.get("real", None)
+            i = rel.get("imag", None)
+
+            if isinstance(h, tuple) and h:
+                holo_bucket.append((syslbl, h))
+            if isinstance(a, tuple) and a:
+                anti_bucket.append((syslbl, a))
+            if isinstance(r, tuple) and r:
+                real_bucket.append((syslbl, r))
+            if isinstance(i, tuple) and i:
+                imag_bucket.append((syslbl, i))
+
+        out_vars = []
+
+        if formatting == "any":
+            for _, t in std_bucket:
+                out_vars.extend(t)
+            for _, t in holo_bucket:
+                out_vars.extend(t)
+            for _, t in anti_bucket:
+                out_vars.extend(t)
+            for _, t in real_bucket:
+                out_vars.extend(t)
+            for _, t in imag_bucket:
+                out_vars.extend(t)
+
+        elif formatting == "complex":
+            for _, t in std_bucket:
+                out_vars.extend(t)
+            for _, t in holo_bucket:
+                out_vars.extend(t)
+            for _, t in anti_bucket:
+                out_vars.extend(t)
+
+        else:  # "real"
+            for _, t in std_bucket:
+                out_vars.extend(t)
+            for _, t in real_bucket:
+                out_vars.extend(t)
+            for _, t in imag_bucket:
+                out_vars.extend(t)
+
+        out_t = tuple(out_vars)
+
+        if not return_dict:
+            cache[key] = out_t
+            return out_t
+
+        loc: Dict[Any, Tuple[Any, int]] = {}
+        for syslbl, info in sys_info_cache.items():
+            if info.get("type") != "coordinate":
+                continue
+            flat = info.get("flattened_relatives", None)
+            if not isinstance(flat, tuple) or not flat:
+                continue
+
+            rel = info.get("relatives") or {}
+            sub = info.get("sub_type", None)
+
+            if sub == "complex":
+                h = rel.get("holo") or tuple()
+                a = rel.get("anti") or tuple()
+                r = rel.get("real") or tuple()
+                i = rel.get("imag") or tuple()
+
+                off_h = 0
+                off_a = off_h + len(h)
+                off_r = off_a + len(a)
+                off_i = off_r + len(r)
+
+                for j, v in enumerate(h):
+                    loc[v] = (syslbl, off_h + j)
+                for j, v in enumerate(a):
+                    loc[v] = (syslbl, off_a + j)
+                for j, v in enumerate(r):
+                    loc[v] = (syslbl, off_r + j)
+                for j, v in enumerate(i):
+                    loc[v] = (syslbl, off_i + j)
+            else:
+                st = rel.get("standard") or flat
+                if isinstance(st, tuple) and st:
+                    for j, v in enumerate(st):
+                        loc[v] = (syslbl, j)
+
+        loc_out = {v: loc[v] for v in out_t if v in loc}
+        out = (out_t, loc_out)
+        cache[key] = out
+        return out
+
+    def infer_minimal_varSpace(
+        self,
+        *,
+        return_dict: bool = False,
+    ):
+        vs_all, loc = self.infer_varSpace(formatting="any", return_dict=True)
+
+        present = set()
+        cd = getattr(self, "coeff_dict", None)
+        if isinstance(cd, dict):
+            for k in cd.keys():
+                if not isinstance(k, tuple):
+                    continue
+                kl = len(k)
+                if kl == 0 or kl % 3 != 0:
+                    continue
+                deg = kl // 3
+                idxs = k[:deg]
+                syslbls = k[2 * deg :]
+                for idx, sys in zip(idxs, syslbls):
+                    present.add((sys, idx))
+
+        out = tuple(
+            v
+            for v in vs_all
+            if (loc.get(v) in (None,)) is False and (loc[v][0], loc[v][1]) in present
+        )
+
+        if not return_dict:
+            return out
+
+        out_loc = {v: loc[v] for v in out if v in loc}
+        return out, out_loc
+
+    def _to_real(self, plan=None):
+        new_dict = tensor_field_class._to_real_algo(
+            plan=plan, cd=self.coeff_dict, vst=self.variable_spaces_types
+        )
+        return self.__class__(
+            coeff_dict=new_dict,
+            data_shape=self.data_shape,
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=self._variable_spaces,
+        )
+
+    @staticmethod
+    def _to_real_algo(plan=None, cd={}, vst={}):
+        new_dict = {}
+
+        for k_seed, v_seed in cd.items():
+            current_contribution = {k_seed: v_seed}
+            degree = len(k_seed) // 3
+            valences = k_seed[degree : 2 * degree]
+            systems = k_seed[2 * degree :]
+
+            for idx in range(degree):
+                new_contribution = {}
+
+                for k, v in current_contribution.items():
+                    idxs = k[:degree]
+
+                    br1, br2, br3 = (
+                        idxs[idx],
+                        valences[idx],
+                        systems[idx],
+                    )  # break point data
+                    sys_data = vst[br3]
+
+                    if sys_data["type"] != "complex":
+                        new_contribution[k] = new_contribution.get(k, 0) + v
+                        continue
+
+                    if br1 >= sys_data["breaks"][1]:
+                        new_contribution[k] = new_contribution.get(k, 0) + v
+                        continue
+
+                    if not tensor_field_class._slot_allowed(plan, br3, br1):
+                        new_contribution[k] = new_contribution.get(k, 0) + v
+                        continue
+
+                    lead = list(idxs[:idx])
+                    tail = list(idxs[idx + 1 :])
+                    term_tail = list(valences) + list(systems)
+
+                    if br1 >= sys_data["breaks"][0]:  # antiholomorphic variable
+                        real_idx = br1 + sys_data["breaks"][0]
+                        im_idx = br1 + sys_data["breaks"][1]
+
+                        if br2 == 1:  # contravariant slot
+                            real_term = lead + [real_idx] + tail + term_tail
+                            im_term = lead + [im_idx] + tail + term_tail
+                            new_contribution[tuple(real_term)] = (
+                                new_contribution.get(tuple(real_term), 0) + half * v
+                            )
+                            new_contribution[tuple(im_term)] = (
+                                new_contribution.get(tuple(im_term), 0)
+                                + half * imag_unit() * v
+                            )
+                        else:  # covariant slot
+                            real_term = lead + [real_idx] + tail + term_tail
+                            im_term = lead + [im_idx] + tail + term_tail
+                            new_contribution[tuple(real_term)] = (
+                                new_contribution.get(tuple(real_term), 0) + v
+                            )
+                            new_contribution[tuple(im_term)] = (
+                                new_contribution.get(tuple(im_term), 0)
+                                - imag_unit() * v
+                            )
+
+                    else:  # holomorphic variable
+                        real_idx = br1 + sys_data["breaks"][1]
+                        im_idx = br1 + sys_data["breaks"][2]
+
+                        if br2 == 1:  # contravariant slot
+                            real_term = lead + [real_idx] + tail + term_tail
+                            im_term = lead + [im_idx] + tail + term_tail
+                            new_contribution[tuple(real_term)] = (
+                                new_contribution.get(tuple(real_term), 0) + half * v
+                            )
+                            new_contribution[tuple(im_term)] = (
+                                new_contribution.get(tuple(im_term), 0)
+                                - half * imag_unit() * v
+                            )
+                        else:  # covariant slot
+                            real_term = lead + [real_idx] + tail + term_tail
+                            im_term = lead + [im_idx] + tail + term_tail
+                            new_contribution[tuple(real_term)] = (
+                                new_contribution.get(tuple(real_term), 0) + v
+                            )
+                            new_contribution[tuple(im_term)] = (
+                                new_contribution.get(tuple(im_term), 0)
+                                + imag_unit() * v
+                            )
+
+                current_contribution = new_contribution
+
+            for key, val in current_contribution.items():
+                if not _scalar_is_zero(val):
+                    new_dict[key] = new_dict.get(key, 0) + val
+
+        if not new_dict:
+            new_dict = {tuple(): 0}
+
+        return new_dict
+
+    def _to_complex(self, plan=None):
+        new_dict = tensor_field_class._to_complex_algo(
+            plan=plan, cd=self.coeff_dict, vst=self.variable_spaces_types
+        )
+        return self.__class__(
+            coeff_dict=new_dict,
+            data_shape=self.data_shape,
+            dgcvType="complex",
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=self._variable_spaces,
+        )
+
+    @staticmethod
+    def _to_complex_algo(plan=None, cd={}, vst={}):
+        new_dict = {}
+
+        for k_seed, v_seed in cd.items():
+            current_contribution = {k_seed: v_seed}
+            degree = len(k_seed) // 3
+            valences = k_seed[degree : 2 * degree]
+            systems = k_seed[2 * degree :]
+
+            for idx in range(degree):
+                new_contribution = {}
+
+                for k, v in current_contribution.items():
+                    idxs = k[:degree]
+
+                    vb = valences[idx]
+                    syslbl = systems[idx]
+                    sys_data = vst[syslbl]
+
+                    if sys_data["type"] != "complex":
+                        new_contribution[k] = new_contribution.get(k, 0) + v
+                        continue
+
+                    # determine which real/imag block we are in
+                    br0, br1, br2 = sys_data["breaks"]
+
+                    if idxs[idx] < br1:
+                        new_contribution[k] = (
+                            new_contribution.get(k, 0) + v
+                        )  # holomorphic / antiholomorphic already
+                        continue
+
+                    if not tensor_field_class._slot_allowed(plan, syslbl, idxs[idx]):
+                        new_contribution[k] = new_contribution.get(k, 0) + v
+                        continue
+
+                    lead = list(idxs[:idx])
+                    tail = list(idxs[idx + 1 :])
+                    rest = list(valences) + list(systems)
+
+                    j = idxs[idx]
+
+                    # real variable
+                    if j < br2:
+                        holo_idx = j - br1
+                        anti_idx = holo_idx + br0
+
+                        if vb == 1:  # contravariant
+                            holo_term = lead + [holo_idx] + tail + rest
+                            anti_term = lead + [anti_idx] + tail + rest
+                            new_contribution[tuple(holo_term)] = (
+                                new_contribution.get(tuple(holo_term), 0) + v
+                            )
+                            new_contribution[tuple(anti_term)] = (
+                                new_contribution.get(tuple(anti_term), 0) + v
+                            )
+                        else:
+                            holo_term = lead + [holo_idx] + tail + rest
+                            anti_term = lead + [anti_idx] + tail + rest
+                            new_contribution[tuple(holo_term)] = (
+                                new_contribution.get(tuple(holo_term), 0) + v * half
+                            )
+                            new_contribution[tuple(anti_term)] = (
+                                new_contribution.get(tuple(anti_term), 0) + v * half
+                            )
+
+                    # imaginary variable
+                    else:
+                        holo_idx = j - br2
+                        anti_idx = holo_idx + br0
+
+                        if vb == 1:  # contravariant
+                            holo_term = lead + [holo_idx] + tail + rest
+                            anti_term = lead + [anti_idx] + tail + rest
+                            new_contribution[tuple(holo_term)] = (
+                                new_contribution.get(tuple(holo_term), 0)
+                                + imag_unit() * v
+                            )
+                            new_contribution[tuple(anti_term)] = (
+                                new_contribution.get(tuple(anti_term), 0)
+                                - imag_unit() * v
+                            )
+                        else:
+                            holo_term = lead + [holo_idx] + tail + rest
+                            anti_term = lead + [anti_idx] + tail + rest
+                            new_contribution[tuple(holo_term)] = (
+                                new_contribution.get(tuple(holo_term), 0)
+                                - imag_unit() * v * half
+                            )
+                            new_contribution[tuple(anti_term)] = (
+                                new_contribution.get(tuple(anti_term), 0)
+                                + imag_unit() * v * half
+                            )
+
+                current_contribution = new_contribution
+
+            for key, val in current_contribution.items():
+                if not _scalar_is_zero(val):
+                    new_dict[key] = new_dict.get(key, 0) + val
+
+        if not new_dict:
+            new_dict = {tuple(): 0}
+
+        return new_dict
+
+    def _get_parts(self, *, type: str):
+        t = str(type).lower()
+
+        if t in {"holo", "holomorphic"}:
+            want = "ch"
+            do_all_to_sym = True
+            mode = "pure"
+        elif t in {"anti", "antiholo", "antiholomorphic"}:
+            want = "ca"
+            do_all_to_sym = True
+            mode = "pure"
+        elif t == "mixed":
+            want = None
+            do_all_to_sym = True
+            mode = "mixed"
+        elif t == "standard":
+            want = "ss"
+            do_all_to_sym = False
+            mode = "pure"
+        elif t in {"real", "imag", "imaginary"}:
+            cfg = get_dgcv_settings_registry()
+            if not cfg.get("forgo_warnings", False):
+                info_f = getattr(self, "_coordinate_format_info", None)
+                info = info_f() if callable(info_f) else None
+                if not (isinstance(info, dict) and info.get("dgcv_type") == "complex"):
+                    warnings.warn(
+                        "Requested real/imaginary part of a tensor field whose variables are not registered as dgcv complex coordinate systems. "
+                        "The result is only well-defined if such variables are assumed real.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+
+            half = rational(1, 2)
+            if t == "real":
+                return half * (self + conjugate(self))
+            return imag_unit() * half * (-self + conjugate(self))
+
+        else:
+            raise ValueError(
+                "type must be one of: 'holomorphic', 'antiholomorphic', 'real', 'imaginary', 'mixed', 'standard'."
+            )
+
+        obj = self
+        if do_all_to_sym:
+            from .conversions import allToSym
+
+            obj = allToSym(obj)
+
+        new_cd = {}
+        for k, v in obj.coeff_dict.items():
+            if not v:
+                continue
+            prof = obj._profile_key(k)
+
+            if mode == "pure":
+                if all(tag == want for tag in prof):
+                    new_cd[k] = new_cd.get(k, 0) + v
+            else:  # "mixed"
+                if len(set(prof)) > 1:
+                    new_cd[k] = new_cd.get(k, 0) + v
+
+        if not new_cd:
+            new_cd = {tuple(): 0}
+
+        return self.__class__(
+            coeff_dict=new_cd,
+            data_shape=getattr(self, "data_shape", "general"),
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=self._variable_spaces,
+        )
+
+    @staticmethod
+    def _profile_key_full_inference(k, _variable_dict=None, inference_dict={}):
+        degree = len(k) // 3
+        idxs = k[:degree]
+        systems = k[2 * degree :]
+
+        out = []
+        if _variable_dict is None:
+            _variable_dict = tensor_field_class._variable_spaces_types_algo(
+                inference_dict
+            )
+
+        for idx, sys in zip(idxs, systems):
+            sys_data = _variable_dict.get(sys)
+            if sys_data is None:
+                raise KeyError(
+                    "At least one system label in a coeff_dict key is not registered in the VMF."
+                )
+
+            if sys_data is None or sys_data.get("type") != "complex":
+                out.append("ss")
+                continue
+
+            b0, b1, b2 = sys_data["breaks"]
+
+            if idx < b0:
+                out.append("ch")
+            elif idx < b1:
+                out.append("ca")
+            elif idx < b2:
+                out.append("rr")
+            else:
+                out.append("ri")
+
+        return tuple(out)
+
+    def _profile_key(self, k):
+        prof = self._key_profiles.get(k)
+        if prof is not None:
+            return prof
+        prof = self._profile_key_full_inference(
+            k, _variable_dict=self.variable_spaces_types
+        )
+        self._key_profiles[k] = prof
+        return prof
+
+    def _flip_format(self, slot: int, k, v, *, to_kind: str):
+        degree = len(k) // 3
+        idxs = list(k[:degree])
+        valences = k[degree : 2 * degree]
+        systems = k[2 * degree :]
+
+        sys = systems[slot]
+        sys_data = self.variable_spaces_types.get(sys)
+        if sys_data is None or sys_data.get("type") != "complex":
+            return {k: v}
+
+        b0, b1, b2 = sys_data["breaks"]
+        idx = idxs[slot]
+        vb = valences[slot]
+
+        half = rational(1, 2)
+        imU = imag_unit()
+
+        def _mk(new_idx, coeff):
+            new_idxs = list(idxs)
+            new_idxs[slot] = new_idx
+            nk = tuple(new_idxs) + tuple(valences) + tuple(systems)
+            return nk, coeff
+
+        if to_kind == "r":
+            if idx >= b1:
+                return {k: v}
+
+            if idx >= b0:
+                real_idx = idx + b0
+                imag_idx = idx + b1
+                if vb == 1:
+                    nk1, c1 = _mk(real_idx, half * v)
+                    nk2, c2 = _mk(imag_idx, half * imU * v)
+                else:
+                    nk1, c1 = _mk(real_idx, v)
+                    nk2, c2 = _mk(imag_idx, -imU * v)
+                return {nk1: c1, nk2: c2}
+
+            real_idx = idx + b1
+            imag_idx = idx + b2
+            if vb == 1:
+                nk1, c1 = _mk(real_idx, half * v)
+                nk2, c2 = _mk(imag_idx, -half * imU * v)
+            else:
+                nk1, c1 = _mk(real_idx, v)
+                nk2, c2 = _mk(imag_idx, imU * v)
+            return {nk1: c1, nk2: c2}
+
+        if to_kind == "c":
+            if idx < b1:
+                return {k: v}
+
+            if idx < b2:
+                holo_idx = idx - b1
+                anti_idx = idx - b1
+                if vb == 1:
+                    nk1, c1 = _mk(holo_idx, v)
+                    nk2, c2 = _mk(anti_idx, v)
+                else:
+                    nk1, c1 = _mk(holo_idx, half * v)
+                    nk2, c2 = _mk(anti_idx, half * v)
+                return {nk1: c1, nk2: c2}
+
+            holo_idx = idx - b2
+            anti_idx = idx - b2
+            if vb == 1:
+                nk1, c1 = _mk(holo_idx, imU * v)
+                nk2, c2 = _mk(anti_idx, -imU * v)
+            else:
+                nk1, c1 = _mk(holo_idx, -imU * half * v)
+                nk2, c2 = _mk(anti_idx, imU * half * v)
+            return {nk1: c1, nk2: c2}
+
+        raise ValueError("to_kind must be 'r' or 'c'")
+
+    def __dgcv_apply__(self, fun, **kwargs):
+        return self.apply(fun, **kwargs)
+
+    def apply(
+        self,
+        func,
+        *,
+        drop_zeros: bool = True,
+        data_shape: str | None = None,
+        dgcvType: str | None = None,
+        _simplifyKW=None,
+        variable_spaces=None,
+        **func_kwargs,
+    ):
+        if not callable(func):
+            raise TypeError("apply(func): `func` must be callable.")
+
+        out = {}
+        for k, v in self.coeff_dict.items():
+            vv = func(v, **func_kwargs)
+            if drop_zeros and _scalar_is_zero(vv):
+                continue
+            out[k] = vv
+
+        if not out:
+            out = {tuple(): 0}
+
+        return self.__class__(
+            coeff_dict=out,
+            data_shape=self.data_shape if data_shape is None else data_shape,
+            dgcvType=self.dgcvType if dgcvType is None else dgcvType,
+            _simplifyKW=self._simplifyKW if _simplifyKW is None else _simplifyKW,
+            variable_spaces=self._variable_spaces
+            if variable_spaces is None
+            else variable_spaces,
+        )
+
+    def __dgcv_conjugate__(self):
+        from .backends._symbolic_router import conjugate
+
+        new_cd = {}
+        vst = self.variable_spaces_types
+        cache = self._conj_key_profiles
+
+        for k, v in self.coeff_dict.items():
+            if k == tuple():
+                nk = tuple()
+                nv = conjugate(v)
+                new_cd[nk] = new_cd.get(nk, 0) + nv
+                continue
+
+            shifts = cache.get(k)
+            if shifts is None:
+                L = len(k)
+                d = L // 3
+                idxs = k[:d]
+                systems = k[2 * d :]
+
+                out = []
+                for idx, sys in zip(idxs, systems):
+                    sys_data = vst.get(sys)
+                    if sys_data is None or sys_data.get("type") != "complex":
+                        out.append(0)
+                        continue
+
+                    b0, b1, b2 = sys_data["breaks"]
+
+                    if idx < b0:
+                        out.append(b0)
+                    elif idx < b1:
+                        out.append(-b0)
+                    else:
+                        out.append(0)
+
+                shifts = tuple(out)
+                cache[k] = shifts
+
+            d = len(shifts)
+            idxs = k[:d]
+            tail = k[d:]  # valences + systems
+
+            new_idxs = tuple(i + s for i, s in zip(idxs, shifts))
+            nk = new_idxs + tail
+            nv = conjugate(v)
+            new_cd[nk] = new_cd.get(nk, 0) + nv
+
+        return self.__class__(
+            coeff_dict=new_cd,
+            data_shape=self.data_shape,
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=self._variable_spaces,
+        )
 
     def __str__(self):
-        return tensor_field_printer(self)
+        return tensor_field_printer2(self)
 
-    def __repr__(self):
-        return f"tensorField(varSpace={self.varSpace}, valence={self.valence}, coeffs={dict(self.coeff_dict)})"
+    def _repr_latex_(self, raw: bool = False, **kwargs):
+        return tensor_field_latex2(self, raw=raw)
 
-    def _repr_latex_(self, raw=False):
-        """
-        Define how the tensorField is displayed in LaTeX in IPython.
-        """
-        return tensor_field_latex(self,raw=raw)
+    def _latex(self, printer=None, raw: bool = True, **kwargs):
+        return self._repr_latex_(raw=raw)
 
-    def _sympystr(self, printer):
-        return self.__repr__()
+    def _latex_(self):
+        return self._repr_latex_(raw=True)
 
-    def _latex(self, printer=None):
-        return self._repr_latex_()
+    def _legacy_system_label(self):
+        syslbl = None
+        for k, v in self.coeff_dict.items():
+            if _scalar_is_zero(v):
+                continue
+            if not isinstance(k, tuple) or len(k) == 0 or len(k) % 3 != 0:
+                return None
+            deg = len(k) // 3
+            sys = k[2 * deg :]
+            if not sys:
+                continue
+            s0 = sys[0]
+            if any(s != s0 for s in sys):
+                return None
+            if syslbl is None:
+                syslbl = s0
+            elif syslbl != s0:
+                return None
+        return syslbl
+
+    def _legacy_varSpace(self):
+        syslbl = self._legacy_system_label()
+        if syslbl is None:
+            return None
+        vs = self._variable_spaces.get(syslbl, None)
+        if not isinstance(vs, tuple):
+            return None
+        if self.total_degree == 0:
+            return vs
+        n = len(vs)
+        if n == 0:
+            return None
+        for k, v in self.coeff_dict.items():
+            if _scalar_is_zero(v):
+                continue
+            deg = len(k) // 3
+            idxs = k[:deg]
+            if any((not isinstance(i, Integral)) or i < 0 or i >= n for i in idxs):
+                return None
+        return vs
+
+    def _legacy_coeff_dict(self):
+        vs = self._legacy_varSpace()
+        if vs is None:
+            return None
+        if self.total_degree == 0:
+            return {tuple(): self.coeff_dict.get(tuple(), 0)}
+        out = {}
+        deg = self.total_degree
+        for k, v in self.coeff_dict.items():
+            if _scalar_is_zero(v):
+                continue
+            idxs = k[:deg]
+            out[tuple(idxs)] = v
+        if not out:
+            return {(0,) * deg: 0}
+        return out
+
+    def _require_legacy_view(self, what: str):
+        if self._legacy_varSpace() is None:
+            raise ValueError(
+                f"{what} is only available when the tensor is supported on a single cached coordinate system."
+            )
+
+    def holomorphic_part(self):
+        return self._get_parts(type="holomorphic")
+
+    def antiholomorphic_part(self):
+        return self._get_parts(type="antiholomorphic")
+
+    def mixed_term_component(self):
+        return self._get_parts(type="mixed")
+
+    def pure_standard_coordinate_terms(self):
+        return self._get_parts(type="standard")
+
+    def real_part(self):
+        return self._get_parts(type="real")
+
+    def imaginary_part(self):
+        return self._get_parts(type="imaginary")
 
     @property
-    def realVarSpace(self):
-        if self.dgcvType == "standard":  # Do nothing for dgcvType == "standard"
-            return self._realVarSpace
-        if self._realVarSpace is None or self._imVarSpace is None:
-            self.cd_formats
-            return self._realVarSpace + self._imVarSpace
-        return self._realVarSpace + self._imVarSpace
-
-    @property
-    def holVarSpace(self):
-        if self.dgcvType == "standard":  # Do nothing for dgcvType == "standard"
-            return self._holVarSpace
-        if self._holVarSpace is None:
-            self.cd_formats
-            return self._holVarSpace
-        return self._holVarSpace
-
-    @property
-    def antiholVarSpace(self):
-        if self.dgcvType == "standard":  # Do nothing for dgcvType == "standard"
-            return self._antiholVarSpace
-        if self._antiholVarSpace is None:
-            self.cd_formats
-            return self._antiholVarSpace
-        return self._antiholVarSpace
-
-    @property
-    def compVarSpace(self):
-        if self.dgcvType == "standard":  # Do nothing for dgcvType == "standard"
-            return self._holVarSpace + self._antiholVarSpace
-        if self._holVarSpace is None or self._antiholVarSpace is None:
-            self.cd_formats
-            return self._holVarSpace + self._antiholVarSpace
-        return self._holVarSpace + self._antiholVarSpace
-
-    @property
-    def cd_formats(
-        self,
-    ):  # Retrieves coeffs in different variable formats and updates *VarSpace and _cd_formats caches if needed
+    def cd_formats(self):
         if self._cd_formats is not None:
             return self._cd_formats
-
-        if self.dgcvType == "standard" or all(
-            j is not None
-            for j in [
-                self._realVarSpace,
-                self._holVarSpace,
-                self._antiholVarSpace,
-                self._imVarSpace,
-                self._cd_formats,
-            ]
-        ):
+        if self.dgcvType == "standard":
+            return self._cd_formats
+        vs = self._legacy_varSpace()
+        cd = self._legacy_coeff_dict()
+        if vs is None or cd is None:
             return self._cd_formats
         (
             populate,
@@ -552,1097 +1669,1582 @@ class tensorField(sp.Basic):
             self._antiholVarSpace,
             self._imVarSpace,
         ) = _coeff_dict_formatter(
-            self.varSpace,
-            self.coeff_dict,
+            vs,
+            cd,
             self.valence,
             self.total_degree,
-            self._varSpace_type,
-            self.data_shape,
+            getattr(self, "_varSpace_type", "standard"),
+            self.data_shape if self.data_shape != "all" else "general",
+        )
+        self._cd_formats = populate
+        return populate
+
+    @property
+    def realVarSpace(self):
+        if self.dgcvType == "standard":
+            return self._realVarSpace
+        if self._realVarSpace is None or self._imVarSpace is None:
+            self.cd_formats
+        if self._realVarSpace is None or self._imVarSpace is None:
+            return None
+        return self._realVarSpace + self._imVarSpace
+
+    @property
+    def holVarSpace(self):
+        if self.dgcvType == "standard":
+            return self._holVarSpace
+        if self._holVarSpace is None:
+            self.cd_formats
+        return self._holVarSpace
+
+    @property
+    def antiholVarSpace(self):
+        if self.dgcvType == "standard":
+            return self._antiholVarSpace
+        if self._antiholVarSpace is None:
+            self.cd_formats
+        return self._antiholVarSpace
+
+    @property
+    def compVarSpace(self):
+        if self.dgcvType == "standard":
+            if self._holVarSpace is None or self._antiholVarSpace is None:
+                return None
+            return self._holVarSpace + self._antiholVarSpace
+        if self._holVarSpace is None or self._antiholVarSpace is None:
+            self.cd_formats
+        if self._holVarSpace is None or self._antiholVarSpace is None:
+            return None
+        return self._holVarSpace + self._antiholVarSpace
+
+    @property
+    def coeffArray(self):
+        if self._coeffArray is not None:
+            return self._coeffArray
+
+        self._require_legacy_view("coeffArray")
+
+        vs = self._legacy_varSpace()
+        deg = self.total_degree
+        n = len(vs)
+        shape = (n,) * deg
+
+        def entry_rule(indexTuple):
+            if self.data_shape == "symmetric":
+                indexTuple = tuple(sorted(indexTuple))
+            cd = self.expanded_coeff_dict
+            return cd.get(indexTuple, 0)
+
+        def generate_indices(sh):
+            if len(sh) == 1:
+                return [(i,) for i in range(sh[0])]
+            return [(i,) + t for i in range(sh[0]) for t in generate_indices(sh[1:])]
+
+        sparse_data = {idx: entry_rule(idx) for idx in generate_indices(shape)}
+        flat = {_spool(idx_tup, shape): v for idx_tup, v in sparse_data.items()}
+
+        arr = array_dgcv.__new__(array_dgcv)
+        arr._data = flat
+        arr.shape = shape
+        arr.ndim = len(shape)
+        arr._dgcv_class_check = retrieve_passkey()
+        arr._dgcv_category = "array"
+
+        self._coeffArray = arr
+        return self._coeffArray
+
+    @property
+    def expanded_coeff_dict(self):
+        if self._expanded_coeff_dict is not None:
+            return self._expanded_coeff_dict
+
+        if self.data_shape in ("general", "all"):
+            if self.data_shape == "all":
+                self._expanded_coeff_dict = {tuple(): self.coeff_dict.get(tuple(), 0)}
+            else:
+                self._expanded_coeff_dict = {
+                    k: v for k, v in self.coeff_dict.items() if not _scalar_is_zero(v)
+                }
+            return self._expanded_coeff_dict
+
+        self._expanded_coeff_dict = self._expand_special_to_general(
+            self.coeff_dict, self.data_shape
+        )
+        return self._expanded_coeff_dict
+
+    def swap_tensor_valence(self):
+        def key_change(key):
+            deg = len(key) // 3
+            new_k = tuple(
+                j if c < deg or 2 * deg <= c else 1 - j for c, j in enumerate(key)
+            )
+            return new_k
+
+        cd = {key_change(key): value for key, value in self.coeff_dict.items()}
+        if query_dgcv_categories(self, "differential_form"):
+            return vector_field_class(
+                coeff_dict=cd, _simplifyKW=self._simplifyKW, parameters=self.parameters
+            )
+        if query_dgcv_categories(self, "vector_field"):
+            return differential_form_class(
+                coeff_dict=cd, _simplifyKW=self._simplifyKW, parameters=self.parameters
+            )
+        return tensor_field_class(
+            coeff_dict=cd, _simplifyKW=self._simplifyKW, parameters=self.parameters
         )
 
-        if self._cd_formats is None:
-            self._cd_formats = populate
-            return populate
+    def __dgcv_re__(self):
+        return self.real_part()
+
+    def __dgcv_im__(self):
+        return self.imaginary_part()
+
+    def _is_scalar(self) -> bool:
+        return self.data_shape == "all" and self.total_degree == 0
+
+    def _scalar_value(self):
+        return self.coeff_dict.get(tuple(), 0)
+
+    def _with_same_meta(self, *, coeff_dict, data_shape=None, variable_spaces=None):
+        return self.__class__(
+            coeff_dict=coeff_dict,
+            data_shape=self.data_shape if data_shape is None else data_shape,
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=self._variable_spaces
+            if variable_spaces is None
+            else variable_spaces,
+        )
+
+    def _merged_variable_spaces(self, other):
+        out = dict(self._variable_spaces)
+        ov = getattr(other, "_variable_spaces", {})
+        for k, v in ov.items():
+            if k in out and out[k] != v:
+                raise ValueError(
+                    f"Incompatible cached variable spaces {out[k]} and {v} for system '{k}'."
+                )
+            out[k] = v
+        return out
+
+    def _coerce_to_general(self):
+        if self.data_shape == "general":
+            return self
+        if self.data_shape == "all":
+            return self
+        g = self._expand_special_to_general(self.coeff_dict, self.data_shape)
+        out = self._with_same_meta(coeff_dict=g, data_shape="general")
+        out._shape_checked = True
+        return out
+
+    def _maybe_promote_general_to(self, target_shape: str):
+        if self._shape_checked:
+            return
+        self._shape_checked = True
+        if self.data_shape != "general":
+            return
+        if target_shape not in ("symmetric", "skew"):
+            return
+        if not self.valence or len(set(self.valence)) != 1:
+            return
+        new_cd, eff_shape = self._process_coeffs_dict_new(self.coeff_dict, target_shape)
+        if eff_shape == target_shape:
+            self.coeff_dict = new_cd
+            self.data_shape = eff_shape
+            self._expanded_coeff_dict = None
+            self._coeffArray = None
+            self._cd_formats = None
+
+    def __add__(self, other):
+        if _scalar_is_zero(other):
+            return self
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        if self._is_scalar() or other._is_scalar():
+            raise TypeError("Cannot add tensors of different degrees.")
+
+        return self._add_tensor(other, coerce_shapes=True)
+
+    def __radd__(self, other):
+        if _scalar_is_zero(other):
+            return self
+        return NotImplemented
+
+    def __neg__(self):
+        if self._is_scalar():
+            return self.__class__(
+                coeff_dict={tuple(): -self._scalar_value()},
+                data_shape="all",
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=self._variable_spaces,
+            )
+        return self._with_same_meta(
+            coeff_dict={k: -v for k, v in self.coeff_dict.items()},
+            variable_spaces=self._variable_spaces,
+        )
+
+    def __sub__(self, other):
+        if _scalar_is_zero(other):
+            return self
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self + (-other)
+
+    def __matmul__(self, other):
+        tf = other
+        if check_dgcv_category(tf):
+            coerce = getattr(tf, "as_tensor_field", None)
+            if callable(coerce):
+                tf = coerce()
+        if not isinstance(tf, self.__class__):
+            return NotImplemented
+        return self._shape_product(tf, kind="general")
+
+    def __mul__(self, other):
+        if check_dgcv_scalar(other):
+            if self._is_scalar():
+                return self.__class__(
+                    coeff_dict={tuple(): other * self._scalar_value()},
+                    data_shape="all",
+                    dgcvType=self.dgcvType,
+                    _simplifyKW=self._simplifyKW,
+                    variable_spaces=self._variable_spaces,
+                )
+            return self._with_same_meta(
+                coeff_dict={k: other * v for k, v in self.coeff_dict.items()},
+                variable_spaces=self._variable_spaces,
+            )
+
+        tf = other
+        if check_dgcv_category(tf):
+            coerce = getattr(tf, "as_tensor_field", None)
+            if callable(coerce):
+                tf = coerce()
+        if not isinstance(tf, self.__class__):
+            return NotImplemented
+
+        return self._shape_product(tf, kind="general")
+
+    def __rmul__(self, scalar):
+        return self.__mul__(scalar)
+
+    def __truediv__(self, scalar):
+        if check_dgcv_scalar(scalar):
+            return self * exact_reciprocal(scalar)
+        return NotImplemented
+
+    def _add_tensor(self, other, *, coerce_shapes: bool, _return_raw: bool = False):
+        a = self
+        b = other
+
+        a_shape = a.data_shape
+        b_shape = b.data_shape
+
+        if coerce_shapes:
+            if a_shape == "general" and b_shape in ("symmetric", "skew"):
+                a._maybe_promote_general_to(b_shape)
+                a_shape = a.data_shape
+            if b_shape == "general" and a_shape in ("symmetric", "skew"):
+                b._maybe_promote_general_to(a_shape)
+                b_shape = b.data_shape
+
+        if a_shape == "all":
+            out_shape = b_shape
+        elif b_shape == "all":
+            out_shape = a_shape
+        elif a_shape == b_shape:
+            out_shape = a_shape
         else:
-            return self._cd_formats
+            out_shape = "general"
+
+        aa = a if a_shape == out_shape or a_shape == "all" else a._coerce_to_general()
+        bb = b if b_shape == out_shape or b_shape == "all" else b._coerce_to_general()
+
+        new_cd = {}
+        for k, v in aa.coeff_dict.items():
+            if not _scalar_is_zero(v):
+                new_cd[k] = v
+        for k, v in bb.coeff_dict.items():
+            if not _scalar_is_zero(v):
+                new_cd[k] = new_cd.get(k, 0) + v
+
+        new_cd, eff_shape = self._process_coeffs_dict_new(new_cd, out_shape)
+        merged_vs = a._merged_variable_spaces(b)
+
+        if _return_raw:
+            return new_cd, eff_shape, merged_vs
+
+        return self.__class__(
+            coeff_dict=new_cd,
+            data_shape=eff_shape,
+            dgcvType=a.dgcvType,
+            _simplifyKW=a._simplifyKW,
+            variable_spaces=merged_vs,
+        )
+
+    def _tp_concat_cd_fast(self, other, shape=None):
+        a = self
+        b = other
+        out = {}
+
+        def _parity_sign(order):
+            n = len(order)
+            sign = 1
+            seen = [False] * n
+            for i in range(n):
+                if seen[i]:
+                    continue
+                j = i
+                cycle_len = 0
+                while not seen[j]:
+                    seen[j] = True
+                    j = order[j]
+                    cycle_len += 1
+                if cycle_len and (cycle_len % 2 == 0):
+                    sign = -sign
+            return sign
+
+        for ka, va in a.coeff_dict.items():
+            if va == 0:
+                continue
+            if ka:
+                da = len(ka) // 3
+                ia = ka[:da]
+                va_bits = ka[da : 2 * da]
+                sa = ka[2 * da :]
+            else:
+                ia = va_bits = sa = tuple()
+
+            for kb, vb in b.coeff_dict.items():
+                if vb == 0:
+                    continue
+                if kb:
+                    db = len(kb) // 3
+                    ib = kb[:db]
+                    vb_bits = kb[db : 2 * db]
+                    sb = kb[2 * db :]
+                else:
+                    ib = vb_bits = sb = tuple()
+
+                inds = ia + ib
+                bits = va_bits + vb_bits
+                sys = sa + sb
+                n = len(inds)
+
+                if n == 0:
+                    nk = tuple()
+                    out[nk] = out.get(nk, 0) + va * vb
+                    continue
+
+                if shape in ("skew", "symmetric"):
+                    if shape == "skew":
+                        order = sorted(
+                            range(n), key=lambda k: (inds[k], bits[k], sys[k])
+                        )
+                        sign = _parity_sign(order)
+                    else:
+                        order = sorted(
+                            range(n), key=lambda k: (inds[k], bits[k], sys[k])
+                        )
+                        sign = 1
+
+                    inds2 = tuple(inds[k] for k in order)
+                    bits2 = tuple(bits[k] for k in order)
+                    sys2 = tuple(sys[k] for k in order)
+
+                    if shape == "skew":
+                        seen = set()
+                        for t in zip(inds2, bits2, sys2):
+                            if t in seen:
+                                sign = 0
+                                break
+                            seen.add(t)
+                        if sign == 0:
+                            continue
+
+                    nk = inds2 + bits2 + sys2
+                    out[nk] = out.get(nk, 0) + sign * va * vb
+                    continue
+
+                nk = inds + bits + sys
+                out[nk] = out.get(nk, 0) + va * vb
+
+        return out
+
+    def _shape_product(self, other, *, kind: str):
+        a = self
+        b = other
+
+        if kind == "general":
+            aa = a if a.data_shape in ("general", "all") else a._coerce_to_general()
+            bb = b if b.data_shape in ("general", "all") else b._coerce_to_general()
+            cd = aa._tp_concat_cd_fast(bb)
+            cd, eff_shape = self._process_coeffs_dict_new(cd, "general")
+            return self.__class__(
+                coeff_dict=cd,
+                data_shape=eff_shape,
+                dgcvType=a.dgcvType,
+                _simplifyKW=a._simplifyKW,
+                variable_spaces=a._merged_variable_spaces(b),
+            )
+
+        if kind == "skew":
+            if a.data_shape in ("skew", "all") and b.data_shape in ("skew", "all"):
+                cd = a._tp_concat_cd_fast(b, shape="skew")
+                cd, eff_shape = self._process_coeffs_dict_new(cd, "skew")
+                return self.__class__(
+                    coeff_dict=cd,
+                    data_shape=eff_shape,
+                    dgcvType=a.dgcvType,
+                    _simplifyKW=a._simplifyKW,
+                    variable_spaces=a._merged_variable_spaces(b),
+                )
+            ab = a._shape_product(b, kind="general")
+            ba = b._shape_product(a, kind="general")
+            cd = dict(ab.coeff_dict)
+            for k, v in ba.coeff_dict.items():
+                if not _scalar_is_zero(v):
+                    cd[k] = cd.get(k, 0) - v
+            cd, eff_shape = self._process_coeffs_dict_new(cd, "skew")
+            return self.__class__(
+                coeff_dict=cd,
+                data_shape=eff_shape,
+                dgcvType=a.dgcvType,
+                _simplifyKW=a._simplifyKW,
+                variable_spaces=a._merged_variable_spaces(b),
+            )
+
+        if kind == "symmetric":
+            if a.data_shape in ("symmetric", "all") and b.data_shape in (
+                "symmetric",
+                "all",
+            ):
+                cd = a._tp_concat_cd_fast(b)
+                cd, eff_shape = self._process_coeffs_dict_new(cd, "symmetric")
+                return self.__class__(
+                    coeff_dict=cd,
+                    data_shape=eff_shape,
+                    dgcvType=a.dgcvType,
+                    _simplifyKW=a._simplifyKW,
+                    variable_spaces=a._merged_variable_spaces(b),
+                )
+
+            ab = a._shape_product(b, kind="general")
+            ba = b._shape_product(a, kind="general")
+            cd = dict(ab.coeff_dict)
+            for k, v in ba.coeff_dict.items():
+                if not _scalar_is_zero(v):
+                    cd[k] = cd.get(k, 0) + v
+            cd, eff_shape = self._process_coeffs_dict_new(cd, "symmetric")
+            return self.__class__(
+                coeff_dict=cd,
+                data_shape=eff_shape,
+                dgcvType=a.dgcvType,
+                _simplifyKW=a._simplifyKW,
+                variable_spaces=a._merged_variable_spaces(b),
+            )
+
+        raise ValueError(f"Unknown product kind '{kind}'.")
+
+    def tp(self, *others):
+        return self.tensor_product(*others)
+
+    def tensor_product(self, *others):
+        out = self
+        for o in others:
+            if check_dgcv_category(o):
+                coerce = getattr(o, "as_tensor_field", None)
+                if callable(coerce):
+                    o = coerce()
+            if not isinstance(o, self.__class__):
+                return NotImplemented
+            out = out._shape_product(o, kind="general")
+        return out
+
+    def skew_product(self, *others):
+        out = self
+        df = query_dgcv_categories(out, {"differential_form"})  # bool
+        for o in others:
+            if check_dgcv_scalar(o):
+                out = o * out
+                continue
+            if not get_dgcv_category(o) == "tensor_field":
+                return NotImplemented
+
+            if not (df and query_dgcv_categories(o, {"differential_form"})):
+                if check_dgcv_category(out):
+                    coerce = getattr(out, "as_tensor_field", None)
+                    if callable(coerce):
+                        out = coerce()
+                if check_dgcv_category(o):
+                    coerce = getattr(o, "as_tensor_field", None)
+                    if callable(coerce):
+                        o = coerce()
+            out = out._shape_product(o, kind="skew")
+        return out
+
+    def wedge(self, *others):
+        # alias
+        return self.skew_product(*others)
+
+    def symmetric_product(self, *others):
+        out = self
+        for o in others:
+            if not get_dgcv_category(o) == "tensor_field":
+                return NotImplemented
+            coerce = getattr(o, "as_tensor_field", None)
+            if callable(coerce):
+                o = coerce()
+            coerce = getattr(self, "as_tensor_field", None)
+            s = coerce() if callable(coerce) else self
+            out = s._shape_product(o, kind="symmetric")
+        return out
+
+    def __call__(self, *args, strict_left_to_right: bool = False):
+        if len(args) == 0:
+            return self
+        if len(args) > 1:
+            contracted = self.__call__(args[0])
+            if contracted == 0:
+                return 0
+            if get_dgcv_category(contracted) == "tensor_field":
+                coerce = getattr(contracted, "as_tensor_field", None)
+                if callable(coerce):
+                    contracted = coerce()
+                return contracted(*args[1:])
+            first_tf = None
+            for idx, arg in enumerate(args[1:]):
+                if get_dgcv_category(arg) == "tensor_field":
+                    first_tf = arg
+                    new_args = args[idx + 2 :]
+                    break
+                elif check_dgcv_scalar(arg):
+                    contracted *= arg
+                else:
+                    raise TypeError(
+                        "tensor_field_class only contracts with dgcv tensor_field classes and scalars, "
+                        f"not {type(arg).__name__}."
+                    )
+            if first_tf:
+                tail = first_tf(*new_args) if new_args else first_tf
+                return contracted * tail
+            return contracted
+
+        other = args[0]
+        if check_dgcv_category(other):
+            coerce = getattr(other, "as_tensor_field", None)
+            if callable(coerce):
+                other = coerce()
+
+        if get_dgcv_category(other) == "tensor_field":
+            if self._validated_format == "complex":
+                if other._validated_format in {"mixed", "real"}:
+                    return self.__call__(other._to_complex())
+            elif self._validated_format == "real":
+                if other._validated_format in {"mixed", "complex"}:
+                    return self.__call__(other._to_real())
+            elif self._validated_format == "mixed":
+                if other._validated_format == "real":
+                    return self.__call__(other._to_real())
+                if other._validated_format == "complex":
+                    return self.__call__(other._to_complex())
+                if other._validated_format == "mixed":
+                    pref = get_dgcv_settings_registry()["preferred_variable_format"]
+                    if pref == "real":
+                        return self._to_real().__call__(other._to_real())
+                    else:
+                        return self._to_complex().__call__(other._to_complex())
+            if self.data_shape == "symmetric" or self.data_shape == "skew":
+                scale = -1 if self.data_shape == "skew" else 1
+
+                shape_cd = {}
+                abort = False
+
+                for k2, v2 in other.coeff_dict.items():
+                    if not v2:
+                        continue
+
+                    lk2 = len(k2)
+                    if lk2 not in (0, 3):
+                        abort = True
+                        break
+
+                    if lk2 == 0:
+                        for k1, v1 in self.coeff_dict.items():
+                            if not v1:
+                                continue
+                            shape_cd[k1] = shape_cd.get(k1, 0) + v1 * v2
+                        continue
+
+                    a, b, c = k2
+                    for k1, v1 in self.coeff_dict.items():
+                        if not v1:
+                            continue
+                        sign = 1
+                        deg = len(k1) // 3
+                        for idx in range(deg):
+                            idx2, idx3 = deg + idx, 2 * deg + idx
+                            if a == k1[idx] and b + k1[idx2] == 1 and c == k1[idx3]:
+                                new_key = tuple(
+                                    elem
+                                    for count, elem in enumerate(k1)
+                                    if count not in (idx, idx2, idx3)
+                                )
+                                shape_cd[new_key] = (
+                                    shape_cd.get(new_key, 0) + sign * v1 * v2
+                                )
+                                break
+                            sign *= scale
+
+                if not abort:
+                    if not shape_cd:
+                        return 0
+                    if tuple() in shape_cd and len(shape_cd) == 1:
+                        return shape_cd[tuple()]
+
+                    return tensor_field_class(
+                        coeff_dict=shape_cd,
+                        data_shape=self.data_shape,
+                        dgcvType=self.dgcvType,
+                        _simplifyKW=self._simplifyKW,
+                        variable_spaces=self._merged_variable_spaces(other),
+                        parameters=self.parameters
+                        | getattr(other, "parameters", set()),
+                    )
+            if self.data_shape == "general":
+                gen_cd = {}
+                abort = False
+
+                for k2, v2 in other.coeff_dict.items():
+                    if not v2:
+                        continue
+
+                    lk2 = len(k2)
+                    if lk2 not in (0, 3):
+                        abort = True
+                        break
+
+                    if lk2 == 0:
+                        for k1, v1 in self.coeff_dict.items():
+                            if not v1:
+                                continue
+                            gen_cd[k1] = gen_cd.get(k1, 0) + v1 * v2
+                        continue
+
+                    a, b, c = k2
+                    for k1, v1 in self.coeff_dict.items():
+                        if not v1:
+                            continue
+                        deg = len(k1) // 3
+                        idx, idx2, idx3 = 0, deg, 2 * deg
+                        if a == k1[idx] and b + k1[idx2] == 1 and c == k1[idx3]:
+                            new_key = tuple(
+                                elem
+                                for count, elem in enumerate(k1)
+                                if count not in (idx, idx2, idx3)
+                            )
+                            gen_cd[new_key] = gen_cd.get(new_key, 0) + v1 * v2
+
+                if not abort:
+                    if not gen_cd:
+                        return 0
+                    if tuple() in gen_cd and len(gen_cd) == 1:
+                        return gen_cd[tuple()]
+
+                    return tensor_field_class(
+                        coeff_dict=gen_cd,
+                        data_shape="general",
+                        dgcvType=self.dgcvType,
+                        _simplifyKW=self._simplifyKW,
+                        variable_spaces=self._merged_variable_spaces(other),
+                        parameters=self.parameters
+                        | getattr(other, "parameters", set()),
+                    )
+
+        if get_dgcv_category(other) != "tensor_field":
+            raise TypeError(
+                "tensor_field_class.__call__ only supports contraction against tensor_field instances."
+            )
+
+        shape_a = getattr(self, "data_shape", "general")
+        shape_b = getattr(other, "data_shape", "general")
+        if shape_a != shape_b and shape_a != "all" and shape_b != "all":
+            ###!!! optimize later: shape-aware contraction can avoid general expansion by sorting argument keys
+            self = self._coerce_to_general()
+            other = other._coerce_to_general()
+
+        def _split_tripled(k):
+            d = len(k) // 3
+            return k[:d], k[d : 2 * d], k[2 * d :]
+
+        def _join_tripled(idxs, valence_tuple, syslbls):
+            return tuple(idxs) + tuple(valence_tuple) + tuple(syslbls)
+
+        def _complementary(vb1, vb2):
+            for a, b in zip(vb1, vb2):
+                if a + b != 1:
+                    return False
+            return True
+
+        vst = self.variable_spaces_types
+
+        def _profile_from_parts(idxs, syslbls):
+            out = []
+            for idx, sys in zip(idxs, syslbls):
+                sys_data = vst.get(sys)
+                if sys_data is None or sys_data.get("type") != "complex":
+                    out.append("s")
+                    continue
+                b0, b1, b2 = sys_data["breaks"]
+                if idx < b1:
+                    out.append("c")
+                elif idx < b2:
+                    out.append("r")
+                else:
+                    out.append("s")
+            return tuple(out)
+
+        def _expand_to_profile(k, v, want_profile):
+            have = self._profile_key(k)
+            have0 = tuple(t[0] for t in have)
+            want0 = tuple(t[0] for t in want_profile)
+
+            for a0, b0 in zip(have0, want0):
+                if (a0 == "s") != (b0 == "s"):
+                    return None
+
+            swap_slots = [i for i, (a0, b0) in enumerate(zip(have0, want0)) if a0 != b0]
+            if not swap_slots:
+                return {k: v}
+
+            flip = getattr(self, "_flip_format", None)
+            if not callable(flip):
+                return None
+
+            terms = {k: v}
+            for slot in swap_slots:
+                kind0 = want0[slot]
+                if kind0 not in ("r", "c"):
+                    return None
+
+                new_terms = {}
+                for kk, vv in terms.items():
+                    out = flip(slot, kk, vv, to_kind=kind0)
+                    if not out:
+                        continue
+                    for nk, nv in out.items():
+                        if nv:
+                            new_terms[nk] = new_terms.get(nk, 0) + nv
+
+                terms = new_terms
+                if not terms:
+                    return None
+
+            return terms
+
+        def _pick_by_idxs(terms, want_idxs):
+            out = {}
+            for k, v in terms.items():
+                if not v:
+                    continue
+                idxs, _, _ = _split_tripled(k)
+                if idxs == want_idxs:
+                    out[k] = out.get(k, 0) + v
+            return out or None
+
+        new_cd = {}
+
+        for k1, v1 in self.coeff_dict.items():
+            if not v1:
+                continue
+
+            i1, val1, s1 = _split_tripled(k1)
+            d1 = len(i1)
+
+            for k2, v2 in other.coeff_dict.items():
+                if not v2:
+                    continue
+
+                i2, val2, s2 = _split_tripled(k2)
+                d2 = len(i2)
+
+                strict_left_to_right = (
+                    True  # hard override -- releasing this has not been decided
+                )
+                if d2 > d1:
+                    if strict_left_to_right:
+                        continue
+                    lead_i2, tail_i2 = i2[:d1], i2[d1:]
+                    lead_val2, tail_val2 = val2[:d1], val2[d1:]
+                    lead_s2, tail_s2 = s2[:d1], s2[d1:]
+
+                    if lead_s2 != s1:
+                        continue
+                    if not _complementary(val1, lead_val2):
+                        continue
+
+                    want_profile = _profile_from_parts(lead_i2, lead_s2)
+
+                    terms = _expand_to_profile(k1, v1, want_profile)
+                    if not terms:
+                        continue
+                    terms = _pick_by_idxs(terms, lead_i2)
+                    if not terms:
+                        continue
+
+                    nk = _join_tripled(tail_i2, tail_val2, tail_s2)
+                    acc = new_cd.get(nk, 0)
+                    for v1a in terms.values():
+                        acc += v1a * v2
+                    if acc:
+                        new_cd[nk] = acc
+                    continue
+
+                lead_i1, tail_i1 = i1[:d2], i1[d2:]
+                lead_val1, tail_val1 = val1[:d2], val1[d2:]
+                lead_s1, tail_s1 = s1[:d2], s1[d2:]
+
+                if lead_s1 != s2:
+                    continue
+                if not _complementary(lead_val1, val2):
+                    continue
+
+                want_profile = _profile_from_parts(lead_i1, lead_s1)
+
+                terms = _expand_to_profile(k2, v2, want_profile)
+                if not terms:
+                    continue
+                terms = _pick_by_idxs(terms, lead_i1)
+                if not terms:
+                    continue
+
+                nk = _join_tripled(tail_i1, tail_val1, tail_s1)
+                acc = new_cd.get(nk, 0)
+                for v2a in terms.values():
+                    acc += v1 * v2a
+                if acc:
+                    new_cd[nk] = acc
+
+        if not new_cd:
+            return 0
+
+        if tuple() in new_cd and len(new_cd) == 1:
+            return new_cd[tuple()]
+
+        return tensor_field_class(
+            coeff_dict=new_cd,
+            data_shape="general",
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=self._merged_variable_spaces(other),
+        )
 
     def _eval_simplify(self, **kwargs):
-        """
-        Applies simplification rules based on the current `_simplifyKW` settings.
+        rule = self._simplifyKW.get("simplify_rule", None)
+        ign = self._simplifyKW.get("simplify_ignore_list", None)
 
-        Returns
-        -------
-        tensorField
-            A simplified tensorField object.
-        """
-        if self._simplifyKW["simplify_rule"] is None:
-            # Apply standard simplification to all tensor coefficients
-            simplified_coeffs = {
-                key: sp.simplify(value, **kwargs)
-                for key, value in self.expanded_coeff_dict.items()
+        if rule is None:
+            simplified = {k: simplify(v, **kwargs) for k, v in self.coeff_dict.items()}
+        elif rule == "holomorphic":
+            simplified = {
+                k: simplify(allToHol(v, skipVar=ign), **kwargs)
+                for k, v in self.coeff_dict.items()
             }
-
-        elif self._simplifyKW["simplify_rule"] == "holomorphic":
-            # Convert coefficients to holomorphic form before simplifying
-            simplified_coeffs = {
-                key: sp.simplify(
-                    allToHol(value, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for key, value in self.expanded_coeff_dict.items()
+        elif rule == "real":
+            simplified = {
+                k: simplify(allToReal(v, skipVar=ign), **kwargs)
+                for k, v in self.coeff_dict.items()
             }
-
-        elif self._simplifyKW["simplify_rule"] == "real":
-            # Convert coefficients to real form before simplifying
-            simplified_coeffs = {
-                key: sp.simplify(
-                    allToReal(value, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for key, value in self.expanded_coeff_dict.items()
+        elif rule == "symbolic_conjugate":
+            simplified = {
+                k: simplify(allToSym(v, skipVar=ign), **kwargs)
+                for k, v in self.coeff_dict.items()
             }
-
-        elif self._simplifyKW["simplify_rule"] == "symbolic_conjugate":
-            # Convert coefficients to symbolic conjugate before simplifying
-            simplified_coeffs = {
-                key: sp.simplify(
-                    allToSym(value, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for key, value in self.expanded_coeff_dict.items()
-            }
-
         else:
-            warnings.warn(
-                f"_eval_simplify received an unsupported simplify_rule: {self._simplifyKW['simplify_rule']}."
-                " Recommended values: None, 'holomorphic', 'real', or 'symbolic_conjugate'."
-            )
-            simplified_coeffs = {
-                key: sp.simplify(value, **kwargs)
-                for key, value in self.expanded_coeff_dict.items()
-            }
+            warnings.warn(f"Unsupported simplify_rule: {rule}.")
+            simplified = {k: simplify(v, **kwargs) for k, v in self.coeff_dict.items()}
 
-        # Return a new instance of tensorField with simplified coefficients
-        return tensorField(
-            self.varSpace,
-            simplified_coeffs,
-            valence=self.valence,
+        return self.__class__(
+            coeff_dict=simplified,
             data_shape=self.data_shape,
             dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
+            variable_spaces=self._variable_spaces,
         )
+
+    def __dgcv_simplify__(self, method=None, **kwargs):
+        return self._eval_simplify(**kwargs)
+
+    @property
+    def __dgcv_zero_obstr__(self):
+        return self.coeff_dict.values(), self.coeff_free_symbols
 
     def __eq__(self, other):
-        """
-        Checks if two tensorField instances are equal.
-
-        Two tensorFields are considered equal if:
-        - They have the same variable space (`varSpace`).
-        - They have the same valence.
-        - They have the same data shape.
-        - They have the same dgcvType.
-        - Their coefficient dictionaries simplify to the same values.
-        """
-        if not isinstance(other, tensorField):
+        if not isinstance(other, self.__class__):
+            return False
+        if (
+            self.varSpace != other.varSpace
+            or self.valence != other.valence
+            or self.dgcvType != other.dgcvType
+        ):
             return False
 
-        return (
-            self.varSpace == other.varSpace
-            and self.valence == other.valence
-            and self.data_shape == other.data_shape
-            and self.dgcvType == other.dgcvType
-            and all(
-                sp.simplify(allToReal(self.coeff_dict[key]))
-                == sp.simplify(allToReal(other.coeff_dict.get(key, 0)))
-                for key in set(self.coeff_dict.keys()).union(
-                    set(other.coeff_dict.keys())
-                )
-            )
-        )
+        if self.data_shape != other.data_shape:
+            a = self._expand_special_to_general(self.coeff_dict, self.data_shape)
+            b = self._expand_special_to_general(other.coeff_dict, other.data_shape)
+            keys = set(a.keys()).union(b.keys())
+            for k in keys:
+                if simplify(allToReal(a.get(k, 0))) != simplify(allToReal(b.get(k, 0))):
+                    return False
+            return True
+
+        keys = set(self.coeff_dict.keys()).union(other.coeff_dict.keys())
+        for k in keys:
+            if simplify(allToReal(self.coeff_dict.get(k, 0))) != simplify(
+                allToReal(other.coeff_dict.get(k, 0))
+            ):
+                return False
+        return True
 
     def __hash__(self):
-        """
-        Computes a hash value for the tensorField instance.
-
-        The hash is based on:
-        - `varSpace` (tuple of variables)
-        - `valence` (tuple indicating index types)
-        - `data_shape` (symmetric, skew, etc.)
-        - `dgcvType` (standard, complex, etc.)
-        - The **simplified** coefficient dictionary as a tuple of (key, value) pairs.
-        """
-        simplified_coeffs = tuple(
-            sorted(
-                (key, sp.simplify(allToReal(value)))
-                for key, value in self.coeff_dict.items()
-            )
-        )
-
+        g = self._expand_special_to_general(self.coeff_dict, self.data_shape)
+        items = tuple(sorted((k, simplify(allToReal(v))) for k, v in g.items()))
         return hash(
-            (
-                self.varSpace,
-                self.valence,
-                self.data_shape,
-                self.dgcvType,
-                simplified_coeffs,
-            )
+            (self.varSpace, self.valence, self.data_shape, self.dgcvType, items)
         )
 
     @property
-    def is_zero(self):
-        return all(
-            sp.simplify(allToReal(value)) == 0 for value in self.coeff_dict.values()
-        )
+    def is_zero(self) -> bool:
+        cd = getattr(self, "coeff_dict", None)
+        if not isinstance(cd, dict) or not cd:
+            return True
+
+        if self._is_scalar_coeff_dict(cd):
+            return cd.get(tuple(), 0) == 0
+
+        for v in cd.values():
+            if not _scalar_is_zero(v):
+                return False
+        return True
 
     def subs(self, substitutions):
-        substituted_coeff_dict = {
-            key: sp.sympify(value).subs(substitutions)
-            for key, value in self.coeff_dict.items()
-        }
-        return tensorField(
-            self.varSpace,
-            substituted_coeff_dict,
-            self.valence,
+        substituted = {k: subs(v, substitutions) for k, v in self.coeff_dict.items()}
+        return self.__class__(
+            coeff_dict=substituted,
             data_shape=self.data_shape,
             dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
+            variable_spaces=self._variable_spaces,
         )
 
-    def tensor_product(self, *others):
-        """
-        Compute the tensor product of self with anynumber of tensorField instances.
-        """
-        return tensor_product(self, *others)
+    def _coordinate_format_info(self) -> dict:
+        cached = getattr(self, "_coordinate_format", None)
+        if cached is not None:
+            return cached
 
-    def tp(self, *others):
-        """
-        Alias for tensor_product for easier typing.
-        """
-        return self.tensor_product(*others)
+        vst = self.variable_spaces_types
 
-    def __matmul__(self, other):
-        """
-        Overload `@` for the tensor product.
-        """
-        return tensor_product(self, other)
+        saw_standard = False
+        saw_complex = False
 
-    def __add__(self, other):
-        """
-        Adds two tensorField instances using addTensorFields.
-        """
-        if other==0 or getattr(other,'is_zero',False):
-            return self
-        if isinstance(other, tensorField):
-            return addTensorFields(self, other)
-        else:
-            raise TypeError(
-                f"Unsupported operand type(s) for +: `tensorField' and '{type(other).__name__}'"
+        saw_holo = False
+        saw_anti = False
+        saw_real = False
+        saw_imag = False
+
+        for k in self.coeff_dict:
+            d = len(k) // 3
+            if d == 0:
+                continue
+
+            idxs = k[:d]
+            systems = k[2 * d :]
+
+            for idx, sys in zip(idxs, systems):
+                sys_data = vst[sys]
+                if sys_data["type"] != "complex":
+                    saw_standard = True
+                    continue
+
+                saw_complex = True
+                b0, b1, b2 = sys_data["breaks"]
+
+                if idx < b0:
+                    saw_holo = True
+                elif idx < b1:
+                    saw_anti = True
+                elif idx < b2:
+                    saw_real = True
+                else:
+                    saw_imag = True
+
+        if not saw_complex:
+            out = {"dgcv_type": "standard", "sub_type": "standard", "role": "standard"}
+            self._coordinate_format = out
+            return out
+
+        if saw_standard:
+            out = {"dgcv_type": "mixed", "sub_type": "mixed", "role": "mixed"}
+            self._coordinate_format = out
+            return out
+
+        has_complex_block = saw_holo or saw_anti
+        has_real_block = saw_real or saw_imag
+
+        if has_complex_block and not has_real_block:
+            role = "mixed"
+            if saw_holo and not saw_anti:
+                role = "holo"
+            elif saw_anti and not saw_holo:
+                role = "anti"
+            out = {"dgcv_type": "complex", "sub_type": "complex", "role": role}
+            self._coordinate_format = out
+            return out
+
+        if has_real_block and not has_complex_block:
+            role = "mixed"
+            if saw_real and not saw_imag:
+                role = "real"
+            elif saw_imag and not saw_real:
+                role = "imag"
+            out = {"dgcv_type": "complex", "sub_type": "real", "role": role}
+            self._coordinate_format = out
+            return out
+
+        out = {"dgcv_type": "complex", "sub_type": "mixed", "role": "mixed"}
+        self._coordinate_format = out
+        return out
+
+
+class vector_field_class(tensor_field_class):
+    _dgcv_categories = {"vector_field"}
+
+    def __init__(
+        self,
+        varSpace=None,
+        coeffs=None,
+        *,
+        coeff_dict=None,
+        valence=None,
+        data_shape: str = "all",
+        dgcvType: str = "standard",
+        _simplifyKW=None,
+        variable_spaces=None,
+        parameters=set(),
+        _inheritance=None,
+    ):
+        self._vf_cache = None
+        if _simplifyKW is None:
+            _simplifyKW = {
+                "simplify_rule": None,
+                "simplify_ignore_list": None,
+                "preferred_basis_element": None,
+            }
+        self.parameters = parameters
+        if coeff_dict is not None:
+            if varSpace is not None or coeffs is not None:
+                raise TypeError(
+                    "Provide either `coeff_dict=...` or (`varSpace`, `coeffs`), not both."
+                )
+
+            super().__init__(
+                coeff_dict=coeff_dict,
+                data_shape=data_shape,
+                dgcvType=dgcvType,
+                _simplifyKW=_simplifyKW,
+                variable_spaces=variable_spaces,
+                _inheritance=_inheritance,
             )
 
-    def __radd__(self,other):
-        if other==0 or getattr(other,'is_zero',False):
-            return self
-        else:
-            return NotImplemented
+            if self.valence != (1,) and self.valence != tuple():
+                raise ValueError(
+                    f"vector_field expects valence=(1,), not {self.valence}"
+                )
 
-    def __sub__(self, other):
-        """
-        Subtracts another tensorField instance from the current instance using addTensorFields.
-        """
-        if isinstance(other, tensorField):
-            return addTensorFields(self, scaleTensorField(-1, other))
-        else:
+            self._vf_cache = None
+            return
+
+        if varSpace is None or coeffs is None:
             raise TypeError(
-                f"Unsupported operand type(s) for -: `tensorField' and '{type(other).__name__}'"
+                "Provide either `coeff_dict=...` or (`varSpace`, `coeffs`)."
             )
+
+        vs = tuple(varSpace)
+        cs = list(coeffs)
+
+        if len(vs) != len(cs):
+            raise ValueError("`varSpace` and `coeffs` must have the same length.")
+        if len(vs) != len(set(vs)):
+            raise TypeError("`varSpace` must not contain repeated variables.")
+
+        syslbl = None
+        if len(vs) > 0:
+            if isinstance(variable_spaces, dict) and variable_spaces:
+                if len(variable_spaces) == 1:
+                    syslbl = next(iter(variable_spaces.keys()))
+                else:
+                    raise ValueError(
+                        "vector_field legacy init requires a single system in `variable_spaces`."
+                    )
+            else:
+                info0 = vmf_lookup(vs[0], path=True, relatives=False)
+                p0 = info0.get("path")
+                if not (isinstance(p0, tuple) and len(p0) >= 2):
+                    raise KeyError(
+                        "vector_field legacy init requires variables registered in the VMF or `variable_spaces={...}`."
+                    )
+                syslbl = p0[1]
+
+        if syslbl is None:
+            syslbl = "__anon__"
+
+        cd = {(i, 1, syslbl): c for i, c in enumerate(cs) if not _scalar_is_zero(c)}
+        if not cd:
+            cd = {tuple(): 0}
+
+        if variable_spaces is None:
+            variable_spaces = {syslbl: vs}
+        else:
+            variable_spaces = dict(variable_spaces)
+            variable_spaces.setdefault(syslbl, vs)
+        super().__init__(
+            coeff_dict=cd,
+            data_shape=data_shape,
+            dgcvType=dgcvType,
+            _simplifyKW=_simplifyKW,
+            variable_spaces=variable_spaces,
+            _inheritance=_inheritance,
+        )
+
+    def _vf_view(self):
+        cache = getattr(self, "_vf_cache", None)
+        if cache is not None:
+            return cache
+        if self._is_scalar_coeff_dict(self.coeff_dict):
+            self._vf_cache = (tuple(), [])
+            return self._vf_cache
+
+        syslbl = None
+        n = 0
+        items = []
+
+        for k, v in self.coeff_dict.items():
+            if _scalar_is_zero(v) or not isinstance(k, tuple) or len(k) != 3:
+                continue
+            i, vb, s = k
+            if vb != 1:
+                raise ValueError(
+                    "vector_field expects contravariant bit 1 in coeff_dict keys."
+                )
+            if syslbl is None:
+                syslbl = s
+            elif syslbl != s:
+                raise ValueError(
+                    "vector_field view requires a single system label in coeff_dict."
+                )
+            if isinstance(i, Integral):
+                ii = int(i)
+                if ii >= n:
+                    n = ii + 1
+                items.append((ii, v))
+            else:
+                raise TypeError(
+                    "vector_field expects integer indices in coeff_dict keys."
+                )
+
+        if syslbl is None:
+            self._vf_cache = (tuple(), [])
+            return self._vf_cache
+
+        vs = self._variable_spaces.get(syslbl)
+        if not isinstance(vs, tuple):
+            raise KeyError(f"vector_field missing `variable_spaces[{syslbl!r}]`.")
+
+        coeffs = [0] * max(n, len(vs))
+        for ii, v in items:
+            if ii >= len(coeffs):
+                coeffs.extend([0] * (ii + 1 - len(coeffs)))
+            coeffs[ii] = coeffs[ii] + v
+
+        self._vf_cache = (vs, coeffs)
+        return self._vf_cache
+
+    def as_tensor_field(self, data_shape: Optional[str] = None) -> tensor_field_class:
+        vs = getattr(self, "_variable_spaces", None)
+        if not isinstance(vs, dict):
+            vs = None
+        data_shape = data_shape if data_shape else self.data_shape
+        return tensor_field_class(
+            coeff_dict=self.coeff_dict,
+            data_shape=data_shape,
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=vs,
+            parameters=self.parameters,
+        )
+
+    @property
+    def coeffs(self):
+        return self._vf_view()[1]
+
+    def simplify_format(self, format_type=None, skipVar=None):
+        if format_type not in {None, "holomorphic", "real", "symbolic_conjugate"}:
+            warnings.warn(
+                "simplify_format() received an unsupported first argument. Try None, 'holomorphic', 'real', or 'symbolic_conjugate'."
+            )
+        return self.__class__(
+            coeff_dict=self.coeff_dict,
+            dgcvType=self.dgcvType,
+            _simplifyKW={"simplify_rule": format_type, "simplify_ignore_list": skipVar},
+            variable_spaces=self._variable_spaces,
+        )
+
+    def _eval_simplify(self, **kwargs):
+        rule = self._simplifyKW.get("simplify_rule", None)
+        ign = self._simplifyKW.get("simplify_ignore_list", None)
+
+        if rule is None:
+
+            def f(c):
+                return simplify(c, **kwargs)
+        elif rule == "holomorphic":
+
+            def f(c):
+                return simplify(allToHol(c, skipVar=ign), **kwargs)
+        elif rule == "real":
+
+            def f(c):
+                return simplify(allToReal(c, skipVar=ign), **kwargs)
+        elif rule == "symbolic_conjugate":
+
+            def f(c):
+                return simplify(allToSym(c, skipVar=ign), **kwargs)
+        else:
+
+            def f(c):
+                return simplify(c, **kwargs)
+
+        cd = {}
+        for k, v in self.coeff_dict.items():
+            if _scalar_is_zero(v):
+                continue
+            nv = f(v)
+            if not _scalar_is_zero(nv):
+                cd[k] = cd.get(k, 0) + nv
+
+        if not cd:
+            cd = {tuple(): 0}
+
+        return self.__class__(
+            coeff_dict=cd,
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=self._variable_spaces,
+            data_shape=self.data_shape,
+        )
+
+    def subs(self, subsData):
+        cd = {}
+        for k, v in self.coeff_dict.items():
+            if _scalar_is_zero(v):
+                continue
+            nv = subs(v, subsData)
+            if not _scalar_is_zero(nv):
+                cd[k] = cd.get(k, 0) + nv
+
+        if not cd:
+            cd = {tuple(): 0}
+
+        return self.__class__(
+            coeff_dict=cd,
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=self._variable_spaces,
+            data_shape=self.data_shape,
+        )
 
     def __neg__(self):
-        """
-        Returns
-        -------
-        tensorField
-            A new tensorField instance representing the negation of the original.
-        """
-        return scaleTensorField(-1, self)
+        cd = {k: -v for k, v in self.coeff_dict.items() if not _scalar_is_zero(v)}
+        if not cd:
+            cd = {tuple(): 0}
+        return self.__class__(
+            coeff_dict=cd,
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=getattr(self, "_variable_spaces", None),
+        )
 
-    def __mul__(self, other):
-        """
-        Defines multiplication for tensorField objects.
+    def _as_tensor_maybe(self, obj):
+        if isinstance(obj, tensor_field_class):
+            return obj
+        if check_dgcv_category(obj):
+            coerce = getattr(obj, "as_tensor_field", None)
+            if callable(coerce):
+                return coerce()
+        return None
 
-        - If `other` is a scalar (int, float, sympy expression), the tensor is scaled.
-        - If `other` is another `tensorField` their tensor product is returned
-        """
-        if isinstance(other, _get_expr_num_types()):
-            return scaleTensorField(other, self)
+    def __add__(self, other):
+        if _scalar_is_zero(other):
+            return self
 
-        elif isinstance(other, tensorField):
-            if self.data_shape == "skew" and other.data_shape == "skew":
-                warnings.deprecated(
-                    "`*` for tensor products is depricated. Use `@` instead. `*` was applied to multiply a pair of skew symmetric tensorField instances of which at least one was not a DFClass. A usual tensor product was therefore returned. If a wedge product was intended then make sure to initialize arguments as DFClass instances (a TFClass subclass)."
-                )
-            return self.__matmul__(other)
-        else:
-            raise TypeError(
-                f"Unsupported operand type(s) for *: `tensorField` and `{type(other).__name__}`"
+        if isinstance(other, self.__class__):
+            vs = self._merged_variable_spaces(other)
+            new_cd = dict(self.coeff_dict)
+            for k, v in other.coeff_dict.items():
+                if not _scalar_is_zero(v):
+                    new_cd[k] = new_cd.get(k, 0) + v
+            new_cd = {k: v for k, v in new_cd.items() if not _scalar_is_zero(v)} or {
+                tuple(): 0
+            }
+            return self.__class__(
+                coeff_dict=new_cd,
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=vs,
+                data_shape=self.data_shape,
             )
 
+        if check_dgcv_scalar(other):
+            return self.as_tensor_field().__add__(other)
+
+        tf = self._as_tensor_maybe(other)
+        if tf is not None:
+            return self.as_tensor_field().__add__(tf)
+
+        return NotImplemented
+
+    def __sub__(self, other):
+        if _scalar_is_zero(other):
+            return self
+
+        if isinstance(other, self.__class__):
+            vs = self._merged_variable_spaces(other)
+            new_cd = dict(self.coeff_dict)
+            for k, v in other.coeff_dict.items():
+                if not _scalar_is_zero(v):
+                    new_cd[k] = new_cd.get(k, 0) - v
+            new_cd = {k: v for k, v in new_cd.items() if not _scalar_is_zero(v)} or {
+                tuple(): 0
+            }
+            return self.__class__(
+                coeff_dict=new_cd,
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=vs,
+                data_shape=self.data_shape,
+            )
+
+        if check_dgcv_scalar(other):
+            return self.as_tensor_field().__sub__(other)
+
+        tf = self._as_tensor_maybe(other)
+        if tf is not None:
+            return self.as_tensor_field().__sub__(tf)
+
+        return NotImplemented
+
+    def __radd__(self, other):
+        if _scalar_is_zero(other):
+            return self
+        return self.__add__(other)
+
+    def __rsub__(self, other):
+        if check_dgcv_scalar(other):
+            return self.as_tensor_field().__rsub__(other)
+
+        tf = self._as_tensor_maybe(other)
+        if tf is not None:
+            return tf.__sub__(self.as_tensor_field())
+
+        return NotImplemented
+
+    def __mul__(self, other):
+        if check_dgcv_scalar(other):
+            return super().__mul__(other)
+
+        tf = other
+        if check_dgcv_category(tf):
+            coerce = getattr(tf, "as_tensor_field", None)
+            if callable(coerce):
+                tf = coerce()
+
+        if not (get_dgcv_category(tf) == "tensor_field"):
+            return NotImplemented
+
+        return self.as_tensor_field(data_shape="skew")._shape_product(
+            tf,
+            kind="skew",
+        )
+
+    def __matmul__(self, other):
+        tf = other
+        if check_dgcv_category(tf):
+            coerce = getattr(tf, "as_tensor_field", None)
+            if callable(coerce):
+                tf = coerce()
+
+        if not (get_dgcv_category(tf) == "tensor_field"):
+            return NotImplemented
+
+        return self.as_tensor_field(data_shape="all")._shape_product(
+            tf,
+            kind="general",
+        )
+
     def __rmul__(self, scalar):
-        """
-        Allows scalar multiplication on the left-hand side.
-        """
         return self.__mul__(scalar)
 
-    def __call__(self, *tfList):
-        """
-        Pair tensor field with a list of tensor fields or dual valence
-
-        Parameters
-        ----------
-        tfList : list of tensorField instances
-            The tensor fields to pair with. Must have length equal to len(self.valence),
-            and each tfList[j] must have the opposite valence of self.valence[j].
-
-        Returns
-        -------
-        scalar : sympy expression or tensorField
-        """
-        if len(tfList) != len(self.valence):
-            raise ValueError(
-                f"Expected {len(self.valence)} tensor fields for contraction, but got {len(tfList)}."
-            )
-
-        # tfList should contain only degree-1 tensors
-        for j, tf in enumerate(tfList):
-            if not isinstance(tf, tensorField):
-                raise TypeError(
-                    f"Expected a tensorField at position {j}, got {type(tf).__name__}."
-                )
-            if len(tf.valence) != 1:
-                raise ValueError(
-                    f"tensorField contracts only with degree-1 tensors, but got degree {len(tf.valence)} at position {j}."
-                )
-            if (
-                self.valence[j] == tf.valence[0]
-            ):  # tf.valence is a tuple, so access index 0
-                raise ValueError(
-                    f"Tensor valence mismatch: expected opposite valence at position {j}."
-                )
-
-        # Determine if varSpaces are different
-        all_varSpaces = [self.varSpace] + [tf.varSpace for tf in tfList]
-        if len(set(all_varSpaces)) > 1:  # If there are different varSpaces, reformat
-            # Compute minimal new_varSpace
-            new_varSpace = list(self.varSpace)
-            for tf in tfList:
-                for var in tf.varSpace:
-                    if var not in new_varSpace:
-                        new_varSpace.append(var)
-            new_varSpace = tuple(new_varSpace)
-
-            # Format TF w.r.t. new_varSpace
-            new_self = changeTensorFieldBasis(self, new_varSpace)
-            new_tfList = [changeTensorFieldBasis(tf, new_varSpace) for tf in tfList]
-
-            # Recursively call __call__ on transformed TF
-            return new_self.__call__(*new_tfList)
-
-        # Initialize result
-        contracted_result = 0  # This will accumulate the sum of contractions
-
-        # Use expanded_coeff_dict instead of coeff_dict
-        for key_self, coeff_self in self.expanded_coeff_dict.items():
-            # Compute contraction term-by-term
-            term_value = coeff_self
-            contraction_indices = list(key_self)
-
-            for j, tf in enumerate(tfList):
-                if term_value == 0:
-                    break  # Stop processing early if multiplication will result in zero
-
-                tf_coeff_dict = tf.expanded_coeff_dict
-                key_to_lookup = (contraction_indices[j],)
-
-                if key_to_lookup in tf_coeff_dict:
-                    term_value *= tf_coeff_dict[key_to_lookup]
-                else:
-                    term_value *= 0
-
-            contracted_result += term_value  # Accumulate the sum
-
-        return contracted_result
-
-
-# differential form class
-class DFClass(tensorField):
-    """
-    A class representing symbolic differential forms in the dgcv package, with support for standard and complex differential forms.
-
-    The DFClass represents differential forms where each component is a symbolic expression (using SymPy expressions)
-    corresponding to a differential form in the given variable space. It supports standard differential forms,
-    as well as complex differential forms with automatic handling of holomorphic and anti-holomorphic variables.
-
-    Parameters:
-    -----------
-    varSpace : list
-        The variables (coordinates) with respect to which the differential form is defined.
-
-    coeffs : dict
-        The coefficients for each variable combination in the differential form. The keys of the dictionary are tuples
-        representing the indices of the variables, and the values are the coefficients.
-
-    degree : int
-        The degree of the differential form (number of variables in each wedge product).
-
-    dgcvType : str, optional, default='standard'
-        The type of differential form: 'standard' for real differential forms or 'complex' for complex differential forms.
-
-    holVarSpace : list, optional
-        For complex differential forms, specifies the holomorphic variable space. If not provided, it will be inferred
-        from `varSpace` using the `variable_registry`.
-
-    compVarSpace : list, optional
-        For complex differential forms, specifies the full variable space including both holomorphic and conjugate variables.
-        If not provided, it will be inferred from `varSpace`.
-
-    Examples
-    --------
-    >>> from dgcv import DFClass, variableProcedure, DGCV_init_printing()
-    >>> variableProcedure(['x', 'y'])
-    >>> df = DFClass([x, y], {(0,): 1, (1,): -1}, 1)
-    >>> df
-    DFClass([x, y], {(0,): 1, (1,): -1}, 1)
-
-    >>> df_latex = df._repr_latex_()  # Custom LaTeX formatting
-    >>> print(df_latex) # display copy-able LaTex
-    >>> DGCV_init_printing() # Nicely formats all dgcv and sympy objects displayed in Jupyter (or an iPython shell)
-    >>> display(df) # renders nicely format differential form display in Jupyter (or an iPython shell)
-
-    Attributes:
-    -----------
-    varSpace : list
-        The variables with respect to which the differential form is defined.
-
-    coeffs : dict
-        The coefficients for each variable combination in the differential form.
-
-    degree : int
-        The degree of the differential form.
-
-    dgcvType : str
-        Indicates whether the differential form is standard ('standard') or complex ('complex').
-
-    holVarSpace : tuple
-        The holomorphic variable space for complex differential forms.
-
-    compVarSpace : tuple
-        The complete variable space (holomorphic and conjugate variables) for complex differential forms.
-
-    Methods
-    -------
-    _repr_latex_ :
-        Returns a custom LaTeX representation of the differential form, useful for rendering in Jupyter notebooks.
-
-    __add__ :
-        Custom addition method to allow for differential form addition.
-
-    __sub__ :
-        Custom subtraction method to allow for differential form subtraction.
-
-    __mul__ and __rmul__ :
-        Custom multiplication methods to scale differential forms by a scalar.
-
-    __call__ :
-        Apply the differential form to a set of vector fields, with optional handling for complex variables.
-
-    Raises
-    ------
-    TypeError :
-        Raised if operations (e.g., addition, subtraction) are attempted between incompatible types.
-
-    ValueError :
-        Raised if the differential form is applied to an unsupported argument type (e.g., incorrect number of arguments).
-    """
-
-    def __new__(
-        cls,
-        varSpace,
-        data_dict,
-        degree,
-        dgcvType="standard",
-        _simplifyKW={
-            "simplify_rule": None,
-            "simplify_ignore_list": None,
-            "preferred_basis_element": None,
-        },
-    ):
-        # Validate the inputs
-        if not isinstance(varSpace, (list, tuple)):
-            raise TypeError("`varSpace` must be a list or tuple.")
-        if not isinstance(degree, numbers.Integral) or degree < 0:
-            raise ValueError("`degree` must be a non-negative integer.")
-        if len(varSpace) != len(set(varSpace)):
-            raise ValueError("`varSpace` must not have duplicate entries.")
-        if not isinstance(data_dict, dict):
-            raise TypeError("`data_dict` must be a dictionary.")
-
-        # Set valence to (0, degree) for purely covariant tensors
-        valence = (0,) * degree
-
-        # Call the parent class's __new__ method
-        return super().__new__(
-            cls,
-            varSpace,
-            data_dict,
-            valence,
-            data_shape="skew",
-            dgcvType=dgcvType,
-            _simplifyKW=_simplifyKW,
-        )
-
-    def __init__(
-        self,
-        varSpace,
-        data_dict,
-        degree,
-        dgcvType="standard",
-        _simplifyKW={
-            "simplify_rule": None,
-            "simplify_ignore_list": None,
-            "preferred_basis_element": None,
-        },
-    ):
-        # Initialize the parent tensorField
-        super().__init__(
-            varSpace,
-            data_dict,
-            (0,) * degree,
-            data_shape="skew",
-            dgcvType=dgcvType,
-            _simplifyKW=_simplifyKW,
-        )
-
-        # DFClass-specific initialization
-        self.degree = degree  # For backward compatibility
-
-        self.DFClassDataDict = self.coeff_dict
-
-        self.DFClassDataMinimal = [
-            [list(a), b] for a, b in self.DFClassDataDict.items() if b != 0
-        ]
-        self.coeffsInKFormBasis = [j for _, j in self.DFClassDataMinimal]
-        if self.DFClassDataMinimal == []:
-            self.DFClassDataMinimal = [
-                (
-                    [
-                        0,
-                    ]
-                    * degree,
-                    0,
-                )
-            ]
-
-        if self.degree == 0:
-            self.coeffsInKFormBasis = [j[1] for j in self.DFClassDataMinimal]
-            self.kFormBasisGenerators = [[1]]
-        else:
-            oneFormsLabelsLoc = ["d_" + str(j) for j in self.varSpace]
-            self.coeffsInKFormBasis = [j[1] for j in self.DFClassDataMinimal]
-            self.kFormBasisGenerators = [
-                [oneFormsLabelsLoc[k] for k in j[0]] for j in self.DFClassDataMinimal
-            ]
-        self._dgcv_categories = {"differential_form"}
-
-    def simplify_format(self, format_type=None, skipVar=None):
-        """
-        Prepares the differential dorm for custom simplification.
-
-        Parameters
-        ----------
-        arg : str
-            The simplification rule to apply. Options include 'real', 'holomorphic', and 'symbolic_conjugate'.
-
-        skipVar : list, optional
-            A list of strings that are parent labels for dgcv variable systems to exclude from the simplification process.
-
-        Returns
-        -------
-        DFClass
-            A new DFClass instance with updated simplification settings.
-        """
-        if format_type not in {None, "holomorphic", "real", "symbolic_conjugate"}:
-            warnings.warn(
-                "simplify_format() recieved an unsupported first argument. Try None, 'holomorphic', 'real',  or 'symbolic_conjugate' instead."
-            )
-        return DFClass(
-            self.varSpace,
-            self.DFClassDataDict,
-            self.degree,
-            dgcvType=self.dgcvType,
-            _simplifyKW={"simplify_rule": format_type, "simplify_ignore_list": skipVar},
-        )
-
-    def _eval_simplify(self, **kwargs):
-        """
-        Applies the simplification based on the current simplification settings in the self._simplifyKW attribute.
-
-        Returns
-        -------
-        DFClass
-            A simplified DFClass object.
-        """
-        if self._simplifyKW["simplify_rule"] is None:
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(b, **kwargs) for a, b in self.DFClassDataDict.items()
-            }
-        elif self._simplifyKW["simplify_rule"] == "holomorphic":
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(
-                    allToHol(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for a, b in self.DFClassDataDict.items()
-            }
-        elif self._simplifyKW["simplify_rule"] == "real":
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(
-                    allToReal(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for a, b in self.DFClassDataDict.items()
-            }
-        elif self._simplifyKW["simplify_rule"] == "symbolic_conjugate":
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(
-                    allToSym(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for a, b in self.DFClassDataDict.items()
-            }
-        else:
-            warnings.warn(
-                "_eval_simplify recieved an unsupported DFClass._simplifyKW['simplify_rule']. It is recommend to only set the _simplifyKW['simplify_rule'] attribute to None, 'holomorphic', 'real',  or 'symbolic_conjugate'."
-            )
-            simplified_coeffs = {
-                a: sp.simplify(b, **kwargs) for a, b in self.DFClassDataDict.items()
-            }
-
-        # Return a new instance of DFClass with simplified coeffs
-
-        # Return a new instance of DFClass with simplified coeffs
-        return DFClass(
-            self.varSpace,
-            simplified_coeffs,
-            self.degree,
-            dgcvType=self.dgcvType,
-            _simplifyKW=self._simplifyKW,
-        )
-
-    def subs(self, subsData):
-        newDFData = {
-            a: sp.sympify(b).subs(subsData) for a, b in self.DFClassDataDict.items()
-        }
-        return DFClass(
-            self.varSpace,
-            newDFData,
-            self.degree,
-            dgcvType=self.dgcvType,
-            _simplifyKW=self._simplifyKW,
-        )
-
-    def __add__(self, other):
-        """
-        Adds two differential forms (i.e., DFClass instances). The addition is performed
-        by combining the coefficients of both forms. If the variable spaces of the forms
-        are not the same, the resulting form will have a variable space that is the union
-        of both input spaces.
-
-        Parameters
-        ----------
-        other : DFClass
-            Another differential form to add. The variable spaces of the two forms need not
-            be identical. The result will use the union of the variable spaces of the two
-            forms.
-
-        Returns
-        -------
-        DFClass
-            A new differential form representing the sum of the two input forms.
-
-        Raises
-        ------
-        TypeError
-            If the argument `other` is not an instance of `DFClass`.
-
-        Examples
-        --------
-        >>> from dgcv import DFClass, creatVariables
-        >>> creatVariables('x1','x2')
-        >>> d_x1 = DFClass([x1], {(0,): 1}, 1)
-        >>> d_x2 = DFClass([x2], {(0,): 1}, 1)
-        >>> d_sum = d_x1 + d_x2
-        >>> print(d_sum)
-        d_x1 + d_x2
-        """
-        if other==0 or getattr(other,'is_zero',False):
-            return self
-        if isinstance(other, DFClass):
-            return addDF(self, other)
-        else:
-            raise TypeError("Unsupported operand type(s) for + with DFClass")
-
-    def __radd__(self,other):
-        if other==0 or getattr(other,'is_zero',False):
-            return self
-        else:
-            return NotImplemented
-
-    def __sub__(self, other):
-        """
-        Subtracts one differential form from another (i.e., DFClass instances). The subtraction
-        is performed by negating the second form and then adding it to the first form. If the
-        variable spaces of the forms are not the same, the resulting form will have a variable
-        space that is the sum of both input spaces.
-
-        Parameters
-        ----------
-        other : DFClass
-            Another differential form to subtract. The variable spaces of the two forms need not
-            be identical. The result will use the sum of the variable spaces of the two forms.
-
-        Returns
-        -------
-        DFClass
-            A new differential form representing the difference between the two input forms.
-
-        Raises
-        ------
-        TypeError
-            If the argument `other` is not an instance of `DFClass`.
-
-        Examples
-        --------
-        >>> from dgcv import DFClass, creatVariables
-        >>> creatVariables('x1','x2')
-        >>> d_x1 = DFClass([x1], {(0,): 1}, 1)
-        >>> d_x2 = DFClass([x2], {(0,): 1}, 1)
-        >>> d_diff = d_x1 - d_x2
-        >>> print(d_diff)
-        d_x1 - d_x2
-        """
-        if isinstance(other, DFClass):
-            return addDF(self, scaleDF(-1, other))
-        else:
-            raise TypeError("Unsupported operand type(s) for - with DFClass")
-
-    def __matmul__(self, other):
-        """
-        Overload `@` for the tensor product.
-        """
-        return super().__matmul__(other)
-
-    def __mul__(self, other):
-        """
-        Multiplication for DFClass objects. If the argument is a scalar (SymPy expression or numeric),
-        the form is scaled by the scalar. If the argument is another DFClass object,
-        the exterior (wedge) product is computed.
-
-        Parameters
-        ----------
-        arg1 : sympy expression, numeric, or DFClass
-            The object to multiply by. Can be a scalar function (SymPy expression or numeric) or
-            another differential form (DFClass instance).
-
-        Returns
-        -------
-        DFClass
-            The result of scaling the form by the scalar or the exterior product of the
-            two differential forms.
-
-        Raises
-        ------
-        TypeError
-            If the argument is neither a scalar (SymPy expression, numeric) nor a DFClass instance.
-        """
-        if isinstance(other, DFClass):
-            # If the argument is another differential form, compute the exterior product
-            return exteriorProduct(self, other)
-        elif isinstance(other, _get_expr_num_types()):
-            return scaleDF(other, self)
-        elif isinstance(other, tensorField):
-            return super().__mul__(other)
-        else:
-            raise TypeError(
-                f"Unsupported operand type(s) for *: 'DFClass' and '{type(other).__name__}'"
-            )
-
-    def __rmul__(self, other):
-        """
-        Right multiplication for DFClass objects. If the argument is a scalar (SymPy expression or numeric),
-        the form is scaled by the scalar. If the argument is another DFClass object,
-        the exterior (wedge) product is computed.
-
-        Parameters
-        ----------
-        arg1 : sympy expression, numeric, or DFClass
-            The object to multiply by. Can be a scalar function (SymPy expression or numeric) or
-            another differential form (DFClass instance).
-
-        Returns
-        -------
-        DFClass
-            The result of scaling the form by the scalar or the exterior product of the
-            two differential forms.
-
-        Raises
-        ------
-        TypeError
-            If the argument is neither a scalar (SymPy expression, numeric) nor a DFClass instance.
-        """
-        if isinstance(other, DFClass):
-            # If the argument is another differential form, compute the exterior product
-            return exteriorProduct(other, self)
-        elif isinstance(other, _get_expr_num_types()):
-            return scaleDF(other, self)
-        elif isinstance(other, tensorField):
-            return super().__mul__(other)
-        else:
-            raise TypeError(
-                f"Unsupported operand type(s) for *: 'DFClass' and '{type(other).__name__}'"
-            )
-
-    def __neg__(self):
-        return scaleDF(-1, self)
-
-    def __call__(self, *VFArgs):
-        if self.degree == len(VFArgs):
-            if self.degree == 0:
-                return self.coeffsInKFormBasis[0]
-            else:
-                if all(isinstance(var, VFClass) for var in VFArgs):
-                    if self.dgcvType == "complex":
-                        if self._varSpace_type == "complex":
-                            VFArgs = [
-                                (
-                                    allToSym(vf)
-                                    if vf._varSpace_type != self._varSpace_type
-                                    else vf
-                                )
-                                for vf in VFArgs
-                            ]
-                        else:
-                            VFArgs = [
-                                (
-                                    allToReal(vf)
-                                    if vf._varSpace_type != self._varSpace_type
-                                    else vf
-                                )
-                                for vf in VFArgs
-                            ]
-                    if self.dgcvType == "standard":
-                        VFArgs = [_remove_complex_handling(vf) for vf in VFArgs]
-                    inputCoeffs = contravariantVFTensorCoeffs(self.varSpace, *VFArgs)
-                    # Access the elements of coeffArray directly
-                    result = 0
-                    for pair in inputCoeffs:
-                        index, scalar = pair
-                        permS, orderedList = permSign(index, returnSorted=True)
-                        index = tuple(orderedList)
-                        scalar = permS * scalar
-                        if index in self.DFClassDataDict:
-                            result += self.DFClassDataDict[index] * scalar
-                    return result
-                else:
-                    return super().__call__(*VFArgs)
-        else:
-            raise ValueError(
-                "A differential form received a number of arguments different from its degree."
-            )
-
-
-# vector field class
-class VFClass(tensorField):
-    """
-    A class representing vector fields in the dgcv package, with support for VF defined w.r.t. standard and
-    complex coordinate systems.
-
-    Parameters
-    ----------
-    varSpace : list or tuple
-        Variables (coordinates) defining the vector field's domain.
-
-    coeffs : list
-        Coefficients for each variable, matching the length of `varSpace`.
-
-    dgcvType : str, optional
-        Specifies the field type: 'standard' for real vector fields or 'complex' for complex ones (default is 'standard').
-
-    _simplifyKW : dict, optional
-        Simplification options:
-        - 'simplify_rule': Simplification rule ('real', 'holomorphic', 'symbolic_conjugate', or None).
-        - 'simplify_ignore_list': Variables to exclude from simplification (list of str labels from VMF).
-
-    Methods
-    -------
-    simplify_format(format_type=None, skipVar=None)
-        Sets simplification rules for the vector field.
-
-    subs(subsData)
-        Substitutes variables or expressions into the vector field's coefficients.
-
-    __add__, __sub__
-        Component-wise addition and subtraction of vector fields.
-
-    __mul__, __rmul__
-        Scalar multiplication of the vector field (supports SymPy expressions).
-
-    __call__(arg, ignore_complex_handling=None)
-        Computes the directional derivative of a scalar function.
-
-    Examples
-    --------
-    >>> variableProcedure(['x', 'y'])
-    >>> vf = VFClass(['x', 'y'], ['x**2', 'y**2'], 'standard')
-    >>> simplify(vf)  # Simplified representation
-    >>> vf('x**2 + y**2')  # Computes the derivative
-
-    Complex Variables:
-    >>> complexVarProc('z', 'x', 'y')
-    >>> vf2 = VFClass(['z', 'BARz'], ['z**2', 'BARz**2'], 'complex')
-    >>> simplify(vf2.simplify_format('real'))  # Converts coefficients to real form
-    """
-
-    def __new__(
-        cls,
-        varSpace,
-        coeffs,
-        dgcvType="standard",
-        _simplifyKW={
-            "simplify_rule": None,
-            "simplify_ignore_list": None,
-            "preferred_basis_element": None,
-        },
-    ):
-        # Validate coefficients and varSpace lengths
-        if len(varSpace) != len(coeffs):
-            raise ValueError("`varSpace` and `coeffs` must have the same length.")
-
-        coeff_dict = {(i,): coeff for i, coeff in enumerate(coeffs)}
-
-        # Set valence degree 1 for contravariant tensor
-        valence = (1,)
-
-        return super().__new__(
-            cls,
-            varSpace=varSpace,
-            coeff_dict=coeff_dict,
-            valence=valence,
-            data_shape="skew",
-            dgcvType=dgcvType,
-            _simplifyKW=_simplifyKW,
-        )
-
-    def __init__(
-        self,
-        varSpace,
-        coeffs,
-        dgcvType="standard",
-        _simplifyKW={
-            "simplify_rule": None,
-            "simplify_ignore_list": None,
-            "preferred_basis_element": None,
-        },
-    ):
-        # Validate that varSpace contains unique elements
-        if len(varSpace) != len(set(varSpace)):
-            raise TypeError(
-                "`VFClass` expects the `varSpace` tuple not to have repeated variables."
-            )
-
-        # VFClass-specific attributes
-        self.coeffs = coeffs
-        self._dgcv_categories = {"vector_field"}
-
-        # Initialize the parent tensorField
-        super().__init__(
-            varSpace=varSpace,
-            coeff_dict={(i,): coeff for i, coeff in enumerate(coeffs)},
-            valence=(1,),
-            data_shape="skew",
-            dgcvType=dgcvType,
-            _simplifyKW=_simplifyKW,
-        )
-
-    def simplify_format(self, format_type=None, skipVar=None):
-        """
-        Prepares the vector field for custom simplification.
-
-        Parameters
-        ----------
-        arg : str
-            The simplification rule to apply. Options include 'real', 'holomorphic', and 'symbolic_conjugate'.
-
-        skipVar : list, optional
-            A list of strings that are parent labels for dgcv variable systems to exclude from the simplification process.
-
-        Returns
-        -------
-        VFClass
-            A new VFClass instance with updated simplification settings.
-        """
-        if format_type not in {None, "holomorphic", "real", "symbolic_conjugate"}:
-            warnings.warn(
-                "simplify_format() recieved an unsupported first argument. Try None, 'holomorphic', 'real',  or 'symbolic_conjugate' instead."
-            )
-        return VFClass(
-            self.varSpace,
-            self.coeffs,
-            dgcvType=self.dgcvType,
-            _simplifyKW={"simplify_rule": format_type, "simplify_ignore_list": skipVar},
-        )
-
-    def _eval_simplify(self, **kwargs):
-        """
-        Applies the simplification based on the current simplification settings in the self._simplifyKW attribute.
-
-        Returns
-        -------
-        VFClass
-            A simplified VFClass object.
-        """
-        if self._simplifyKW["simplify_rule"] is None:
-            simplified_coeffs = [sp.simplify(j, **kwargs) for j in self.coeffs]
-        elif self._simplifyKW["simplify_rule"] == "holomorphic":
-            simplified_coeffs = [
-                sp.simplify(
-                    allToHol(j, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for j in self.coeffs
-            ]
-        elif self._simplifyKW["simplify_rule"] == "real":
-            simplified_coeffs = [
-                sp.simplify(
-                    allToReal(j, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for j in self.coeffs
-            ]
-        elif self._simplifyKW["simplify_rule"] == "symbolic_conjugate":
-            simplified_coeffs = [
-                sp.simplify(
-                    allToSym(j, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for j in self.coeffs
-            ]
-        else:
-            warnings.warn(
-                "_eval_simplify recieved an unsupported VFClass._simplifyKW['simplify_rule']. It is recommend to only set the _simplifyKW['simplify_rule'] attribute to None, 'holomorphic', 'real',  or 'symbolic_conjugate'."
-            )
-            simplified_coeffs = [sp.simplify(j, **kwargs) for j in self.coeffs]
-
-        return VFClass(
-            self.varSpace,
-            simplified_coeffs,
-            dgcvType=self.dgcvType,
-            _simplifyKW=self._simplifyKW,
-        )
-
-    def subs(self, subsData):
-        newCoeffs = [sp.sympify(j).subs(subsData) for j in self.coeffs]
-        return VFClass(
-            self.varSpace,
-            newCoeffs,
-            dgcvType=self.dgcvType,
-            _simplifyKW=self._simplifyKW,
-        )
-
-    def __add__(self, other):
-        if other==0 or getattr(other,'is_zero',False):
-            return self
-        if isinstance(other, VFClass):
-            return addVF(self, other)
-        else:
-            raise TypeError("Unsupported operand type(s) for + with VFClass")
-
-    def __radd__(self,other):
-        if other==0 or getattr(other,'is_zero',False):
-            return self
-        else:
-            return NotImplemented
-
-    def __sub__(self, other):
-        if isinstance(other, VFClass):
-            return addVF(self, scaleVF(-1, other))
-        else:
-            raise TypeError("Unsupported operand type(s) for - with VFClass")
-
-    def __neg__(self):
-        return scaleVF(-1, self)
-
-    def __mul__(self, scalar):
-        return scaleVF(scalar, self)
-
-    def __truediv__(self, scalar):
-        if isinstance(scalar, float):
-            inverse = 1 / scalar
-        elif isinstance(scalar, _get_expr_num_types()):
-            inverse = sp.Rational(1, scalar)
-        else:
-            return NotImplemented
-
-        return scaleVF(inverse, self)
-
-    def __rmul__(self, scalar):
-        return scaleVF(scalar, self)
-
     def __call__(self, *args, ignore_complex_handling=None):
-        if len(args) == 1:
-            if isinstance(args[0], tensorField):  # Check if first arg is a tensorField
-                return super().__call__(*args)
-            arg = args[0]
-            if (
-                self._varSpace_type == "complex"
-            ):  # this implies self.dgcvType=='complex'
-                if isinstance(arg, DFClass) and arg.degree == 0:
-                    arg = (arg.coeffsInKFormBasis[0],)
-                return sum(
-                    self.coeffs[j] * sp.diff(allToSym(arg), self.varSpace[j])
-                    for j in range(len(self.coeffs))
+        if len(args) != 1:
+            raise ValueError("vector_field expects exactly one argument.")
+        other = args[0]
+
+        if get_dgcv_category(other) == "array":
+            return other.apply(self.__call__)
+
+        if get_dgcv_category(other) == "tensor_field":
+            if self._validated_format == "complex":
+                if other._validated_format in {"mixed", "real"}:
+                    return self.__call__(other._to_complex())
+            elif self._validated_format == "real":
+                if other._validated_format in {"mixed", "complex"}:
+                    return self.__call__(other._to_real())
+            elif self._validated_format == "mixed":
+                if other._validated_format == "real":
+                    return self.__call__(other._to_real())
+                if other._validated_format == "complex":
+                    return self.__call__(other._to_complex())
+                if other._validated_format == "mixed":
+                    pref = get_dgcv_settings_registry()["preferred_variable_format"]
+                    if pref == "real":
+                        return self._to_real().__call__(other._to_real())
+                    else:
+                        return self._to_complex().__call__(other._to_complex())
+            if other._is_scalar():
+                key, val = next(iter(other.coeff_dict.items()))
+                return self(val)
+            return super().__call__(other)
+
+        if (
+            get_dgcv_category(other) == "differential_form"
+            and getattr(other, "degree", None) == 0
+        ):
+            c0 = getattr(other, "coeffsInKFormBasis", None)
+            if isinstance(c0, (list, tuple)) and c0:
+                other = c0[0]
+
+        diff_local = diff
+        half = rational(1, 2)
+        imu = imag_unit()
+        mIhalf = -imu * half
+
+        fmt = self._coordinate_format_info()
+
+        if ignore_complex_handling or fmt.get("dgcv_type") == "standard":
+            out = 0
+            for k, c in self.coeff_dict.items():
+                if not c:
+                    continue
+                d = len(k) // 3
+                if d != 1:
+                    continue
+                idx = k[0]
+                sys = k[2]
+                vs = self._variable_spaces.get(sys)
+                if not isinstance(vs, tuple):
+                    continue
+                v = vs[idx]
+                out += c * diff_local(other, v)
+            return out
+
+        has_conj = not verify_conjugates_free(other)
+        a = allToSym(other) if has_conj else other
+
+        out = 0
+
+        for k, c in self.coeff_dict.items():
+            if not c:
+                continue
+
+            d = len(k) // 3
+            if d != 1:
+                continue
+
+            idx = k[0]
+            sys = k[2]
+
+            vs = self._variable_spaces.get(sys)
+            if not isinstance(vs, tuple):
+                continue
+
+            v = vs[idx]
+
+            info = vmf_lookup(v, flattened_relatives=True)
+            st = info.get("sub_type")
+            rel = info.get("flattened_relatives")
+
+            if st is None or rel is None or not isinstance(rel, tuple) or len(rel) != 4:
+                out += c * diff_local(a, v)
+                continue
+
+            z, zb, x, y = rel
+
+            if has_conj:
+                if st == "holo":
+                    out += c * diff_local(a, z)
+                elif st == "anti":
+                    out += c * diff_local(a, zb)
+                elif st == "real":
+                    out += c * half * (diff_local(a, z) + diff_local(a, zb))
+                elif st == "imag":
+                    out += c * mIhalf * (diff_local(a, z) - diff_local(a, zb))
+                else:
+                    out += c * diff_local(a, v)
+                continue
+
+            if st == "holo":
+                out += c * (
+                    diff_local(a, z)
+                    + half * (diff_local(a, x) - imu * diff_local(a, y))
+                )
+            elif st == "anti":
+                out += c * (
+                    diff_local(a, zb)
+                    + half * (diff_local(a, x) + imu * diff_local(a, y))
+                )
+            elif st == "real":
+                out += c * (diff_local(a, x) + diff_local(a, z) + diff_local(a, zb))
+            elif st == "imag":
+                out += c * (
+                    diff_local(a, y) + imu * (diff_local(a, z) - diff_local(a, zb))
                 )
             else:
-                if isinstance(arg, DFClass) and arg.degree == 0:
-                    arg = (arg.coeffsInKFormBasis[0],)
-                if self.dgcvType == "standard" or ignore_complex_handling:
-                    return sum(
-                        self.coeffs[j] * sp.diff(arg, self.varSpace[j])
-                        for j in range(len(self.coeffs))
-                    )
-                elif self.dgcvType == "complex":
-                    return sum(
-                        self.coeffs[j] * sp.diff(allToReal(arg), self.varSpace[j])
-                        for j in range(len(self.coeffs))
-                    )
+                out += c * diff_local(a, v)
 
-        else:
-            raise ValueError(
-                "A vector field received a number of arguments different from 1."
-            )
+        return out
+
+    def tensor_product(self, *others, coerce_shapes: bool = False):
+        return self.as_tensor_field().tensor_product(*others)
 
 
-# Symmetric tensor field class
-class STFClass(tensorField):
-    def __new__(
-        cls,
-        varSpace,
-        data_dict,
-        degree,
-        dgcvType="standard",
+class differential_form_class(tensor_field_class):
+    _dgcv_categories = {"differential_form"}
+
+    def __init__(
+        self,
+        varSpace=None,
+        data_dict=None,
+        degree=None,
+        *,
+        coeff_dict=None,
+        valence=None,
+        data_shape: str = "all",
+        dgcvType: str = "standard",
         _simplifyKW=None,
+        variable_spaces=None,
+        parameters=set(),
+        _inheritance=None,
     ):
         if _simplifyKW is None:
             _simplifyKW = {
@@ -1651,523 +3253,1239 @@ class STFClass(tensorField):
                 "preferred_basis_element": None,
             }
 
-        if len(varSpace) != len(set(varSpace)):
+        self.parameters = parameters
+        if coeff_dict is not None:
+            if varSpace is not None or data_dict is not None or degree is not None:
+                raise TypeError(
+                    "Provide either `coeff_dict=...` or (`varSpace`, `data_dict`, `degree`), not both."
+                )
+
+            if data_shape == "all":
+                max_deg = 0
+                all_covariant = True
+                for k, c in coeff_dict.items():
+                    if not c:
+                        continue
+                    d = len(k) // 3
+                    if d > max_deg:
+                        max_deg = d
+                    valence_tuple = k[d : 2 * d]
+                    for vb in valence_tuple:
+                        if vb != 0:
+                            all_covariant = False
+                            break
+                    if not all_covariant:
+                        break
+                if all_covariant and max_deg > 1:
+                    data_shape = "skew"
+
+            super().__init__(
+                coeff_dict=coeff_dict,
+                data_shape=data_shape,
+                dgcvType=dgcvType,
+                _simplifyKW=_simplifyKW,
+                variable_spaces=variable_spaces,
+                _inheritance=_inheritance,
+            )
+            return
+
+        if varSpace is None or data_dict is None or degree is None:
             raise TypeError(
-                "`STFClass` expects `varSpace` to contain unique variables."
+                "Provide either `coeff_dict=...` or (`varSpace`, `data_dict`, `degree`)."
             )
 
-        valence = (0,) * degree
+        vs = tuple(varSpace)
+        if len(vs) != len(set(vs)):
+            raise ValueError("`varSpace` must not have duplicate entries.")
 
-        obj = super().__new__(
-            cls,
-            varSpace,
-            data_dict,
-            valence,
-            data_shape="symmetric",
+        syslbl = None
+        if len(vs) > 0:
+            if isinstance(variable_spaces, dict) and variable_spaces:
+                if len(variable_spaces) == 1:
+                    syslbl = next(iter(variable_spaces.keys()))
+                else:
+                    raise ValueError(
+                        "differential_form legacy init requires a single system in `variable_spaces`."
+                    )
+            else:
+                info0 = vmf_lookup(vs[0], path=True, relatives=False)
+                p0 = info0.get("path")
+                if not (isinstance(p0, tuple) and len(p0) >= 2):
+                    raise KeyError(
+                        "differential_form legacy init requires variables registered in the VMF or `variable_spaces={...}`."
+                    )
+                syslbl = p0[1]
+
+        if syslbl is None:
+            syslbl = "__anon__"
+
+        if variable_spaces is None:
+            variable_spaces = {syslbl: vs}
+        else:
+            variable_spaces = dict(variable_spaces)
+            variable_spaces.setdefault(syslbl, vs)
+
+        vtuple = variable_spaces.get(syslbl)
+        idx_map = {v: i for i, v in enumerate(vtuple)}
+
+        deg = int(degree)
+        if data_shape == "all" and deg > 1:
+            data_shape = "skew"
+
+        zeros = (0,) * deg
+        syslbls = (syslbl,) * deg
+
+        cd = {}
+        for k, c in data_dict.items():
+            if not c:
+                continue
+
+            if deg == 0:
+                if k == tuple() or k == 0:
+                    cd[tuple()] = cd.get(tuple(), 0) + c
+                    continue
+                raise TypeError("degree=0 forms require scalar key tuple().")
+
+            idxs = []
+            for jj in k:
+                var = vs[int(jj)]
+                idxs.append(idx_map[var])
+
+            nk = tuple(idxs) + zeros + syslbls
+            cd[nk] = cd.get(nk, 0) + c
+
+        if not cd:
+            cd = {tuple(): 0}
+
+        super().__init__(
+            coeff_dict=cd,
+            data_shape=data_shape,
             dgcvType=dgcvType,
             _simplifyKW=_simplifyKW,
+            variable_spaces=variable_spaces,
+            _inheritance=_inheritance,
         )
 
-        return obj
-
-    def __init__(
-        self, varSpace, data_dict, degree, dgcvType="standard", _simplifyKW=None
-    ):
-        # Call tensorField's initializer
-        super().__init__(
-            varSpace, data_dict, (0,) * degree, "symmetric", dgcvType, _simplifyKW
-        )
-
-        self.degree = degree
-
-        # Process the STFClass-specific attributes
-        self.STFClassDataDict = self.coeff_dict
-        self.STFClassDataMinimal = [[a, b] for a, b in self.STFClassDataDict.items()]
-        self.coeffsInKFormBasis = [j for _, j in self.STFClassDataMinimal]
-
-        # Caches
-        self._STFClassDataDictFull = None
-        self._realVarSpace = None
-        self._holVarSpace = None
-        self._antiholVarSpace = None
-        self._imVarSpace = None
-        self._cd_formats = None
-        self._coeffArray = None
-
-        # Generate k-form basis representation
-        if self.degree == 0:
-            self.coeffsInKFormBasis = [
-                self.STFClassDataDict[a] for a in self.STFClassDataDict
-            ]
-            self.kFormBasisGenerators = [[1]]
-        else:
-            oneFormsLabelsLoc = ["d_" + str(j) for j in self.varSpace]
-            self.coeffsInKFormBasis = [j[1] for j in self.STFClassDataMinimal]
-            self.kFormBasisGenerators = [
-                [oneFormsLabelsLoc[k] for k in j[0]] for j in self.STFClassDataMinimal
-            ]
-
     @property
-    def coeffArray(self):
-        if self._STFClassDataDictFull is None:
-            if self._coeffArray is None:
-
-                def entry_rule(indexTuple):
-                    sortedTuple = tuple(sorted(indexTuple))
-                    if sortedTuple in self.STFClassDataDict:
-                        return self.STFClassDataDict[sortedTuple]
-                    else:
-                        return 0
-
-                def generate_indices(shape):
-                    """Recursively generates all index tuples for an arbitrary dimensional array."""
-                    if len(shape) == 1:
-                        return [(i,) for i in range(shape[0])]
-                    else:
-                        return [
-                            (i,) + t
-                            for i in range(shape[0])
-                            for t in generate_indices(shape[1:])
-                        ]
-
-                shape = (len(self.varSpace),) * self.degree
-                sparse_data = {
-                    indices: entry_rule(indices) for indices in generate_indices(shape)
-                }
-                self._coeffArray = sp.ImmutableSparseNDimArray(sparse_data, shape)
-        else:
-            if self._coeffArray is None:
-                self._coeffArray = sp.ImmutableSparseNDimArray(
-                    self._STFClassDataDictFull, shape
-                )
-            # Create the ImmutableSparseNDimArray
-
-        return self._coeffArray
-
-    @property
-    def STFClassDataDictFull(self):
-        return self.expanded_coeff_dict
+    def degree(self):
+        return self._df_degree
 
     def simplify_format(self, format_type=None, skipVar=None):
-        """
-        Prepares the differential dorm for custom simplification.
-
-        Parameters
-        ----------
-        arg : str
-            The simplification rule to apply. Options include 'real', 'holomorphic', and 'symbolic_conjugate'.
-
-        skipVar : list, optional
-            A list of strings that are parent labels for dgcv variable systems to exclude from the simplification process.
-
-        Returns
-        -------
-        DFClass
-            A new DFClass instance with updated simplification settings.
-        """
         if format_type not in {None, "holomorphic", "real", "symbolic_conjugate"}:
             warnings.warn(
-                "simplify_format() recieved an unsupported first argument. Try None, 'holomorphic', 'real',  or 'symbolic_conjugate' instead."
+                "simplify_format() received an unsupported first argument. Try None, 'holomorphic', 'real', or 'symbolic_conjugate'."
             )
-        return STFClass(
-            self.varSpace,
-            self.STFClassDataDict,
-            self.degree,
+        return self.__class__(
+            coeff_dict=self.coeff_dict,
             dgcvType=self.dgcvType,
             _simplifyKW={"simplify_rule": format_type, "simplify_ignore_list": skipVar},
+            variable_spaces=getattr(self, "_variable_spaces", None),
         )
 
     def _eval_simplify(self, **kwargs):
-        """
-        Applies the simplification based on the current simplification settings in the self._simplifyKW attribute.
+        rule = self._simplifyKW.get("simplify_rule", None)
+        ign = self._simplifyKW.get("simplify_ignore_list", None)
 
-        Returns
-        -------
-        DFClass
-            A simplified DFClass object.
-        """
-        if self._simplifyKW["simplify_rule"] is None:
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(b, **kwargs) for a, b in self.STFClassDataDict.items()
+        if self._is_scalar():
+            return self.__class__(
+                coeff_dict={tuple(): simplify(self._scalar_value(), **kwargs)},
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=getattr(self, "_variable_spaces", None),
+            )
+
+        if rule is None:
+            new_cd = {k: simplify(v, **kwargs) for k, v in self.coeff_dict.items()}
+        elif rule == "holomorphic":
+            new_cd = {
+                k: simplify(allToHol(v, skipVar=ign), **kwargs)
+                for k, v in self.coeff_dict.items()
             }
-        elif self._simplifyKW["simplify_rule"] == "holomorphic":
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(
-                    allToHol(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for a, b in self.STFClassDataDict.items()
+        elif rule == "real":
+            new_cd = {
+                k: simplify(allToReal(v, skipVar=ign), **kwargs)
+                for k, v in self.coeff_dict.items()
             }
-        elif self._simplifyKW["simplify_rule"] == "real":
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(
-                    allToReal(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for a, b in self.STFClassDataDict.items()
-            }
-        elif self._simplifyKW["simplify_rule"] == "symbolic_conjugate":
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(
-                    allToSym(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for a, b in self.STFClassDataDict.items()
+        elif rule == "symbolic_conjugate":
+            new_cd = {
+                k: simplify(allToSym(v, skipVar=ign), **kwargs)
+                for k, v in self.coeff_dict.items()
             }
         else:
-            warnings.warn(
-                "_eval_simplify recieved an unsupported STFClass._simplifyKW['simplify_rule']. It is recommend to only set the _simplifyKW['simplify_rule'] attribute to None, 'holomorphic', 'real',  or 'symbolic_conjugate'."
-            )
-            simplified_coeffs = {
-                a: sp.simplify(b, **kwargs) for a, b in self.STFClassDataDict.items()
-            }
+            warnings.warn(f"Unsupported simplify_rule: {rule}.")
+            new_cd = {k: simplify(v, **kwargs) for k, v in self.coeff_dict.items()}
 
-        # Return a new instance of DFClass with simplified coeffs
-
-        # Return a new instance of DFClass with simplified coeffs
-        return STFClass(
-            self.varSpace,
-            simplified_coeffs,
-            self.degree,
+        new_cd, _ = self._process_coeffs_dict_new(new_cd, "all")
+        return self.__class__(
+            coeff_dict=new_cd,
             dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
+            variable_spaces=getattr(self, "_variable_spaces", None),
         )
 
     def subs(self, subsData):
-        newSTFData = {
-            a: sp.sympify(b).subs(subsData) for a, b in self.STFClassDataDict.items()
-        }
-        return STFClass(
-            self.varSpace,
-            newSTFData,
-            self.degree,
+        new_cd = {k: subs(v, subsData) for k, v in self.coeff_dict.items()}
+        new_cd, _ = self._process_coeffs_dict_new(new_cd, "all")
+        return self.__class__(
+            coeff_dict=new_cd,
             dgcvType=self.dgcvType,
             _simplifyKW=self._simplifyKW,
+            variable_spaces=getattr(self, "_variable_spaces", None),
         )
 
-    def __neg__(self):
-        return (-1) * self
+    def as_tensor_field(self, data_shape: Optional[str] = None) -> tensor_field_class:
+        vs = getattr(self, "_variable_spaces", None)
+        if not isinstance(vs, dict):
+            vs = None
+        return tensor_field_class(
+            coeff_dict=self.coeff_dict,
+            data_shape=(data_shape if data_shape is not None else self.data_shape),
+            dgcvType=self.dgcvType,
+            _simplifyKW=self._simplifyKW,
+            variable_spaces=vs,
+            parameters=self.parameters,
+        )
+
+    def _as_tensor_maybe(self, obj):
+        if isinstance(obj, tensor_field_class):
+            return obj
+        if check_dgcv_category(obj):
+            coerce = getattr(obj, "as_tensor_field", None)
+            if callable(coerce):
+                return coerce()
+        return None
 
     def __add__(self, other):
-        """
-        Adds two symmetric tensor fields (i.e., STFClass instances). If the variable spaces of the fields
-        are not the same, the resulting field will have a variable space that is the union
-        of both input spaces.
-
-        Parameters
-        ----------
-        other : STFClass
-            Another symmetric tensor field to add. The variable spaces of the two forms need not
-            be identical. The result will use the union of the variable spaces of the two
-            forms.
-
-        Returns
-        -------
-        STFClass
-            A new symmetric tensor field representing the sum of the two input fields.
-
-        Raises
-        ------
-        TypeError
-            If the argument `other` is not an instance of `STFClass`.
-        """
-        if other==0 or getattr(other,'is_zero',False):
+        if _scalar_is_zero(other):
             return self
-        if isinstance(other, STFClass):
-            return addSTF(self, other)
-        else:
-            raise TypeError("Unsupported operand type(s) for + with DFClass")
 
-    def __radd__(self,other):
-        if other==0 or getattr(other,'is_zero',False):
-            return self
-        else:
-            return NotImplemented
+        if check_dgcv_scalar(other):
+            new_cd = dict(self.coeff_dict)
+            new_cd[tuple()] = new_cd.get(tuple(), 0) + other
+            new_cd = {k: v for k, v in new_cd.items() if not _scalar_is_zero(v)} or {
+                tuple(): 0
+            }
+            return self.__class__(
+                coeff_dict=new_cd,
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=getattr(self, "_variable_spaces", None),
+                data_shape=self.data_shape,
+            )
+
+        if isinstance(other, self.__class__):
+            vs = self._merged_variable_spaces(other)
+            new_cd = dict(self.coeff_dict)
+            for k, v in other.coeff_dict.items():
+                if not _scalar_is_zero(v):
+                    new_cd[k] = new_cd.get(k, 0) + v
+            new_cd = {k: v for k, v in new_cd.items() if not _scalar_is_zero(v)} or {
+                tuple(): 0
+            }
+            return self.__class__(
+                coeff_dict=new_cd,
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=vs,
+                data_shape=self.data_shape,
+            )
+
+        tf = self._as_tensor_maybe(other)
+        if tf is not None:
+            return self.as_tensor_field().__add__(tf)
+
+        return NotImplemented
 
     def __sub__(self, other):
-        """
-        Subtracts one symmetric tensor field from another (i.e., STFClass instances). The subtraction
-        is performed by negating the second form and then adding it to the first form. If the
-        variable spaces of the forms are not the same, the resulting form will have a variable
-        space that is the sum of both input spaces.
+        if _scalar_is_zero(other):
+            return self
 
-        Parameters
-        ----------
-        other : STFClass
-            Another symmetric tensor field to subtract. The variable spaces of the two fields need not
-            be identical. The result will use the sum of the variable spaces of the two forms.
+        if check_dgcv_scalar(other):
+            new_cd = dict(self.coeff_dict)
+            new_cd[tuple()] = new_cd.get(tuple(), 0) - other
+            new_cd = {k: v for k, v in new_cd.items() if not _scalar_is_zero(v)} or {
+                tuple(): 0
+            }
+            return self.__class__(
+                coeff_dict=new_cd,
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=getattr(self, "_variable_spaces", None),
+                data_shape=self.data_shape,
+            )
 
-        Returns
-        -------
-        STFClass
-            A new symmetric tensor field representing the difference between the two input fields.
+        if isinstance(other, self.__class__):
+            vs = self._merged_variable_spaces(other)
+            new_cd = dict(self.coeff_dict)
+            for k, v in other.coeff_dict.items():
+                if not _scalar_is_zero(v):
+                    new_cd[k] = new_cd.get(k, 0) - v
+            new_cd = {k: v for k, v in new_cd.items() if not _scalar_is_zero(v)} or {
+                tuple(): 0
+            }
+            return self.__class__(
+                coeff_dict=new_cd,
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=vs,
+                data_shape=self.data_shape,
+            )
 
-        Raises
-        ------
-        TypeError
-            If the argument `other` is not an instance of `STFClass`.
-        """
-        if isinstance(other, STFClass):
-            return addSTF(self, scaleTF(-1, other))
-        else:
-            raise TypeError("Unsupported operand type(s) for - with STFClass")
+        tf = self._as_tensor_maybe(other)
+        if tf is not None:
+            return self.as_tensor_field().__sub__(tf)
+
+        return NotImplemented
+
+    def __radd__(self, other):
+        if _scalar_is_zero(other):
+            return self
+        return self.__add__(other)
+
+    def __rsub__(self, other):
+        if check_dgcv_scalar(other):
+            new_cd = {
+                k: (-v) for k, v in self.coeff_dict.items() if not _scalar_is_zero(v)
+            }
+            new_cd[tuple()] = new_cd.get(tuple(), 0) + other
+            new_cd = {k: v for k, v in new_cd.items() if not _scalar_is_zero(v)} or {
+                tuple(): 0
+            }
+            return self.__class__(
+                coeff_dict=new_cd,
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=getattr(self, "_variable_spaces", None),
+                data_shape=self.data_shape,
+            )
+
+        tf = self._as_tensor_maybe(other)
+        if tf is not None:
+            return tf.__sub__(self.as_tensor_field())
+
+        return NotImplemented
 
     def __mul__(self, other):
-        if isinstance(other, _get_expr_num_types()):
-            return STFClass(
-                self.varSpace,
-                {k: other * v for k, v in self.coeff_dict.items()},
-                self.degree,
+        if check_dgcv_scalar(other):
+            cd = {
+                k: other * v
+                for k, v in self.coeff_dict.items()
+                if not _scalar_is_zero(v)
+            }
+            if not cd:
+                cd = {tuple(): 0}
+            return self.__class__(
+                coeff_dict=cd,
+                data_shape=self.data_shape,
                 dgcvType=self.dgcvType,
                 _simplifyKW=self._simplifyKW,
+                variable_spaces=self._variable_spaces,
+                parameters=getattr(self, "parameters", set()),
             )
-        return super().__mul__(other)
 
-    def __rmul__(self, other):
-        if isinstance(other, _get_expr_num_types()):
-            return STFClass(
-                self.varSpace,
-                {k: other * v for k, v in self.coeff_dict.items()},
-                self.degree,
+        tf = self._as_tensor_maybe(other)
+        if tf is None:
+            return NotImplemented
+
+        if query_dgcv_categories(tf, {"differential_form"}):
+            cd = self._tp_concat_cd_fast(tf, shape="skew")
+            return self.__class__(
+                coeff_dict=cd,
+                data_shape="skew",
                 dgcvType=self.dgcvType,
                 _simplifyKW=self._simplifyKW,
+                variable_spaces=self._merged_variable_spaces(tf),
+                parameters=getattr(self, "parameters", set()),
             )
-        return super().__mul__(other)
+
+        if get_dgcv_category(tf) == "tensor_field":
+            if tf.data_shape in {"skew", "all"}:
+                return self.as_tensor_field().wedge(tf)
+            return NotImplemented
+
+        return NotImplemented
+
+    def __matmul__(self, other):
+        tf = self._as_tensor_maybe(other)
+        if tf is None:
+            return NotImplemented
+        return self.as_tensor_field()._shape_product(
+            tf.as_tensor_field() if hasattr(tf, "as_tensor_field") else tf,
+            kind="general",
+        )
+
+    def tensor_product(self, *others, coerce_shapes: bool = False):
+        return self.as_tensor_field().tensor_product(*others)
+
+    def __rmul__(self, scalar):
+        return self.__mul__(scalar)
+
+    def __call__(self, *args, **kwargs):
+        if args and all(query_dgcv_categories(a, {"vector_field"}) for a in args):
+            if len(args) > 1:
+                contract = self(args[0])
+                if query_dgcv_categories(contract, "differential_form"):
+                    return contract(*args[1:])
+                else:
+                    return 0
+
+            other = args[0]
+            if self._validated_format == "complex":
+                if other._validated_format in {"mixed", "real"}:
+                    return self.__call__(other._to_complex())
+            elif self._validated_format == "real":
+                if other._validated_format in {"mixed", "complex"}:
+                    return self.__call__(other._to_real())
+            elif self._validated_format == "mixed":
+                if other._validated_format == "real":
+                    return self.__call__(other._to_real())
+                if other._validated_format == "complex":
+                    return self.__call__(other._to_complex())
+                if other._validated_format == "mixed":
+                    pref = get_dgcv_settings_registry()["preferred_variable_format"]
+                    if pref == "real":
+                        return self._to_real().__call__(other._to_real())
+                    else:
+                        return self._to_complex().__call__(other._to_complex())
+
+            shape_cd = {}
+
+            for k2, v2 in other.coeff_dict.items():
+                if not v2:
+                    continue
+
+                a, b, c = k2
+                for k1, v1 in self.coeff_dict.items():
+                    if not v1:
+                        continue
+                    sign = 1
+                    deg = len(k1) // 3
+                    for idx in range(deg):
+                        idx2, idx3 = deg + idx, 2 * deg + idx
+                        if a == k1[idx] and b + k1[idx2] == 1 and c == k1[idx3]:
+                            new_key = tuple(
+                                elem
+                                for count, elem in enumerate(k1)
+                                if count not in (idx, idx2, idx3)
+                            )
+                            shape_cd[new_key] = (
+                                shape_cd.get(new_key, 0) + sign * v1 * v2
+                            )
+                            break
+                        sign *= -1
+
+            if not shape_cd:
+                return 0
+            if tuple() in shape_cd and len(shape_cd) == 1:
+                return shape_cd[tuple()]
+
+            return differential_form_class(
+                coeff_dict=shape_cd,
+                data_shape=self.data_shape,
+                dgcvType=self.dgcvType,
+                _simplifyKW=self._simplifyKW,
+                variable_spaces=self._merged_variable_spaces(other),
+                parameters=self.parameters | getattr(other, "parameters", set()),
+            )
+
+        return super().__call__(*args, **kwargs)
 
 
-# dgcv polynomial class
-def DGCVPolyClass(polyExpr, varSpace=None, degreeUpperBound=None):
-    warnings.warn(
-        "`DGCVPolyClass` has been deprecated as part of a shift toward standardized naming conventions in the `dgcv` library. "
-        "It will be removed in 2026. Please use `dgcvPolyClass` instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return dgcvPolyClass(polyExpr, varSpace=varSpace, degreeUpperBound=degreeUpperBound)
-
-
-class dgcvPolyClass(sp.Basic):
+def assemble_tensor_field(
+    coordinate_space: tuple | list,
+    coefficient_dict: dict,
+    valence: Optional[tuple | list] = None,
+    shape: Optional[Literal["general", "symmetric", "skew"]] = "general",
+    subclass: Optional[Literal["vector field", "differential form"]] = None,
+) -> tensor_field_class:
     """
-    A polynomial class for handling both standard and complex polynomials, integrating SymPy's polynomial tools
-    with dgcv's complex variable handling. The `dgcvPolyClass` wraps SymPy's core polynomial functionality, namely the Poly class objects, in a way that interacts well with the dgcv framework for managing complex variable systems.
+    Assemble a dgcv tensor field from coordinate-space indices and coefficients.
 
-    dgcvPolyClass augments the base SymPy `Poly` in a few ways:
-
-    - **Support for multiple variable formats**: The class allows working with polynomials in unformatted,
-      real, or complex (holomorphic/antiholomorphic with symbolic conjuagtes) forms through different lazy attributes.
-      The unformatted form maintains whatever format the expression given to initialize the dgcvPolyClass was in.
-    - **Holomorphic, antiholomorphic, pluriharmonic, and mixed term extraction**: This class has built-in methods to
-      decompose polynomials based on these parts, leveraging dgcv's `allToSym` and `allToReal` functions.
-
+    This is a convenience constructor that converts an index-based coefficient
+    dictionary into dgcv's internal "tripled-key" `coeff_dict` format by using
+    VMF metadata for the variables in `coordinate_space`.
 
     Parameters
     ----------
-    polyExpr : sympy.Expr
-        The polynomial expression to be handled.
-    varSpace : tuple, optional
-        The tuple of variables used in the polynomial. If not provided, it defaults to the free symbols in the given expression.
-    degreeUpperBound : int, optional
-      automatically inferred via sympy Poly class methods if not provided. `degreeUpperBound` is an attribute that a polynomial can be marked with for applications where it is preferable to evaluate only low degree terms (i.e., below the upper bound). It defaults to the polynomial's degree.
+    coordinate_space : tuple or list
+        Sequence of variables that defines the coordinate basis. Every element
+        must be registered in the dgcv VMF (tip: use createVariables to
+        register coordinates).
 
-    Attributes
+    coefficient_dict : dict
+        Dictionary mapping tuples of integer indices to coefficient values.
+        Each key is interpreted as a list of slots selecting elements of
+        `coordinate_space` by index. Values are scalar coefficients.
+
+    valence : tuple or list, optional
+        Valence specification aligned with `coordinate_space`. If None, defaults
+        to a tuple of zeros of the same length as `coordinate_space`.
+
+    shape : {"general","symmetric","skew"}, default "general"
+        Declared symmetry for the resulting tensor field.
+
+    subclass : {"vector field","differential form"}, optional
+        If provided, returns an instance of the requested subclass. If None,
+        returns a `tensor_field_class`.
+
+    Returns
+    -------
+    tensor_field_class
+        A tensor field instance with coefficients stored in dgcv's internal
+        tripled-key format.
+
+    Raises
+    ------
+    ValueError
+        If `valence` is provided and its length does not match `coordinate_space`,
+        or if `coefficient_dict` keys contain indices outside the range of
+        `coordinate_space`.
+
+    LookupError
+        If any variable in `coordinate_space` is not registered in the dgcv VMF.
+    """
+    return_class = (
+        vector_field_class
+        if subclass == "vector field"
+        else differential_form_class
+        if subclass == "differential form"
+        else tensor_field_class
+    )
+    if valence is None:
+        valence = tuple(0 for _ in range(len(coordinate_space)))
+    if len(valence) != len(coordinate_space):
+        raise ValueError(
+            "`assemble_tensor_field` expects valence list if given to match the coordinate_space list length."
+        )
+    variable_spaces, coordinates = dict(), dict()
+    for var in coordinate_space:
+        data = vmf_lookup(var, path=True, flattened_relatives=True, system_index=True)
+        path = data.get("path")
+        syslabel = path[1] if path else None
+        if syslabel is None:
+            raise LookupError(
+                "`assemble_tensor_field` requires variables in the given coordinate_space to be registered in the dgcv VMF."
+            )
+        if syslabel not in variable_spaces:
+            variable_spaces[syslabel] = data.get("flattened_relatives")
+        idx = data.get("system_index")
+        coordinates[var] = {"idx": idx, "sysl": syslabel}
+
+    def new_key(key):
+        f, m, L = [], [], []
+        for indx in key:
+            try:
+                cvar, val = coordinate_space[indx], valence[indx]
+            except Exception:
+                raise ValueError(
+                    "`assemble_tensor_field` expects cooeficient dict keys to be tuples with indices in range of the coordinate_space list length."
+                )
+            f.append(coordinates[cvar]["idx"])
+            m.append(val)
+            L.append(coordinates[cvar]["sysl"])
+        return tuple(f + m + L)
+
+    cd = {new_key(k): v for k, v in coefficient_dict.items()}
+    return return_class(coeff_dict=cd, data_shape=shape)
+
+
+# -----------------------------------------------------------------------------
+# polynomials
+# -----------------------------------------------------------------------------
+class polynomial_dgcv(dgcv_class):
+    """
+    A class representing polynomial expressions in the dgcv package, providing a light,
+    wrapper around the polynomial functionality of the active symbolic backend.
+
+    This class interprets a symbolic expression as a polynomial in a specified set of
+    generators, with all other atomic symbols treated as parameters (unknown scalar
+    constants). It integrates with dgcv's complex variable systems and the VMF, allowing
+    efficient computation of complex-structure-related properties such as holomorphic,
+    antiholomorphic, pluriharmonic, and mixed terms.
+
+    Parameters
     ----------
-    polyExpr : sympy.Expr
-        The polynomial expression wrapped by this class.
-    varSpace : tuple
-        The set of variables involved in the polynomial.
-    degreeUpperBound : int or None
-        The degree upper bound of the polynomial, inferred or provided during initialization.
-    poly_obj_unformatted : sympy.Poly
-        The unformatted SymPy `Poly` object constructed from the provided expression and variable space.
-    poly_obj_complex : sympy.Poly
-        The `Poly` object with holomorphic and antiholomorphic variables, constructed via dgcv's complex variable transformations.
-    poly_obj_real : sympy.Poly
-        The `Poly` object with real variables, constructed using dgcv's real variable transformations.
+    polyExpr : symbolic expression
+        The symbolic expression to be interpreted as a polynomial.
+
+    varSpace : list or tuple, optional
+        Variables to be treated as polynomial generators. If not provided, the generators
+        are inferred from the free symbols of `polyExpr`.
+
+    parameters : list or tuple, optional
+        Symbols to be treated as parameters (coefficients) rather than polynomial
+        generators. If not provided and `varSpace` is specified, parameters are inferred
+        lazily as the free symbols of `polyExpr` not contained in `varSpace`.
+
+    degreeUpperBound : int, optional
+        An optional upper bound on the total degree of the polynomial, used in applications
+        where only terms up to a given degree are relevant.
 
     Methods
     -------
-    get_monomials(min_degree=0, max_degree=None, format='unformatted'):
-        Returns the monomials of the polynomial within the specified degree range and format.
+    get_monomials(min_degree=0, max_degree=None, format='unformatted', return_coeffs=False)
+        Returns the monomials (or coefficients) of the polynomial within the specified
+        degree range and representation.
 
-    holomorphic_part():
-        Lazily computes and returns the holomorphic part of the polynomial.
+    holomorphic_part
+        Returns the holomorphic part of the polynomial with respect to dgcv's complex
+        variable systems.
 
-    antiholomorphic_part():
-        Lazily computes and returns the antiholomorphic part of the polynomial.
+    antiholomorphic_part
+        Returns the antiholomorphic part of the polynomial.
 
-    pluriharmonic_part():
-        Lazily computes and returns the pluriharmonic part of the polynomial (sum of holomorphic and antiholomorphic parts).
+    pluriharmonic_part
+        Returns the pluriharmonic part of the polynomial, defined as the sum of the
+        holomorphic and antiholomorphic parts with the constant term counted once.
 
-    mixed_terms():
-        Lazily computes and returns the mixed terms (terms involving both holomorphic and antiholomorphic variables).
+    mixed_terms
+        Returns the mixed terms of the polynomial, involving nonzero powers of both
+        holomorphic and antiholomorphic variables.
 
-    __add__(other):
-        Adds two `dgcvPolyClass` instances, combining their variable spaces and degree bounds.
+    simplify_poly(method=None, **kwargs)
+        Simplifies the underlying polynomial expression using the active symbolic backend.
 
-    __mul__(other):
-        Multiplies two `dgcvPolyClass` instances, combining their variable spaces and degree bounds.
+    subs(substitutions)
+        Substitutes variables or expressions into the polynomial and returns a new
+        `polynomial_dgcv` instance.
 
-    __subs__(substitutions):
-        Substitutes variables in the polynomial expression and returns a new `dgcvPolyClass` instance with the substitutions applied.
-
-    Example
-    -------
-    >>> from sympy import symbols
-    >>> from dgcv import dgcvPolyClass, complexVarProc
-    >>> x, y, z, BARz = symbols('x y z BARz')
-    >>> complexVarProc('z', 'x', 'y')  # Initialize complex variables in dgcv
-    >>> poly = dgcvPolyClass(y**2 + z**2)
-    >>> print(poly.holomorphic_part)  # Extract the holomorphic part
-    -z**2
-    >>> print(poly.get_monomials(format='complex'))  # Get monomials in complex format
-    [-z**2, y**2]
+    diff(*symbols)
+        Differentiates the polynomial with respect to the given symbols and returns a new
+        `polynomial_dgcv` instance.
     """
 
-    def __new__(cls, polyExpr, varSpace=None, degreeUpperBound=None):
-        # Create a new instance using sp.Basic's __new__
-        return sp.Basic.__new__(cls, polyExpr)
+    def __init__(
+        self,
+        polyExpr: Any,
+        varSpace: Optional[Sequence[Any]] = None,
+        *,
+        parameters: Optional[Iterable[Any]] = None,
+        degreeUpperBound: Optional[int] = None,
+        conjugate_free: Optional[bool] = None,
+    ):
+        src = polyExpr if isinstance(polyExpr, polynomial_dgcv) else None
 
-    def __init__(self, polyExpr, varSpace=None, degreeUpperBound=None):
-        """
-        Initializes the dgcvPolyClass with an optional variable space.
+        if src is not None:
+            if varSpace is None:
+                varSpace = src.varSpace
+            if degreeUpperBound is None:
+                degreeUpperBound = src.degreeUpperBound
+            if parameters is None:
+                parameters = src._parameters
+            polyExpr = src.polyExpr
 
-        Parameters:
-        polyExpr : sympy.Expr
-            The polynomial expression.
-        varSpace : tuple, optional
-            The tuple of variables (default is the free symbols in polyExpr).
-        degreeUpperBound : int, optional
-            The upper bound on the degree of the polynomial.
-        """
-        polyExpr = sp.sympify(polyExpr)
+        hard_filter = tuple(parameters) if parameters is not None else tuple()
+        self.polyExpr = (
+            polyExpr
+            if conjugate_free
+            else (
+                polyExpr
+                if verify_conjugates_free(polyExpr)
+                else allToSym(polyExpr, skipVar=hard_filter)
+            )
+        )
 
-        # If varSpace is not provided, infer it from the free symbols in polyExpr
         if varSpace is None:
-            if isinstance(polyExpr, numbers.Number):  # If polyExpr is a scalar
+            self._parameters = hard_filter
+            if isinstance(polyExpr, Number) and not isinstance(polyExpr, bool):
                 self.varSpace = ()
             else:
                 self.varSpace = tuple(get_free_symbols(polyExpr))
         else:
-            self.varSpace = tuple(varSpace)
+            self.varSpace = polynomial_dgcv._normalize_polynomial_varspace_via_vmf(
+                tuple(varSpace)
+            )
+            self._parameters = hard_filter if parameters is not None else None
 
-        self.polyExpr = polyExpr
-        self.degree = sp.total_degree(polyExpr, *self.varSpace)
         self.degreeUpperBound = degreeUpperBound
-        # Initialize private attributes for lazy evaluation
+
+        self._degree = None
+        self._poly_obj_unformatted = None
+        self._poly_obj_complex = None
+        self._poly_obj_real = None
         self._holomorphic_part = None
         self._antiholomorphic_part = None
         self._pluriharmonic_part = None
         self._mixed_terms_part = None
+        self._is_zero = None
+        self._is_one = None
+        self._is_minus_one = None
+        self._is_constant = None
+        self._constant_term = None
+        self._is_monomial = None
+        self._complex_terms_cache = None
+        self._complex_holo_anti_idx_cache = None
 
-        self._poly_obj_unformatted = None
-        self._poly_obj_complex = None
-        self._poly_obj_real = None
+        self._dgcv_class_check = retrieve_passkey()
+        self._dgcv_category = "expression"
+        self._dgcv_categories = {"polynomial"}
 
-    def _sage_(self):
-        raise AttributeError
+        if src is not None:
+            same_varspace = self.varSpace == src.varSpace
+            same_deg_ub = self.degreeUpperBound == src.degreeUpperBound
+            same_params_semantics = self._parameters == src._parameters
+
+            if same_varspace and same_deg_ub and same_params_semantics:
+                self._degree = src._degree
+                self._poly_obj_unformatted = src._poly_obj_unformatted
+                self._poly_obj_complex = src._poly_obj_complex
+                self._poly_obj_real = src._poly_obj_real
+                self._holomorphic_part = src._holomorphic_part
+                self._antiholomorphic_part = src._antiholomorphic_part
+                self._pluriharmonic_part = src._pluriharmonic_part
+                self._mixed_terms_part = src._mixed_terms_part
+                self._is_zero = src._is_zero
+                self._is_one = src._is_one
+                self._is_minus_one = src._is_minus_one
+                self._is_constant = src._is_constant
+                self._constant_term = src._constant_term
+                self._is_monomial = src._is_monomial
+
+    @property
+    def parameters(self) -> Tuple[Any, ...]:
+        if self._parameters is None:
+            fs = tuple(get_free_symbols(self.polyExpr))
+            vs = set(self.varSpace)
+            self._parameters = tuple(x for x in _stable_dedupe(fs) if x not in vs)
+        return self._parameters
+
+    @property
+    def free_symbols(self) -> set:
+        return set(self.parameters) | set(self.varSpace)
+
+    @property
+    def degree(self) -> Optional[int]:
+        if self._degree is None:
+            try:
+                self._degree = poly_total_degree(
+                    self.polyExpr, self.varSpace, parameters=self.parameters
+                )
+            except Exception:
+                self._degree = None
+        return self._degree
+
+    @staticmethod
+    def _vmf_coordinate_info(x: Any):
+        try:
+            info = vmf_lookup(x, relatives=True, system_index=True)
+        except Exception:
+            return None
+        if not isinstance(info, dict):
+            return None
+        t = info.get("type", None)
+        if t == "unregistered":
+            return None
+        if t != "coordinate":
+            return None
+        rel = info.get("relatives", None)
+        if not isinstance(rel, dict):
+            return None
+        sys_label = rel.get("system_label", None)
+        if not isinstance(sys_label, str) or not sys_label:
+            return None
+        si = info.get("system_index", None)
+        try:
+            si_int = int(si)
+        except Exception:
+            return None
+        return sys_label, si_int, rel
+
+    @staticmethod
+    def _normalize_polynomial_varspace_via_vmf(
+        varSpace_in: Sequence[Any],
+    ) -> Tuple[Any, ...]:
+        blocks: List[tuple] = []
+        block_index_for_slot: Dict[tuple, int] = {}
+        seen_standard: set = set()
+
+        def _append_standard(a: Any) -> None:
+            if a in seen_standard:
+                return
+            seen_standard.add(a)
+            if blocks and blocks[0][0] == "standard":
+                blocks[0][1].append(a)
+            else:
+                blocks.insert(0, ("standard", [a]))
+
+        for v in varSpace_in:
+            if not is_atomic(v):
+                raise TypeError(
+                    "polynomial_dgcv(varSpace=...): all entries must be atomic symbols; "
+                    f"got {v!r} of type {type(v).__name__}"
+                )
+
+            info = polynomial_dgcv._vmf_coordinate_info(v)
+            if info is None:
+                _append_standard(v)
+                continue
+
+            sys_label, sys_i, rel = info
+
+            holo = rel.get("holo", None)
+            anti = rel.get("anti", None)
+            real = rel.get("real", None)
+            imag = rel.get("imag", None)
+
+            has_symb_pair = (holo is not None) and (anti is not None)
+            has_real_pair = (real is not None) and (imag is not None)
+            if not (has_symb_pair or has_real_pair):
+                _append_standard(v)
+                continue
+
+            if has_symb_pair and (v == holo or v == anti):
+                fmt_seen = "symb"
+                pair = (holo, anti)
+            elif has_real_pair and (v == real or v == imag):
+                fmt_seen = "real"
+                pair = (real, imag)
+            else:
+                _append_standard(v)
+                continue
+
+            slot_key = (sys_label, sys_i)
+
+            if slot_key not in block_index_for_slot:
+                blocks.append(("complex", slot_key, fmt_seen, list(pair)))
+                block_index_for_slot[slot_key] = len(blocks) - 1
+                continue
+
+            idx = block_index_for_slot[slot_key]
+            _tag, _slot, fmt_current, _pair_current = blocks[idx]
+
+            if fmt_current == fmt_seen:
+                continue
+
+            blocks[idx] = ("complex", slot_key, fmt_seen, list(pair))
+
+        out: List[Any] = []
+        seen_out: set = set()
+
+        for blk in blocks:
+            if blk[0] == "standard":
+                for a in blk[1]:
+                    if a in seen_out:
+                        continue
+                    seen_out.add(a)
+                    out.append(a)
+            else:
+                _tag, _slot, _fmt, pair_list = blk
+                for a in pair_list:
+                    if a in seen_out:
+                        continue
+                    seen_out.add(a)
+                    out.append(a)
+
+        return tuple(out)
+
+    def __dgcv_converter__(
+        self,
+        conv,
+        *,
+        skipVar=None,
+        simplify_everything=True,
+        conversion_dict=None,
+    ):
+        conv_map = {
+            "holToReal": holToReal,
+            "realToSym": realToSym,
+            "symToHol": symToHol,
+            "realToHol": realToHol,
+            "symToReal": symToReal,
+            "allToReal": allToReal,
+            "allToHol": allToHol,
+            "allToSym": allToSym,
+        }
+
+        fn_expr = conv_map.get(conv)
+        if fn_expr is None:
+            return None
+
+        if conv == "realToHol":
+            fn_basis = realToSym
+        elif conv == "allToHol":
+            fn_basis = allToSym
+        elif conv == "symToHol":
+            fn_basis = None
+        else:
+            fn_basis = fn_expr
+
+        kw_expr = {"skipVar": skipVar, "simplify_everything": simplify_everything}
+        if conversion_dict is not None and conv in {
+            "holToReal",
+            "realToSym",
+            "symToHol",
+            "realToHol",
+            "symToReal",
+        }:
+            kw_expr["_conversion_dict"] = conversion_dict
+
+        new_expr = fn_expr(self.polyExpr, **kw_expr)
+
+        if fn_basis is None:
+            new_varSpace = self.varSpace
+            new_params = None if self._parameters is None else self._parameters
+        else:
+            kw_basis = {"skipVar": skipVar, "simplify_everything": simplify_everything}
+
+            vs_atoms = []
+            for v in self.varSpace:
+                vv = fn_basis(v, **kw_basis)
+                vs_atoms.extend(get_free_symbols(vv))
+            new_varSpace = tuple(_stable_dedupe(vs_atoms))
+
+            if self._parameters is None:
+                new_params = None
+            else:
+                p_atoms = []
+                for p in self._parameters:
+                    pp = fn_basis(p, **kw_basis)
+                    p_atoms.extend(get_free_symbols(pp))
+                new_params = tuple(_stable_dedupe(p_atoms))
+
+        return polynomial_dgcv(
+            new_expr,
+            varSpace=new_varSpace,
+            parameters=new_params,
+            degreeUpperBound=self.degreeUpperBound,
+        )
+
+    def _complex_view(self, *, skipVar=None, simplify_everything=True):
+        expr_c = allToSym(
+            self.polyExpr, skipVar=skipVar, simplify_everything=simplify_everything
+        )
+
+        gens = []
+        for v in self.varSpace:
+            vv = allToSym(v, skipVar=skipVar, simplify_everything=simplify_everything)
+            gens.extend(get_free_symbols(vv))
+        gens_c = _stable_dedupe(gens)
+
+        params_c = self.parameters
+        return expr_c, gens_c, params_c
+
+    def _real_view(self, *, skipVar=None, simplify_everything=True):
+        expr_r = allToReal(
+            self.polyExpr, skipVar=skipVar, simplify_everything=simplify_everything
+        )
+
+        gens = []
+        for v in self.varSpace:
+            vv = allToReal(v, skipVar=skipVar, simplify_everything=simplify_everything)
+            gens.extend(get_free_symbols(vv))
+        gens_r = _stable_dedupe(gens)
+
+        params_r = self.parameters
+        return expr_r, gens_r, params_r
+
+    def __dgcv_simplify__(self, *, method=None, **kwargs):
+        new_expr = simplify(self.polyExpr, method=method, **kwargs)
+        return polynomial_dgcv(
+            new_expr,
+            varSpace=self.varSpace,
+            parameters=self._parameters if self._parameters is not None else None,
+            degreeUpperBound=self.degreeUpperBound,
+        )
+
+    def __dgcv_conjugate__(self):
+        params = None if self._parameters is None else self._parameters
+        return polynomial_dgcv(
+            conjugate(self.polyExpr),
+            varSpace=self.varSpace,
+            parameters=params,
+            degreeUpperBound=self.degreeUpperBound,
+        )
 
     @property
     def poly_obj_unformatted(self):
-        """Lazily constructs and returns the unformatted Poly object."""
         if self._poly_obj_unformatted is None:
-            self._poly_obj_unformatted = sp.Poly(self.polyExpr, *self.varSpace)
+            self._poly_obj_unformatted = make_poly(
+                self.polyExpr, self.varSpace, parameters=self.parameters
+            )
         return self._poly_obj_unformatted
 
     @property
     def poly_obj_complex(self):
-        """Lazily constructs and returns the Poly object with complex variable handling."""
         if self._poly_obj_complex is None:
-            # Apply allToSym to convert to holomorphic and antiholomorphic variables
-            complex_expr = allToSym(self.polyExpr)
-            # Get the free symbols of the transformed expression for generators
-            complex_varSpace = tuple(
-                set.union(*[get_free_symbols(allToSym(j)) for j in self.varSpace])
-            )
-            self._poly_obj_complex = sp.Poly(complex_expr, *complex_varSpace)
+            expr_c, gens_c, params_c = self._complex_view()
+            self._poly_obj_complex = make_poly(expr_c, gens_c, parameters=params_c)
         return self._poly_obj_complex
 
     @property
     def poly_obj_real(self):
-        """Lazily constructs and returns the Poly object with real variable handling."""
         if self._poly_obj_real is None:
-            # Apply allToReal to convert to real variables
-            real_expr = allToReal(self.polyExpr)
-            # Get the free symbols of the transformed expression for generators
-            real_varSpace = tuple(
-                set.union(*[get_free_symbols(allToReal(j)) for j in self.varSpace])
-            )
-            self._poly_obj_real = sp.Poly(real_expr, *real_varSpace)
+            expr_r, gens_r, params_r = self._real_view()
+            self._poly_obj_real = make_poly(expr_r, gens_r, parameters=params_r)
         return self._poly_obj_real
 
+    @property
+    def is_zero(self) -> bool:
+        v = self._is_zero
+        if v is not None:
+            return v
+
+        expr = self.polyExpr
+
+        if isinstance(expr, Number) and not isinstance(expr, bool):
+            self._is_zero = expr == 0
+            return self._is_zero
+
+        iz = getattr(expr, "is_zero", None)
+        if iz is True:
+            self._is_zero = True
+            return True
+        if callable(iz):
+            try:
+                self._is_zero = bool(iz())
+                return self._is_zero
+            except Exception:
+                pass
+
+        try:
+            P = self.poly_obj_unformatted
+            self._is_zero = all(c == 0 for c in poly_coeffs(P))
+        except Exception:
+            try:
+                self._is_zero = expr == 0
+            except Exception:
+                self._is_zero = False
+
+        return self._is_zero
+
+    @property
+    def is_constant(self) -> bool:
+        v = self._is_constant
+        if v is not None:
+            return v
+
+        try:
+            P = self.poly_obj_unformatted
+            self._is_constant = all(all(int(e) == 0 for e in m) for m in poly_monoms(P))
+        except Exception:
+            try:
+                self._is_constant = len(self.varSpace) == 0
+            except Exception:
+                self._is_constant = False
+
+        return self._is_constant
+
+    @property
+    def constant_term(self):
+        v = self._constant_term
+        if v is not None:
+            return v
+
+        expr = self.polyExpr
+
+        try:
+            P = self.poly_obj_unformatted
+            for m, c in zip(poly_monoms(P), poly_coeffs(P)):
+                if all(int(e) == 0 for e in m):
+                    self._constant_term = c
+                    return c
+            self._constant_term = zero()
+        except Exception:
+            self._constant_term = expr
+
+        return self._constant_term
+
+    @property
+    def is_one(self) -> bool:
+        v = self._is_one
+        if v is not None:
+            return v
+
+        expr = self.polyExpr
+
+        if isinstance(expr, Number) and not isinstance(expr, bool):
+            self._is_one = expr == 1
+            return self._is_one
+
+        try:
+            self._is_one = bool(self.is_constant and (self.constant_term == 1))
+        except Exception:
+            try:
+                self._is_one = expr == 1
+            except Exception:
+                self._is_one = False
+
+        return self._is_one
+
+    @property
+    def is_minus_one(self) -> bool:
+        v = self._is_minus_one
+        if v is not None:
+            return v
+
+        expr = self.polyExpr
+
+        if isinstance(expr, Number) and not isinstance(expr, bool):
+            self._is_minus_one = expr == -1
+            return self._is_minus_one
+
+        try:
+            self._is_minus_one = bool(self.is_constant and (self.constant_term == -1))
+        except Exception:
+            try:
+                self._is_minus_one = expr == -1
+            except Exception:
+                self._is_minus_one = False
+
+        return self._is_minus_one
+
+    @property
+    def is_monomial(self) -> bool:
+        v = self._is_monomial
+        if v is not None:
+            return v
+
+        try:
+            coeffs = self.get_monomials(format="unformatted", return_coeffs=True)
+            nz = 0
+            for c in coeffs:
+                if not _scalar_is_zero(c):
+                    nz += 1
+                    if nz > 1:
+                        self._is_monomial = False
+                        return False
+            self._is_monomial = True
+            return True
+        except Exception:
+            expr = self.polyExpr
+            if isinstance(expr, Number) and not isinstance(expr, bool):
+                self._is_monomial = True
+                return True
+            self._is_monomial = bool(getattr(expr, "is_Atom", False))
+            return self._is_monomial
+
+    def _complex_terms(self):
+        """
+        Return (gens, monoms, coeffs) for the complex view.
+        """
+        if self._complex_terms_cache is not None:
+            return self._complex_terms_cache
+
+        expr_c, gens_c, params_c = self._complex_view()
+
+        gens = tuple(gens_c)
+
+        from .backends._polynomials import poly_terms
+
+        _gens_out, monoms, coeffs = poly_terms(
+            expr_c,
+            gens,
+            assume_polynomial=False,
+            parameters=params_c,
+        )
+
+        self._complex_terms_cache = (tuple(_gens_out), monoms, coeffs)
+        return self._complex_terms_cache
+
+    def _complex_holo_anti_indices(self):
+        if self._complex_holo_anti_idx_cache is not None:
+            return self._complex_holo_anti_idx_cache
+
+        gens, _monoms, _coeffs = self._complex_terms()
+
+        holo_idx = []
+        anti_idx = []
+        conjugation_prefix = get_dgcv_settings_registry().get(
+            "conjugation_prefix", "BAR"
+        )
+        for i, g in enumerate(gens):
+            s = str(g)
+            if s.startswith(conjugation_prefix):
+                anti_idx.append(i)
+            else:
+                holo_idx.append(i)
+
+        self._complex_holo_anti_idx_cache = (tuple(holo_idx), tuple(anti_idx))
+        return self._complex_holo_anti_idx_cache
+
     def get_monomials(
-        self, min_degree=0, max_degree=None, format="unformatted", return_coeffs=False
+        self,
+        min_degree: int = 0,
+        max_degree: Optional[int] = None,
+        *,
+        format: str = "unformatted",
+        return_coeffs: bool = False,
+        separate_coeffs: bool = False,
+        as_dict: bool = False,
     ):
-        """
-        Computes and returns the monomials of the polynomial within the specified degree range,
-        using the specified format for the polynomial generators.
+        if format not in ("unformatted", "complex", "real"):
+            raise ValueError("format must be one of: 'unformatted', 'complex', 'real'")
 
-        Parameters
-        ----------
-        min_degree : int, optional
-            The minimum degree of monomials to return (default is 0).
-        max_degree : int, optional
-            The maximum degree of monomials to return (default is the polynomial's total degree).
-        format : str, optional
-            The format of the polynomial generators. Must be one of:
-            - 'unformatted': Use the original variables provided or free symbols from polyExpr.
-            - 'complex': Use holomorphic and antiholomorphic variables (z, BARz).
-            - 'real': Use real variable representations (x, y).
-            (default is 'unformatted').
-        return_coeffs : bool, optional
-            If true, only a list of coefficients is returned
-
-        Returns
-        -------
-        list
-            A list of monomials within the specified degree range, or just their coefficients if return_coeffs=True is set.
-        """
-        if format not in ["unformatted", "complex", "real"]:
+        if return_coeffs and (separate_coeffs or as_dict):
             raise ValueError(
-                "Invalid format. Choose 'unformatted', 'complex', or 'real'."
+                "return_coeffs cannot be combined with separate_coeffs or as_dict"
             )
 
-        # Select the appropriate Poly object based on the format
-        if format == "unformatted":
-            poly_obj = self.poly_obj_unformatted
-        elif format == "complex":
-            poly_obj = self.poly_obj_complex
-        else:
-            poly_obj = self.poly_obj_real
+        if as_dict:
+            separate_coeffs = True
 
-        # Default max_degree to the total degree of the polynomial
+        if format == "unformatted":
+            P = self.poly_obj_unformatted
+        elif format == "complex":
+            P = self.poly_obj_complex
+        else:
+            P = self.poly_obj_real
+
+        gens_t = poly_gens(P)
+        monoms = poly_monoms(P)
+        coeffs = poly_coeffs(P)
+
         if max_degree is None:
             max_degree = self.degree
+        if max_degree is None:
+            max_degree = max(sum(int(e) for e in m) for m in monoms) if monoms else 0
 
-        # Extract monomials and coefficients
-        monoms = poly_obj.monoms()
-        coeffs = poly_obj.coeffs()
-
-        # Filter monomials by degree
         if return_coeffs:
-            filtered_monomials = [
-                coeff
-                for monom, coeff in zip(monoms, coeffs)
-                if min_degree <= sum(monom) <= max_degree
-            ]
-        else:
-            filtered_monomials = [
-                sp.Mul(*[gen**exp for gen, exp in zip(poly_obj.gens, monom)]) * coeff
-                for monom, coeff in zip(monoms, coeffs)
-                if min_degree <= sum(monom) <= max_degree
+            return [
+                c
+                for m, c in zip(monoms, coeffs)
+                if min_degree <= sum(int(e) for e in m) <= max_degree
             ]
 
-        return filtered_monomials
+        if separate_coeffs:
+            out_m = []
+            out_c = []
+            for m, c in zip(monoms, coeffs):
+                d = sum(int(e) for e in m)
+                if d < min_degree or d > max_degree:
+                    continue
+                mon = 1
+                for g, e in zip(gens_t, m):
+                    ee = int(e)
+                    if ee:
+                        mon *= g**ee
+                out_m.append(mon)
+                out_c.append(c)
 
-    def get_coeffs(self, min_degree=0, max_degree=None, format="unformatted"):
+            if as_dict:
+                return dict(zip(out_m, out_c))
+
+            return out_m, out_c
+
+        out = []
+        for m, c in zip(monoms, coeffs):
+            d = sum(int(e) for e in m)
+            if d < min_degree or d > max_degree:
+                continue
+            term = c
+            for g, e in zip(gens_t, m):
+                ee = int(e)
+                if ee:
+                    term *= g**ee
+            out.append(term)
+
+        return out
+
+    def get_coeffs(
+        self,
+        min_degree: int = 0,
+        max_degree: Optional[int] = None,
+        *,
+        format: str = "unformatted",
+    ):
         return self.get_monomials(
             min_degree=min_degree,
             max_degree=max_degree,
@@ -2175,546 +4493,614 @@ class dgcvPolyClass(sp.Basic):
             return_coeffs=True,
         )
 
-    def scale_to_have_int_coeffs(self, return_scale_only=False):
-        coeffs = [sp.sympify(c) for c in self.get_coeffs()]
+    def _constant_term_in_complex_view(self):
+        _gens, monoms, coeffs = self._complex_terms()
+        for m, c in zip(monoms, coeffs):
+            if all(int(e) == 0 for e in m):
+                return c
+        return zero()
 
-        def sign_for_count(c):
-            c = sp.sympify(c)
-            if c.is_zero:
+    @property
+    def holomorphic_part(self):
+        if self._holomorphic_part is None:
+            gens, monoms, coeffs = self._complex_terms()
+            _holo_idx, anti_idx = self._complex_holo_anti_indices()
+
+            terms = []
+            for m, c in zip(monoms, coeffs):
+                if anti_idx and any(int(m[i]) != 0 for i in anti_idx):
+                    continue
+                terms.append(_term_from_monom(gens, m, c))
+
+            self._holomorphic_part = sum(terms, zero()) if terms else zero()
+        return self._holomorphic_part
+
+    @property
+    def antiholomorphic_part(self):
+        if self._antiholomorphic_part is None:
+            gens, monoms, coeffs = self._complex_terms()
+            holo_idx, _anti_idx = self._complex_holo_anti_indices()
+
+            terms = []
+            for m, c in zip(monoms, coeffs):
+                if holo_idx and any(int(m[i]) != 0 for i in holo_idx):
+                    continue
+                terms.append(_term_from_monom(gens, m, c))
+
+            self._antiholomorphic_part = sum(terms, zero()) if terms else zero()
+        return self._antiholomorphic_part
+
+    @property
+    def mixed_terms(self):
+        if self._mixed_terms_part is None:
+            gens, monoms, coeffs = self._complex_terms()
+            holo_idx, anti_idx = self._complex_holo_anti_indices()
+
+            terms = []
+            for m, c in zip(monoms, coeffs):
+                has_holo = holo_idx and any(int(m[i]) != 0 for i in holo_idx)
+                has_anti = anti_idx and any(int(m[i]) != 0 for i in anti_idx)
+                if has_holo and has_anti:
+                    terms.append(_term_from_monom(gens, m, c))
+
+            self._mixed_terms_part = sum(terms, zero()) if terms else zero()
+        return self._mixed_terms_part
+
+    @property
+    def pluriharmonic_part(self):
+        if self._pluriharmonic_part is None:
+            c0 = self._constant_term_in_complex_view()
+            self._pluriharmonic_part = (
+                self.holomorphic_part + self.antiholomorphic_part - c0
+            )
+        return self._pluriharmonic_part
+
+    def simplify_poly(self, method: Optional[str] = None, **kwargs):
+        return polynomial_dgcv(
+            simplify(self.polyExpr, method=method, **kwargs),
+            varSpace=self.varSpace,
+            parameters=self.parameters,
+            degreeUpperBound=self.degreeUpperBound,
+        )
+
+    def evaluate(self, **values):
+        return subs(self.polyExpr, values)
+
+    def subs(self, substitutions, **kwargs):
+        new_expr = subs(self.polyExpr, substitutions, **kwargs)
+        return polynomial_dgcv(
+            new_expr,
+            varSpace=self.varSpace,
+            parameters=self._parameters if self._parameters is not None else None,
+            degreeUpperBound=self.degreeUpperBound,
+        )
+
+    def diff(self, *args, **kwargs):
+        new_expr = diff(self.polyExpr, *args, **kwargs)
+        return polynomial_dgcv(
+            new_expr,
+            varSpace=self.varSpace,
+            parameters=self._parameters if self._parameters is not None else None,
+            degreeUpperBound=self.degreeUpperBound,
+        )
+
+    def scale_to_have_int_coeffs(
+        self,
+        return_scale_only: bool = False,
+        *,
+        reduce_by_gcd: bool = True,
+        balance_sign: bool = True,
+    ):
+        coeffs = list(self.get_coeffs())
+
+        def _is_zero(x):
+            z = getattr(x, "is_zero", None)
+            if z is True:
+                return True
+            if callable(z):
+                try:
+                    return bool(z())
+                except Exception:
+                    pass
+            return x == 0
+
+        nz_coeffs = [c for c in coeffs if not _is_zero(c)]
+        if not nz_coeffs:
+            scale = one()
+            return scale if return_scale_only else scale * self
+
+        def _sign_real(x):
+            if _is_zero(x):
+                return 0
+            neg = getattr(x, "is_negative", None)
+            pos = getattr(x, "is_positive", None)
+            if neg is True:
+                return -1
+            if pos is True:
+                return 1
+            try:
+                v = float(x)
+                return -1 if v < 0 else (1 if v > 0 else 0)
+            except Exception:
                 return 0
 
-            re = sp.re(c)
-            im = sp.im(c)
-
-            if im.is_zero:
-                if re.is_negative:
-                    return -1
-                if re.is_positive:
-                    return 1
+        def _sign_quadrant(c):
+            if _is_zero(c):
                 return 0
 
-            if re.is_zero:
-                if im.is_negative:
-                    return -1
-                if im.is_positive:
-                    return 1
-                return 0
+            rr = re(c)
+            ii = im(c)
+
+            rr0 = _is_zero(rr)
+            ii0 = _is_zero(ii)
+
+            if ii0:
+                return _sign_real(rr)
+
+            if rr0:
+                return _sign_real(ii)
+
+            rr_nonpos = getattr(rr, "is_nonpositive", None)
+            ii_nonpos = getattr(ii, "is_nonpositive", None)
+            rr_nonneg = getattr(rr, "is_nonnegative", None)
+            ii_nonneg = getattr(ii, "is_nonnegative", None)
+
+            rr_neg = getattr(rr, "is_negative", None)
+            ii_neg = getattr(ii, "is_negative", None)
+            rr_pos = getattr(rr, "is_positive", None)
+            ii_pos = getattr(ii, "is_positive", None)
 
             neg_corner = (
-                re.is_nonpositive and im.is_nonpositive and
-                (re.is_negative or im.is_negative)
+                rr_nonpos is True
+                and ii_nonpos is True
+                and (rr_neg is True or ii_neg is True)
             )
             pos_corner = (
-                re.is_nonnegative and im.is_nonnegative and
-                (re.is_positive or im.is_positive)
+                rr_nonneg is True
+                and ii_nonneg is True
+                and (rr_pos is True or ii_pos is True)
             )
 
             if neg_corner:
                 return -1
             if pos_corner:
                 return 1
+
+            try:
+                zc = complex(float(rr), float(ii))
+                if zc.real <= 0 and zc.imag <= 0 and (zc.real < 0 or zc.imag < 0):
+                    return -1
+                if zc.real >= 0 and zc.imag >= 0 and (zc.real > 0 or zc.imag > 0):
+                    return 1
+            except Exception:
+                pass
+
             return 0
 
-        n_neg = sum(1 for c in coeffs if sign_for_count(c) == -1)
-        flip = -1 if n_neg > len(coeffs) // 2 else 1
-
         denoms = []
-        for c in coeffs:
-            c = sp.sympify(c)
-            if c.is_zero:
+        for c in nz_coeffs:
+            _, d = as_numer_denom(c)
+            try:
+                di = int(d)
+            except Exception:
                 continue
-            _, d = c.as_numer_denom()
-            denoms.append(int(d))
-        if denoms:
-            scale = flip if len(denoms)==1 else flip * sp.ilcm(*denoms)
+            if not _scalar_is_zero(di):
+                denoms.append(abs(di))
+
+        base = ilcm(*denoms) if denoms else one()
+        base = integer(base) if base != one() else base
+
+        if not reduce_by_gcd and not balance_sign:
+            scale = base
+            return scale if return_scale_only else scale * self
+
+        scaled_coeffs = [base * c for c in nz_coeffs]
+
+        def _as_int(x):
+            if _is_zero(x):
+                return 0
+            try:
+                xi = int(x)
+            except Exception:
+                return None
+            try:
+                if x == xi:
+                    return xi
+            except Exception:
+                pass
+            return None
+
+        ints = []
+        for c in scaled_coeffs:
+            ci = _as_int(c)
+            if ci is None:
+                ints = []
+                break
+            if not _scalar_is_zero(ci):
+                ints.append(abs(ci))
+
+        g = 1
+        if reduce_by_gcd and ints:
+            g = ints[0]
+            for u in ints[1:]:
+                g = gcd(g, u)
+                if g == 1:
+                    break
+
+        content = integer(g) if g != 1 else one()
+        scale0 = base / content if content != one() else base
+
+        if not balance_sign:
+            scale = scale0
+            return scale if return_scale_only else scale * self
+
+        def _sign_count_after_scale(s):
+            pos = 0
+            neg = 0
+            for c in nz_coeffs:
+                q = _sign_quadrant(s * c)
+                if q == 1:
+                    pos += 1
+                elif q == -1:
+                    neg += 1
+            return pos, neg
+
+        pos0, neg0 = _sign_count_after_scale(scale0)
+        pos1, neg1 = _sign_count_after_scale(-scale0)
+
+        if pos1 > pos0 or (pos1 == pos0 and neg1 < neg0):
+            scale = -scale0
         else:
-            scale = flip
+            scale = scale0
 
-        if return_scale_only:
-            return scale
-        return scale * self
+        return scale if return_scale_only else scale * self
 
-    @property
-    def holomorphic_part(self):
-        """Lazily computes and returns the holomorphic part of the polynomial."""
-        if self._holomorphic_part is None:
-            # Use the 'complex' formatted Poly object
-            poly_obj = self.poly_obj_complex
-            variable_registry = get_variable_registry()
-            conversion_dictionaries = variable_registry["conversion_dictionaries"]
-
-            holomorphic_terms = []
-
-            for monom, coeff in zip(poly_obj.monoms(), poly_obj.coeffs()):
-                # Rebuild the monomial from gens and exponents
-                term = (
-                    sp.Mul(*[gen**exp for gen, exp in zip(poly_obj.gens, monom)])
-                    * coeff
-                )
-                free_symbols = get_free_symbols(term)
-
-                # Check if all symbols are holomorphic
-                if all(
-                    symbol in conversion_dictionaries["holToReal"]
-                    for symbol in free_symbols
-                ):
-                    holomorphic_terms.append(term)
-
-            self._holomorphic_part = (
-                sp.Add(*holomorphic_terms) if holomorphic_terms else 0
+    def __add__(self, other):
+        if _scalar_is_zero(other):
+            return self
+        if isinstance(other, polynomial_dgcv):
+            new_vs = _stable_dedupe(self.varSpace + other.varSpace)
+            return polynomial_dgcv(
+                self.polyExpr + other.polyExpr,
+                varSpace=new_vs,
+                parameters=None,
+                degreeUpperBound=self.degreeUpperBound,
             )
-        return self._holomorphic_part
-
-    @property
-    def antiholomorphic_part(self):
-        """Lazily computes and returns the antiholomorphic part of the polynomial."""
-        if self._antiholomorphic_part is None:
-            # Use the 'complex' formatted Poly object
-            poly_obj = self.poly_obj_complex
-            variable_registry = get_variable_registry()
-            conversion_dictionaries = variable_registry["conversion_dictionaries"]
-
-            antiholomorphic_terms = []
-
-            for monom, coeff in zip(poly_obj.monoms(), poly_obj.coeffs()):
-                # Rebuild the monomial from gens and exponents
-                term = (
-                    sp.Mul(*[gen**exp for gen, exp in zip(poly_obj.gens, monom)])
-                    * coeff
+        if check_dgcv_scalar(other):
+            inferred_param = self._parameters if self._parameters is not None else None
+            OIP = get_free_symbols(other) - set(self.varSpace)
+            if OIP:
+                inferred_param = (
+                    tuple(set(inferred_param) | OIP) if inferred_param else tuple(OIP)
                 )
-                free_symbols = get_free_symbols(term)
-
-                # Check if all symbols are antiholomorphic
-                if all(
-                    symbol in conversion_dictionaries["symToHol"]
-                    for symbol in free_symbols
-                ):
-                    antiholomorphic_terms.append(term)
-
-            self._antiholomorphic_part = (
-                sp.Add(*antiholomorphic_terms) if antiholomorphic_terms else 0
+            return polynomial_dgcv(
+                self.polyExpr + other,
+                varSpace=self.varSpace,
+                parameters=inferred_param,
+                degreeUpperBound=self.degreeUpperBound,
             )
-        return self._antiholomorphic_part
+        return NotImplemented
 
-    @property
-    def pluriharmonic_part(self):
-        """Lazily computes and returns the pluriharmonic part of the polynomial."""
-        if self._pluriharmonic_part is None:
-            # Sum of holomorphic and antiholomorphic parts, without double-counting the constant term
-            holomorphic = self.holomorphic_part
-            antiholomorphic = self.antiholomorphic_part
+    def __truediv__(self, other):
+        if check_dgcv_scalar(other):
+            return ratio(1, other) * self
 
-            # Constant term is common between holomorphic and antiholomorphic parts
-            constant_term = holomorphic.as_coefficients_dict().get(1, 0)
+    def __radd__(self, other):
+        if _scalar_is_zero(other):
+            return self
+        return self.__add__(other)
 
-            # Subtract the constant term to avoid double-counting
-            self._pluriharmonic_part = holomorphic + antiholomorphic - constant_term
-
-        return self._pluriharmonic_part
-
-    @property
-    def mixed_terms(self):
-        """Lazily computes and returns the mixed terms of the polynomial."""
-        if self._mixed_terms_part is None:
-            # Use the 'complex' formatted Poly object
-            poly_obj = self.poly_obj_complex
-            variable_registry = get_variable_registry()
-            conversion_dictionaries = variable_registry["conversion_dictionaries"]
-
-            mixed_terms = []
-
-            for monom, coeff in zip(poly_obj.monoms(), poly_obj.coeffs()):
-                # Rebuild the monomial from gens and exponents
-                term = (
-                    sp.Mul(*[gen**exp for gen, exp in zip(poly_obj.gens, monom)])
-                    * coeff
+    def __sub__(self, other):
+        if isinstance(other, polynomial_dgcv):
+            new_vs = _stable_dedupe(self.varSpace + other.varSpace)
+            return polynomial_dgcv(
+                self.polyExpr - other.polyExpr,
+                varSpace=new_vs,
+                parameters=None,
+                degreeUpperBound=self.degreeUpperBound,
+            )
+        if check_dgcv_scalar(other):
+            inferred_param = self._parameters if self._parameters is not None else None
+            OIP = get_free_symbols(other) - set(self.varSpace)
+            if OIP:
+                inferred_param = (
+                    tuple(set(inferred_param) | OIP) if inferred_param else tuple(OIP)
                 )
-                free_symbols = get_free_symbols(term)
+            return polynomial_dgcv(
+                self.polyExpr - other,
+                varSpace=self.varSpace,
+                parameters=inferred_param,
+                degreeUpperBound=self.degreeUpperBound,
+            )
+        return NotImplemented
 
-                # Check if the term contains both holomorphic and antiholomorphic variables
-                is_holomorphic = all(
-                    symbol in conversion_dictionaries["holToReal"]
-                    for symbol in free_symbols
+    def __rsub__(self, other):
+        if check_dgcv_scalar(other):
+            inferred_param = self._parameters if self._parameters is not None else None
+            OIP = get_free_symbols(other) - set(self.varSpace)
+            if OIP:
+                inferred_param = (
+                    tuple(set(inferred_param) | OIP) if inferred_param else tuple(OIP)
                 )
-                is_antiholomorphic = all(
-                    symbol in conversion_dictionaries["symToHol"]
-                    for symbol in free_symbols
+            return polynomial_dgcv(
+                other - self.polyExpr,
+                varSpace=self.varSpace,
+                parameters=inferred_param,
+                degreeUpperBound=self.degreeUpperBound,
+            )
+        return NotImplemented
+
+    def __mul__(self, other):
+        if isinstance(other, polynomial_dgcv):
+            new_vs = _stable_dedupe(self.varSpace + other.varSpace)
+
+            if self.degreeUpperBound is None and other.degreeUpperBound is None:
+                new_bound = None
+            else:
+                vals = [
+                    v
+                    for v in (self.degreeUpperBound, other.degreeUpperBound)
+                    if v is not None
+                ]
+                new_bound = min(vals) if vals else None
+
+            return polynomial_dgcv(
+                self.polyExpr * other.polyExpr,
+                varSpace=new_vs,
+                parameters=None,
+                degreeUpperBound=new_bound,
+            )
+
+        if check_dgcv_scalar(other):
+            inferred_param = self._parameters if self._parameters is not None else None
+            OIP = get_free_symbols(other) - set(self.varSpace)
+            if OIP:
+                inferred_param = (
+                    tuple(set(inferred_param) | OIP) if inferred_param else tuple(OIP)
                 )
+            return polynomial_dgcv(
+                self.polyExpr * other,
+                varSpace=self.varSpace,
+                parameters=inferred_param,
+                degreeUpperBound=self.degreeUpperBound,
+            )
+        return NotImplemented
 
-                if not (is_holomorphic or is_antiholomorphic):
-                    mixed_terms.append(term)
+    def __rmul__(self, other):
+        return self.__mul__(other)
 
-            self._mixed_terms_part = sp.Add(*mixed_terms) if mixed_terms else 0
-        return self._mixed_terms_part
-
-    # Custom simplify and latex methods
-    def simplify_poly(self):
-        return dgcvPolyClass(
-            sp.simplify(self.polyExpr),
-            self.varSpace,
+    def __dgcv_apply__(self, fun, **kwargs):
+        new_expr = fun(self.polyExpr, **kwargs)
+        if engine_kind() == "sympy":
+            return polynomial_dgcv(
+                make_poly(
+                    new_expr, self.varSpace, parameters=self.parameters
+                ).as_expr(),
+                varSpace=self.varSpace,
+                parameters=self._parameters,
+                degreeUpperBound=self.degreeUpperBound,
+            )
+        return polynomial_dgcv(
+            new_expr,
+            varSpace=self.varSpace,
+            parameters=self._parameters if self._parameters is not None else None,
             degreeUpperBound=self.degreeUpperBound,
         )
 
-    def latex_representation(self):
-        return sp.latex(self.polyExpr)
+    def __dgcv_expand__(self, **kwargs):
+        return self.expand(**kwargs)
 
-    def _repr_latex_(self, raw=False):  ###!!! process raw
-        return (self.polyExpr)._repr_latex_()
+    def expand(self, **kwargs):
+        if engine_kind() == "sympy":
+            return polynomial_dgcv(
+                make_poly(
+                    self.polyExpr, self.varSpace, parameters=self.parameters
+                ).as_expr(),
+                varSpace=self.varSpace,
+                parameters=self._parameters,
+                degreeUpperBound=self.degreeUpperBound,
+            )
+        return polynomial_dgcv(
+            expand(self.polyExpr, **kwargs),
+            varSpace=self.varSpace,
+            parameters=self._parameters if self._parameters is not None else None,
+            degreeUpperBound=self.degreeUpperBound,
+        )
 
-    def _eval_simplify(self, **kwargs):
-        return self.simplify_poly()
+    def factor(self, **kwargs):
+        new_expr = factor(self.polyExpr, **kwargs)
+        return polynomial_dgcv(
+            new_expr,
+            varSpace=self.varSpace,
+            parameters=self._parameters if self._parameters is not None else None,
+            degreeUpperBound=self.degreeUpperBound,
+        )
 
-    def _latex(self, printer=None):
-        return self.latex_representation()
+    def cancel(self, **kwargs):
+        new_expr = cancel(self.polyExpr, **kwargs)
+        return polynomial_dgcv(
+            new_expr,
+            varSpace=self.varSpace,
+            parameters=self._parameters if self._parameters is not None else None,
+            degreeUpperBound=self.degreeUpperBound,
+        )
 
-    # Additional methods
-    def evaluate(self, **values):
-        return self.polyExpr.subs(values)
+    def integrate(self, *args, **kwargs):
+        new_expr = integrate(self.polyExpr, *args, **kwargs)
+        return polynomial_dgcv(
+            new_expr,
+            varSpace=self.varSpace,
+            parameters=self._parameters if self._parameters is not None else None,
+            degreeUpperBound=self.degreeUpperBound,
+        )
 
     def get_degree(self):
         return self.degree
 
-    def is_homogeneous(self):
-        degrees = [sum(j[1]) for j in self.multiIndexEncoding if j[0] != 0]
-        return all(degree == degrees[0] for degree in degrees)
+    def is_homogeneous(self, *, format: str = "unformatted") -> bool:
+        P = (
+            self.poly_obj_unformatted
+            if format == "unformatted"
+            else (self.poly_obj_complex if format == "complex" else self.poly_obj_real)
+        )
+        monoms = poly_monoms(P)
+        if not monoms:
+            return True
+        degs = {sum(int(e) for e in m) for m in monoms}
+        return len(degs) <= 1
+
+    def leading_term(self, *, format: str = "unformatted"):
+        terms = self.get_monomials(format=format, return_coeffs=False)
+        if not terms:
+            return zero()
+
+        def _deg_of_term(t):
+            try:
+                p = polynomial_dgcv(
+                    t, varSpace=self.varSpace, parameters=self.parameters
+                )
+                d = p.degree
+                return -1 if d is None else int(d)
+            except Exception:
+                return -1
+
+        return max(terms, key=_deg_of_term)
+
+    def latex_representation(self, removeBARs: bool = False) -> str:
+        x = getattr(self, "polyExpr", None)
+        if x is None:
+            return ""
+
+        if not removeBARs:
+            try:
+                x = symToHol(x, simplify_everything=False)
+            except Exception:
+                pass
+
+        s = _backend_latex(x)
+        if isinstance(s, str) and s.strip():
+            return _unwrap_math_delims(s)
+
+        return str(x)
+
+    def _repr_latex_(self, raw: bool = False, removeBARs: bool = False, **kwargs):
+        s = self.latex_representation(removeBARs=removeBARs)
+        s = _unwrap_math_delims(s)
+
+        if raw:
+            return s
+        return f"$\\displaystyle {s}$"
+
+    def _latex(
+        self, printer=None, raw: bool = True, removeBARs: bool = False, **kwargs
+    ):
+        return self._repr_latex_(raw=raw, removeBARs=removeBARs, **kwargs)
+
+    def __str__(self):
+        try:
+            return str(self.polyExpr)
+        except Exception:
+            return self.__repr__()
 
     def pretty_print(self):
-        return sp.pretty(self.polyExpr)
+        f = getattr(self.polyExpr, "pretty", None)
+        if callable(f):
+            try:
+                return f()
+            except Exception:
+                pass
+        return str(self.polyExpr)
 
-    def expand(self, deep=True, modulus=None, **hints):
-        """
-        Expands the internal polynomial expression and returns a new dgcvPolyClass instance.
-        Supports 'deep' and 'modulus' keywords, passed directly to SymPy's expand function.
 
-        Parameters
-        ----------
-        deep : bool, optional
-            Whether to apply expansion recursively to sub-expressions. Default is True.
-        modulus : int, optional
-            Apply expansion with respect to this modulus (modular arithmetic). Default is None.
+def _vmf_atoms_for_view(v, *, view: str):
+    data = vmf_lookup(
+        v,
+        path=True,
+        relatives=True,
+        flattened_relatives=False,
+        system_index=True,
+    )
+    rel = data.get("relatives") or {}
 
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the expanded polynomial expression.
-        """
-        # Pass 'deep', 'modulus', and any additional hints to SymPy's expand method
-        expanded_expr = self.polyExpr.expand(deep=deep, modulus=modulus, **hints)
-        return dgcvPolyClass(
-            expanded_expr,
-            varSpace=self.varSpace,
-            degreeUpperBound=self.degreeUpperBound,
-        )
+    st = rel.get("standard") or ()
+    if st:
+        return tuple(st)
 
-    def factor(self, **hints):
-        """
-        Factors the internal polynomial expression and returns a new dgcvPolyClass instance.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the factored polynomial expression.
-        """
-        factored_expr = self.polyExpr.factor(**hints)
-        return dgcvPolyClass(
-            factored_expr,
-            varSpace=self.varSpace,
-            degreeUpperBound=self.degreeUpperBound,
-        )
-
-    def expand_trig(self, **hints):
-        """
-        Expands trigonometric functions in the polynomial expression.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with expanded trigonometric expressions.
-        """
-        expanded_trig_expr = self.polyExpr.expand(trig=True, **hints)
-        return dgcvPolyClass(
-            expanded_trig_expr,
-            varSpace=self.varSpace,
-            degreeUpperBound=self.degreeUpperBound,
-        )
-
-    def cancel(self, **hints):
-        """
-        Cancels common factors between the numerator and the denominator of the polynomial expression.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the canceled rational expression.
-        """
-        canceled_expr = self.polyExpr.cancel(**hints)
-        return dgcvPolyClass(
-            canceled_expr,
-            varSpace=self.varSpace,
-            degreeUpperBound=self.degreeUpperBound,
-        )
-
-    def diff(self, *symbols, **hints):
-        """
-        Differentiates the polynomial expression with respect to the given symbols.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the differentiated expression.
-        """
-        differentiated_expr = self.polyExpr.diff(*symbols, **hints)
-        return dgcvPolyClass(
-            differentiated_expr,
-            varSpace=self.varSpace,
-            degreeUpperBound=self.degreeUpperBound,
-        )
-
-    def integrate(self, *symbols, **hints):
-        """
-        Integrates the polynomial expression with respect to the given symbols.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the integrated expression.
-        """
-        integrated_expr = self.polyExpr.integrate(*symbols, **hints)
-        return dgcvPolyClass(
-            integrated_expr,
-            varSpace=self.varSpace,
-            degreeUpperBound=self.degreeUpperBound,
-        )
-
-    def subs(self, substitutions, **hints):
-        """
-        Substitutes the given variables in the polynomial expression and returns a new dgcvPolyClass instance.
-
-        Parameters
-        ----------
-        substitutions : dict or list
-            A dictionary or list of substitutions, where keys are variables to replace and values are the new values.
-        hints : dict, optional
-            Additional hints to pass to the substitution process.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the substituted polynomial expression.
-        """
-        # Perform the substitution on the internal polyExpr
-        substituted_expr = self.polyExpr.subs(substitutions, **hints)
-
-        # Return a new dgcvPolyClass with the substituted expression, preserving varSpace and degreeUpperBound
-        return dgcvPolyClass(
-            substituted_expr,
-            varSpace=self.varSpace,
-            degreeUpperBound=self.degreeUpperBound,
-        )
-
-    def _apply_sympy_function(self, sympy_func, *args, **kwargs):
-        """
-        Applies the given SymPy function to the internal polyExpr and returns a new dgcvPolyClass instance.
-
-        Parameters
-        ----------
-        sympy_func : callable
-            The SymPy function to apply (e.g., factor, collect, cancel).
-        args : tuple
-            Positional arguments to pass to the SymPy function.
-        kwargs : dict
-            Keyword arguments to pass to the SymPy function.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the transformed polynomial expression.
-        """
-        transformed_expr = sympy_func(
-            self.polyExpr, *args, **kwargs
-        )  # Correct function call
-        return dgcvPolyClass(
-            transformed_expr,
-            varSpace=self.varSpace,
-            degreeUpperBound=self.degreeUpperBound,
-        )
-
-    # Implement _eval_* methods using _apply_sympy_function
-    def _eval_factor(self, **hints):
-        return self._apply_sympy_function(sp.factor, **hints)
-
-    def _eval_cancel(self, **hints):
-        return self._apply_sympy_function(self.polyExpr.cancel, **hints)
-
-    def _eval_diff(self, *symbols, **hints):
-        return self._apply_sympy_function(self.polyExpr.diff, *symbols, **hints)
-
-    def _eval_integrate(self, *symbols, **hints):
-        return self._apply_sympy_function(self.polyExpr.integrate, *symbols, **hints)
-
-    def _eval_expand(self, **hints):
-        return self._apply_sympy_function(self.polyExpr.expand, *sp.symbols, **hints)
-
-    def __add__(self, other):
-        """
-        Adds the current polynomial expression to another polynomial or scalar.
-
-        Parameters
-        ----------
-        other : dgcvPolyClass or sympy.Expr
-            The object to add.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the added expression.
-        """
-        if other==0 or getattr(other,'is_zero',False):
-            return self
-        if isinstance(other, dgcvPolyClass):
-            # Combine varSpaces, preserving order and removing duplicates
-            new_varSpace = tuple(dict.fromkeys(self.varSpace + other.varSpace))
-            return dgcvPolyClass(
-                self.polyExpr + other.polyExpr,
-                varSpace=new_varSpace,
-                degreeUpperBound=self.degreeUpperBound,
-            )
-
-        elif isinstance(other, _get_expr_num_types()):
-            # Add directly
-            return dgcvPolyClass(
-                self.polyExpr + other,
-                varSpace=self.varSpace,
-                degreeUpperBound=self.degreeUpperBound,
-            )
-
-        return NotImplemented
-
-    def __radd__(self,other):
-        if other==0 or getattr(other,'is_zero',False):
-            return self
+    keys = ("holo", "anti") if view == "complex" else ("real", "imag")
+    out = []
+    for k in keys:
+        w = rel.get(k)
+        if w is None:
+            continue
+        if isinstance(w, tuple):
+            out.extend(w)
         else:
-            return NotImplemented
-
-    def __sub__(self, other):
-        """
-        Subtracts another polynomial or scalar from the current polynomial expression.
-
-        Parameters
-        ----------
-        other : dgcvPolyClass or sympy.Expr
-            The object to subtract.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the subtracted expression.
-        """
-        if isinstance(other, dgcvPolyClass):
-            # Combine varSpaces, preserving order and removing duplicates
-            new_varSpace = tuple(dict.fromkeys(self.varSpace + other.varSpace))
-            return dgcvPolyClass(
-                self.polyExpr - other.polyExpr,
-                varSpace=new_varSpace,
-                degreeUpperBound=self.degreeUpperBound,
-            )
-
-        elif isinstance(other, _get_expr_num_types()):
-            # Subtract directly
-            return dgcvPolyClass(
-                self.polyExpr - other,
-                varSpace=self.varSpace,
-                degreeUpperBound=self.degreeUpperBound,
-            )
-
-        return NotImplemented
-
-    def __mul__(self, other):
-        """
-        Multiplies the current polynomial expression by another polynomial or scalar.
-
-        Parameters
-        ----------
-        other : dgcvPolyClass or sympy.Expr
-            The object to multiply with. This can be a dgcvPolyClass instance, a scalar, or a SymPy expression.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the multiplied polynomial expression.
-
-        Raises
-        ------
-        ValueError
-            If the multiplication involves a non-polynomial or unsupported expression.
-        """
-        if isinstance(other, dgcvPolyClass):
-            # Combine varSpaces, preserving order and removing duplicates
-            new_varSpace = tuple(dict.fromkeys(self.varSpace + other.varSpace))
-
-            # Determine the new degreeUpperBound as the minimum of the non-None values
-            if self.degreeUpperBound is None and other.degreeUpperBound is None:
-                new_degreeUpperBound = None
-            else:
-                degree_values = [
-                    deg
-                    for deg in [self.degreeUpperBound, other.degreeUpperBound]
-                    if deg is not None
-                ]
-                new_degreeUpperBound = min(degree_values) if degree_values else None
-
-            return dgcvPolyClass(
-                self.polyExpr * other.polyExpr,
-                varSpace=new_varSpace,
-                degreeUpperBound=new_degreeUpperBound,
-            )
-
-        elif isinstance(other, (numbers.Number, sp.Poly, sp.Symbol)):
-            # Multiply directly
-            return dgcvPolyClass(
-                self.polyExpr * other,
-                varSpace=self.varSpace,
-                degreeUpperBound=self.degreeUpperBound,
-            )
-
-        elif isinstance(other, _get_expr_num_types()):
-            # Check if the scalar is a polynomial
-            if sp.Poly(other, self.varSpace).is_zero:
-                raise ValueError(
-                    "Multiplication with non-polynomial expressions is not supported."
-                )
-
-            # Proceed with multiplication (but warn it's non-polynomial)
-            return dgcvPolyClass(
-                self.polyExpr * other,
-                varSpace=self.varSpace,
-                degreeUpperBound=self.degreeUpperBound,
-            )
-
-        return NotImplemented
-
-    def __rmul__(self, other):
-        """
-        Right-hand multiplication by a scalar (or polynomial).
-
-        Parameters
-        ----------
-        other : int, float, sympy.Expr
-            A scalar or polynomial expression.
-
-        Returns
-        -------
-        dgcvPolyClass
-            A new dgcvPolyClass instance with the multiplied expression.
-        """
-        return self.__mul__(other)
-
-    def leading_term(self):
-        terms = sorted(self.polyMonomials, key=lambda x: sum(x[1]), reverse=True)
-        return terms[0] if terms else None
+            out.append(w)
+    return tuple(out)
 
 
-############## variable creation
+def _term_from_monom(gens, m, c):
+    term = c
+    for g, e in zip(gens, m):
+        if e:
+            term = term * (g ** int(e))
+    return term
+
+
+def _build_holo_anti_index_sets(P):
+    gens = tuple(poly_gens(P))
+
+    vr = get_variable_registry()
+    conv = vr.get("conversion_dictionaries", {})
+
+    holo_keys = set(conv.get("holToReal", {}).keys())  # strings like "z1"
+    anti_keys = set(conv.get("symToHol", {}).keys())  # strings like "BARz1"
+
+    holo_idx = [i for i, g in enumerate(gens) if str(g) in holo_keys]
+    anti_idx = [i for i, g in enumerate(gens) if str(g) in anti_keys]
+
+    return gens, holo_idx, anti_idx
+
+
+def DGCVPolyClass(polyExpr, varSpace=None, degreeUpperBound=None):
+    warnings.warn(
+        "`DGCVPolyClass` has been deprecated as part of a shift toward standardized "
+        "naming conventions in the `dgcv` library. It will be removed in 2026. "
+        "Please use `polynomial_dgcv` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return polynomial_dgcv(
+        polyExpr,
+        varSpace=varSpace,
+        degreeUpperBound=degreeUpperBound,
+    )
+
+
+class dgcvPolyClass(polynomial_dgcv):
+    """
+    Deprecated alias for `polynomial_dgcv`.
+
+    This class is retained for backward compatibility and will be removed in 2026.
+    """
+
+    def __init__(self, polyExpr, varSpace=None, degreeUpperBound=None):
+        warnings.warn(
+            "`dgcvPolyClass` has been deprecated and will be removed in 2026. "
+            "Please use `polynomial_dgcv` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(
+            polyExpr,
+            varSpace=varSpace,
+            degreeUpperBound=degreeUpperBound,
+        )
+
+
+# -----------------------------------------------------------------------------
+# coordinate system creation
+# -----------------------------------------------------------------------------
 def createVariables(
     variable_label,
     real_label=None,
@@ -2728,36 +5114,51 @@ def createVariables(
     return_created_object=None,
     remove_guardrails=None,
     default_var_format=None,
-    temporary_variables=False
+    temporary_variables=False,
 ):
     """
-    This function serves as the default interface for creating variables within the dgcv package. It supports creating both standard variable systems and complex variable systems, with options for initializing coordinate vector fields and differential forms. Variables created through `createVariables` are automatically tracked within dgcv’s Variable Management Framework (VMF) and are assigned labels validated through a safeguards routine that prevents overwriting important labels.
+    This function serves as the default interface for creating variables within the dgcv package. It supports creating
+    both standard coordinate systems and complex coordinate systems, with options for initializing coordinate vector fields
+    and differential forms. Variables created through `createVariables` are automatically tracked within dgcv's Variable
+    Management Framework (VMF) and are assigned labels validated through a safeguards routine that prevents overwriting important labels (e.g., standard Python built-ins).
 
     Parameters
     ----------
     variable_label : str
         The label for the primary variable or system of variables to be created. If creating a complex variable system,
-        this will correspond to the holomorphic variable(s), whilst antiholomorphic variable(s) recieve this label pre-pended with "BAR".
+        this will correspond to the holomorphic variable(s), whilst antiholomorphic variable(s) recieve this label
+        pre-pended with "BAR".
 
     real_label : str, optional
         The label for the real part of the complex variable system. Required only when creating complex variable systems.
 
     imaginary_label : str, optional
-        The label for the imaginary part of the complex variable system. Required only when creating complex variable systems.
+        The label for the imaginary part of the complex variable system. Required only when creating complex variable
+        systems.
 
     number_of_variables : int, optional
-        The number of variables to be created, used to initialize a tuple of variables rather than a single variable (e.g., x=(x1, x2, x3) rather than just x).
+        The number of variables to be created, used to initialize a tuple of variables rather than a single variable
+        (e.g., x=(x1, x2, x3) rather than just x).
 
     initialIndex : int, optional, default=1
         The starting index for tuple variables, allowing for flexible indexing when initializing variable systems
         as tuples (e.g., x=(x0, x1, x2) with `initialIndex=0`).
 
     withVF : bool, optional
-        If set to True, creates associated coordinate vector fields and differential forms for the variable(s) in the system.
+        If set to True, creates associated coordinate vector fields and differential forms for the variable(s) in the
+        system.
 
     complex : bool, optional
-        Specifies whether to create a complex variable system. If not provided, the function will infer whether to create
-        a complex system based on whether `real_label` or `imaginary_label` is provided. If provided a complex variable system will be created regardless of `real_label` and  `imaginary_label` settings, and string labels are automaticaly created for `real_label` and  `imaginary_label` if they are not provided.
+        Specifies whether to create a complex variable system. If not provided, the function will infer whether to
+        create a complex system based on whether `real_label` or `imaginary_label` is provided. If provided a complex
+        variable system will be created regardless of `real_label` and `imaginary_label` settings, and string labels
+        are automatically created for `real_label` and `imaginary_label` if they are not provided.
+
+    multiindex_shape : tuple[int, ...], optional
+        If provided, creates a multi-index variable system with shape given by `multiindex_shape`, using index values
+        starting at `initialIndex`. For standard systems this creates an N-dimensional array handle stored in the global
+        namespace under `variable_label` (or each label if a list is provided). For complex systems, this creates a
+        multi-index complex variable system with holomorphic/antiholomorphic and real/imaginary parts.
 
     assumeReal : bool, optional
         If set to True, specifies that the variables being created are real-valued. This is only relevant for standard
@@ -2769,25 +5170,30 @@ def createVariables(
 
     default_var_format : {'complex', 'real'}, optional
         Relevant only for complex variable systems. Specifies whether the system's vector fields and differential forms
-        default to real coordinate expressions (`real`) or holomorphic coordinate expressions (`complex`). If not provided,
-        the default is holomorphic coordinates.
+        default to real coordinate expressions (`real`) or holomorphic coordinate expressions (`complex`). If not
+        provided, the default is holomorphic coordinates.
+
+    temporary_variables : bool, optional
+        If True, variables are created as temporary variables under dgcv's VMF conventions.
 
     Returns
     -------
-    None
-        This function creates the specified variable system and registers it within dgcv’s Variable Management Framework.
+    None or list
+        If `return_created_object=True`, returns a list of created handles (for standard systems) or created labels (for
+        complex systems, consistent with dgcv conventions). Otherwise returns None.
 
     Functionality
     -------------
     - Creates standard or complex variable systems.
-    - Automatically registers all created variables, vector fields, and differential forms in dgcv’s VMF.
-    - Safeguards are applied to ensure that no critical Python or dgcv internal functions are overwritten.
+    - Automatically registers all created variables, vector fields, and differential forms in dgcv's VMF.
+    - Safeguards are applied to prevent overwriting critical Python or dgcv internal functions by default.
 
     Notes
     -----
-    - If `complex=True`, the function will automatically generate holomorphic, antiholomorphic, real, and imaginary parts
-    for the variable system, along with corresponding coordinate vector fields and differential forms.
-    - If `withVF=True`, the function will create both vector fields and differential forms for standard variable systems.
+    - For complex variable systems, dgcv initializes associated differential objects by default.
+    - For multi-index standard systems, `withVF=True` is supported and will create VF/DF objects for each atomic entry.
+    - For multi-index complex systems, VF/DF objects are created for each atomic entry in the system.
+    - Use `vmf_summary()` for a clear summary of variables created and tracked within the dgcv VMF.
 
     Examples
     --------
@@ -2800,102 +5206,135 @@ def createVariables(
     # Creating a single complex variable system with real part 'beta' and imaginary part 'gamma'
     >>> createVariables('alpha', 'beta', 'gamma')
 
-    # Creating a tuple of 3 complex variables with real parts 'beta1', 'beta2', 'beta3' and imaginary parts 'gamma1', 'gamma2', 'gamma3'
+    # Creating a tuple of 3 complex variables
     >>> createVariables('alpha', 'beta', 'gamma', 3)
 
     # Creating a tuple of 3 standard variables with custom initial index
     >>> createVariables('alpha', 3, initialIndex=0)
 
-    # Creating a complex variable system without specifying real and imaginary part labels. Note, this automatically creates intentionally obscure real and imaginary part labels.
+    # Creating a complex variable system without specifying real and imaginary part labels (obscure labels are created)
     >>> createVariables('alpha', complex=True)
+
+    # Creating a multi-index standard variable system
+    >>> createVariables('X', multiindex_shape=(2, 3))
+
+    # Creating a multi-index complex variable system
+    >>> createVariables('z', 'x', 'y', multiindex_shape=(2, 3))
 
     Warnings
     --------
-    If `complex=True` is provided along with incompatible keywords, such as `withVF=False`, or `complex=False` is provided while values are also given for `real_label` and `imaginary_label`, the function will resolve conflicts internally and issue a warning about the resolution.
-
-    Use `vmf_summary()` for a clear summary of the variables created and tracked within the dgcv VMF.
-
+    If incompatible keywords are provided (e.g., `complex=True` with `withVF=False`, or `complex=False` while also
+    providing `real_label`/`imaginary_label`), the function resolves conflicts internally and issues a warning about the
+    resolution.
     """
-    if multiindex_shape is not None:
-        if (
-            any(j is not None for j in [real_label, imaginary_label, withVF, complex])
-            or default_var_format == "complex"
-        ):
-            warnings.warn(
-                "A value for `multiindex_shape` was provided, so a standard variable system without vector fields or differential forms was created alligned with the multiindex_shape value. Multiindex variable labeling is not yet supported by dgcv's automated variable creation with vector fields or for complex variable systems. It will be added in future dgcv updates. "
-            )
-            real_label = None
-            imaginary_label = None
-            withVF = None
-            complex = None
-            default_var_format = None
+
+    def _valid_multiindex_shape(ms):
+        return isinstance(ms, (list, tuple)) and all(
+            isinstance(n, Integral) and n > 0 for n in ms
+        )
+
+    def reformat_string(input_string: str):
+        substrings = input_string.replace(",", " ").split()
+        return [s for s in substrings if len(s) > 0]
+
     if not isinstance(variable_label, str):
         raise TypeError(
-            "`createVariables` requires its first argument to be a string, which will be used in lables for the created variables."
+            "`createVariables` requires its first argument to be a string, which will be used in labels for the created variables."
         )
+
     if (
-        isinstance(real_label, numbers.Integral)
+        isinstance(real_label, Integral)
         and imaginary_label is None
         and number_of_variables is None
     ):
         number_of_variables = real_label
         real_label = None
+
     if real_label is not None and not isinstance(real_label, str):
         raise TypeError(
-            "A non-string value cannot be assigned to the `real_label` keyword of `createVariables`"
+            "A non-string value cannot be assigned to the `real_label` keyword of `createVariables`."
         )
-    if real_label is not None and not isinstance(imaginary_label, str):
+    if imaginary_label is not None and not isinstance(imaginary_label, str):
         raise TypeError(
-            "A non-string value cannot be assigned to the `imaginary_label` keyword of `createVariables`"
+            "A non-string value cannot be assigned to the `imaginary_label` keyword of `createVariables`."
         )
+
+    if multiindex_shape is not None and not _valid_multiindex_shape(multiindex_shape):
+        raise TypeError("`multiindex_shape` must be a tuple/list of positive integers.")
+
+    if multiindex_shape is not None and number_of_variables is not None:
+        raise ValueError(
+            "Provide at most one of `number_of_variables` (tuple system) and `multiindex_shape` (multi-index system)."
+        )
+
+    complex_requested = (
+        complex is True or real_label is not None or imaginary_label is not None
+    )
+
+    if default_var_format is not None and not complex_requested:
+        warnings.warn(
+            "`default_var_format` is only relevant for complex variable systems; it was disregarded."
+        )
+        default_var_format = None
+
     if complex and not withVF:
         warnings.warn(
-            "`createVariables` was called with `complex=True` and `withVF=False`. The latter keyword was disregarded because dgcv automatically initializes associated differential objects whenever complex variable systems are created."
+            "`createVariables` was called with `complex=True` and `withVF=False`. The latter keyword was disregarded because "
+            "dgcv initializes associated differential objects whenever complex variable systems are created."
         )
+
     if complex and assumeReal:
         warnings.warn(
-            "`createVariables` was called with `complex=True` and `assumeReal=True`. The latter keyword was disregarded because dgcv has fixed variable assumptions for elements in its complex variable systems."
+            "`createVariables` was called with `complex=True` and `assumeReal=True`. The latter keyword was disregarded because "
+            "dgcv has fixed variable assumptions for elements in its complex variable systems."
         )
-    if complex == False and any(
-        [real_label is not None, imaginary_label is not None]
-    ):  # noqa: E712
+        assumeReal = None
+
+    if complex is False and (real_label is not None or imaginary_label is not None):
         warnings.warn(
-            "`createVariables` recieved `complex=False` and recieved values for the `real_label` or `imaginary_label` keywords. Honoring `complex=False`, only a standard variable system was created, and latter labels were disregarded. Set `complex=True` if a complex variable system is needed instead."
+            "`createVariables` received `complex=False` and values for `real_label` and/or `imaginary_label`. Honoring "
+            "`complex=False`, only a standard variable system was created and the latter labels were disregarded."
         )
         real_label = None
         imaginary_label = None
-    elif complex and all([real_label is None, imaginary_label is None]):
-        key_string = retrieve_public_key()
-        real_label = variable_label + "REAL" + key_string
-        imaginary_label = variable_label + "IM" + key_string
-        warnings.warn(
-            "`createVariables` recieved `complex=True` did not recieve value assignements for `imaginary_label` or `real_label`, so intentionally obscure labels were created for both the real and imaginary variables in the created complex variable system. To have nicer labling while using `complex=True`, provide a preferred string label for the `real_label` and `imaginary_label` keywords."
-        )
-    elif any([real_label is not None, imaginary_label is not None]):
-        if not complex and complex is not None:
+        complex_requested = False
+
+    if complex is True or complex_requested:
+        if (
+            complex is not True
+            and complex is not None
+            and (real_label or imaginary_label)
+        ):
             warnings.warn(
-                "The keyword 'complex' was set to a non-Bool value. Since a string value was also assigned to either `real_label` or `imaginary_label`, `createVariables` proceeded under the assumption that it should create a complex variable system. If a standard variable system was prefered then set `complex=False` instead."
+                "The keyword `complex` was set to a non-bool value. Since a string value was also assigned to either "
+                "`real_label` or `imaginary_label`, `createVariables` proceeded under the assumption that it should "
+                "create a complex variable system. Set `complex=False` to force a standard variable system."
             )
         complex = True
-        if real_label is None:
-            real_label = variable_label + "REAL" + retrieve_public_key()
-            warnings.warn(
-                "`createVariables` recieved a value assigned to `imaginary_label` but not `real_label`, so an intentionally obscure label was created for the real variables in the created complex variable system. To have nice nicer labling, provide a preferred string label to `real_label` instead."
-            )
-        if imaginary_label is None:
-            imaginary_label = variable_label + "IM" + retrieve_public_key()
-            warnings.warn(
-                "`createVariables` recieved a value assigned to `real_label` but not `imaginary_label`, so an intentionally obscure label was created for the imaginary variables in the created complex variable system. To have nice nicer labling, provide a preferred string label to `imaginary_label` instead."
-            )
 
-    def reformat_string(input_string: str):
-        # Replace commas with spaces, then split on spaces
-        substrings = input_string.replace(",", " ").split()
-        # Return the list of non-empty substrings
-        return [s for s in substrings if len(s) > 0]
+        if real_label is None and imaginary_label is None:
+            key_string = retrieve_public_key()
+            real_label = variable_label + "REAL" + key_string
+            imaginary_label = variable_label + "IM" + key_string
+            warnings.warn(
+                "`createVariables` received `complex=True` and did not receive assignments for `real_label` or "
+                "`imaginary_label`, so intentionally obscure labels were created for both."
+            )
+        else:
+            if real_label is None:
+                real_label = variable_label + "REAL" + retrieve_public_key()
+                warnings.warn(
+                    "`createVariables` received a value for `imaginary_label` but not `real_label`, so an intentionally "
+                    "obscure label was created for the real variables."
+                )
+            if imaginary_label is None:
+                imaginary_label = variable_label + "IM" + retrieve_public_key()
+                warnings.warn(
+                    "`createVariables` received a value for `real_label` but not `imaginary_label`, so an intentionally "
+                    "obscure label was created for the imaginary variables."
+                )
 
-    if isinstance(variable_label, str):
-        variable_label = reformat_string(variable_label)
+    variable_label = reformat_string(variable_label)
     if isinstance(real_label, str):
         real_label = reformat_string(real_label)
     if isinstance(imaginary_label, str):
@@ -2908,47 +5347,57 @@ def createVariables(
             imaginary_label,
             number_of_variables=number_of_variables,
             initialIndex=initialIndex,
+            multiindex_shape=multiindex_shape,
             default_var_format=default_var_format,
             remove_guardrails=remove_guardrails,
             return_created_object=return_created_object,
         )
-    elif withVF:
+        return rv if rv is not None else None
+
+    if withVF:
         rv = varWithVF(
             variable_label,
             number_of_variables=number_of_variables,
             initialIndex=initialIndex,
+            multiindex_shape=multiindex_shape,
             _doNotUpdateVar=False,
             assumeReal=assumeReal,
             _calledFromCVP=None,
             remove_guardrails=remove_guardrails,
             return_created_object=return_created_object,
         )
-    else:
-        pk=retrieve_passkey() if temporary_variables else None
-        rv = variableProcedure(
-            variable_label,
-            number_of_variables=number_of_variables,
-            initialIndex=initialIndex,
-            assumeReal=assumeReal,
-            multiindex_shape=multiindex_shape,
-            _tempVar=pk,
-            _doNotUpdateVar=None,
-            _calledFromCVP=None,
-            remove_guardrails=remove_guardrails,
-            return_created_object=return_created_object,
-        )
-    if rv is not None:
-        return rv
+        return rv if rv is not None else None
+
+    pk = retrieve_passkey()
+    tv = pk if temporary_variables else None
+    rv = variableProcedure(
+        variable_label,
+        number_of_variables=number_of_variables,
+        initialIndex=initialIndex,
+        assumeReal=assumeReal,
+        multiindex_shape=multiindex_shape,
+        _tempVar=tv,
+        _doNotUpdateVar=None,
+        _calledFromCVP=pk,
+        remove_guardrails=remove_guardrails,
+        return_created_object=return_created_object,
+    )
+    return rv if rv is not None else None
 
 
 ############## variable factories
 
-class coordinate_system(tuple):     ###!!! TO FIX
-    def __new__(cls, *elements, label=None, shape=None, dgcv_type='standard', rich=False):
+
+class coordinate_system(tuple):  ###!!! TO FIX
+    def __new__(
+        cls, *elements, label=None, shape=None, dgcv_type="standard", rich=False
+    ):
         obj = super().__new__(cls, elements)
         return obj
 
-    def __init__(self, *elements, label=None, shape=None, dgcv_type='standard', rich=False):
+    def __init__(
+        self, *elements, label=None, shape=None, dgcv_type="standard", rich=False
+    ):
         if shape is None:
             self.shape = (len(self),)
         else:
@@ -2963,13 +5412,13 @@ class coordinate_system(tuple):     ###!!! TO FIX
         return val
 
     def _spool(self, midx):
-        return sum(midx[j] * prod(self.shape[j+1:]) for j in range(len(self.shape)))
+        return sum(midx[j] * prod(self.shape[j + 1 :]) for j in range(len(self.shape)))
 
     def _unspool(self, idx):
         midx = []
         p = idx
         for j in range(len(self.shape)):
-            q = prod(self.shape[j+1:]) if j+1 < len(self.shape) else 1
+            q = prod(self.shape[j + 1 :]) if j + 1 < len(self.shape) else 1
             midx1 = p // q
             midx.append(midx1)
             p -= midx1 * q
@@ -2983,7 +5432,7 @@ class coordinate_system(tuple):     ###!!! TO FIX
           - (optional) partial multi-index cs[i, j]  -> TODO (not implemented here)
         """
         if not isinstance(idx, tuple):
-            if isinstance(idx, numbers.Integral):
+            if isinstance(idx, Integral):
                 return tuple.__getitem__(self, idx)
             elif isinstance(idx, slice):
                 return tuple.__getitem__(self, idx)
@@ -2995,7 +5444,9 @@ class coordinate_system(tuple):     ###!!! TO FIX
 
         if len(idx) == len(self.shape):
             key = tuple(idx)
-            flat = self._spooled_id.get(key, self._spool_modifier(key, self._spool(key)))
+            flat = self._spooled_id.get(
+                key, self._spool_modifier(key, self._spool(key))
+            )
             return tuple.__getitem__(self, flat)
 
         if len(idx) < len(self.shape):
@@ -3003,7 +5454,9 @@ class coordinate_system(tuple):     ###!!! TO FIX
                 f"Partial indexing with {len(idx)} components for shape {self.shape} not implemented."
             )
 
-        raise TypeError("Multi-index has too many components for this coordinate_system.")
+        raise TypeError(
+            "Multi-index has too many components for this coordinate_system."
+        )
 
 
 def variableProcedure(
@@ -3020,120 +5473,110 @@ def variableProcedure(
     _obscure=None,
 ):
     """
-    Initializes one or more standard variables (single or tuples) and integrates them into dgcv's Variable Management Framework.
-
-    Parameters:
-    ----------
-    variables_label : str or list of str
-        The label for the variable(s). If a string, it defines one variable set. If a list of strings, it initializes multiple variable sets.
-
-    number_of_variables : positive int, optional
-        If provided, specifies the number of variables to be initialized and labels them in an enumerated tuple creating labels based on variables_label. If not provided, a single variable is initialized.
-
-    initialIndex : int, optional
-        The starting index for enumerating variable names in a tuple. Defaults to 1.
-
-    assumeReal : bool, optional
-        If provided, specifies whether to treat the variable(s) as real. If True, the variable(s) are assumed to be real.
-
-    _tempVar : None
-        Intended for internal dgcv use. If set to the internal dgcv passkey, marks the variable system as temporary.
-
-    _obscure : None
-        Intended for internal dgcv use. If set to the internal dgcv passkey, marks the variable system as 'obscure'.
-
-    _doNotUpdateVar : None
-        Intended for internal dgcv use. If set to the internal dgcv passkey, prevents the variable(s) from being cleared and reinitialized.
-
-    _calledFromCVP : None
-        Intended for internal dgcv use. If set to the internal dgcv passkey, interfaces with the Variable Management Framework supposing this is called from complexVarProc.
-
-    remove_guardrails : bool, optional
-        If set to True, bypasses dgcv's safeguard system for variable labeling.
-
-    Updates the internal variable_registry dict accordingly.
+    Initializes one or more standard variable systems (single or tuples) and integrates them into dgcv's Variable Management Framework.
     """
 
-    # Cache globals and passkey to avoid repeated lookups.
-    globals_cache = _cached_caller_globals
+    globals_namespace = _cached_caller_globals
     passkey = retrieve_passkey()
-
     variable_registry = get_variable_registry()
-    # Check if the variable is part of the protected variables when not called from complexVarProc
-    if not _calledFromCVP == passkey:
-        for j in (
+    settings = get_dgcv_settings_registry()
+
+    if (
+        settings["ask_before_overwriting_objects_in_vmf"]
+        and not _calledFromCVP == passkey
+    ):
+        labels_iter = (
             tuple(variables_label)
             if isinstance(variables_label, (list, tuple))
             else (variables_label,)
-        ):
-            if j in variable_registry.get("protected_variables", set()):
+        )
+        protected = variable_registry.get("protected_variables", set())
+        for j in labels_iter:
+            if j in protected:
                 raise Exception(
-                    f"{variables_label} is already assigned to the real or imaginary part of a complex variable system, so dgcv variable creation functions will not reassign it as a standard variable. Instead, use the clearVar function to remove the conflicting CV system first before implementing such reassignments."
+                    f"{variables_label} is already assigned to the real or imaginary part of a complex variable system, "
+                    "so dgcv variable creation functions will not reassign it as a standard variable. Instead, use the "
+                    "clearVar function to remove the conflicting CV system first before implementing such reassignments."
                 )
 
-    # Process each variable label.
-    if return_created_object is True:
-        rco = []
-    for j in (
+    kind = engine_kind()
+    enforce_real = kind is not None and kind != "sympy"
+    enforced_real_dict = (
+        variable_registry.get("dgcv_enforced_real_atoms", None)
+        if enforce_real
+        else None
+    )
+
+    labels = (
         tuple(variables_label)
         if isinstance(variables_label, (list, tuple))
         else (variables_label,)
-    ):
-        if not _calledFromCVP == passkey and not remove_guardrails:
-            labelLoc = validate_label(j)
-        else:
-            labelLoc = j
+    )
 
-        # Clear variable if necessary and if _doNotUpdateVar is not set.
+    rco = [] if return_created_object is True else None
+
+    paths = variable_registry.get("paths", None)
+
+    for j in labels:
+        labelLoc = (
+            validate_label(j)
+            if (not _calledFromCVP == passkey and not remove_guardrails)
+            else j
+        )
+
         if _doNotUpdateVar != passkey:
-            clearVar(j, report=False)
+            clearVar(labelLoc, report=False)
 
-        # Mark as temporary/obscure if appropriate.
-        if _tempVar == passkey:
+        temp_flag = True if _tempVar == passkey else None
+        obscure_flag = True if _obscure == passkey else None
+
+        if temp_flag is True:
             variable_registry["temporary_variables"].add(labelLoc)
-            _tempVar = True
-        else:
-            _tempVar = None
-        if _obscure == passkey:
+        if obscure_flag is True:
             variable_registry["obscure_variables"].add(labelLoc)
-            _obscure = True
-
-        # Handle multi-index variable case.
+        _tuple_flag = False
         if isinstance(multiindex_shape, (list, tuple)) and all(
-            isinstance(n, numbers.Integral) and n > 0 for n in multiindex_shape
+            isinstance(n, Integral) and n > 0 for n in multiindex_shape
         ):
-            # Generate multi-index variable names.
+            _tuple_flag = True
             indices = list(
                 carProd(
                     *[range(initialIndex, initialIndex + n) for n in multiindex_shape]
                 )
             )
             var_names = [f"{labelLoc}_{'_'.join(map(str, idx))}" for idx in indices]
-            vars = tuple([sp.symbols(f"{labelLoc}_{'_'.join(map(str, idx))}", real=assumeReal) for idx in indices]) #label=labelLoc,shape=multiindex_shape
+            if (
+                _doNotUpdateVar != passkey or _calledFromCVP == passkey
+            ):  # CVP doesn't manage sub-parant names
+                clearVar(*var_names, report=False)
+            vars = tuple(symbol(name, assumeReal=assumeReal) for name in var_names)
 
-            # Batch update globals.
             new_globals = dict(zip(var_names, vars))
-            new_globals[labelLoc] = build_nd_array(vars,multiindex_shape)
-            globals_cache.update(new_globals)
+            new_globals[labelLoc] = build_nd_array(vars, multiindex_shape)
+            globals_namespace.update(new_globals)
 
-            # Create parent dictionary for the multi-indexed variables.
+            if enforce_real and assumeReal is True and enforced_real_dict is not None:
+                for v in vars:
+                    enforced_real_dict[v.conjugate()] = v
+
             if _doNotUpdateVar != passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "multi_index",
                     "family_shape": multiindex_shape,
                     "family_names": tuple(var_names),
-                    "family_values": globals_cache[labelLoc],
+                    "family_values": globals_namespace[labelLoc],
                     "differential_system": None,
-                    "tempVar": _tempVar,
-                    "obsVar": _obscure,
+                    "tempVar": temp_flag,
+                    "obsVar": obscure_flag,
                     "initial_index": initialIndex,
                     "variable_relatives": {
                         var_name: {
                             "VFClass": None,
                             "DFClass": None,
                             "assumeReal": assumeReal,
+                            "system_index": idx,
                         }
-                        for var_name in var_names
+                        for idx, var_name in enumerate(var_names)
                     },
                 }
                 variable_registry["_labels"][labelLoc] = {
@@ -3141,26 +5584,42 @@ def variableProcedure(
                     "children": set(var_names),
                 }
 
-        # Handle lone (single) variable.
-        elif number_of_variables is None:
-            symbol = sp.symbols(labelLoc, real=assumeReal)
-            globals_cache[labelLoc] = symbol
+                if paths is not None:
+                    paths[labelLoc] = {
+                        "kind": "standard_variable_system",
+                        "path": ("standard_variable_systems", labelLoc),
+                    }
 
-            # Create parent dictionary for lone variable.
+                    base = ("standard_variable_systems", labelLoc, "family_values")
+                    for idx, var_name in zip(indices, var_names):
+                        offs = tuple(int(k - initialIndex) for k in idx)
+                        paths[var_name] = {
+                            "kind": "standard_variable",
+                            "path": base + offs,
+                        }
+
+        elif number_of_variables is None:
+            sym = symbol(labelLoc, assumeReal=assumeReal)
+            globals_namespace[labelLoc] = sym
+
+            if enforce_real and assumeReal is True and enforced_real_dict is not None:
+                enforced_real_dict[sym.conjugate()] = sym
+
             if _doNotUpdateVar != passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "single",
                     "family_names": (labelLoc,),
-                    "family_values": (globals_cache[labelLoc],),
+                    "family_values": (globals_namespace[labelLoc],),
                     "differential_system": None,
-                    "tempVar": _tempVar,
-                    "obsVar": _obscure,
+                    "tempVar": temp_flag,
+                    "obsVar": obscure_flag,
                     "initial_index": None,
                     "variable_relatives": {
                         labelLoc: {
                             "VFClass": None,
                             "DFClass": None,
                             "assumeReal": assumeReal,
+                            "system_index": 0,
                         }
                     },
                 }
@@ -3169,57 +5628,77 @@ def variableProcedure(
                     "children": set(),
                 }
 
-        # Handle tuple of variables.
-        elif (
-            isinstance(number_of_variables, numbers.Integral)
-            and number_of_variables >= 0
-        ):
+                if paths is not None:
+                    paths[labelLoc] = {
+                        "kind": "standard_variable",
+                        "path": (
+                            "standard_variable_systems",
+                            labelLoc,
+                            "family_values",
+                            0,
+                        ),
+                    }
+
+        elif isinstance(number_of_variables, Integral) and number_of_variables >= 0:
+            _tuple_flag = True
             lengthLoc = number_of_variables
             var_names = [
                 f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
             ]
-            vars = [
-                sp.symbols(f"{labelLoc}{i}", real=assumeReal)
-                for i in range(initialIndex, lengthLoc + initialIndex)
-            ]
-            new_globals = dict(zip(var_names, vars))
-            new_globals[labelLoc] = tuple(vars)
-            globals_cache.update(new_globals)
+            vars = [symbol(name, assumeReal=assumeReal) for name in var_names]
+            if (
+                _doNotUpdateVar != passkey or _calledFromCVP == passkey
+            ):  # CVP doesn't manage sub-parant names
+                clearVar(*vars, report=False)
+                new_globals = dict(zip(var_names, vars))
+                new_globals[labelLoc] = tuple(vars)
+                globals_namespace.update(new_globals)
 
-            # Create individual vector fields.
+            if enforce_real and assumeReal is True and enforced_real_dict is not None:
+                for v in vars:
+                    enforced_real_dict[v.conjugate()] = v
+
+            vtuple = tuple(vars)
+
             vf_instances = [
-                VFClass(tuple(vars), [1 if k == j else 0 for k in range(len(vars))])
-                for j in range(len(vars))
+                vector_field_class(
+                    coeff_dict={(j, 1, labelLoc): 1},
+                    dgcvType="standard",
+                    variable_spaces={labelLoc: vtuple},
+                )
+                for j in range(len(vtuple))
             ]
-            new_globals = dict(
-                zip([f"D_{var_name}" for var_name in var_names], vf_instances)
+            globals_namespace.update(
+                dict(zip([f"D_{vn}" for vn in var_names], vf_instances))
             )
-            globals_cache.update(new_globals)
 
-            # Create individual differential 1-forms.
             df_instances = [
-                DFClass(tuple(vars), {(j,): 1}, 1) for j in range(len(vars))
+                differential_form_class(
+                    coeff_dict={(j, 0, labelLoc): 1},
+                    dgcvType="standard",
+                    variable_spaces={labelLoc: vtuple},
+                )
+                for j in range(len(vtuple))
             ]
-            new_globals = dict(
-                zip([f"d_{var_name}" for var_name in var_names], df_instances)
+            globals_namespace.update(
+                dict(zip([f"d_{vn}" for vn in var_names], df_instances))
             )
-            globals_cache.update(new_globals)
 
-            # Update parent dictionary for the tuple of variables.
             if _doNotUpdateVar != passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "tuple",
-                    "family_values": tuple(vars),
+                    "family_values": vtuple,
                     "family_names": tuple(var_names),
                     "differential_system": True,
-                    "tempVar": _tempVar,
+                    "tempVar": temp_flag,
                     "initial_index": initialIndex,
-                    "obsVar": _obscure,
+                    "obsVar": obscure_flag,
                     "variable_relatives": {
                         var_name: {
                             "VFClass": vf_instances[i],
                             "DFClass": df_instances[i],
                             "assumeReal": assumeReal,
+                            "system_index": i,
                         }
                         for i, var_name in enumerate(var_names)
                     },
@@ -3228,70 +5707,52 @@ def variableProcedure(
                     "path": ("standard_variable_systems", labelLoc),
                     "children": set(var_names),
                 }
+
+                if paths is not None:
+                    paths[labelLoc] = {
+                        "kind": "standard_variable_system",
+                        "path": ("standard_variable_systems", labelLoc),
+                    }
+
+                    base_vals = ("standard_variable_systems", labelLoc, "family_values")
+                    base_rel = (
+                        "standard_variable_systems",
+                        labelLoc,
+                        "variable_relatives",
+                    )
+
+                    for i, var_name in enumerate(var_names):
+                        paths[var_name] = {
+                            "kind": "standard_variable",
+                            "path": base_vals + (i,),
+                        }
+                        paths[f"D_{var_name}"] = {
+                            "kind": "vector_field",
+                            "path": base_rel + (var_name, "VFClass"),
+                        }
+                        paths[f"d_{var_name}"] = {
+                            "kind": "differential_form",
+                            "path": base_rel + (var_name, "DFClass"),
+                        }
+
         else:
             raise ValueError(
                 "variableProcedure expected its second argument number_of_variables (optional) to be a positive integer, if provided."
             )
 
-        if return_created_object is True:
-            rco.append(globals_cache[labelLoc])
+        if rco is not None:
+            if _tuple_flag:
+                rco.append(globals_namespace[labelLoc])
+            else:
+                rco.append((globals_namespace[labelLoc],))
+    return rco
 
-    rv = rco if return_created_object is True else None
-    return rv
-
-def varProcMultiIndex(arg1, arg2, arg3):
-    """
-    Initializes a variable with label arg1 equal to a 2d array of Symbol objects labeled arg1=(arg1_1_1,arg1_1_2,...,arg1_arg2_arg3).
-
-    Args:
-        arg1: string
-        arg2: positive integer
-        arg3: positive integer
-
-    Returns:
-        Nothing
-
-    Raises:
-        NA
-    """
-    warnings.warn(
-        "`varProcMultiIndex` is depricated and will be removed from dgcv in future updates. Use `createVariables` instead."
-    )
-    _cached_caller_globals.update(
-        zip(
-            [arg1],
-            [
-                sp.Array(
-                    [
-                        [
-                            sp.symbols(arg1 + "_{}_{}".format(k, j))
-                            for j in range(1, arg3 + 1)
-                        ]
-                        for k in range(1, arg2 + 1)
-                    ]
-                )
-            ],
-        )
-    )
-    _cached_caller_globals.update(
-        zip(
-            [
-                arg1 + "_{}_{}".format(j, k)
-                for j in range(1, arg3 + 1)
-                for k in range(1, arg2 + 1)
-            ],
-            [
-                sp.symbols(arg1 + "_{}_{}".format(j, k))
-                for j in range(1, arg3 + 1)
-                for k in range(1, arg2 + 1)
-            ],
-        )
-    )
 
 def varWithVF(
     variables_label,
     number_of_variables=None,
     initialIndex=1,
+    multiindex_shape=None,
     _doNotUpdateVar=False,
     assumeReal=None,
     _calledFromCVP=None,
@@ -3299,159 +5760,116 @@ def varWithVF(
     return_created_object=None,
 ):
     """
-    Initializes one or more standard variables with accompanying vector fields and differential 1-forms.
+    Initializes one or more standard variable systems with accompanying vector fields and differential 1-forms.
+    Supports single variables, tuple systems, and multi-index systems.
     Updates the internal variable_registry dict accordingly.
-
-    Parameters:
-    ----------
-    variables_label : str or list
-        The label for the variable(s). If a string, it defines a single variable. If a list, it initializes multiple variables.
-
-    number_of_variables : positive int, optional
-        If provided, specifies the number of variables in a tuple. The first argument in `args` defines the length of the tuple.
-
-    initialIndex : int, optional
-        The starting index for enumerating variable names in a tuple. Defaults to 1.
-
-    _doNotUpdateVar : bool, optional
-        If True, prevents the variable(s) from being cleared and reinitialized. Used when avoiding overwriting existing variables.
-
-    assumeReal : bool, optional
-        If provided, specifies whether to treat the variable(s) as real. If True, the variable(s) are assumed to be real.
-
-    _calledFromCVP : None
-        Reserved for internal dgcv use when called from complexVarProc. Does not affect the behavior in this function.
-
-    Updates the internal variable_registry dict:
-    --------------------------
-    - For a single variable:
-        - Adds a new entry in 'standard_variable_systems' with:
-            - 'family_type': 'single'
-            - 'family_names': (str,)
-            - 'family_values': (variables,)
-            - 'differential_system': bool (default None)
-            - 'tempVar': bool (default None)
-            - 'initial_index': None
-            - 'variable_relatives': A dictionary containing the variable's label and its associated properties (VFClass, DFClass, assumeReal).
-
-    - For a tuple of variables:
-        - Adds a new entry in 'standard_variable_systems' with:
-            - 'family_type': 'tuple'
-            - 'family_names': tuple of strings
-            - 'family_values': tuple of variables
-            - 'differential_system': bool (default None)
-            - 'tempVar': bool (default None)
-            - 'initial_index': The starting index of the tuple
-            - 'variable_relatives': A dictionary mapping each variable in the tuple to its associated properties (VFClass, DFClass, assumeReal).
-        - Also adds the tuple of variables (e.g., y = (y1, y2, y3)) to _cached_caller_globals.
-
-    Raises:
-    -------
-    Exception:
-        If the variable label is part of the 'protected_variables' set in the internal variable_registry dict and this function was not called from complexVarProc.
     """
+
     variable_registry = get_variable_registry()
+    globals_namespace = _cached_caller_globals
+    passkey = retrieve_passkey()
 
-    # Convert arg1 to a list if it's a single string
-    if isinstance(variables_label, str):
-        variables_label = [variables_label]
+    if multiindex_shape is not None and number_of_variables is not None:
+        multiindex_shape = None
+        warnings.warn(
+            "Provide at most one of `number_of_variables` (tuple system) and `multiindex_shape` (multi-index system). The given `multiindex_shape` was ignored."
+        )
 
-    if return_created_object is True:
-        rco = []
+    labels = (
+        [variables_label] if isinstance(variables_label, str) else list(variables_label)
+    )
+    rco = [] if return_created_object is True else None
 
-    for labelLoc in variables_label:
-        if not _calledFromCVP == retrieve_passkey() and not remove_guardrails:
-            labelLoc = validate_label(labelLoc)
-        if return_created_object is True:
-            rco.append(labelLoc)
+    kind = engine_kind()
+    enforce_real = kind is not None and kind != "sympy"
+    enforced_real_dict = (
+        variable_registry.get("dgcv_enforced_real_atoms", None)
+        if enforce_real
+        else None
+    )
 
-        if not _doNotUpdateVar == retrieve_passkey():
+    def _valid_multiindex_shape(ms):
+        return isinstance(ms, (list, tuple)) and all(
+            isinstance(n, Integral) and n > 0 for n in ms
+        )
+
+    def _indices_for_multiindex(ms):
+        return list(carProd(*[range(initialIndex, initialIndex + n) for n in ms]))
+
+    for raw_label in labels:
+        labelLoc = (
+            validate_label(raw_label)
+            if (not _calledFromCVP == passkey and not remove_guardrails)
+            else raw_label
+        )
+
+        if _doNotUpdateVar != passkey:
             clearVar(labelLoc, report=False)
 
-        # Handle lone variable case
-        if number_of_variables is None:
-            symbol = sp.symbols(labelLoc, real=assumeReal)
-            _cached_caller_globals[labelLoc] = symbol
+        _tuple_flag = False
 
-            # Create vector field and differential form for the lone variable
-            vf_instance = VFClass((symbol,), [1])
-            df_instance = DFClass((symbol,), {(0,): 1}, 1)
-            _cached_caller_globals[f"D_{labelLoc}"] = vf_instance
-            _cached_caller_globals[f"d_{labelLoc}"] = df_instance
+        if number_of_variables is None and _valid_multiindex_shape(multiindex_shape):
+            _tuple_flag = True
+            idxs = _indices_for_multiindex(multiindex_shape)
+            var_names = [f"{labelLoc}_{'_'.join(map(str, idx))}" for idx in idxs]
+            vars = [symbol(name, assumeReal=assumeReal) for name in var_names]
+            base_vars = tuple(vars)
+            if (
+                _doNotUpdateVar != passkey or _calledFromCVP == passkey
+            ):  # CVP doesn't manage sub-parant names
+                clearVar(*vars, report=False)
+                globals_namespace.update(dict(zip(var_names, vars)))
+                globals_namespace[labelLoc] = build_nd_array(
+                    base_vars, multiindex_shape
+                )
 
-            # Update standard_variable_systems for the lone variable (only if not called from CVP)
-            if not _calledFromCVP == retrieve_passkey():
-                variable_registry["standard_variable_systems"][labelLoc] = {
-                    "family_type": "single",
-                    "family_values": (symbol,),
-                    "family_names": (labelLoc,),
-                    "differential_system": True,
-                    "tempVar": None,
-                    "initial_index": None,
-                    "variable_relatives": {
-                        labelLoc: {
-                            "VFClass": vf_instance,
-                            "DFClass": df_instance,
-                            "assumeReal": assumeReal,
-                        }
-                    },
-                }
-                variable_registry["_labels"][labelLoc] = {
-                    "path": ("standard_variable_systems", labelLoc),
-                    "children": {f"D_{labelLoc}", f"d_{labelLoc}"},
-                }
+            if enforce_real and assumeReal is True and enforced_real_dict is not None:
+                for v in vars:
+                    enforced_real_dict[v.conjugate()] = v
 
-        # Handle the tuple case
-        elif (
-            isinstance(number_of_variables, numbers.Integral)
-            and number_of_variables >= 0
-        ):
-            lengthLoc = number_of_variables
-            var_names = [
-                f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
-            ]
-            vars = [
-                sp.symbols(f"{labelLoc}{i}", real=assumeReal)
-                for i in range(initialIndex, lengthLoc + initialIndex)
-            ]
-
-            # Add each variable to _cached_caller_globals
-            _cached_caller_globals.update(zip(var_names, vars))
-
-            # Create the tuple of variables and add it to _cached_caller_globals
-            _cached_caller_globals[labelLoc] = tuple(vars)
-
-            # Create individual vector fields
+            N = len(base_vars)
             vf_instances = [
-                VFClass(tuple(vars), [1 if k == j else 0 for k in range(len(vars))])
-                for j in range(len(vars))
+                vector_field_class(
+                    coeff_dict={(j, 1, labelLoc): 1},
+                    dgcvType="standard",
+                    variable_spaces={labelLoc: base_vars},
+                )
+                for j in range(N)
             ]
-            _cached_caller_globals.update(
-                zip([f"D_{var_name}" for var_name in var_names], vf_instances)
-            )
-
-            # Create individual differential 1-forms
             df_instances = [
-                DFClass(tuple(vars), {(j,): 1}, 1) for j in range(len(vars))
+                differential_form_class(
+                    coeff_dict={(j, 0, labelLoc): 1},
+                    dgcvType="standard",
+                    variable_spaces={labelLoc: base_vars},
+                )
+                # DFClass(base_vars, {(j,): 1}, 1)
+                for j in range(N)
             ]
-            _cached_caller_globals.update(
-                zip([f"d_{var_name}" for var_name in var_names], df_instances)
-            )
 
-            # Update standard_variable_systems for the parent variable (only if not called from CVP)
-            if not _calledFromCVP == retrieve_passkey():
+            if _doNotUpdateVar != passkey:
+                globals_namespace.update(
+                    dict(zip([f"D_{vn}" for vn in var_names], vf_instances))
+                )
+                globals_namespace.update(
+                    dict(zip([f"d_{vn}" for vn in var_names], df_instances))
+                )
+
+            if not _calledFromCVP == passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
-                    "family_type": "tuple",
-                    "family_values": tuple(vars),
+                    "family_type": "multi_index",
+                    "family_shape": tuple(multiindex_shape),
                     "family_names": tuple(var_names),
+                    "family_values": globals_namespace[labelLoc],
                     "differential_system": True,
                     "tempVar": None,
+                    "obsVar": None,
                     "initial_index": initialIndex,
                     "variable_relatives": {
                         var_name: {
                             "VFClass": vf_instances[i],
                             "DFClass": df_instances[i],
                             "assumeReal": assumeReal,
+                            "system_index": i,
                         }
                         for i, var_name in enumerate(var_names)
                     },
@@ -3464,12 +5882,163 @@ def varWithVF(
                         + [f"d_{v}" for v in var_names]
                     ),
                 }
+
+                paths = variable_registry.get("paths", None)
+                if paths is not None:
+                    base_vals = ("standard_variable_systems", labelLoc, "family_values")
+                    for idx, var_name in zip(idxs, var_names):
+                        offs = tuple(int(k - initialIndex) for k in idx)
+                        paths[var_name] = {
+                            "kind": "standard_variable",
+                            "path": base_vals + offs,
+                        }
+
+        elif number_of_variables is None:
+            sym = symbol(labelLoc, assumeReal=assumeReal)
+            globals_namespace[labelLoc] = sym
+
+            if enforce_real and assumeReal is True and enforced_real_dict is not None:
+                enforced_real_dict[sym.conjugate()] = sym
+
+            vf_instance = vector_field_class(
+                coeff_dict={(0, 1, labelLoc): 1},
+                dgcvType="standard",
+                variable_spaces={labelLoc: (sym,)},
+            )
+            df_instance = differential_form_class(
+                coeff_dict={(0, 0, labelLoc): 1},
+                dgcvType="standard",
+                variable_spaces={labelLoc: (sym,)},
+            )
+            globals_namespace[f"D_{labelLoc}"] = vf_instance
+            globals_namespace[f"d_{labelLoc}"] = df_instance
+
+            if not _calledFromCVP == passkey:
+                variable_registry["standard_variable_systems"][labelLoc] = {
+                    "family_type": "single",
+                    "family_values": (sym,),
+                    "family_names": (labelLoc,),
+                    "differential_system": True,
+                    "tempVar": None,
+                    "initial_index": None,
+                    "variable_relatives": {
+                        labelLoc: {
+                            "VFClass": vf_instance,
+                            "DFClass": df_instance,
+                            "assumeReal": assumeReal,
+                            "system_index": 0,
+                        }
+                    },
+                }
+                variable_registry["_labels"][labelLoc] = {
+                    "path": ("standard_variable_systems", labelLoc),
+                    "children": {f"D_{labelLoc}", f"d_{labelLoc}"},
+                }
+                paths = variable_registry.get("paths", None)
+                if paths is not None:
+                    paths[labelLoc] = {
+                        "kind": "coordinate",
+                        "path": (
+                            "standard_variable_systems",
+                            labelLoc,
+                            "family_values",
+                            0,
+                        ),
+                    }
+
+        elif isinstance(number_of_variables, Integral) and number_of_variables >= 0:
+            _tuple_flag = True
+            lengthLoc = number_of_variables
+            var_names = [
+                f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
+            ]
+            vars = [symbol(name, assumeReal=assumeReal) for name in var_names]
+            globals_namespace.update(dict(zip(var_names, vars)))
+            globals_namespace[labelLoc] = tuple(vars)
+
+            if enforce_real and assumeReal is True and enforced_real_dict is not None:
+                for v in vars:
+                    enforced_real_dict[v.conjugate()] = v
+
+            vtuple = tuple(vars)
+            N = len(vtuple)
+
+            vf_instances = [
+                vector_field_class(
+                    coeff_dict={(j, 1, labelLoc): 1},
+                    dgcvType="standard",
+                    variable_spaces={labelLoc: vtuple},
+                )
+                for j in range(N)
+            ]
+            df_instances = [
+                differential_form_class(
+                    coeff_dict={(j, 0, labelLoc): 1},
+                    dgcvType="standard",
+                    variable_spaces={labelLoc: vtuple},
+                )
+                for j in range(N)
+            ]
+
+            globals_namespace.update(
+                dict(zip([f"D_{vn}" for vn in var_names], vf_instances))
+            )
+            globals_namespace.update(
+                dict(zip([f"d_{vn}" for vn in var_names], df_instances))
+            )
+
+            if not _calledFromCVP == passkey:
+                variable_registry["standard_variable_systems"][labelLoc] = {
+                    "family_type": "tuple",
+                    "family_values": vtuple,
+                    "family_names": tuple(var_names),
+                    "differential_system": True,
+                    "tempVar": None,
+                    "initial_index": initialIndex,
+                    "variable_relatives": {
+                        var_name: {
+                            "VFClass": vf_instances[i],
+                            "DFClass": df_instances[i],
+                            "assumeReal": assumeReal,
+                            "system_index": i,
+                        }
+                        for i, var_name in enumerate(var_names)
+                    },
+                }
+                variable_registry["_labels"][labelLoc] = {
+                    "path": ("standard_variable_systems", labelLoc),
+                    "children": set(
+                        var_names
+                        + [f"D_{v}" for v in var_names]
+                        + [f"d_{v}" for v in var_names]
+                    ),
+                }
+                paths = variable_registry.get("paths", None)
+                if paths is not None:
+                    base_vals = ("standard_variable_systems", labelLoc, "family_values")
+                    for i, vn in enumerate(var_names):
+                        paths[labelLoc] = {
+                            "kind": "standard_variable_system",
+                            "path": ("standard_variable_systems", labelLoc),
+                        }
+                        paths[vn] = {
+                            "kind": "coordinate",
+                            "path": base_vals + (i,),
+                        }
+
         else:
             raise ValueError(
-                "variableProcedure expected its second argument number_of_variables (optional) to be a positive integer, if provided."
+                "varWithVF expected `number_of_variables` (optional) to be a non-negative integer, if provided."
             )
-    rv = rco if return_created_object is True else None
-    return rv
+
+        if rco is not None:
+            if _tuple_flag:
+                rco.append(globals_namespace[labelLoc])
+            else:
+                rco.append((globals_namespace[labelLoc],))
+
+    return rco if rco is not None else None
+
 
 def complexVarProc(
     holom_label,
@@ -3477,6 +6046,7 @@ def complexVarProc(
     im_label,
     number_of_variables=None,
     initialIndex=1,
+    multiindex_shape=None,
     default_var_format="complex",
     remove_guardrails=None,
     return_created_object=True,
@@ -3484,10 +6054,7 @@ def complexVarProc(
     """
     Initializes a complex variable system, linking a holomorphic variable with its real and imaginary parts and
     a symbolic representative of its complex conjugate.
-
-    (Docstring truncated for brevity.)
     """
-    # Validate default_var_format.
     if default_var_format not in ("real", "complex"):
         if default_var_format is not None:
             warnings.warn(
@@ -3495,13 +6062,11 @@ def complexVarProc(
             )
         default_var_format = "complex"
 
-    # Cache the registry sub-dictionaries for faster access.
     variable_registry = get_variable_registry()
     conv = variable_registry["conversion_dictionaries"]
     find_parents = conv["find_parents"]
     protected_vars = variable_registry["protected_variables"]
 
-    # Set up temporary accumulators for batched conversion updates.
     conj_updates = {}
     holToReal_updates = {}
     realToSym_updates = {}
@@ -3512,9 +6077,43 @@ def complexVarProc(
     im_part_updates = {}
     complex_system_updates = {}
 
-    # For tuple systems, store data for deferred differential object creation.
+    # For tuple systems, store data for deferred differential object creation
     # Each entry: (labelLoc1, var_names1, var_namesBAR, var_names2, var_names3, lengthLoc)
     tuple_system_data = []
+
+    def _register_complex_paths(system_label: str) -> None:
+        paths = variable_registry.get("paths", None)
+        if paths is None:
+            return
+
+        sys = variable_registry.get("complex_variable_systems", {}).get(system_label)
+        if not isinstance(sys, dict):
+            return
+
+        paths[system_label] = {
+            "kind": "complex_variable_system",
+            "path": ("complex_variable_systems", system_label),
+        }
+
+        houses = sys.get("family_houses")
+        if isinstance(houses, (tuple, list)):
+            base = ("complex_variable_systems", system_label, "family_houses")
+            for i, house in enumerate(houses):
+                if isinstance(house, str):
+                    paths[house] = {
+                        "kind": "complex_variable_house",
+                        "path": base + (i,),
+                    }
+
+        rel = sys.get("variable_relatives")
+        if isinstance(rel, dict):
+            base = ("complex_variable_systems", system_label, "variable_relatives")
+            for member_label in rel.keys():
+                if isinstance(member_label, str):
+                    paths[member_label] = {
+                        "kind": "coordinate",
+                        "path": base + (member_label, "variable_value"),
+                    }
 
     def validate_variable_labels(*labels):
         """
@@ -3545,16 +6144,13 @@ def complexVarProc(
             reformatted_labels.append(reformatted_label)
         return tuple(reformatted_labels)
 
-    # Convert single string inputs into lists.
     if isinstance(holom_label, str):
         holom_label = [holom_label]
         real_label = [real_label]
         im_label = [im_label]
 
-    if return_created_object is True:
-        rco = []
+    rco = [] if return_created_object is True else None
 
-    # Main loop over each set of labels.
     for j in range(len(holom_label)):
         if remove_guardrails:
             labelLoc1 = holom_label[j]
@@ -3565,22 +6161,144 @@ def complexVarProc(
                 holom_label[j], real_label[j], im_label[j]
             )
         labelLocBAR = f"BAR{labelLoc1}"
-        if return_created_object is True:
-            rco += [labelLoc1, labelLoc2, labelLoc3, labelLocBAR]
 
-        # Clear any existing variables.
         clearVar(labelLoc1, report=False)
         clearVar(labelLoc2, report=False)
         clearVar(labelLoc3, report=False)
         clearVar(labelLocBAR, report=False)
 
-        # Add real and imaginary parts to the protected set.
+        def _valid_multiindex_shape(ms):
+            return isinstance(ms, (list, tuple)) and all(
+                isinstance(n, Integral) and n > 0 for n in ms
+            )
+
+        def _multiindex_indices(ms):
+            return list(carProd(*[range(initialIndex, initialIndex + n) for n in ms]))
+
+        def _multiindex_names(base, idxs):
+            return [f"{base}_{'_'.join(map(str, idx))}" for idx in idxs]
+
         protected_vars.update({labelLoc2, labelLoc3})
 
-        # -------------------------------------------------
+        # Multi-index System Case
+        if number_of_variables is None and _valid_multiindex_shape(multiindex_shape):
+            idxs = _multiindex_indices(multiindex_shape)
+
+            variableProcedure(
+                labelLoc1,
+                initialIndex=initialIndex,
+                multiindex_shape=multiindex_shape,
+                _doNotUpdateVar=retrieve_passkey(),
+                _calledFromCVP=retrieve_passkey(),
+            )
+            variableProcedure(
+                labelLocBAR,
+                initialIndex=initialIndex,
+                multiindex_shape=multiindex_shape,
+                _doNotUpdateVar=retrieve_passkey(),
+                _calledFromCVP=retrieve_passkey(),
+            )
+            variableProcedure(
+                labelLoc2,
+                initialIndex=initialIndex,
+                multiindex_shape=multiindex_shape,
+                _doNotUpdateVar=retrieve_passkey(),
+                assumeReal=True,
+                _calledFromCVP=retrieve_passkey(),
+            )
+            variableProcedure(
+                labelLoc3,
+                initialIndex=initialIndex,
+                multiindex_shape=multiindex_shape,
+                _doNotUpdateVar=retrieve_passkey(),
+                assumeReal=True,
+                _calledFromCVP=retrieve_passkey(),
+            )
+
+            var_arr1 = _cached_caller_globals[labelLoc1]
+            var_arrBAR = _cached_caller_globals[labelLocBAR]
+            var_arr2 = _cached_caller_globals[labelLoc2]
+            var_arr3 = _cached_caller_globals[labelLoc3]
+            if rco is not None:
+                rco += [var_arr1, var_arrBAR, var_arr2, var_arr3]
+
+            var_str1 = tuple(_multiindex_names(labelLoc1, idxs))
+            var_strBAR = tuple(_multiindex_names(labelLocBAR, idxs))
+            var_str2 = tuple(_multiindex_names(labelLoc2, idxs))
+            var_str3 = tuple(_multiindex_names(labelLoc3, idxs))
+
+            complex_system_updates[labelLoc1] = {
+                "family_type": "multi_index",
+                "family_shape": tuple(multiindex_shape),
+                "family_names": (var_str1, var_strBAR, var_str2, var_str3),
+                "family_values": (var_arr1, var_arrBAR, var_arr2, var_arr3),
+                "family_houses": (labelLoc1, labelLocBAR, labelLoc2, labelLoc3),
+                "differential_system": True,
+                "initial_index": initialIndex,
+                "variable_relatives": {},
+            }
+
+            all_var_strs = list(var_str1 + var_strBAR + var_str2 + var_str3)
+            variable_registry["_labels"][labelLoc1] = {
+                "path": ("complex_variable_systems", labelLoc1),
+                "children": set(
+                    all_var_strs
+                    + [f"D_{v}" for v in all_var_strs]
+                    + [f"d_{v}" for v in all_var_strs]
+                ),
+            }
+
+            flat1 = [_cached_caller_globals[nm] for nm in var_str1]
+            flatBAR = [_cached_caller_globals[nm] for nm in var_strBAR]
+            flat2 = [_cached_caller_globals[nm] for nm in var_str2]
+            flat3 = [_cached_caller_globals[nm] for nm in var_str3]
+
+            totalVarListLoc = list(zip(flat1, flatBAR, flat2, flat3))
+            for comp_var, bar_comp_var, real_var, imag_var in totalVarListLoc:
+                find_parents[real_var] = (comp_var, bar_comp_var)
+                find_parents[imag_var] = (comp_var, bar_comp_var)
+
+                conj_updates[comp_var] = bar_comp_var
+                conj_updates[bar_comp_var] = comp_var
+                holToReal_updates[comp_var] = real_var + imag_unit() * imag_var
+                realToSym_updates[real_var] = half * (comp_var + bar_comp_var)
+                realToSym_updates[imag_var] = (
+                    -imag_unit() * half * (comp_var - bar_comp_var)
+                )
+                symToHol_updates[bar_comp_var] = conjugate(comp_var)
+                symToReal_updates[comp_var] = real_var + imag_unit() * imag_var
+                symToReal_updates[bar_comp_var] = real_var - imag_unit() * imag_var
+                realToHol_updates[real_var] = half * (comp_var + conjugate(comp_var))
+                realToHol_updates[imag_var] = (
+                    imag_unit() * half * (conjugate(comp_var) - comp_var)
+                )
+                real_part_updates[comp_var] = real_var
+                real_part_updates[bar_comp_var] = real_var
+                im_part_updates[comp_var] = imag_var
+                im_part_updates[bar_comp_var] = -imag_var
+
+            tuple_system_data.append(
+                (
+                    labelLoc1,
+                    flat1,
+                    flatBAR,
+                    flat2,
+                    flat3,
+                    len(flat1),
+                )
+            )
+
+            conv["conjugation"].update(conj_updates)
+            conv["holToReal"].update(holToReal_updates)
+            conv["realToSym"].update(realToSym_updates)
+            conv["symToHol"].update(symToHol_updates)
+            conv["symToReal"].update(symToReal_updates)
+            conv["realToHol"].update(realToHol_updates)
+            conv["real_part"].update(real_part_updates)
+            conv["im_part"].update(im_part_updates)
+
         # Single Variable System
-        # -------------------------------------------------
-        if number_of_variables is None:
+        elif number_of_variables is None:
             variableProcedure(
                 labelLoc1,
                 _doNotUpdateVar=retrieve_passkey(),
@@ -3609,21 +6327,21 @@ def complexVarProc(
             var_bar = _cached_caller_globals[labelLocBAR]
             var_real = _cached_caller_globals[labelLoc2]
             var_im = _cached_caller_globals[labelLoc3]
+            if rco is not None:
+                rco += [(var_hol,), (var_bar,), (var_real,), (var_im,)]
 
             # Accumulate conversion updates.
             conj_updates[var_hol] = var_bar
             conj_updates[var_bar] = var_hol
-            holToReal_updates[var_hol] = var_real + I * var_im
-            realToSym_updates[var_real] = sp.Rational(1, 2) * (var_hol + var_bar)
-            realToSym_updates[var_im] = -I * sp.Rational(1, 2) * (var_hol - var_bar)
-            symToHol_updates[var_bar] = sp.conjugate(var_hol)
-            symToReal_updates[var_hol] = var_real + I * var_im
-            symToReal_updates[var_bar] = var_real - I * var_im
-            realToHol_updates[var_real] = sp.Rational(1, 2) * (
-                var_hol + sp.conjugate(var_hol)
-            )
+            holToReal_updates[var_hol] = var_real + imag_unit() * var_im
+            realToSym_updates[var_real] = half * (var_hol + var_bar)
+            realToSym_updates[var_im] = -imag_unit() * half * (var_hol - var_bar)
+            symToHol_updates[var_bar] = conjugate(var_hol)
+            symToReal_updates[var_hol] = var_real + imag_unit() * var_im
+            symToReal_updates[var_bar] = var_real - imag_unit() * var_im
+            realToHol_updates[var_real] = half * (var_hol + conjugate(var_hol))
             realToHol_updates[var_im] = (
-                I * sp.Rational(1, 2) * (sp.conjugate(var_hol) - var_hol)
+                imag_unit() * half * (conjugate(var_hol) - var_hol)
             )
             real_part_updates[var_hol] = var_real
             real_part_updates[var_bar] = var_real
@@ -3660,6 +6378,7 @@ def complexVarProc(
                         "VFClass": None,
                         "DFClass": None,
                         "assumeReal": None,
+                        "system_index": 0,
                     },
                     labelLocBAR: {
                         "complex_positioning": "antiholomorphic",
@@ -3668,6 +6387,7 @@ def complexVarProc(
                         "VFClass": None,
                         "DFClass": None,
                         "assumeReal": None,
+                        "system_index": 1,
                     },
                     labelLoc2: {
                         "complex_positioning": "real",
@@ -3676,6 +6396,7 @@ def complexVarProc(
                         "VFClass": None,
                         "DFClass": None,
                         "assumeReal": True,
+                        "system_index": 2,
                     },
                     labelLoc3: {
                         "complex_positioning": "imaginary",
@@ -3684,9 +6405,11 @@ def complexVarProc(
                         "VFClass": None,
                         "DFClass": None,
                         "assumeReal": True,
+                        "system_index": 3,
                     },
                 },
             }
+            _register_complex_paths(labelLoc1)
 
             variable_registry["_labels"][labelLoc1] = {
                 "path": ("complex_variable_systems", labelLoc1),
@@ -3708,66 +6431,114 @@ def complexVarProc(
             def create_differential_objects_single(
                 var_hol, var_bar, var_real, var_im, default_var_format
             ):
+                vs = (var_hol, var_bar, var_real, var_im)
+                sys = labelLoc1  # the complex system label
                 if default_var_format == "real":
                     # Differential objects using the real/imaginary parts.
-                    vf_instance_hol = VFClass(
-                        (var_real, var_im),
-                        [sp.Rational(1, 2), -I / 2],
+                    inh_dict = {"_validated_format": "real"}
+                    vf_instance_hol = vector_field_class(
+                        coeff_dict={(2, 1, sys): half, (3, 1, sys): -imag_unit() / 2},
                         dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
-                    vf_instance_aHol = VFClass(
-                        (var_real, var_im),
-                        [sp.Rational(1, 2), I / 2],
+                    vf_instance_aHol = vector_field_class(
+                        coeff_dict={(2, 1, sys): half, (3, 1, sys): imag_unit() / 2},
                         dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
-                    vf_instance_real = VFClass(
-                        (var_real, var_im), [1, 0], dgcvType="complex"
+                    vf_instance_real = vector_field_class(
+                        coeff_dict={(2, 1, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
-                    vf_instance_im = VFClass(
-                        (var_real, var_im), [0, 1], dgcvType="complex"
+                    vf_instance_im = vector_field_class(
+                        coeff_dict={(3, 1, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
-                    df_instance_hol = DFClass(
-                        (var_real, var_im), {(0,): 1, (1,): I}, 1, dgcvType="complex"
+                    df_instance_hol = differential_form_class(
+                        coeff_dict={(2, 0, sys): 1, (3, 0, sys): imag_unit()},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
-                    df_instance_aHol = DFClass(
-                        (var_real, var_im), {(0,): 1, (1,): -I}, 1, dgcvType="complex"
+                    df_instance_aHol = differential_form_class(
+                        coeff_dict={(2, 0, sys): 1, (3, 0, sys): -imag_unit()},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
-                    df_instance_real = DFClass(
-                        (var_real, var_im), {(0,): 1}, 1, dgcvType="complex"
+                    df_instance_real = differential_form_class(
+                        coeff_dict={(2, 0, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
-                    df_instance_im = DFClass(
-                        (var_real, var_im), {(1,): 1}, 1, dgcvType="complex"
+                    df_instance_im = differential_form_class(
+                        coeff_dict={(3, 0, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
                 else:  # default_var_format == "complex"
-                    vf_instance_hol = VFClass(
-                        (var_hol, var_bar), [1, 0], dgcvType="complex"
-                    )
-                    vf_instance_aHol = VFClass(
-                        (var_hol, var_bar), [0, 1], dgcvType="complex"
-                    )
-                    vf_instance_real = VFClass(
-                        (var_hol, var_bar), [1, 1], dgcvType="complex"
-                    )
-                    vf_instance_im = VFClass(
-                        (var_hol, var_bar), [I, -I], dgcvType="complex"
-                    )
-                    df_instance_hol = DFClass(
-                        (var_hol, var_bar), {(0,): 1}, 1, dgcvType="complex"
-                    )
-                    df_instance_aHol = DFClass(
-                        (var_hol, var_bar), {(1,): 1}, 1, dgcvType="complex"
-                    )
-                    df_instance_real = DFClass(
-                        (var_hol, var_bar),
-                        {(0,): sp.Rational(1, 2), (1,): sp.Rational(1, 2)},
-                        1,
+                    inh_dict = {"_validated_format": "complex"}
+                    vf_instance_hol = vector_field_class(
+                        coeff_dict={(0, 1, sys): 1},
                         dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
-                    df_instance_im = DFClass(
-                        (var_hol, var_bar),
-                        {(0,): -I / 2, (1,): I / 2},
-                        1,
+                    vf_instance_aHol = vector_field_class(
+                        coeff_dict={(1, 1, sys): 1},
                         dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    vf_instance_real = vector_field_class(
+                        coeff_dict={(0, 1, sys): 1, (1, 1, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    vf_instance_im = vector_field_class(
+                        coeff_dict={
+                            (0, 1, sys): imag_unit(),
+                            (1, 1, sys): -imag_unit(),
+                        },
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    df_instance_hol = differential_form_class(
+                        coeff_dict={(0, 0, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    df_instance_aHol = differential_form_class(
+                        coeff_dict={(1, 0, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    df_instance_real = differential_form_class(
+                        coeff_dict={(0, 0, sys): half, (1, 0, sys): half},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    df_instance_im = differential_form_class(
+                        coeff_dict={
+                            (0, 0, sys): -imag_unit() / 2,
+                            (1, 0, sys): imag_unit() / 2,
+                        },
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
                     )
                 return (
                     vf_instance_hol,
@@ -3794,7 +6565,7 @@ def complexVarProc(
                 var_hol, var_bar, var_real, var_im, default_var_format
             )
 
-            # Register the differential objects in the caller's globals.
+            # Register the differential objects
             _cached_caller_globals.update(
                 {
                     f"D_{labelLoc1}": vf_instance_hol,
@@ -3833,12 +6604,8 @@ def complexVarProc(
                 "DFClass": _cached_caller_globals[f"d_{labelLoc3}"],
             }
 
-        # -------------------------------------------------
-        # Tuple System Case (Phase 1: Build variables and update conversion info)
-        # -------------------------------------------------
-        elif (
-            isinstance(number_of_variables, numbers.Number) and number_of_variables > 0
-        ):
+        # Tuple System Case
+        elif isinstance(number_of_variables, Number) and number_of_variables > 0:
             lengthLoc = number_of_variables
             variableProcedure(
                 labelLoc1,
@@ -3876,6 +6643,8 @@ def complexVarProc(
             var_namesBAR = _cached_caller_globals[labelLocBAR]
             var_names2 = _cached_caller_globals[labelLoc2]
             var_names3 = _cached_caller_globals[labelLoc3]
+            if rco is not None:
+                rco += [var_names1, var_namesBAR, var_names2, var_names3]
 
             # Build string labels for registry.
             var_str1 = tuple(
@@ -3925,21 +6694,17 @@ def complexVarProc(
 
                 conj_updates[comp_var] = bar_comp_var
                 conj_updates[bar_comp_var] = comp_var
-                holToReal_updates[comp_var] = real_var + I * imag_var
-                realToSym_updates[real_var] = sp.Rational(1, 2) * (
-                    comp_var + bar_comp_var
-                )
+                holToReal_updates[comp_var] = real_var + imag_unit() * imag_var
+                realToSym_updates[real_var] = half * (comp_var + bar_comp_var)
                 realToSym_updates[imag_var] = (
-                    -I * sp.Rational(1, 2) * (comp_var - bar_comp_var)
+                    -imag_unit() * half * (comp_var - bar_comp_var)
                 )
-                symToHol_updates[bar_comp_var] = sp.conjugate(comp_var)
-                symToReal_updates[comp_var] = real_var + I * imag_var
-                symToReal_updates[bar_comp_var] = real_var - I * imag_var
-                realToHol_updates[real_var] = sp.Rational(1, 2) * (
-                    comp_var + sp.conjugate(comp_var)
-                )
+                symToHol_updates[bar_comp_var] = conjugate(comp_var)
+                symToReal_updates[comp_var] = real_var + imag_unit() * imag_var
+                symToReal_updates[bar_comp_var] = real_var - imag_unit() * imag_var
+                realToHol_updates[real_var] = half * (comp_var + conjugate(comp_var))
                 realToHol_updates[imag_var] = (
-                    I * sp.Rational(1, 2) * (sp.conjugate(comp_var) - comp_var)
+                    imag_unit() * half * (conjugate(comp_var) - comp_var)
                 )
                 real_part_updates[comp_var] = real_var
                 real_part_updates[bar_comp_var] = real_var
@@ -3965,13 +6730,9 @@ def complexVarProc(
                 "variableProcedure expected its second argument number_of_variables (optional) to be a positive integer, if provided."
             )
 
-    # End main loop.
-    # Update the registry with the constructed complex variable systems.
     variable_registry["complex_variable_systems"].update(complex_system_updates)
 
-    # --------------------------------------------------
-    # Phase 2: Create VFClass and DFClass objects for tuple systems.
-    # --------------------------------------------------
+    # Create differential objects for tuple systems.
     for (
         labelLoc1,
         var_names1,
@@ -3983,41 +6744,36 @@ def complexVarProc(
         relatives = variable_registry["complex_variable_systems"][labelLoc1][
             "variable_relatives"
         ]
-        # Build a list of tuples for each element in the tuple system.
-        # Each tuple: (comp_var, bar_comp_var, real_var, imag_var)
         totalVarListLoc = list(zip(var_names1, var_namesBAR, var_names2, var_names3))
 
-        # --- Batch conversion dictionary updates ---
-        # These updates are built over the entire tuple system.
+        # Batch conversion dictionary updates
         conj_updates_batch = {comp: anti for comp, anti, _, _ in totalVarListLoc}
         conj_updates_batch.update({anti: comp for comp, anti, _, _ in totalVarListLoc})
 
         holToReal_updates_batch = {
-            comp: real + I * imag for comp, _, real, imag in totalVarListLoc
+            comp: real + imag_unit() * imag for comp, _, real, imag in totalVarListLoc
         }
 
         realToSym_updates_batch = {}
         for comp, anti, real, imag in totalVarListLoc:
-            realToSym_updates_batch[real] = sp.Rational(1, 2) * (comp + anti)
-            realToSym_updates_batch[imag] = -I * sp.Rational(1, 2) * (comp - anti)
+            realToSym_updates_batch[real] = half * (comp + anti)
+            realToSym_updates_batch[imag] = -imag_unit() * half * (comp - anti)
 
         symToHol_updates_batch = {
-            anti: sp.conjugate(comp) for comp, anti, _, _ in totalVarListLoc
+            anti: conjugate(comp) for comp, anti, _, _ in totalVarListLoc
         }
 
         symToReal_updates_batch = {}
         for comp, anti, real, imag in totalVarListLoc:
-            symToReal_updates_batch[comp] = real + I * imag
-            symToReal_updates_batch[anti] = real - I * imag
+            symToReal_updates_batch[comp] = real + imag_unit() * imag
+            symToReal_updates_batch[anti] = real - imag_unit() * imag
 
         realToHol_updates_batch = {}
         for comp, _, real, _ in totalVarListLoc:
-            realToHol_updates_batch[real] = sp.Rational(1, 2) * (
-                comp + sp.conjugate(comp)
-            )
+            realToHol_updates_batch[real] = half * (comp + conjugate(comp))
         for comp, _, _, imag in totalVarListLoc:
             realToHol_updates_batch[imag] = (
-                I * sp.Rational(1, 2) * (sp.conjugate(comp) - comp)
+                imag_unit() * half * (conjugate(comp) - comp)
             )
 
         real_part_updates_batch = {}
@@ -4028,98 +6784,152 @@ def complexVarProc(
             im_part_updates_batch[comp] = imag
             im_part_updates_batch[anti] = -imag
 
-        # --- End Batch Updates ---
-
-        # Now, for each tuple element, create the differential objects.
-        # We loop over each element (indexed by idx) in totalVarListLoc.
+        # Create differential objects
         for idx, (comp_var, bar_comp_var, real_var, imag_var) in enumerate(
             totalVarListLoc
         ):
+            sys = labelLoc1
+            N = lengthLoc
+
+            vs = (
+                tuple(var_names1)
+                + tuple(var_namesBAR)
+                + tuple(var_names2)
+                + tuple(var_names3)
+            )
             if default_var_format == "real":
-                # Use the original formulas based on real/imaginary parts.
-                N = len(var_names2)
-                D_comp = VFClass(
-                    var_names2 + var_names3,
-                    [sp.Rational(1, 2) if i == idx else 0 for i in range(lengthLoc)]
-                    + [-I / 2 if i == idx else 0 for i in range(lengthLoc)],
-                    "complex",
+                i_real = idx + 2 * N
+                i_im = idx + 3 * N
+
+                inh_dict = {"_validated_format": "real"}
+                D_comp = vector_field_class(
+                    coeff_dict={
+                        (i_real, 1, sys): half,
+                        (i_im, 1, sys): -imag_unit() / 2,
+                    },
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
                 )
-                D_bar_comp = VFClass(
-                    var_names2 + var_names3,
-                    [sp.Rational(1, 2) if i == idx else 0 for i in range(lengthLoc)]
-                    + [I / 2 if i == idx else 0 for i in range(lengthLoc)],
-                    "complex",
+                D_bar_comp = vector_field_class(
+                    coeff_dict={
+                        (i_real, 1, sys): half,
+                        (i_im, 1, sys): imag_unit() / 2,
+                    },
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
                 )
-                D_real = VFClass(
-                    var_names2 + var_names3,
-                    [1 if i == idx else 0 for i in range(lengthLoc)] + [0] * N,
-                    "complex",
+                D_real = vector_field_class(
+                    coeff_dict={(i_real, 1, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
                 )
-                D_im = VFClass(
-                    var_names2 + var_names3,
-                    [0] * N + [1 if i == idx else 0 for i in range(lengthLoc)],
-                    "complex",
+                D_im = vector_field_class(
+                    coeff_dict={(i_im, 1, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
                 )
-                d_comp = DFClass(
-                    var_names2 + var_names3, {(idx,): 1, (idx + N,): I}, 1, "complex"
+                d_comp = differential_form_class(
+                    coeff_dict={(i_real, 0, sys): 1, (i_im, 0, sys): imag_unit()},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
                 )
-                d_bar_comp = DFClass(
-                    var_names2 + var_names3,
-                    {(idx,): 1, (idx + N,): -I},
-                    1,
-                    "complex",
+                d_bar_comp = differential_form_class(
+                    coeff_dict={(i_real, 0, sys): 1, (i_im, 0, sys): -imag_unit()},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
                 )
-                d_real = DFClass(var_names2 + var_names3, {(idx,): 1}, 1, "complex")
-                d_im = DFClass(
-                    var_names2 + var_names3,
-                    {(idx + N,): 1},
-                    1,
-                    "complex",
+                d_real = differential_form_class(
+                    coeff_dict={(i_real, 0, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                d_im = differential_form_class(
+                    coeff_dict={(i_im, 0, sys): imag_unit()},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
                 )
             else:  # default_var_format == "complex"
-                # Here we use the holomorphic/antiholomorphic formulas.
-                # Note: len(var_names1) equals the number of tuple elements.
-                N = len(var_names1)
-                D_comp = VFClass(
-                    var_names1 + var_namesBAR,
-                    [1 if i == idx else 0 for i in range(N)] + [0] * N,
-                    "complex",
-                )
-                D_bar_comp = VFClass(
-                    var_names1 + var_namesBAR,
-                    [0] * N + [1 if i == idx else 0 for i in range(N)],
-                    "complex",
-                )
-                D_real = VFClass(
-                    var_names1 + var_namesBAR,
-                    [1 if i == idx else 0 for i in range(N)]
-                    + [1 if i == idx else 0 for i in range(N)],
-                    "complex",
-                )
-                D_im = VFClass(
-                    var_names1 + var_namesBAR,
-                    [I if i == idx else 0 for i in range(N)]
-                    + [-I if i == idx else 0 for i in range(N)],
-                    "complex",
-                )
-                d_comp = DFClass(var_names1 + var_namesBAR, {(idx,): 1}, 1, "complex")
-                d_bar_comp = DFClass(
-                    var_names1 + var_namesBAR, {(idx + N,): 1}, 1, "complex"
-                )
-                d_real = DFClass(
-                    var_names1 + var_namesBAR,
-                    {(idx,): sp.Rational(1, 2), (idx + N,): sp.Rational(1, 2)},
-                    1,
-                    "complex",
-                )
-                d_im = DFClass(
-                    var_names1 + var_namesBAR,
-                    {(idx,): -I / 2, (idx + N,): I / 2},
-                    1,
-                    "complex",
+                sys = labelLoc1
+                N = lengthLoc
+
+                vs = (
+                    tuple(var_names1)
+                    + tuple(var_namesBAR)
+                    + tuple(var_names2)
+                    + tuple(var_names3)
                 )
 
-            # Register the differential objects in the caller's globals.
+                i_hol = idx
+                i_anti = idx + N
+                inh_dict = {"_validated_format": "complex"}
+
+                D_comp = vector_field_class(
+                    coeff_dict={(i_hol, 1, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                D_bar_comp = vector_field_class(
+                    coeff_dict={(i_anti, 1, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                D_real = vector_field_class(
+                    coeff_dict={
+                        (i_hol, 1, sys): 1,
+                        (i_anti, 1, sys): 1,
+                    },
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                D_im = vector_field_class(
+                    coeff_dict={
+                        (i_hol, 1, sys): imag_unit(),
+                        (i_anti, 1, sys): -imag_unit(),
+                    },
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                d_comp = differential_form_class(
+                    coeff_dict={(i_hol, 0, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                d_bar_comp = differential_form_class(
+                    coeff_dict={(i_anti, 0, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                d_real = differential_form_class(
+                    coeff_dict={(i_hol, 0, sys): half, (i_anti, 0, sys): half},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                d_im = differential_form_class(
+                    coeff_dict={
+                        (i_hol, 0, sys): -imag_unit() / 2,
+                        (i_anti, 0, sys): imag_unit() / 2,
+                    },
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+
+            # Register the differential objects in VMF
             _cached_caller_globals[f"D_{comp_var}"] = D_comp
             _cached_caller_globals[f"D_{bar_comp_var}"] = D_bar_comp
             _cached_caller_globals[f"d_{comp_var}"] = d_comp
@@ -4129,7 +6939,7 @@ def complexVarProc(
             _cached_caller_globals[f"d_{real_var}"] = d_real
             _cached_caller_globals[f"d_{imag_var}"] = d_im
 
-            # Update variable_relatives for this tuple element.
+            # Update variable_relatives in VMF
             relatives[str(comp_var)] = {
                 "complex_positioning": "holomorphic",
                 "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
@@ -4137,6 +6947,7 @@ def complexVarProc(
                 "VFClass": D_comp,
                 "DFClass": d_comp,
                 "assumeReal": None,
+                "system_index": idx,
             }
             relatives[str(bar_comp_var)] = {
                 "complex_positioning": "antiholomorphic",
@@ -4145,6 +6956,7 @@ def complexVarProc(
                 "VFClass": D_bar_comp,
                 "DFClass": d_bar_comp,
                 "assumeReal": None,
+                "system_index": idx + N,
             }
             relatives[str(real_var)] = {
                 "complex_positioning": "real",
@@ -4153,6 +6965,7 @@ def complexVarProc(
                 "VFClass": _cached_caller_globals[f"D_{real_var}"],
                 "DFClass": _cached_caller_globals[f"d_{real_var}"],
                 "assumeReal": True,
+                "system_index": idx + 2 * N,
             }
             relatives[str(imag_var)] = {
                 "complex_positioning": "imaginary",
@@ -4161,10 +6974,10 @@ def complexVarProc(
                 "VFClass": _cached_caller_globals[f"D_{imag_var}"],
                 "DFClass": _cached_caller_globals[f"d_{imag_var}"],
                 "assumeReal": True,
+                "system_index": idx + 3 * N,
             }
-        # End of Phase 2 loop for this tuple system.
-    if number_of_variables is not None:
-        # After processing all tuple systems, update the conversion dictionaries in one bulk call:
+            _register_complex_paths(labelLoc1)
+    if tuple_system_data:
         conv["conjugation"].update(conj_updates_batch)
         conv["holToReal"].update(holToReal_updates_batch)
         conv["realToSym"].update(realToSym_updates_batch)
@@ -4177,29 +6990,51 @@ def complexVarProc(
     rv = rco if return_created_object is True else None
     return rv
 
+
 def temporaryVariables(
-    variable_label:str=None,
+    variable_label: str = None,
     number_of_variables=None,
     initialIndex=1,
     multiindex_shape=None,
     assumeReal=None,
     return_created_object=True,
-    register_in_vmf:bool=False,
+    register_in_vmf: bool = False,
     remove_guardrails=None,
-    ):
-    if isinstance(variable_label,numbers.Integral) and number_of_variables is None:
-        variable_label,number_of_variables=None,variable_label
-    if not isinstance(variable_label,str):
-        variable_label=create_key('tvar',avoid_caller_globals=register_in_vmf,key_length=6)
+):
+    if isinstance(variable_label, Integral) and number_of_variables is None:
+        variable_label, number_of_variables = None, variable_label
+    if not isinstance(variable_label, str):
+        variable_label = create_key(
+            "tvar", avoid_caller_globals=register_in_vmf, key_length=6
+        )
     if register_in_vmf:
-        newObj=createVariables(variable_label=variable_label,number_of_variables=number_of_variables,initialIndex=initialIndex,multiindex_shape=multiindex_shape,assumeReal=assumeReal,return_created_object=return_created_object,temporary_variables=True,remove_guardrails=remove_guardrails)
-        if isinstance(newObj,(list,tuple)) and len(newObj)==1:
-            newObj=newObj[0]
+        newObj = createVariables(
+            variable_label=variable_label,
+            number_of_variables=number_of_variables,
+            initialIndex=initialIndex,
+            multiindex_shape=multiindex_shape,
+            assumeReal=assumeReal,
+            return_created_object=return_created_object,
+            temporary_variables=True,
+            remove_guardrails=remove_guardrails,
+        )
+        if isinstance(newObj, (list, tuple)) and len(newObj) == 1:
+            newObj = newObj[0]
         return newObj
-    newObj=variableProcedure(variables_label=variable_label,number_of_variables=number_of_variables,initialIndex=initialIndex,multiindex_shape=multiindex_shape,assumeReal=assumeReal,return_created_object=return_created_object,_tempVar=retrieve_passkey(),remove_guardrails=remove_guardrails)
-    if isinstance(newObj,(list,tuple)) and len(newObj)==1:
-        newObj=newObj[0]
+    newObj = variableProcedure(
+        variables_label=variable_label,
+        number_of_variables=number_of_variables,
+        initialIndex=initialIndex,
+        multiindex_shape=multiindex_shape,
+        assumeReal=assumeReal,
+        return_created_object=return_created_object,
+        _tempVar=retrieve_passkey(),
+        remove_guardrails=remove_guardrails,
+    )
+    if isinstance(newObj, (list, tuple)) and len(newObj) == 1:
+        newObj = newObj[0]
     return newObj
+
 
 def _format_complex_coordinates(
     coordinate_tuple, default_var_format="complex", pass_error_report=None
@@ -4238,608 +7073,64 @@ def _format_complex_coordinates(
     return tuple(newList1 + newList2)
 
 
-############## variable format conversion
-
-
-def _VFDF_conversion(obj, default_var_format=None, _converter=None, coeffsOnly=None):
-    def converter(
-        expr, _conv
-    ):  # !!! typically invoking some recursion... try to optimize
-        if _conv is None:
-            return expr
-        return _conv(expr)
-
-    if coeffsOnly is not False:
-        if isinstance(obj, (VFClass, DFClass)):
-            return obj.subs(coeffsOnly)
-    if default_var_format == "complex":
-        if isinstance(obj, VFClass):
-            if obj.dgcvType == "standard":
-                return VFClass(
-                    obj.varSpace,
-                    [converter(j, _converter) for j in obj.coeffs],
-                    dgcvType=obj.dgcvType,
-                    _simplifyKW=obj._simplifyKW,
-                )
-            varSpace = obj.cd_formats["compCoeffDataDict"][0]
-            coeffsDict = obj.cd_formats["compCoeffDataDict"][1]
-            coeffs = [
-                converter(coeffsDict[(j,)], _converter) for j in range(len(varSpace))
-            ]
-            return VFClass(
-                varSpace, coeffs, dgcvType=obj.dgcvType, _simplifyKW=obj._simplifyKW
-            )
-        elif isinstance(obj, DFClass):
-            specialCase = obj.dgcvType == "complex" and obj._varSpace_type == "complex"
-            if obj.dgcvType == "standard" or specialCase:
-                return DFClass(
-                    obj.varSpace,
-                    {
-                        a: converter(b, _converter)
-                        for a, b in obj.DFClassDataDict.items()
-                    },
-                    obj.degree,
-                    dgcvType=obj.dgcvType,
-                    _simplifyKW=obj._simplifyKW,
-                )
-            varSpace = obj.cd_formats["compCoeffDataDict"][0]
-            dataDict = obj.cd_formats["compCoeffDataDict"][1]
-            dataDict = {a: converter(b, _converter) for a, b in dataDict.items()}
-            return DFClass(
-                varSpace,
-                dataDict,
-                obj.degree,
-                dgcvType=obj.dgcvType,
-                _simplifyKW=obj._simplifyKW,
-            )
-    elif default_var_format == "real":
-        if isinstance(obj, VFClass):
-            if obj.dgcvType == "standard":
-                return VFClass(
-                    obj.varSpace,
-                    [converter(a, _converter) for a in obj.coeffs],
-                    dgcvType=obj.dgcvType,
-                    _simplifyKW=obj._simplifyKW,
-                )
-            varSpace = obj.cd_formats["realCoeffDataDict"][0]
-            coeffsDict = obj.cd_formats["realCoeffDataDict"][1]
-            coeffs = [
-                converter(coeffsDict[(j,)], _converter) for j in range(len(varSpace))
-            ]
-            return VFClass(
-                varSpace, coeffs, dgcvType=obj.dgcvType, _simplifyKW=obj._simplifyKW
-            )
-        elif isinstance(obj, DFClass):
-            specialCase = obj.dgcvType == "complex" and obj._varSpace_type == "real"
-            if obj.dgcvType == "standard" or specialCase:
-                return DFClass(
-                    obj.varSpace,
-                    {
-                        a: converter(b, _converter)
-                        for a, b in obj.DFClassDataDict.items()
-                    },
-                    obj.degree,
-                    dgcvType=obj.dgcvType,
-                    _simplifyKW=obj._simplifyKW,
-                )
-            varSpace = obj.cd_formats["realCoeffDataDict"][0]
-            dataDict = obj.cd_formats["realCoeffDataDict"][1]
-            dataDict = {a: converter(b, _converter) for a, b in dataDict.items()}
-            return DFClass(
-                varSpace,
-                dataDict,
-                obj.degree,
-                dgcvType=obj.dgcvType,
-                _simplifyKW=obj._simplifyKW,
-            )
-
-
-def holToReal(expr, skipVar=None, simplify_everything=True):
-    """
-    Converts holomorphic variables in the expression to real variables.
-
-    Parameters:
-        expr : sympy.Expr or VFClass/DFClass
-            The expression to convert.
-        skipVar : list of str, optional
-            A list of holomorphic variable system labels to skip during conversion.
-            For any variable in skipVar, the associated holomorphic variables will
-            not be substituted.
-        simplify_everything : bool, optional
-            If True, simplifies the resulting expression.
-
-    Returns:
-        input type
-            The expression with holomorphic variables replaced by real variables,
-            except for those specified in skipVar.
-    """
-    vr = get_variable_registry()
-    conv_holToReal = vr.get("conversion_dictionaries", {}).get("holToReal", {}).copy()
-
-    if skipVar:
-        for var in skipVar:
-            complex_system = vr.get("complex_variable_systems", {}).get(var, {})
-            family_values = complex_system.get("family_values", ((), (), (), ()))
-            if complex_system.get("family_type") == "single":
-                family_values = tuple([j] for j in family_values)
-            holomorphic_vars = family_values[0] if len(family_values) > 0 else ()
-            for hol_var in holomorphic_vars:
-                if hol_var in conv_holToReal:
-                    conv_holToReal.pop(hol_var)
-
-    if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
-        co = False if simplify_everything is True else conv_holToReal
-        return _VFDF_conversion(
-            expr, default_var_format="real", _converter=holToReal, coeffsOnly=co
-        )
-    if isinstance(expr, numbers.Number):
-        return expr
-    if _is_atomic(expr):
-        if expr in conv_holToReal:
-            return conv_holToReal[expr]
-        else:
-            return expr
-    if isinstance(expr, _get_expr_types()):
-        filtered_subs = {
-            sym: conv_holToReal[sym]
-            for sym in get_free_symbols(expr)
-            if sym in conv_holToReal
-        }
-        result = sp.sympify(expr).subs(filtered_subs)
-        if simplify_everything:
-            result = sp.simplify(result)
-        return result
-    if hasattr(expr, "applyfunc"):
-        return expr.applyfunc(
-            lambda e: holToReal(
-                e, skipVar=skipVar, simplify_everything=simplify_everything
-            )
-        )
-    return expr
-
-
-def realToSym(expr, skipVar=None, simplify_everything=True):
-    """
-    Converts real variables in the expression to symbolic conjugates.
-
-    Parameters:
-        expr : sympy.Expr or VFClass/DFClass
-            The expression to convert.
-        skipVar : list of str, optional
-            A list of real variable system labels to skip during conversion.
-            For any variable in skipVar, the associated real and imaginary variables
-            will not be substituted.
-        simplify_everything : bool, optional
-            If True, simplifies the resulting expression.
-
-    Returns:
-        input type
-            The expression with real variables replaced by symbolic conjugates,
-            except for those specified in skipVar.
-    """
-    vr = get_variable_registry()
-    conv_realToSym = vr.get("conversion_dictionaries", {}).get("realToSym", {}).copy()
-
-    if skipVar:
-        for var in skipVar:
-            complex_system = vr.get("complex_variable_systems", {}).get(var, {})
-            family_values = complex_system.get("family_values", ((), (), (), ()))
-            if complex_system.get("family_type", None) == "single":
-                family_values = tuple([(j,) for j in family_values])
-            real_vars = family_values[2] if len(family_values) > 2 else ()
-            imag_vars = family_values[3] if len(family_values) > 3 else ()
-            for real_var in real_vars + imag_vars:
-                if real_var in conv_realToSym:
-                    conv_realToSym.pop(real_var)
-
-    if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
-        co = False if simplify_everything is True else conv_realToSym
-        return _VFDF_conversion(
-            expr, default_var_format="complex", _converter=realToSym, coeffsOnly=co
-        )
-
-    if isinstance(expr, numbers.Number):
-        return expr
-
-    if _is_atomic(expr):
-        if expr in conv_realToSym:
-            return conv_realToSym[expr]
-        else:
-            return expr
-
-    if isinstance(expr, _get_expr_types()):
-        filtered_subs = {
-            sym: conv_realToSym[sym]
-            for sym in get_free_symbols(expr)
-            if sym in conv_realToSym
-        }
-        result = sp.sympify(expr).subs(filtered_subs)
-        if simplify_everything:
-            result = sp.simplify(result)
-        return result
-
-    if hasattr(expr, "applyfunc"):
-        return expr.applyfunc(
-            lambda e: realToSym(
-                e, skipVar=skipVar, simplify_everything=simplify_everything
-            )
-        )
-    return expr
-
-
-def symToHol(expr, skipVar=None, simplify_everything=True):
-    """
-    Converts symbolic conjugated variables in the expression to holomorphic variables.
-
-    Parameters:
-        expr : sympy.Expr or VFClass/DFClass
-            The expression to convert.
-        skipVar : list of str, optional
-            A list of holomorphic variable system labels to skip during conversion.
-            For any variable in skipVar, the associated antiholomorphic variables
-            will not be substituted.
-        simplify_everything : bool, optional
-            If True, simplifies the resulting expression.
-
-    Returns:
-        Same type as input:
-            The expression with symbolic conjugates replaced by holomorphic variables,
-            except for those specified in skipVar.
-    """
-    variable_registry = get_variable_registry()
-    conversion_dict = (
-        variable_registry.get("conversion_dictionaries", {}).get("symToHol", {}).copy()
-    )
-
-    if skipVar:
-        for var in skipVar:
-            complex_system = variable_registry.get("complex_variable_systems", {}).get(
-                var, {}
-            )
-            family_values = complex_system.get("family_values", ((), (), (), ()))
-            if complex_system.get("family_type", None) == "single":
-                family_values = tuple([(j,) for j in family_values])
-            antiholomorphic_vars = family_values[1] if len(family_values) > 1 else ()
-            for anti_var in antiholomorphic_vars:
-                if anti_var in conversion_dict:
-                    del conversion_dict[anti_var]
-
-    if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
-        co = False if simplify_everything is True else conversion_dict
-        return _VFDF_conversion(
-            expr, default_var_format="complex", _converter=symToHol, coeffsOnly=co
-        )
-    if isinstance(expr, numbers.Number):
-        return expr
-    if _is_atomic(expr):
-        if expr in conversion_dict:
-            return conversion_dict[expr]
-        else:
-            return expr
-    if isinstance(expr, _get_expr_types()):
-        filtered_subs = {
-            sym: conversion_dict[sym]
-            for sym in get_free_symbols(expr)
-            if sym in conversion_dict
-        }
-        result = expr.subs(filtered_subs)
-        if simplify_everything:
-            result = sp.simplify(result)
-        return result
-    if hasattr(expr, "applyfunc"):
-        return expr.applyfunc(
-            lambda e: symToHol(
-                e, skipVar=skipVar, simplify_everything=simplify_everything
-            )
-        )
-    return expr
-
-
-def holToSym(expr, skipVar=None, simplify_everything=True):
-    """
-    Converts holomorphic variables in the expression to symbolic conjugates.
-    This is done by first converting holomorphic variables to real variables,
-    and then converting real variables to symbolic conjugates.
-
-    Note: This process will also convert any present real variables
-    (both real and imaginary parts) to their symbolic conjugate format.
-
-    Parameters:
-    expr : sympy.Expr
-        The expression to convert.
-    skipVar : list of str, optional
-        A list of holomorphic variable system labels to skip during conversion.
-        For any variable in skipVar, the associated holomorphic variables and
-        their real counterparts will not be substituted.
-
-    Returns:
-    sympy.Expr
-        The expression with holomorphic variables (and any present real variables)
-        replaced by symbolic conjugates, except for those specified in skipVar.
-    """
-    expr = holToReal(expr, skipVar=skipVar, simplify_everything=simplify_everything)
-
-    expr = realToSym(expr, skipVar=skipVar, simplify_everything=simplify_everything)
-
-    return expr
-
-
-def cleanUpConjugation(arg1, skipVar=None):
-    """
-    While working with symbolic conjugate expressions it can easily happen that sympy generates expressions having actual conjugation applied to symbolic conjugate variables. Apply this command to simplify such redundancies.
-
-    This is often necessary for *solve* functions to succeed.
-
-    Args:
-        arg1: sympy expression
-
-    Returns:
-        sympy expression
-
-    Raises:
-        NA
-    """
-    return realToSym(
-        symToReal(arg1, skipVar=skipVar, simplify_everything=False),
-        skipVar=skipVar,
-        simplify_everything=False,
-    )
-
-
-def realToHol(expr, skipVar=None, simplify_everything=True):
-    """
-    Converts real variables in the expression to holomorphic variables.
-
-    Parameters:
-        expr : sympy.Expr
-            The expression to convert.
-        skipVar : list of str, optional
-            A list of real variable system labels to skip during conversion.
-            For any variable in skipVar, the associated real and imaginary variables
-            will not be substituted.
-        simplify_everything : bool, optional
-            If True, simplifies the resulting expression.
-
-    Returns:
-        sympy.Expr
-            The expression with real variables replaced by holomorphic variables,
-            except for those specified in skipVar.
-    """
-    vr = get_variable_registry()
-    conv_realToHol = vr.get("conversion_dictionaries", {}).get("realToHol", {}).copy()
-    if skipVar:
-        for var in skipVar:
-            complex_system = vr.get("complex_variable_systems", {}).get(var, {})
-            family_values = complex_system.get("family_values", ((), (), (), ()))
-
-            if complex_system.get("family_type") == "single":
-                family_values = tuple([j] for j in family_values)
-
-            real_vars = family_values[2] if len(family_values) > 2 else ()
-            imag_vars = family_values[3] if len(family_values) > 3 else ()
-            for real_var in real_vars + imag_vars:
-                if real_var in conv_realToHol:
-                    conv_realToHol.pop(real_var)
-
-    if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
-        co = False if simplify_everything is True else conv_realToHol
-        return _VFDF_conversion(
-            expr, default_var_format="complex", _converter=realToHol, coeffsOnly=co
-        )
-    if isinstance(expr, numbers.Number):
-        return expr
-    if _is_atomic(expr):
-        if expr in conv_realToHol:
-            return conv_realToHol[expr]
-        else:
-            return expr
-    if isinstance(expr, _get_expr_types()):
-        reformatted_subs_dict = {
-            sym: conv_realToHol[sym]
-            for sym in get_free_symbols(expr)
-            if sym in conv_realToHol
-        }
-        result = sp.sympify(expr).subs(reformatted_subs_dict)
-        if simplify_everything:
-            result = sp.simplify(result)
-        return result
-    if hasattr(expr, "applyfunc"):
-        return expr.applyfunc(
-            lambda e: realToHol(
-                e, skipVar=skipVar, simplify_everything=simplify_everything
-            )
-        )
-    return expr
-
-
-def symToReal(expr, skipVar=None, simplify_everything=True):
-    """
-    Converts symbolic conjugates in the expression to real variables.
-
-    Parameters:
-        expr : sympy.Expr or VFClass/DFClass
-            The expression to convert.
-        skipVar : list of str, optional
-            A list of symbolic conjugate system labels to skip during conversion.
-            For any variable in skipVar, the associated symbolic conjugates will not be substituted.
-        simplify_everything : bool, optional
-            If True, simplifies the resulting expression.
-
-    Returns:
-        Same type as input
-            The expression with symbolic conjugates replaced by real variables,
-            except for those specified in skipVar.
-    """
-    variable_registry = get_variable_registry()
-    conversion_dict = (
-        variable_registry.get("conversion_dictionaries", {}).get("symToReal", {}).copy()
-    )
-
-    if skipVar:
-        for var in skipVar:
-            complex_system = variable_registry.get("complex_variable_systems", {}).get(
-                var, {}
-            )
-            family_values = complex_system.get("family_values", ((), (), (), ()))
-            if complex_system.get("family_type", None) == "single":
-                # Ensure family_values is a tuple of iterables
-                family_values = tuple([(j,) for j in family_values])
-            # Assume the second tuple contains the symbolic conjugate (antiholomorphic) variables.
-            anti_vars = family_values[1] if len(family_values) > 1 else ()
-            for anti_var in anti_vars:
-                if anti_var in conversion_dict:
-                    del conversion_dict[anti_var]
-
-    if isinstance(expr, (VFClass, DFClass)) and simplify_everything:
-        co = False if simplify_everything is True else conversion_dict
-        return _VFDF_conversion(
-            expr, default_var_format="real", _converter=symToReal, coeffsOnly=co
-        )
-
-    if isinstance(expr, numbers.Number):
-        return expr
-    if _is_atomic(expr):
-        if expr in conversion_dict:
-            return conversion_dict[expr]
-        else:
-            return expr
-    if isinstance(expr, _get_expr_types()):
-        filtered_subs = {
-            sym: conversion_dict[sym]
-            for sym in get_free_symbols(expr)
-            if sym in conversion_dict
-        }
-        result = expr.subs(filtered_subs)
-        if simplify_everything:
-            result = sp.simplify(result)
-        return result
-    if hasattr(expr, "applyfunc"):
-        return expr.applyfunc(
-            lambda e: symToReal(
-                e, skipVar=skipVar, simplify_everything=simplify_everything
-            )
-        )
-    return expr
-
-
-def allToReal(expr, skipVar=None, simplify_everything=True):
-    """
-    !... not to be confused with "all too real"!
-
-    Converts all variables (holomorphic, symbolic conjugates, and real) to real variables.
-
-    Parameters:
-    expr : sympy.Expr
-        The expression to convert.
-    skipVar : list of str, optional
-        A list of variable system labels to skip during conversion.
-
-    Returns:
-    sympy.Expr
-        The expression with all variables converted to real variables,
-        except for those specified in skipVar.
-    """
-    expr = symToReal(expr, skipVar=skipVar, simplify_everything=simplify_everything)
-
-    expr = holToReal(expr, skipVar=skipVar, simplify_everything=simplify_everything)
-
-    return expr
-
-
-def allToHol(expr, skipVar=None, simplify_everything=True):
-    """
-    Converts all variables (real, symbolic conjugates, and holomorphic) to holomorphic variables.
-
-    Parameters:
-    expr : sympy.Expr
-        The expression to convert.
-    skipVar : list of str, optional
-        A list of variable system labels to skip during conversion.
-
-    Returns:
-    sympy.Expr
-        The expression with all variables converted to holomorphic variables,
-        except for those specified in skipVar.
-    """
-
-    if isinstance(expr, list):
-        return [allToHol(j) for j in expr]
-    if isinstance(expr, tuple):
-        return [allToHol(j) for j in expr]
-
-    expr = symToHol(expr, skipVar=skipVar, simplify_everything=simplify_everything)
-
-    expr = realToHol(expr, skipVar=skipVar, simplify_everything=simplify_everything)
-
-    return expr
-
-
-def allToSym(expr, skipVar=None, simplify_everything=True):
-    """
-    Converts all variables (holomorphic, real, and symbolic conjugates) to symbolic conjugates.
-
-    Note: This process will also convert any present real variables
-    (both real and imaginary parts) to their symbolic conjugate format.
-
-    Parameters:
-    expr : sympy.Expr
-        The expression to convert.
-    skipVar : list of str, optional
-        A list of variable system labels to skip during conversion.
-
-    Returns:
-    sympy.Expr
-        The expression with all variables converted to symbolic conjugates,
-        except for those specified in skipVar.
-    """
-    return holToSym(expr, skipVar=skipVar, simplify_everything=simplify_everything)
-
-
-def _remove_complex_handling(arg):
-    if isinstance(arg, VFClass):
-        return VFClass(arg.varSpace, arg.coeffs)
-    if isinstance(arg, DFClass):
-        return DFClass(arg.varSpace, arg.DFClassDataDict, arg.degree)
-
-
+# -----------------------------------------------------------------------------
+# variable format conversion
+# -----------------------------------------------------------------------------
 def complex_struct_op(vf):
-    if isinstance(vf, VFClass):
-        if vf.dgcvType == "standard":
-            return vf
-        elif vf._varSpace_type == "real":
-            newVarSpace = vf.cd_formats["realCoeffDataDict"][0]
-            cd_data = vf.cd_formats["realCoeffDataDict"][1]
-            CDim = len(vf.holVarSpace)
-            coeffs1 = []
-            coeffs2 = []
-            for j in range(CDim):
-                yIndex = (CDim + j,)
-                xIndex = (j,)
-                coeffs1 = coeffs1 + [-cd_data[yIndex]]
-                coeffs2 = coeffs2 + [cd_data[xIndex]]
-            return VFClass(
-                newVarSpace,
-                coeffs1 + coeffs2,
-                dgcvType="complex",
-                _simplifyKW=vf._simplifyKW,
-            )
-        elif vf._varSpace_type == "complex":
-            newVarSpace = vf.cd_formats["compCoeffDataDict"][0]
-            cd_data = vf.cd_formats["compCoeffDataDict"][1]
-            CDim = len(vf.holVarSpace)
-            coeffs1 = []
-            coeffs2 = []
-            for j in range(CDim):
-                zIndex = (j,)
-                BARzIndex = (CDim + j,)
-                coeffs1 = coeffs1 + [I * cd_data[zIndex]]
-                coeffs2 = coeffs2 + [-I * cd_data[BARzIndex]]
-            return VFClass(
-                newVarSpace,
-                coeffs1 + coeffs2,
-                dgcvType="complex",
-                _simplifyKW=vf._simplifyKW,
-            )
+    if not query_dgcv_categories(vf, {"vector_field"}):
+        raise TypeError("complex_struct_op expects a vector_field instance.")
+
+    imu = imag_unit()
+    vst = vf.variable_spaces_types
+
+    new_cd = {}
+
+    for k, c in vf.coeff_dict.items():
+        if not c:
+            continue
+
+        if k == tuple():
+            new_cd[tuple()] = new_cd.get(tuple(), 0) + c
+            continue
+
+        d = len(k) // 3
+        idxs = list(k[:d])
+        valence_tuple = k[d : 2 * d]
+        syslbls = k[2 * d :]
+
+        for slot in range(d):
+            sys = syslbls[slot]
+            sys_data = vst.get(sys)
+
+            if sys_data is None or sys_data.get("type") != "complex":
+                continue
+
+            b0, b1, b2 = sys_data["breaks"]
+            idx = idxs[slot]
+
+            if idx < b0:  # holo
+                c = imu * c
+            elif idx < b1:  # anti
+                c = -imu * c
+            elif idx < b2:  # real
+                idxs[slot] = idx + (b2 - b1)  # -> imag
+            else:  # imag
+                idxs[slot] = idx - (b2 - b1)  # -> real
+                c = -c
+
+        nk = tuple(idxs) + valence_tuple + syslbls
+        new_cd[nk] = new_cd.get(nk, 0) + c
+
+    if not new_cd:
+        new_cd = {tuple(): 0}
+
+    return vf.__class__(
+        coeff_dict=new_cd,
+        data_shape=getattr(vf, "data_shape", "all"),
+        dgcvType=getattr(vf, "dgcvType", "standard"),
+        _simplifyKW=getattr(vf, "_simplifyKW", None),
+        variable_spaces=getattr(vf, "_variable_spaces", None),
+    )
 
 
 def conjugate_DGCV(expr):
@@ -4853,56 +7144,53 @@ def conjugate_DGCV(expr):
 
 
 def conjugate_dgcv(expr):
-    if isinstance(expr, (VFClass, DFClass)):
-        return _conjComplexVFDF(expr)
-    else:
-        return sp.conjugate(expr)
+    return conjugate(expr)
 
 
 def conj_with_real_coor(expr):
-    return allToReal(expr).subs({I: -I})
+    return allToReal(expr).subs({imag_unit(): -imag_unit()})
 
 
 def re_with_real_coor(expr):
     expr = allToReal(expr)
-    s = sp.simplify(sp.Rational(1, 2) * (expr + conj_with_real_coor(expr)))
+    s = simplify(half * (expr + conj_with_real_coor(expr)))
     return s
 
 
 def im_with_real_coor(expr):
     expr = allToReal(expr)
-    s = sp.simplify(-I * sp.Rational(1, 2) * (expr - conj_with_real_coor(expr)))
+    s = simplify(-imag_unit() * half * (expr - conj_with_real_coor(expr)))
     return s
 
 
 def conj_with_hol_coor(expr):
     vr = get_variable_registry()
     subsDictA = vr["conversion_dictionaries"]["conjugation"]
-    subsDict = subsDictA | {I: -I}
+    subsDict = subsDictA | {imag_unit(): -imag_unit()}
     return allToSym(expr).subs(subsDict, simultaneous=True)
 
 
 def re_with_hol_coor(expr):
     expr = allToSym(expr)
-    s = sp.simplify(sp.Rational(1, 2) * (expr + conj_with_hol_coor(expr)))
+    s = simplify(half * (expr + conj_with_hol_coor(expr)))
     return s
 
 
 def im_with_hol_coor(expr):
     expr = allToSym(expr)
-    s = sp.simplify(-I * sp.Rational(1, 2) * (expr - conj_with_hol_coor(expr)))
+    s = simplify(-imag_unit() * half * (expr - conj_with_hol_coor(expr)))
     return s
 
 
-############## basic vector field and differential forms operations
-
-
+# -----------------------------------------------------------------------------
+# basic vector field and differential forms operations
+# -----------------------------------------------------------------------------
 def VF_coeffs_direct(vf, var_space, sparse=False):
     """
     Depricated: Use `VF_coeffs` instead.
     """
-    if not isinstance(vf, VFClass):
-        raise TypeError("Expected first argument to be an instance of VFClass")
+    if not query_dgcv_categories(vf, {"vector_field"}):
+        raise TypeError("Expected first argument to be a vector field")
 
     if not isinstance(var_space, (list, tuple)):
         raise TypeError("Expected second argument to be a list or tuple of variables")
@@ -4912,959 +7200,171 @@ def VF_coeffs_direct(vf, var_space, sparse=False):
 
     # Return sparse or full result
     if sparse:
-        return [((i,), coeffs[i]) for i in range(len(coeffs)) if coeffs[i] != 0] or [
-            ((0,), 0)
-        ]
+        return [
+            ((i,), coeffs[i])
+            for i in range(len(coeffs))
+            if not _scalar_is_zero(coeffs[i])
+        ] or [((0,), 0)]
     return coeffs
 
 
-def minimalVFDataDict(vf):
-    if isinstance(vf, VFClass):
-        return {
-            vf.varSpace[j]: vf.coeffs[j]
-            for j in range(len(vf.varSpace))
-            if vf.coeffs[j] != 0
-        }
+def VF_coeffs(vf, var_list, sparse: bool = False):
+    if not query_dgcv_categories(vf, {"vector_field"}):
+        raise TypeError(f"VF_coeffs expects a vector_field, got {type(vf).__name__}.")
 
+    if not isinstance(var_list, (list, tuple)):
+        raise TypeError("VF_coeffs expects var_list to be a list or tuple.")
 
-def minimalDFDataDict(df):
-    varTuple = df.varSpace
-    list_collection = df.DFClassDataMinimal
-    # Find all integers missing from the lists in list_collection
-    full_range = set(range(len(varTuple)))
-    found_indices = set()
+    cd = vf.coeff_dict
+    vspaces = getattr(vf, "_variable_spaces", None)
 
-    for lst, _ in list_collection:
-        found_indices.update(lst)
+    def _locate_in_vspaces(var):
+        if not isinstance(vspaces, dict):
+            return None, None
+        for syslbl, vs in vspaces.items():
+            try:
+                j = vs.index(var)
+            except Exception:
+                continue
+            return syslbl, j
+        return None, None
 
-    missing_indices = full_range - found_indices
+    coeffs = []
+    for var in var_list:
+        info = vmf_lookup(var, relatives=True, system_index=True)
+        rel = info.get("relatives") if isinstance(info, dict) else None
 
-    # Create new_varTuple by removing elements at missing indices
-    new_varTuple = tuple(
-        varTuple[i] for i in range(len(varTuple)) if i not in missing_indices
-    )
+        syslbl = rel.get("system_label") if isinstance(rel, dict) else None
+        j = info.get("system_index") if isinstance(rel, dict) else None
 
-    # Create a mapping of old indices to new indices
-    index_mapping = {}
-    new_index = 0
-    for old_index in range(len(varTuple)):
-        if old_index not in missing_indices:
-            index_mapping[old_index] = new_index
-            new_index += 1
+        if syslbl is None or j is None:
+            syslbl, j = _locate_in_vspaces(var)
 
-    # Reformat the lists in list_collection to use new indices
-    new_DFDataDict = dict()
-    for lst, val in list_collection:
-        new_inex = tuple([index_mapping[old_index] for old_index in lst])
-        new_DFDataDict[new_inex] = val
-
-    return new_varTuple, new_DFDataDict
-
-
-def compressDGCVClass(obj):
-    warnings.warn(
-        "`compressDGCVClass` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
-        "It will be removed in 2026. Please use `compress_dgcv_class` instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return compress_dgcv_class(obj)
-
-
-def compress_dgcv_class(obj):
-    """Removes superfluous variables from the variable space that a VFClass or DFClass object is defined w.r.t."""
-    if isinstance(obj, DFClass):
-        newVarSpace, newDFData = minimalDFDataDict(obj)
-        return DFClass(
-            newVarSpace,
-            newDFData,
-            obj.degree,
-            dgcvType=obj.dgcvType,
-            _simplifyKW=obj._simplifyKW,
-        )
-    elif isinstance(obj, VFClass):
-        VFData = minimalVFDataDict(obj)
-        newVarSpace = list(VFData.keys())
-        newCoeffs = [VFData[j] for j in newVarSpace]
-        return VFClass(
-            newVarSpace, newCoeffs, dgcvType=obj.dgcvType, _simplifyKW=obj._simplifyKW
-        )
-
-
-def VF_coeffs(vf, var_list, sparse=False):
-    """
-    Expresses coefficients of the vector field with respect to the list of variables in var_list,
-    assuming var_list contains at least all of the basis variables found in the varSpace attribute of vf.
-    It also works if var_list merely contains the minimum set of such variables needed to define the vector field,
-    and returns an error if not.
-
-    Additionally, if vf has dgcvType="complex" then var_list can have variables in real or holomorphic coordinates
-    but these types cannot be mixed.
-
-    Args:
-        vf: a vector field (an instance of VFClass)
-        var_list: a list or tuple containing Sympy Symbol objects
-
-    Returns:
-        List of Sympy expressions corresponding to the coefficients of vf with respect to each symbol in var_list.
-
-    Raises:
-        TypeError if vf is not a VFClass or if the symbols in var_list are not all from one coordinate format.
-    """
-    variable_registry = get_variable_registry()
-
-    if not isinstance(vf, VFClass):
-        raise TypeError(
-            f"VF_coeffs expects the first argument to be an instance of VFClass, not type: {type(vf)}"
-        )
-
-    def validate_varspace(vs):
-        vs = list(vs)
-        final_vs = []
-        warn = False
-        while len(vs) > 0:
-            var = vs[0]
-            if any(
-                [
-                    (var in j["family_values"])
-                    for j in variable_registry["standard_variable_systems"].values()
-                ]
-            ):
-                final_vs += vs[:1]
-                vs = vs[1:]
-            else:
-                relatives = []
-                for parent in variable_registry["complex_variable_systems"].values():
-                    if relatives == []:
-                        idx = None
-                        family_sets = parent["family_values"]
-                        for fSet in family_sets:
-                            if idx is None and (var in fSet):
-                                idx = fSet.index(var)
-                        if idx is not None:
-                            relatives = [fSet[idx] for fSet in family_sets]
-                if len(relatives) == 0:
-                    final_vs += vs[:1]
-                    vs = vs[1:]
-                else:
-                    new_vs = []
-                    extra_vs = []
-                    for iterVar in vs:
-                        if iterVar in relatives:
-                            extra_vs += [iterVar]
-                        else:
-                            new_vs += [iterVar]
-                    vs = new_vs
-                    if len(extra_vs) > 2:
-                        final_vs += extra_vs[:2]
-                        warn = True
-                    else:
-                        final_vs += extra_vs
-        return final_vs, warn
-
-    # For complex vector fields, check that the variable list is uniformly in one coordinate format.
-    special_handling = False
-    if vf.dgcvType == "complex":
-        conv_realToSym = variable_registry["conversion_dictionaries"]["realToSym"]
-        conv_symToReal = variable_registry["conversion_dictionaries"]["symToReal"]
-        if all(var in conv_realToSym for var in var_list):
-            if vf._varSpace_type == "complex":
-                vf = allToReal(vf)
-        elif all(var in conv_symToReal for var in var_list):
-            if vf._varSpace_type == "real":
-                vf = allToSym(vf)
-        else:
-            special_handling = True
-
-    if special_handling:
-        validated_vs, warning = validate_varspace(var_list)
-        if warning:
-            warnings.warn(
-                "The VF_coeffs function was given a non-independent list of coordinate functions for the variable space w.r.t. which it should decompose the VF. The maximal subset of independent coordinates selected from the given list in order was used instead. This issue is caused by providing redundant real and holomorphic coordinates simultaneously. "
+        if syslbl is None or j is None:
+            raise KeyError(
+                f"VF_coeffs could not locate a system_label/system_index for a variable {var} in var_list."
             )
-        vfR = allToReal(vf)
-        vfH = allToSym(vf)
-        MVFDR = minimalVFDataDict(vfR)
-        MVFDH = minimalVFDataDict(vfH)
-        coeffs = []
-        for var in validated_vs:
-            coef = MVFDR.get(var, 0)
-            if MVFDR == 0:
-                coeffs += [MVFDH.get(var, 0)]
-            else:
-                coeffs += [coef]
 
-    MVFD = minimalVFDataDict(vf)
-    coeffs = [MVFD.get(var, 0) for var in var_list]
+        coeffs.append(cd.get((j, 1, syslbl), 0))
 
     if sparse:
-        return [((i,), coeffs[i]) for i in range(len(coeffs)) if coeffs[i] != 0] or [
-            ((0,), 0)
-        ]
+        out = [((i,), c) for i, c in enumerate(coeffs) if not _scalar_is_zero(c)]
+        return out or [((0,), 0)]
+
     return coeffs
 
 
-def changeVFBasis(vf, vars):
-    return VFClass(vars, VF_coeffs(vf, vars), vf.dgcvType)
-
-
-def addVF(*args):
+def addVF(*vf_args):
     """
-    Adds the given vector fields (i.e., VFClass instances).
-
-    Args:
-        *args: any number of VFClass class instances
-
-    Returns:
-        A VFClass instance
-
-    Raises:
-        Exception: If any argument is not an instance of VFClass
+    Adds the given vector fields (i.e., vector_field_class instances).
+    This is a superfluous function preserved for backward-compatibility.
     """
-    if len(args) == 0:
-        return args
-    if all([isinstance(j, VFClass) for j in args]):
-        typeList = list(set([j.dgcvType for j in args]))
-        if len(typeList) == 1 and typeList[0] == "complex":
-            typeLoc = "complex"
-        else:
-            typeLoc = "standard"
-
-        # Initialize an empty list for varSpace and extend it with each j.varSpace
-        varSpaceLoc = []
-        for j in args:
-            varSpaceLoc.extend(j.varSpace)
-
-        # Convert to a tuple with unique entries using dict.fromkeys
-        varSpaceLoc = tuple(dict.fromkeys(varSpaceLoc))
-
-        coeffListLoc = [VF_coeffs(j, varSpaceLoc) for j in args]
-        coeffsLoc = [sum(j) for j in zip(*coeffListLoc)]
-
-        return VFClass(varSpaceLoc, coeffsLoc, typeLoc)
-    else:
-        raise Exception("Expected all arguments to be instances of the VFClass class.")
+    return sum(vf_args)
 
 
 def scaleVF(scalar, vector_field):
     """
-    Scales the given vector field (i.e., VFClass instance) *vector_field* by the scalar function (i.e., SymPy expression) *scalar*.
-
-    Args:
-        scalar: A SymPy expression representing the scalar multiplier.
-        vector_field: A VFClass instance representing the vector field to scale.
-
-    Returns:
-        A new VFClass instance representing the scaled vector field.
-
-    Raises:
-        TypeError: If the second argument is not an instance of the VFClass class.
+    Scales the given vector field.
+    This is a superfluous function preserved for backward-compatibility.
     """
-    if isinstance(vector_field, VFClass):
-        new_coeffs = [scalar * coeff for coeff in vector_field.coeffs]
-        return VFClass(vector_field.varSpace, new_coeffs, vector_field.dgcvType)
-    else:
+    return scalar * vector_field
+
+
+def VF_bracket(
+    X: Any,
+    Y: Any,
+    *,
+    doNotSimplify: bool = False,
+    **_ignored,
+):
+    if not query_dgcv_categories(X, {"vector_field"}):
         raise TypeError(
-            "Expected second argument to be an instance of the VFClass class."
+            f"VF_bracket expects X to be a vector field, got {type(X).__name__}."
         )
-
-
-def VF_bracket(arg1, arg2, doNotSimplify=False, fast_algorithm=True):
-    """
-    Computes the Lie bracket of two vector fields (i.e., VFClass instances) *arg1* and *arg2* that are
-    defined in the same or related variable space(s). The function supports both standard and complex
-    vector fields and offers an optimized fast algorithm for standard cases.
-
-    Parameters:
-    -----------
-    arg1 : VFClass
-        The first vector field to compute the Lie bracket.
-    arg2 : VFClass
-        The second vector field to compute the Lie bracket.
-    doNotSimplify : bool, optional
-        If True, the result is returned without simplification (default is False).
-    fast_algorithm : bool, optional
-        If True, the function uses a faster algorithm that converts all coefficients to real variables
-        for vector fields, reducing overhead but sacrificing variable format fidelity (default is True).
-
-    Returns:
-    --------
-    VFClass
-        A new vector field instance representing the Lie bracket of *arg1* and *arg2*.
-
-    Raises:
-    -------
-    Exception
-        If either *arg1* or *arg2* is not an instance of VFClass.
-
-    Example:
-    --------
-    >>> from dgcv import VF_bracket, complexVarProc
-    >>> complexVarProc('z','x','y',3)
-    >>> print(VF_bracket(x2*D_x1 - x1*D_x2, x3*D_x1 - x1*D_x3))
-    x3*D_x2 - x2*D_x3
-
-    >>> print(VF_bracket(z2*D_z1 - z1*D_z2, z3*D_z1 - z1*D_z3))
-    z3/2*D_x2 - z2/2*D_x3 - I*z3/2*D_y2 + I*z2/2*D_y3
-    """
-    if {arg1.__class__.__name__, arg2.__class__.__name__} == {"VFClass"}:
-        # Determine the type (standard/complex) based on dgcvType attribute
-        if arg1.dgcvType == "complex" or arg2.dgcvType == "complex":
-            typeLoc = (
-                "standard"
-                if (arg1.dgcvType != "complex" or arg2.dgcvType != "complex")
-                else "complex"
-            )
-            fast_handling = False
-        else:
-            typeLoc = "standard"
-            fast_handling = True
-
-        # align variable spaces
-        varSpaceLoc = (
-            arg1.varSpace
-            if arg1.varSpace == arg2.varSpace
-            else tuple(dict.fromkeys(arg1.varSpace + arg2.varSpace))
-        )
-
-        # Fast-handling: Avoid conversions if both are standard vector fields
-        if fast_handling:
-            coefLoc1 = VF_coeffs(arg1, varSpaceLoc)
-            coefLoc2 = VF_coeffs(arg2, varSpaceLoc)
-        elif fast_algorithm:
-            # Convert both vector fields to real variables so that complex handling can be ignored later
-            coefLoc1 = [symToReal(j) for j in VF_coeffs(arg1, varSpaceLoc)]
-            coefLoc2 = [symToReal(j) for j in VF_coeffs(arg2, varSpaceLoc)]
-        else:
-            coefLoc1 = VF_coeffs(allToReal(arg1), varSpaceLoc)
-            coefLoc2 = VF_coeffs(allToReal(arg2), varSpaceLoc)
-
-        # Combine the coefficients and optionally simplify
-        if doNotSimplify:
-            result_coefs = [
-                arg1(
-                    coefLoc2[j], ignore_complex_handling=fast_handling or fast_algorithm
-                )
-                - arg2(
-                    coefLoc1[j], ignore_complex_handling=fast_handling or fast_algorithm
-                )
-                for j in range(len(varSpaceLoc))
-            ]
-        else:
-            result_coefs = [
-                sp.simplify(
-                    arg1(
-                        coefLoc2[j],
-                        ignore_complex_handling=fast_handling or fast_algorithm,
-                    )
-                    - arg2(
-                        coefLoc1[j],
-                        ignore_complex_handling=fast_handling or fast_algorithm,
-                    )
-                )
-                for j in range(len(varSpaceLoc))
-            ]
-
-        return VFClass(varSpaceLoc, result_coefs, typeLoc)
-
-    else:
-        raise Exception("Expected arguments to be VFClass instances")
-
-
-def contravariantVFTensorCoeffs(varSpace, *vector_fields):
-    """
-    Computes the contravariant tensor product of k vector fields with respect to the given variable space.
-
-    This function evaluates the coefficients of the given vector fields in `vector_fields` on the specified
-    `varSpace` and returns a list representing the tensor product of these coefficients. It is primarily
-    used when evaluating a k-form on k vector fields.
-
-    Parameters
-    ----------
-    varSpace : list or tuple
-        A list or tuple of SymPy Symbol objects representing the variable space on which the vector fields are defined.
-
-    *vector_fields : VFClass instances
-        Any number of vector fields (instances of VFClass) that are evaluated in terms of the `varSpace`.
-
-    Returns
-    -------
-    list
-        A list of tuples, where each tuple contains:
-        - A tuple of coordinate indices corresponding to the variables involved in each product term.
-        - A SymPy expression representing the coefficient of the corresponding product term.
-
-    Raises
-    ------
-    TypeError
-        If any of the provided `vector_fields` is not an instance of `VFClass`.
-
-    Examples
-    --------
-    >>> from dgcv import VFClass, contravariantVFTensorCoeffs, creatVariables
-    >>> creatVariables('x1','x2')
-    >>> vf1 = VFClass([x, y], [1, -y])
-    >>> vf2 = VFClass([x, y], [y, 1])
-
-    # Compute the contravariant tensor product
-    >>> contravariantVFTensorCoeffs([x, y], vf1, vf2)
-    [((0, 0), 1), ((0, 1), -y), ((1, 0), y), ((1, 1), -y**2)]
-    """
-
-    # Evaluate the coefficients of each vector field with respect to varSpace
-    coeff_values = [VF_coeffs(vf, varSpace, sparse=True) for vf in vector_fields]
-
-    # Get the number of terms in each vector field's coefficient list
-    term_counts = [len(coeff_list) for coeff_list in coeff_values]
-
-    # Initialize product of coefficients with the first vector field
-    product_coeffs = coeff_values[0]
-
-    # Compute the tensor product for the remaining vector fields
-    for jj in range(1, len(term_counts)):
-        product_coeffs = [
-            (k[0] + ll[0], k[1] * ll[1])
-            for k in product_coeffs
-            for ll in coeff_values[jj]
-        ]
-
-    return product_coeffs
-
-
-def changeDFBasis(arg1, arg2):
-    newDFDataLoc = sparseKFormDataNewBasis(arg1.DFClassDataMinimal, arg1.varSpace, arg2)
-    return DFClass(
-        arg2,
-        newDFDataLoc,
-        arg1.degree,
-        dgcvType=arg1.dgcvType,
-        _simplifyKW=arg1._simplifyKW,
-    )
-
-
-def changeTFBasis(tensor_field, new_varSpace):
-    """
-    Change the basis of a tensorField to align with a new variable space.
-
-    Parameters
-    ----------
-    tensor_field : tensorField
-        The tensorField instance whose basis is to be changed.
-    new_varSpace : list or tuple
-        The new variable space to align the tensorField with.
-
-    Returns
-    -------
-    tensorField
-        A new tensorField instance with coefficients aligned to the new basis.
-    """
-    # Transform coeff_dict
-    new_coeff_dict = _TFDictToNewBasis(
-        tensor_field.coeff_dict, tensor_field.varSpace, new_varSpace
-    )
-
-    # Return a new tensorField instance with updated basis
-    return tensorField(
-        new_varSpace,
-        new_coeff_dict,
-        tensor_field.valence,
-        data_shape=tensor_field.data_shape,
-        dgcvType=tensor_field.dgcvType,
-        _simplifyKW=tensor_field._simplifyKW,
-    )
-
-
-def changeTensorFieldBasis(tensor_field, new_varSpace):
-    """
-    Converts a tensorField to a new basis while handling complex variable transformations.
-
-    If `tensor_field` has `dgcvType='complex'`, `new_varSpace` is validated so that:
-    - All variables belong to a complex variable system.
-    - Variables are converted to match the tensor's target type (real/imaginary or hol/antihol).
-
-    Parameters
-    ----------
-    tensor_field : tensorField
-        The tensor field instance to be converted.
-    new_varSpace : list or tuple
-        The new variable space.
-
-    Returns
-    -------
-    tensorField
-        A new tensorField instance with coefficients aligned to the new basis.
-
-    Warnings
-    --------
-    A warning is raised if `new_varSpace` contains variables that are not part of
-    a recognized dgcv complex coordinate system.
-    """
-
-    new_type = tensor_field.dgcvType
-    if new_type == "complex":
-        cd = get_variable_registry()[
-            "conversion_dictionaries"
-        ]  # Retrieve conversion dictionaries
-
-        # Determine the target type based on the first variable in tensor_field.varSpace
-        first_var = tensor_field.varSpace[0]
-        if first_var in cd["real_part"]:
-            target_type = "hol"
-        elif first_var in cd["find_parents"]:
-            target_type = "real"
-        else:
-            raise KeyError(
-                f"First variable {first_var} in tensor_field.varSpace is not part of complex variable system in dgcv's variable management framework."
-            )
-
-        # Verify all variables in new_varSpace belong to dgcv's complex variable system
-        if not all(
-            var in cd["real_part"] or var in cd["find_parents"] for var in new_varSpace
-        ):
-            warnings.warn(
-                "`changeTensorFieldBasis` was given a `complex` type tensor field and `new_varSpace` "
-                "containing variables that do not belong to complex coordinate systems, so a non-complex "
-                "type tensor field was returned."
-            )
-            new_type = "standard"
-        else:
-            # Build formatted_varSpace
-            formatted_varSpace = list(tensor_field.varSpace)
-
-            for var in new_varSpace:
-                if target_type == "hol":
-                    if var in cd["real_part"]:  # var is holomorphic/antiholomorphic
-                        formatted_varSpace.append(var)
-                    elif var in cd["find_parents"]:  # Convert real/imag to hol/antihol
-                        hol_var, antihol_var = cd["find_parents"][
-                            var
-                        ]  # Retrieve hol/antihol variables
-                        if hol_var not in formatted_varSpace:
-                            formatted_varSpace.append(hol_var)
-                        if antihol_var not in formatted_varSpace:
-                            formatted_varSpace.append(antihol_var)
-                elif target_type == "real":
-                    if var in cd["find_parents"]:  # var is real/imag
-                        formatted_varSpace.append(var)
-                    elif var in cd["real_part"]:  # Convert hol/antihol to real/imag
-                        real_var = cd["real_part"][var]  # Retrieve real part
-                        imag_var = next(
-                            iter(get_free_symbols((cd["im_part"][var])))
-                        )  # Retrieve imaginary part
-                        if real_var not in formatted_varSpace:
-                            formatted_varSpace.append(real_var)
-                        if imag_var not in formatted_varSpace:
-                            formatted_varSpace.append(imag_var)
-
-            # Replace new_varSpace with the validated version
-            new_varSpace = formatted_varSpace
-
-    new_coeff_dict = _TFDictToNewBasis(
-        tensor_field.expanded_coeff_dict, tensor_field.varSpace, new_varSpace
-    )
-
-    # Return a new tensorField instance with updated basis
-    return tensorField(
-        varSpace=tuple(new_varSpace),
-        coeff_dict=new_coeff_dict,
-        valence=tensor_field.valence,
-        data_shape=tensor_field.data_shape,
-        dgcvType=new_type,
-        _simplifyKW=tensor_field._simplifyKW,
-    )
-
-
-def _TFDictToNewBasis(data_dict, oldBasis, newBasis):
-    """
-    Transforms a tensorField's coefficient dictionary to a new variable space.
-
-    Parameters
-    ----------
-    data_dict : dict
-        The coefficient dictionary of a tensorField in its original basis.
-    oldBasis : tuple
-        The original variable space.
-    newBasis : tuple
-        The new variable space to which we want to align.
-
-    Returns
-    -------
-    dict
-        A transformed coefficient dictionary aligned to the new variable space.
-    """
-    data_list = list(data_dict.items())
-    degree = len(data_list[0][0]) if data_list else 0
-
-    try:
-        new_data_dict = {
-            tuple(newBasis.index(oldBasis[k]) for k in j[0]): j[1]
-            for j in data_list
-            if j[1] != 0
-        }
-    except ValueError as e:
-        raise ValueError(
-            f"`_TFDictToNewBasis` received bases where an element in oldBasis {oldBasis} does not exist in newBasis {newBasis}. "
-            f"This issue arises because the sparse tensor data structure indicates this element is crucial in the tensor's definition: {e}"
-        )
-
-    if not new_data_dict:
-        new_data_dict = {(0,) * degree: 0}
-
-    return new_data_dict
-
-
-def changeSTFBasis(arg1, arg2):
-    newSTFDataLoc = sparseKFormDataNewBasis(
-        arg1.STFClassDataMinimal, arg1.varSpace, arg2
-    )
-    return STFClass(
-        arg2,
-        newSTFDataLoc,
-        arg1.degree,
-        dgcvType=arg1.dgcvType,
-        _simplifyKW=arg1._simplifyKW,
-    )
-
-
-def addTensorFields(*args, doNotSimplify=False):
-    """
-    Adds tensorField instances of the same type.
-    """
-    if len(args) == 0:
-        return None  # No arguments
-    if len(args) == 1:
-        return args[0]  # Single tensorField, nothing to add
-
-    # Check all arguments are tensorField instances
-    if not all(isinstance(arg, tensorField) for arg in args):
+    if not query_dgcv_categories(Y, {"vector_field"}):
         raise TypeError(
-            "addTensorFields expected all arguments to be tensorField instances."
+            f"VF_bracket expects Y to be a vector field, got {type(Y).__name__}."
         )
 
-    # # Check that all tensorFields have the same valence
-    # degrees = {tuple(arg.valence) for arg in args}
-    # if len(degrees) != 1:
-    #     raise ValueError("Adding tensorFields with different valences is not supported.")
+    cd_X = getattr(X, "coeff_dict", None)
+    cd_Y = getattr(Y, "coeff_dict", None)
+    if not isinstance(cd_X, dict) or not isinstance(cd_Y, dict):
+        raise TypeError("VF_bracket expects vector fields with a coeff_dict attribute.")
 
-    # Determine `data_shape` for the resulting tensorField
-    data_shapes = {arg.data_shape for arg in args}
-    if len(data_shapes) == 1:
-        result_data_shape = data_shapes.pop()  # Use the shared data_shape
-        use_expanded_coeffs = False
+    merged_vs = None
+    mv = getattr(X, "_merged_variable_spaces", None)
+    if callable(mv):
+        merged_vs = mv(Y)
     else:
-        result_data_shape = "general"  # Default to general if data_shapes differ
-        use_expanded_coeffs = True
+        merged_vs = getattr(X, "_variable_spaces", None)
 
-    # Align variable spaces
-    if len({tuple(arg.varSpace) for arg in args}) != 1:
-        # Combine varSpace while preserving order
-        varSpaceLoc = tuple(dict.fromkeys(sum([arg.varSpace for arg in args], ())))
-        args = [changeTensorFieldBasis(arg, varSpaceLoc) for arg in args]
+    out: Dict[tuple, Any] = {}
+
+    for k, v in cd_Y.items():
+        if v:
+            w = X(v)
+            if w:
+                out[k] = out.get(k, 0) + w
+
+    for k, v in cd_X.items():
+        if v:
+            w = Y(v)
+            if w:
+                out[k] = out.get(k, 0) - w
+
+    if not out:
+        out = {tuple(): 0}
     else:
-        varSpaceLoc = args[0].varSpace
+        if not doNotSimplify:
+            for k, v in list(out.items()):
+                if v:
+                    out[k] = simplify(v)
+        out = {k: v for k, v in out.items() if v}
+        if not out:
+            out = {tuple(): 0}
 
-    # Combine coefficients
-    combined_coeffs = {}
-    for tensor in args:
-        coeffs_to_add = (
-            tensor.expanded_coeff_dict if use_expanded_coeffs else tensor.coeff_dict
-        )
-        for key, value in coeffs_to_add.items():
-            if key in combined_coeffs:
-                if doNotSimplify:
-                    combined_coeffs[key] += value
-                else:
-                    combined_coeffs[key] = sp.simplify(combined_coeffs[key] + value)
-            else:
-                combined_coeffs[key] = value
+    out_cls = X.__class__ if (X.__class__ is Y.__class__) else vector_field_class
 
-    # Create the resulting tensorField
-    return tensorField(
-        varSpaceLoc,
-        combined_coeffs,
-        args[0].valence,
-        data_shape=result_data_shape,
-        dgcvType=args[0].dgcvType,
-        _simplifyKW=args[0]._simplifyKW,
+    return out_cls(
+        coeff_dict=out,
+        data_shape="all",
+        dgcvType=getattr(X, "dgcvType", "standard"),
+        _simplifyKW=getattr(X, "_simplifyKW", None),
+        variable_spaces=merged_vs,
     )
-
-
-def scaleTensorField(arg1, arg2):
-    """
-    Multiplies the given tensor field (tensorField instance) by a scalar or function.
-    """
-    if isinstance(arg2, tensorField):
-        return tensorField(
-            arg2.varSpace,
-            {a: arg1 * b for a, b in arg2.coeff_dict.items()},
-            valence=arg2.valence,
-            data_shape=arg2.data_shape,
-            dgcvType=arg2.dgcvType,
-            _simplifyKW=arg2._simplifyKW,
-        )
-    else:
-        raise Exception(
-            "scaleTensorField expected second positional argument to be a tensorField instance."
-        )
 
 
 def addDF(*args, doNotSimplify=False):
     """
-    Adds the given differential k-forms (DFClass instances). All forms must have the same degree.
-
-    This function adds any number of differential forms, returning a single differential form representing their sum.
-    If the forms are defined on different variable spaces, the function will handle the change of basis and align the
-    forms on a common variable space. The resulting form is returned as a DFClass instance.
-
-    Parameters
-    ----------
-    *args : DFClass
-        Any number of differential forms to be added. All forms must have the same degree.
-
-    doNotSimplify : bool, optional
-        If True, the result is returned without simplifying the coefficients (default is False).
-
-    Returns
-    -------
-    DFClass
-        A differential form (DFClass instance) representing the sum of the input forms.
-
-    Raises
-    ------
-    Exception
-        If the input forms have different degrees, or if the input arguments are not instances of DFClass.
-
-    Examples
-    --------
-    >>> from sympy import symbols
-    >>> from dgcv import DFClass, addDF
-    >>> x, y, z = symbols('x y z')
-    >>> df1 = DFClass([x, y], {(0,): 1, (1,): 2}, 1)
-    >>> df2 = DFClass([x, y], {(0,): 3, (1,): 4}, 1)
-    >>> df_sum = addDF(df1, df2)
-    >>> df_sum
-    DFClass([x, y], {(0,): 4, (1,): 6}, 1)
-
-    # Adding forms with change of basis
-    >>> df3 = DFClass([y, z], {(0,): 1, (1,): 2}, 1)
-    >>> df_sum_with_basis_change = addDF(df1, df3)
-    >>> df_sum_with_basis_change
-    DFClass([x, y, z], {...}, 1)  # Aligned on common variable space
+    Adds the given vector fields (i.e., vector_field_class instances).
+    This is a superfluous function preserved for backward-compatibility.
     """
+    return sum(args)
+
+
+def scaleDF(scalar, df):
+    """
+    Scales the given form
+    This is a superfluous function preserved for backward-compatibility.
+    """
+    return scalar * df
+
+
+def exteriorProduct(*args):
     if len(args) == 0:
-        return args
-    if len(args) == 1:
-        return args[0]
-    if all([isinstance(j, DFClass) for j in args]):
-        if len(set([j.degree for j in args])) == 1:
-            typeList = list(set([j.dgcvType for j in args]))
-            if len(typeList) == 1 and typeList[0] == "complex":
-                typeLoc = "complex"
-                if args[0]._varSpace_type == "real":
-                    args = [
-                        allToReal(df) if df._varSpace_type != "real" else df
-                        for df in args
-                    ]
-                else:
-                    args = [
-                        allToSym(df) if df._varSpace_type != "complex" else df
-                        for df in args
-                    ]
-            else:
-                typeLoc = "standard"
-                if len(typeList) != 1:
-                    warnings.warn(
-                        "Addition was performed between differential forms of `dgcvType` both `complex` and `standard`, so the resulting DFClass object has `dgcvType='standard'`, which disables complex variable handling. To preserve `dgcvType='complex'` make sure all DFClass objects in sum have `dgcvType='complex'`."
-                    )
+        raise TypeError("exteriorProduct expects at least one argument.")
 
-            # Fix here: Convert varSpace to tuples
-            if len(set([tuple(j.varSpace) for j in args])) != 1:
-                varSpaceLoc = list(dict.fromkeys(sum([j.varSpace for j in args], ())))
-                args = [changeDFBasis(j, varSpaceLoc) for j in args]
-            else:
-                varSpaceLoc = args[0].varSpace
-
-            coeffsLoc = dict()
-            if doNotSimplify:
-                for j in args:
-                    dictLoc = j.DFClassDataDict
-                    for a, b in dictLoc.items():
-                        permS, orderedList = permSign(a, returnSorted=True)
-                        orderedTuple = tuple(orderedList)
-                        if orderedTuple in coeffsLoc:
-                            coeffsLoc[orderedTuple] = (
-                                coeffsLoc[orderedTuple] + permS * b
-                            )
-                        else:
-                            coeffsLoc[orderedTuple] = permS * b
-            else:
-                for j in args:
-                    dictLoc = j.DFClassDataDict
-                    for a, b in dictLoc.items():
-                        permS, orderedList = permSign(a, returnSorted=True)
-                        orderedTuple = tuple(orderedList)
-                        if orderedTuple in coeffsLoc:
-                            coeffsLoc[orderedTuple] = sp.simplify(
-                                coeffsLoc[orderedTuple] + permS * b
-                            )
-                        else:
-                            coeffsLoc[orderedTuple] = permS * b
-
-            return DFClass(tuple(varSpaceLoc), coeffsLoc, args[0].degree, typeLoc)
-        else:
-            raise Exception(
-                "cannot add differential forms of different degrees. Suggestion: organize components of different degrees in a list that represents their sum and compute the addition with list comprehension."
+    for a in args:
+        if not query_dgcv_categories(a, {"differential_form"}):
+            raise TypeError(
+                "exteriorProduct expects differential_form objects. "
+                "Use dgcv creator functions to build differential forms."
             )
-    else:
-        raise Exception("addDF expected all arguments to be DFClass instances.")
 
-
-def scaleDF(arg1, arg2):
-    """
-    Multiplies the given differential form (DFClass instance) by a scalar or function.
-
-    This function scales a differential form `arg2` by a scalar or a symbolic expression `arg1`. The scaling is applied
-    to each coefficient in the differential form, resulting in a new scaled differential form.
-
-    Parameters
-    ----------
-    arg1 : Expr
-        A SymPy expression representing the scalar or function to scale the differential form by.
-
-    arg2 : DFClass
-        A differential form (DFClass instance) that will be scaled by `arg1`.
-
-    Returns
-    -------
-    DFClass
-        A new differential form (DFClass instance) where each coefficient has been multiplied by `arg1`.
-
-    Raises
-    ------
-    Exception
-        If `arg2` is not an instance of DFClass.
-
-    Examples
-    --------
-    >>> from dgcv import DFClass, scaleDF, creatVariables
-    >>> creatVariables('x1','x2')
-    >>> df = DFClass([x, y], {(0,): 1, (1,): 2}, 1)
-    >>> scale = 3
-    >>> scaled_df = scaleDF(scale, df)
-    >>> scaled_df
-    DFClass([x, y], {(0,): 3, (1,): 6}, 1)
-
-    # Scaling by a symbolic function
-    >>> f = x + y
-    >>> scaled_df_func = scaleDF(f, df)
-    >>> scaled_df_func
-    DFClass([x, y], {(0,): x + y, (1,): 2*(x + y)}, 1)
-    """
-    if arg2.__class__.__name__ == "DFClass":
-        return DFClass(
-            arg2.varSpace,
-            {a: arg1 * b for a, b in arg2.DFClassDataDict.items()},
-            arg2.degree,
-            arg2.dgcvType,
-        )
-    else:
-        raise Exception(
-            "scaleDF expected second positional argument to be a DFClass instance."
-        )
-
-
-def exteriorProduct(*args, doNotSimplify=False):
-    """
-    Computes the exterior (wedge) product of differential forms (DFClass instances).
-
-    This function takes any number of DFClass instances and computes their exterior product. It works by first
-    aligning the variable spaces of the forms, multiplying terms, and enforcing antisymmetry by using a permutation-based
-    approach. The result is a new DFClass instance representing the product.
-
-    Parameters
-    ----------
-    args : DFClass
-        One or more differential forms (DFClass instances).
-
-    doNotSimplify : bool, optional
-        If True, the resulting form's coefficients will not be simplified (default is False).
-
-    Returns
-    -------
-    DFClass
-        The exterior product of the input forms, as a new DFClass instance.
-
-    Raises
-    ------
-    Exception
-        If any of the arguments are not instances of DFClass.
-
-    Examples
-    --------
-    >>> from dgcv import DFClass, exteriorProduct, creatVariables
-    >>> creatVariables('x1','x2')
-    >>> df1 = DFClass([x], {0: 1}, 1)
-    >>> df2 = DFClass([y], {0: 1}, 1)
-    >>> exteriorProduct(df1, df2)
-    DFClass([x, y], {(0, 1): 1}, 2)
-    """
-    # Check if all arguments are DFClass instances
-    if not all(isinstance(j, DFClass) for j in args):
-        raise Exception("Expected all arguments to be instances of DFClass")
-
-    # Determine the type of the exterior product (standard or complex)
-    typeList = {j.dgcvType for j in args}
-    typeLoc = "complex" if len(typeList) == 1 and "complex" in typeList else "standard"
-    if typeLoc == "complex":
-        if args[0]._varSpace_type == "real":
-            if any(j._varSpace_type != "real" for j in args[1:]):
-                args = [allToReal(j) for j in args]
-        else:
-            if any(j._varSpace_type != "complex" for j in args[1:]):
-                args = [allToSym(j) for j in args]
-
-    # Efficient term combination for k-forms
-    def kFormTermMultiplier(arg1, arg2, degr):
-        result = dict()
-        for j in arg1:
-            for k in arg2:
-                combined_indices = j[0] + k[0]
-                if len(combined_indices) == len(set(combined_indices)):  # antisymmetry
-                    permS, orderedList = permSign(combined_indices, returnSorted=True)
-                    orderedTuple = tuple(orderedList)
-                    if orderedTuple in result:
-                        result[orderedTuple] = (
-                            result[orderedTuple] + permS * j[1] * k[1]
-                        )
-                    else:
-                        result[orderedTuple] = permS * j[1] * k[1]
-        return result if result else {(0,) * degr: 0}
-
-    # Compute the exterior product of two forms
-    def exteriorProductOf2(arg1, arg2):
-        varSpaceLoc = tuple(
-            dict.fromkeys(arg1.varSpace + arg2.varSpace)
-        )  # Combined variable space
-        prodDegree = arg1.degree + arg2.degree
-
-        # Align the variable spaces and get terms in the new basis
-        newForm1Loc = changeDFBasis(arg1, varSpaceLoc).DFClassDataMinimal
-        newForm2Loc = changeDFBasis(arg2, varSpaceLoc).DFClassDataMinimal
-
-        # Multiply terms and enforce antisymmetry
-        productTermsData = kFormTermMultiplier(newForm1Loc, newForm2Loc, prodDegree)
-
-        # Create new DFClass instances for the product terms
-        return DFClass(varSpaceLoc, productTermsData, prodDegree, typeLoc)
-
-    # Handle multiple differential forms
-    if len(args) > 1:
-        resultLoc = args[0]
-        for j in range(1, len(args)):
-            resultLoc = exteriorProductOf2(resultLoc, args[j])
-        return resultLoc
-    elif len(args) == 1:
-        return args[0]
+    out = args[0]
+    for a in args[1:]:
+        out = out._shape_product(a, kind="skew")
+    return out
 
 
 def _TFDictToNewBasis(data_dict, oldBasis, newBasis):
@@ -5875,7 +7375,7 @@ def _TFDictToNewBasis(data_dict, oldBasis, newBasis):
             [
                 (tuple(newBasis.index(oldBasis[k]) for k in j[0]), j[1])
                 for j in data_list
-                if j[1] != 0
+                if not _scalar_is_zero(j[1])
             ]
         )
     except ValueError as e:
@@ -5935,7 +7435,7 @@ def sparseKFormDataNewBasis(sparseKFormData, oldBasis, newBasis):
             [
                 (tuple(newBasis.index(oldBasis[k]) for k in j[0]), j[1])
                 for j in sparseKFormData
-                if j[1] != 0
+                if not _scalar_is_zero(j[1])
             ]
         )
     except ValueError as e:
@@ -5947,215 +7447,77 @@ def sparseKFormDataNewBasis(sparseKFormData, oldBasis, newBasis):
     return dataDict
 
 
-############## tensor fields
-
-
-def addSTF(*args, doNotSimplify=False):
-    """
-    Adds symmetric tensor fields (STFClass objects) of the same degree.
-    """
-    if len(args) == 0:
-        return args
-    if len(args) == 1:
-        return args[0]
-    if all([isinstance(j, STFClass) for j in args]):
-        if len(set([j.degree for j in args])) == 1:
-            typeList = list(set([j.dgcvType for j in args]))
-            if len(typeList) == 1 and typeList[0] == "complex":
-                typeLoc = "complex"
-                if args[0]._varSpace_type == "real":
-                    args = [
-                        allToReal(stf) if stf._varSpace_type != "real" else stf
-                        for stf in args
-                    ]
-                else:
-                    args = [
-                        allToSym(stf) if stf._varSpace_type != "complex" else stf
-                        for stf in args
-                    ]
-            else:
-                typeLoc = "standard"
-                if len(typeList) != 1:
-                    warnings.warn(
-                        "Addition was performed between symmetric tensor fields of `dgcvType` both `complex` and `standard`, so the resulting STFClass object has `dgcvType='standard'`, which disables complex variable handling. To preserve `dgcvType='complex'`, use only STFClass objects in sum with `dgcvType='complex'`."
-                    )
-
-            # Fix here: Convert varSpace to tuples
-            if len(set([tuple(j.varSpace) for j in args])) != 1:
-                varSpaceLoc = list(dict.fromkeys(sum([j.varSpace for j in args], ())))
-                args = [changeSTFBasis(j, varSpaceLoc) for j in args]
-            else:
-                varSpaceLoc = args[0].varSpace
-
-            coeffsLoc = dict()
-            if doNotSimplify:
-                for j in args:
-                    dictLoc = j.STFClassDataDict
-                    for a, b in dictLoc.items():
-                        _, orderedList = permSign(a, returnSorted=True)
-                        orderedTuple = tuple(orderedList)
-                        if orderedTuple in coeffsLoc:
-                            coeffsLoc[orderedTuple] = coeffsLoc[orderedTuple] + b
-                        else:
-                            coeffsLoc[orderedTuple] = b
-            else:
-                for j in args:
-                    dictLoc = j.STFClassDataDict
-                    for a, b in dictLoc.items():
-                        _, orderedList = permSign(a, returnSorted=True)
-                        orderedTuple = tuple(orderedList)
-                        if orderedTuple in coeffsLoc:
-                            coeffsLoc[orderedTuple] = sp.simplify(
-                                coeffsLoc[orderedTuple] + b
-                            )
-                        else:
-                            coeffsLoc[orderedTuple] = b
-
-            return STFClass(tuple(varSpaceLoc), coeffsLoc, args[0].degree, typeLoc)
-        else:
-            raise Exception(
-                "Adding symmetric tensor fields of different degrees is not supported at this time. Suggestion: organize components of different degrees in a list that represents their sum and compute the addition with list comprehension."
-            )
-    else:
-        raise Exception("addSTF expected all arguments to be STFClass instances.")
-
-
-def scaleTF(arg1, arg2):
-    """
-    Scales tensor fields TFClass and STFClass alike.
-    """
-    if isinstance(arg2, STFClass):
-        return STFClass(
-            arg2.varSpace,
-            {a: arg1 * b for a, b in arg2.STFClassDataDict.items()},
-            arg2.degree,
-            dgcvType=arg2.dgcvType,
-            _simplifyKW=arg2._simplifyKW,
+def wedge(*tfs):
+    types = {get_dgcv_category(tf) for tf in tfs if not check_dgcv_scalar(tf)}
+    if types != {"tensor_field"} and not all(
+        dgcv_type in {"algebra_element", "vector_space_element", "tensorProduct"}
+        for dgcv_type in types
+    ):
+        raise TypeError(
+            "`wedge` only operates on scalars and dgcv tensor field, tensor algebra, and vector space classes. The field and vector space classes moreover cannot mix."
         )
+    if len(tfs) == 0:
+        return
+    if len(tfs) == 1:
+        return tfs[0]
+    if len(tfs) > 2:
+        return wedge(wedge(tfs[0], tfs[1]), *tfs[2:])
+    tf1, tf2 = tfs
+    if check_dgcv_scalar(tf1) or check_dgcv_scalar(tf2):
+        return tf1 * tf2
+    elif get_dgcv_category(tf1) == "tensor_field":
+        return tf1.skew_product(tf2)
+    elif get_dgcv_category(tf1) == [
+        "algebra_element",
+        "vector_space_element",
+        "tensorProduct",
+    ]:
+        return tf1 @ tf2 - tf2 @ tf1
     else:
-        raise Exception(
-            "scaleTF expected second positional argument to be a TFClass or STFClass instance."
+        raise TypeError(
+            "`wedge` only operates on dgcv tensor field, tensor algebra, and vector space classes."
         )
 
 
+# -----------------------------------------------------------------------------
+# tensor fields
+# -----------------------------------------------------------------------------
 def tensor_product(*args, doNotSimplify=False):
     """
-    Computes the tensor product of tensorField instances, after aligning the coordinate systems they
-    are defined w.r.t.
-
-    Parameters
-    ----------
-    args : tensorField
-        One or more tensorField instances.
-
-    doNotSimplify : bool, optional
-        If True, the resulting form's coefficients will not be simplified (default is False).
-
-    Returns
-    -------
-    tensorField
-        The tensor product of the input tensor fields, as a new tensorField instance.
-
-    Raises
-    ------
-    Exception
-        If any of the arguments are not instances of tensorField.
+    Computes the tensor product of tensor_field_class instances by dispatching the tensor_field_class product method.
     """
-    # Check if all arguments are tensorField instances
-    if not all(isinstance(arg, (tensorField, float, int, sp.Expr)) for arg in args):
+    if not all(
+        check_dgcv_scalar(arg) or get_dgcv_category(arg) == "tensor_field"
+        for arg in args
+    ):
         bad_types = []
         for arg in args:
-            if not isinstance(arg, (tensorField, float, int, sp.Expr)):
+            if not (check_dgcv_scalar(arg) or isinstance(arg, tensorField)):
                 bad_types += [type(arg)]
         bad_types = list(set(bad_types))
         bt_str = ", ".join(bad_types)
         raise Exception(
             f"Expected all arguments to be instances of tensorField or scalar-like objects, not type: {bt_str}"
         )
-    non_scalars = [arg for arg in args if isinstance(arg, tensorField)]
-
-    if len(set([tf.dgcvType for tf in non_scalars])) == 1:
-        target_type = non_scalars[0].dgcvType
-    else:
-        if len(non_scalars) > 0:
-            warnings.warn(
-                "`tensor_product` was applied to tensorField instances with different dgcvType attributes, so a `dgcvType = 'standard'` tensorField was returned and variable formatting specific to any particular dgcvType was ignored."
-            )
-        target_type = "standard"
-    if target_type == "complex":
-        cd = get_variable_registry()[
-            "conversion_dictionaries"
-        ]  # Retrieve conversion dictionaries
-        # Determine the sub-target type based on the first variable in tensor_field.varSpace
-        first_var = args[0].varSpace[0]
-        if (
-            first_var in cd["real_part"]
-        ):  # Means it is in holomorphic/antiholomorphic set
-            args = [allToSym(arg) for arg in args]
-        elif first_var in cd["find_parents"]:  # Means it is in real/imaginary set
-            args = [allToReal(arg) for arg in args]
-        else:
-            raise KeyError(
-                f"First variable {first_var} in tensor_field.varSpace is not part of complex variable system in dgcv's variable management framework."
-            )
-
-    # Helper function to multiply terms
-    def TermMultiplier(coeff_dict1, coeff_dict2):
-        result = dict()
-        for key1, value1 in coeff_dict1.items():
-            for key2, value2 in coeff_dict2.items():
-                combined_key = key1 + key2
-                combined_value = value1 * value2
-                result[combined_key] = combined_value
-        return result if result else {(0,) * (len(coeff_dict1) + len(coeff_dict2)): 0}
-
-    # Helper function to compute the tensor product of two tensorFields
-    def tensor_productOf2(arg1, arg2):
-        new_varSpace = tuple(dict.fromkeys(arg1.varSpace + arg2.varSpace))
-
-        # Align the variable spaces and transform coefficients
-        aligned_arg1 = changeTensorFieldBasis(arg1, new_varSpace)
-        aligned_arg2 = changeTensorFieldBasis(arg2, new_varSpace)
-
-        # Combine valences
-        new_valence = aligned_arg1.valence + aligned_arg2.valence
-
-        # Multiply coefficient dictionaries
-        new_coeff_dict = TermMultiplier(
-            aligned_arg1.expanded_coeff_dict, aligned_arg2.expanded_coeff_dict
-        )
-
-        # Return the new tensorField
-        return tensorField(
-            new_varSpace,
-            new_coeff_dict,
-            new_valence,
-            data_shape="general",
-            dgcvType=arg1,
-            _simplifyKW=arg1._simplifyKW,
-        )
-
-    # Handle multiple tensors
-    if len(args) > 1:
-        result = args[0]
-        for next_tensor in args[1:]:
-            if isinstance(next_tensor, _get_expr_num_types()):
-                result = next_tensor * result
-            else:
-                result = tensor_productOf2(result, next_tensor)
-        return result
-    elif len(args) == 1:
+    if len(args) == 0:
+        return
+    if len(args) == 1:
         return args[0]
-    else:
-        raise ValueError("At least one tensorField is required.")
+    if check_dgcv_scalar(args[0]):
+        return args[0] * tensor_product(*args[1:])
+    if len(args) == 2:
+        return args[0].tensor_product(args[1])
+    return tensor_product(args[0].tensor_product(args[1]), *args[2:])
 
 
-############## complex vector fields
-
-
-def holVF_coeffs(arg1, arg2, doNotSimplify=False):
+# -----------------------------------------------------------------------------
+# complex vector fields
+# -----------------------------------------------------------------------------
+def holVF_coeffs(
+    vf: vector_field_class, arg2: list | tuple, doNotSimplify=False
+) -> tuple:
     """
-    Evaluates the vector field (i.e., VFClass instance) *arg1* on each holomorphic variable in *arg2*,
+    Evaluates the vector field (i.e., vector_field_class instance) *arg1* on each holomorphic variable in *arg2*,
     and returns the result as a list of coefficients.
 
     The variables in *arg2* must be previously initialized via complexVarProc. The function returns the
@@ -6164,7 +7526,7 @@ def holVF_coeffs(arg1, arg2, doNotSimplify=False):
 
     Parameters:
     -----------
-    arg1 : VFClass
+    arg1 : vector_field_class
         A vector field instance to evaluate on the holomorphic variables.
     arg2 : list or tuple
         A list or tuple of Symbol objects that were initialized as holomorphic variables via complexVarProc.
@@ -6174,29 +7536,19 @@ def holVF_coeffs(arg1, arg2, doNotSimplify=False):
     Returns:
     --------
     list
-        A list of sympy expressions representing the coefficients in holomorphic coordinates.
-
-    Raises:
-    -------
-    Exception
-        If any variables in *arg2* were not initialized as holomorphic variables.
-
-    Example:
-    --------
-    >>> from dgcv import complexVarProc, holVF_coeffs
-    >>> complexVarProc('z','x','y',3)
-    >>> holVF_coeffs(D_z1 + D_BARz2, [z1, z2, z3])
-    [1, 0, 0]
+        A list of symbolic expressions representing the coefficients in holomorphic coordinates.
     """
     if doNotSimplify:
-        return [realToHol(arg1(j)) for j in arg2]
+        return [realToHol(vf(j)) for j in arg2]
     else:
-        return [sp.simplify(allToHol(arg1(j))) for j in arg2]
+        return [simplify(realToHol(vf(j))) for j in arg2]
 
 
-def antiholVF_coeffs(arg1, arg2, doNotSimplify=False):
+def antiholVF_coeffs(
+    vf: vector_field_class, arg2: list | tuple, doNotSimplify=False
+) -> tuple:
     """
-    Evaluates the vector field (i.e., VFClass instance) *arg1* on the conjugate of each holomorphic variable
+    Evaluates the vector field (i.e., vector_field_class instance) *arg1* on the conjugate of each holomorphic variable
     in *arg2*, and returns the result as a list of coefficients.
 
     The variables in *arg2* must be previously initialized via complexVarProc. The function returns the
@@ -6205,7 +7557,7 @@ def antiholVF_coeffs(arg1, arg2, doNotSimplify=False):
 
     Parameters:
     -----------
-    arg1 : VFClass
+    arg1 : vector_field_class
         A vector field instance to evaluate on the holomorphic variables.
     arg2 : list or tuple
         A list or tuple of Symbol objects that were initialized as holomorphic variables via complexVarProc.
@@ -6215,29 +7567,19 @@ def antiholVF_coeffs(arg1, arg2, doNotSimplify=False):
     Returns:
     --------
     list
-        A list of sympy expressions representing the coefficients in antiholomorphic coordinates.
-
-    Raises:
-    -------
-    Exception
-        If any variables in *arg2* were not initialized as holomorphic variables.
-
-    Example:
-    --------
-    >>> from dgcv import complexVarProc, antiholVF_coeffs
-    >>> complexVarProc('z','x','y',3)
-    >>> antiholVF_coeffs(D_z1 + D_BARz2, [z1, z2, z3])
-    [0, 1, 0]
+        A list of symbolic expressions representing the coefficients in antiholomorphic coordinates.
     """
     if doNotSimplify:
-        return [realToHol(arg1(sp.conjugate(j))) for j in arg2]
+        return [realToHol(vf(conjugate(j))) for j in arg2]
     else:
-        return [sp.simplify(realToHol(arg1(sp.conjugate(j)))) for j in arg2]
+        return [simplify(realToHol(vf(conjugate(j)))) for j in arg2]
 
 
-def complexVFC(arg1, arg2, doNotSimplify=False):
+def complexVFC(
+    vf: vector_field_class, arg2: list | tuple, doNotSimplify=False
+) -> tuple:
     """
-    Evaluates the vector field (i.e., VFClass instance) *arg1* on the holomorphic variables in *arg2*
+    Evaluates the vector field (i.e., vector_field_class instance) *arg1* on the holomorphic variables in *arg2*
     and their complex conjugates, returning the result as two lists of coefficients.
 
     The variables in *arg2* must be previously initialized via complexVarProc. The function returns the
@@ -6246,7 +7588,7 @@ def complexVFC(arg1, arg2, doNotSimplify=False):
 
     Parameters:
     -----------
-    arg1 : VFClass
+    arg1 : vector_field_class
         A vector field instance to evaluate on the holomorphic and antiholomorphic variables.
     arg2 : list or tuple
         A list or tuple of Symbol objects that were initialized as holomorphic variables via complexVarProc.
@@ -6259,165 +7601,292 @@ def complexVFC(arg1, arg2, doNotSimplify=False):
         The first list contains the coefficients of the holomorphic part, and the second list contains
         the coefficients of the antiholomorphic part.
 
-    Raises:
-    -------
-    Exception
-        If *arg1* is not an instance of VFClass.
-
-    Example:
-    --------
-    >>> from dgcv import complexVarProc, complexVFC
-    >>> complexVarProc('z', 'x', 'y', 3)
-    >>> complexVFC(D_z1 + D_BARz2, [z1, z2, z3])
-    ([1, 0, 0], [0, 1, 0])
     """
-    if arg1.__class__.__name__ == "VFClass":
-        # Use holVF_coeffs and antiholVF_coeffs, with optional simplification
-        hol_coeffs = holVF_coeffs(arg1, arg2, doNotSimplify=doNotSimplify)
-        antihol_coeffs = antiholVF_coeffs(arg1, arg2, doNotSimplify=doNotSimplify)
+    if query_dgcv_categories(vf, {"vector_field"}):
+        hol_coeffs = holVF_coeffs(vf, arg2, doNotSimplify=doNotSimplify)
+        antihol_coeffs = antiholVF_coeffs(vf, arg2, doNotSimplify=doNotSimplify)
         return hol_coeffs, antihol_coeffs
     else:
-        raise Exception("Expected first positional argument to be of type VFClass")
+        raise Exception(
+            "Expected first positional argument to be of type vector_field_class"
+        )
 
 
 def conjComplex(arg):
-    """
-    Computes the complex conjugate of a complex vector field (i.e., VFClass instance).
-
-    Parameters:
-    -----------
-    arg : VFClass
-        A complex vector field instance whose complex conjugate is to be computed.
-
-    Returns:
-    --------
-    VFClass
-        A new vector field instance representing the complex conjugate of the input vector field.
-
-    Raises:
-    -------
-    Exception
-        If *arg* is not an instance of VFClass.
-
-    Example:
-    --------
-    >>> from dgcv import complexVarProc, conjComplexVF
-    >>> complexVarProc('z', 'x', 'y', 3)
-    >>> vf = assembleFromCompVFC((z1, z2, 0), (BARz1, BARz2, 0), [z1, z2, z3])
-    >>> conjComplexVF(vf)
-    VFClass instance representing the complex conjugate of *vf*
-    """
     warnings.warn("`conjComplex` has been deprecated. Use `conjugate_dgcv` instead")
     return _conjComplexVFDF(arg)
 
 
-def _conjComplexVFDF(arg):
+def _conjComplexVFDF(arg: tensor_field_class) -> tensor_field_class:
     """
-    Computes the complex conjugate of a complex vector field or differential form (i.e., VFClass/DFClass instance).
-
-    Parameters:
-    -----------
-    arg : VFClass/DFClass
-        A complex vector field instance whose complex conjugate is to be computed.
-
-    Returns:
-    --------
-    VFClass/DFClass
-        A new vector field instance representing the complex conjugate of the input vector field.
-
-    Raises:
-    -------
-    Exception
-        If *arg* is not an instance of VFClass.
-
-    Example:
-    --------
-    >>> from dgcv import complexVarProc, conjComplexVF
-    >>> complexVarProc('z', 'x', 'y', 3)
-    >>> vf = assembleFromCompVFC((z1, z2, 0), (BARz1, BARz2, 0), [z1, z2, z3])
-    >>> conjComplexVF(vf)
-    VFClass instance representing the complex conjugate of *vf*
+    Computes the complex conjugate of a tensor_field_class.
     """
 
-    if isinstance(arg, VFClass):
-        # Return the complex conjugate of the vector field
-        if arg.dgcvType == "complex":
-            if arg._varSpace_type == "complex":
-                arg = allToReal(arg)
-                return allToSym(
-                    VFClass(
-                        arg.varSpace,
-                        [sp.conjugate(j) for j in arg.coeffs],
-                        dgcvType="complex",
-                        _simplifyKW=arg._simplifyKW,
-                    )
-                )
-        return VFClass(
-            arg.varSpace,
-            [sp.conjugate(j) for j in arg.coeffs],
-            dgcvType=arg.dgcvType,
-            _simplifyKW=arg._simplifyKW,
-        )
-    elif isinstance(arg, DFClass):
-        # Return the complex conjugate of the vector field
-        if arg.dgcvType == "complex":
-            if arg._varSpace_type == "complex":
-                arg = allToReal(arg)
-                return allToSym(
-                    DFClass(
-                        arg.varSpace,
-                        {a: sp.conjugate(b) for a, b in arg.DFClassDataDict.items()},
-                        arg.degree,
-                        dgcvType="complex",
-                        _simplifyKW=arg._simplifyKW,
-                    )
-                )
-        return DFClass(
-            arg.varSpace,
-            {a: sp.conjugate(b) for a, b in arg.DFClassDataDict.items()},
-            arg.degree,
-            dgcvType=arg.dgcvType,
-            _simplifyKW=arg._simplifyKW,
-        )
+    if get_dgcv_category(arg) == "tensor_field":
+        return conjugate(arg)
     else:
-        raise Exception("Expected the input to be of type VFClass or DFClass.")
+        raise Exception("Expected the input to be a dgcv tensor_field.")
 
 
-def realPartOfVF(arg1, *args):
+def realPartOfVF(vf: vector_field_class, *args) -> vector_field_class:
     """
-    Computes the real part of a complex vector field (i.e., VFClass instance) *arg1* expressed in terms
-    of complex variables in *arg2*.
-
-    The real part is obtained by adding the vector field to its complex conjugate.
-
-    Parameters:
-    -----------
-    arg1 : VFClass
-        A complex vector field instance whose real part is to be computed.
-    arg2 : list or tuple
-        A list or tuple containing Symbol objects that were initialized as complex variables via complexVarProc.
-
-    Returns:
-    --------
-    VFClass
-        A new vector field instance representing the real part of the input complex vector field.
-
-    Raises:
-    -------
-    Exception
-        If *arg1* is not an instance of VFClass, or if variables in *arg2* were not initialized via complexVarProc.
-
-    Example:
-    --------
-    >>> from dgcv import complexVarProc, realPartOfVF, assembleFromCompVFC
-    >>> from sympy import simplify
-    >>> complexVarProc('z', 'x', 'y', 3)
-    >>> vf = assembleFromCompVFC((z1, z2, 0), (BARz1, BARz2, 0), [z1, z2, z3])
-    >>> print(simplify(realPartOfVF(vf, [z1, z2, z3]).simplify_format('real'))) # using simplify, it is easy to see that it is real!
-    2*x1*D_x1 + 2*x2*D_x2 + 2*y1*D_y1 + 2*y2*D_y2
+    Computes the real part of a complex vector field *vf*.
     """
-    if isinstance(arg1, VFClass):
-        # Return the real part of the vector field by adding it to its complex conjugate
-        return addVF(arg1, _conjComplexVFDF(arg1))
+    if query_dgcv_categories(vf, {"vector_field"}):
+        return vf.real_part()
     else:
-        raise Exception("Expected the input to be of type VFClass.")
+        raise Exception("Expected the input to be of type vector_field_class.")
+
+
+# -----------------------------------------------------------------------------
+# depricated
+# -----------------------------------------------------------------------------
+def TFClass(
+    self,
+    varSpace,
+    coeff_dict,
+    valence=None,
+    data_shape="general",
+    dgcvType="standard",
+    _simplifyKW=None,
+):
+    warnings.warn(
+        "`TFClass` is deprecated and has been replaced by the general `tensor_field_class`. The function label remains"
+        "as a dispatcher to build `tensor_field_class` objects, but this may be removed in the future"
+        "Please use `tensor_field_class` or `assemble_tensor_field` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    key = next(iter(coeff_dict))
+    if valence is None and key is None:
+        raise RuntimeError(
+            "`STFClass` recieved invalid `data_dict`. `STFClass` is also deprecated. Use `tensor_field_class` instead"
+        )
+    val = valence if valence else key[len(key) // 2 :]  # old key format assumption
+    return assemble_tensor_field(
+        coordinate_space=varSpace,
+        coefficient_dict=coeff_dict,
+        valence=val,
+        shape=data_shape,
+        _simplifyKW=_simplifyKW,
+    )
+
+
+def tensorField(
+    self,
+    varSpace,
+    coeff_dict,
+    valence=None,
+    data_shape="general",
+    dgcvType="standard",
+    _simplifyKW=None,
+):
+    warnings.warn(
+        "`tensorField` is deprecated and has been replaced by the general `tensor_field_class`. The function label remains"
+        "as a dispatcher to build `tensor_field_class` objects, but this may be removed in the future"
+        "Please use `tensor_field_class` or `assemble_tensor_field` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    key = next(iter(coeff_dict))
+    if valence is None and key is None:
+        raise RuntimeError(
+            "`STFClass` recieved invalid `data_dict`. `STFClass` is also deprecated. Use `tensor_field_class` instead"
+        )
+    val = valence if valence else key[len(key) // 3 : 2 * len(key) // 3]
+    return assemble_tensor_field(
+        coordinate_space=varSpace,
+        coefficient_dict=coeff_dict,
+        valence=val,
+        shape=data_shape,
+        _simplifyKW=_simplifyKW,
+    )
+
+
+def STFClass(
+    self,
+    varSpace,
+    data_dict,
+    degree,
+    dgcvType="standard",
+    _simplifyKW=None,
+):
+    warnings.warn(
+        "`STFClass` is deprecated and has been replaced by the general `tensor_field_class`. The function label remains"
+        "as a dispatcher to build `tensor_field_class` objects, but this may be removed in the future"
+        "Please use `tensor_field_class` or `assemble_tensor_field` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    key = next(iter(data_dict))
+    if key is None:
+        raise RuntimeError(
+            "`STFClass` recieved invalid `data_dict`. `STFClass` is also deprecated. Use `tensor_field_class` instead"
+        )
+    val = key[len(key) // 3 : 2 * len(key) // 3]  # old key format assumption
+    return assemble_tensor_field(
+        coordinate_space=varSpace,
+        coefficient_dict=data_dict,
+        valence=val,
+        shape="symmetric",
+        _simplifyKW=_simplifyKW,
+    )
+
+
+def VFClass(
+    varSpace,
+    coeffs,
+    dgcvType="standard",
+    _simplifyKW=None,
+):
+    warnings.warn(
+        "`VFClass` is deprecated and has been replaced by the general `vector_field_class`. The function label remains"
+        "as a dispatcher to build `vector_field_class` objects, but this may be removed in the future"
+        "Please use `vector_field_class` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    if _simplifyKW is None:
+        _simplifyKW = {
+            "simplify_rule": None,
+            "simplify_ignore_list": None,
+            "preferred_basis_element": None,
+        }
+
+    vs = tuple(varSpace) if varSpace is not None else tuple()
+    cs = list(coeffs) if coeffs is not None else []
+
+    return vector_field_class(
+        varSpace=vs,
+        coeffs=cs,
+        dgcvType=dgcvType,
+        _simplifyKW=_simplifyKW,
+        variable_spaces=None,
+    )
+
+
+def DFClass(
+    varSpace,
+    data_dict,
+    degree,
+    dgcvType="standard",
+    _simplifyKW=None,
+):
+    warnings.warn(
+        "`DFClass` is deprecated and has been replaced by the general `differential_form_class`. The function label remains"
+        "as a dispatcher to build `differential_form_class` objects, but this may be removed in the future"
+        "Please use `differential_form_class` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    if _simplifyKW is None:
+        _simplifyKW = {
+            "simplify_rule": None,
+            "simplify_ignore_list": None,
+            "preferred_basis_element": None,
+        }
+
+    if not isinstance(varSpace, (list, tuple)):
+        raise TypeError("`varSpace` must be a list or tuple.")
+    if not isinstance(degree, Integral) or int(degree) < 0:
+        raise ValueError("`degree` must be a non-negative integer.")
+    if not isinstance(data_dict, dict):
+        raise TypeError("`data_dict` must be a dictionary.")
+
+    deg = int(degree)
+    vs_list = list(varSpace)
+
+    nz = {k: v for k, v in data_dict.items() if not _scalar_is_zero(v)}
+    if not nz:
+        return differential_form_class(
+            coeff_dict={tuple(): 0},
+            dgcvType=dgcvType,
+            _simplifyKW=_simplifyKW,
+            variable_spaces={},
+        )
+
+    if deg == 0:
+        val = nz.get(tuple(), 0)
+        return differential_form_class(
+            coeff_dict={tuple(): val},
+            dgcvType=dgcvType,
+            _simplifyKW=_simplifyKW,
+            variable_spaces={},
+        )
+
+    sys_for_var = {}
+    systems_used = set()
+
+    for v in vs_list:
+        info = vmf_lookup(v, path=True, relatives=False)
+        p = info.get("path")
+        if not (isinstance(p, tuple) and len(p) >= 2):
+            raise KeyError(
+                "DFClass legacy init requires variables registered in the VMF."
+            )
+        syslbl = p[1]
+        sys_for_var[v] = syslbl
+        systems_used.add(syslbl)
+
+    variable_spaces = {}
+    system_index_cache = {}
+
+    for syslbl in systems_used:
+        info = vmf_lookup(syslbl, path=True, relatives=True, flattened_relatives=True)
+        flat = info.get("flattened_relatives", None)
+        if isinstance(flat, tuple) and flat:
+            variable_spaces[syslbl] = flat
+        else:
+            seen = []
+            for v in vs_list:
+                if sys_for_var[v] == syslbl:
+                    seen.append(v)
+            variable_spaces[syslbl] = tuple(seen)
+
+        system_index_cache[syslbl] = {
+            v: i for i, v in enumerate(variable_spaces[syslbl])
+        }
+
+    new_cd = {}
+    valence_tuple = (0,) * deg
+
+    for key, value in nz.items():
+        if not isinstance(key, tuple):
+            raise TypeError("Keys in `data_dict` must be tuples.")
+        if len(key) != deg:
+            raise ValueError("`data_dict` keys must have length equal to `degree`.")
+
+        idxs = []
+        syslbls = []
+
+        for pos in key:
+            if not isinstance(pos, Integral):
+                raise TypeError("Old-style indices must be integers.")
+            ii = int(pos)
+            if ii < 0 or ii >= len(vs_list):
+                raise ValueError("Old-style index out of range.")
+
+            var = vs_list[ii]
+            syslbl = sys_for_var[var]
+            syslbls.append(syslbl)
+
+            j = system_index_cache[syslbl].get(var, None)
+            if j is None:
+                raise KeyError(
+                    f"DFClass: variable '{var}' not found in cached system '{syslbl}'."
+                )
+            idxs.append(j)
+
+        nk = tuple(idxs + list(valence_tuple) + syslbls)
+        new_cd[nk] = new_cd.get(nk, 0) + value
+
+    new_cd = {k: v for k, v in new_cd.items() if not _scalar_is_zero(v)}
+    if not new_cd:
+        new_cd = {tuple(): 0}
+
+    return differential_form_class(
+        coeff_dict=new_cd,
+        dgcvType=dgcvType,
+        _simplifyKW=_simplifyKW,
+        variable_spaces=variable_spaces,
+    )

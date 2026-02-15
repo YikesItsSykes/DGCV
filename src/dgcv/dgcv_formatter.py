@@ -1,3 +1,18 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+module: dgcv_formatter
+
+Note: Depricated, will be removed after eds update.
+
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
+
+License:
+    MIT License
+"""
+
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
 import re
 
 from ._config import get_variable_registry, greek_letters
@@ -39,6 +54,7 @@ def collect_variable_data(variable_registry, use_latex):
 
     return data, index
 
+
 def process_variable(var_name, system_type, variable_registry, data, index, use_latex):
     family_names = variable_registry[f"{system_type}_variable_systems"][var_name][
         "family_names"
@@ -57,6 +73,7 @@ def process_variable(var_name, system_type, variable_registry, data, index, use_
     formatted_name = format_variable_name(var_name, system_type, use_latex)
     index.append((formatted_name, ""))
 
+
 def process_algebra(var_name, variable_registry, data, index, use_latex):
     system_data = variable_registry["finite_algebra_systems"][var_name]
     algebra_family_names = system_data.get("family_names", [])
@@ -67,15 +84,6 @@ def process_algebra(var_name, variable_registry, data, index, use_latex):
 
     index.append((formatted_str, ""))
 
-# def build_table(data, index, style):
-#     from pandas import DataFrame, MultiIndex
-#     columns = MultiIndex.from_product(
-#         [["Initialized Coordinate Systems and Algebras"], ["", "", "", "", ""]]
-#     )
-#     table = DataFrame(data=data, index=index, columns=columns)
-
-#     table_styles = get_style(style)
-#     return table.style.set_table_styles(table_styles)
 
 def format_variable_details(
     var_name, family_names, initial_index, tuple_len, system_type, use_latex
@@ -119,6 +127,7 @@ def format_variable_details(
 
     return real_part, imaginary_part, vf_str, df_str
 
+
 def format_variable_name(var_name, system_type, use_latex=False):
     variable_registry = get_variable_registry()
     if system_type == "standard":
@@ -137,9 +146,7 @@ def format_variable_name(var_name, system_type, use_latex=False):
         )
         family_names = variable_registry["complex_variable_systems"][var_name][
             "family_names"
-        ][
-            0
-        ]  # First tuple entry
+        ][0]  # First tuple entry
         initial_index = variable_registry["complex_variable_systems"][var_name].get(
             "initial_index", 1
         )
@@ -154,6 +161,7 @@ def format_variable_name(var_name, system_type, use_latex=False):
         content = convert_to_greek(var_name) if use_latex else var_name
 
     return wrap_in_dollars(content) if use_latex else content
+
 
 def format_algebra_name(var_name, algebra_family_names, use_latex=False):
     if use_latex:
@@ -190,6 +198,7 @@ def format_algebra_name(var_name, algebra_family_names, use_latex=False):
             basis_str = algebra_family_names[0] if algebra_family_names else ""
         return f"Algebra: {algebra_label}<br>Basis: {basis_str}"
 
+
 def build_object_string_for_complex(
     obj_type, part_names, family_names, start_index, use_latex=False
 ):
@@ -223,6 +232,7 @@ def build_object_string_for_complex(
             parts.append(part_str)
     return ", ".join(parts)
 
+
 def build_object_string(
     obj_type, var_name, start_index, tuple_len, system_type, use_latex=False
 ):
@@ -246,12 +256,14 @@ def build_object_string(
             content = f"{obj_type}_{var_name}{start_index},...,{obj_type}_{var_name}{start_index + tuple_len - 1}"
     return wrap_in_dollars(content) if use_latex else content
 
+
 def convert_to_greek(var_name):
     # Replace variable names with their corresponding Greek letters
     for name, greek in greek_letters.items():
         if var_name == name:
             return greek
     return var_name
+
 
 def process_basis_label(label):
     # Use regex to split the name and numeric suffix
@@ -268,6 +280,6 @@ def process_basis_label(label):
     else:
         return f"{convert_to_greek(basis_elem_name)}"
 
+
 def wrap_in_dollars(content):
     return f"${content}$"
-

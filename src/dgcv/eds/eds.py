@@ -16,31 +16,11 @@ from .._safeguards import (
     validate_label,
 )
 from ..backends._caches import _get_expr_num_types, _get_expr_types
-from ..backends._symbolic_api import get_free_symbols
+from ..backends._symbolic_router import get_free_symbols
 from ..combinatorics import carProd, weightedPermSign
 from ..dgcv_formatter import process_basis_label
 from ..vmf import clearVar
 
-
-def factor_dgcv(expr, **kw):
-    """Apply custom .factor() method once to dgcv classes, and then try SymPy.factor."""
-
-    dgcv_classes = (zeroFormAtom, abstract_ZF,abstract_DF, abstDFAtom, abstDFMonom)  
-
-    if isinstance(expr, dgcv_classes):
-        return expr.factor(**kw)
-
-    return sp.factor(expr, **kw) if isinstance(expr, sp.Basic) else expr
-
-def expand_dgcv(expr, **kw):
-    """Apply custom .factor() method once to dgcv classes, and then try SymPy.factor."""
-
-    dgcv_classes = (zeroFormAtom, abstract_ZF,abstract_DF, abstDFAtom,abstDFMonom)  
-
-    if isinstance(expr, dgcv_classes):
-        return expr.expand(**kw)
-
-    return sp.expand(expr, **kw) if isinstance(expr, sp.Basic) else expr
 
 @total_ordering
 class SortableObj:
@@ -64,6 +44,7 @@ class SortableObj:
     def __repr__(self):
         return f"SortableObj(value={self.value}, place={self.place})"
 
+
 @total_ordering
 class barSortedStr:
     def __init__(self, label=None):
@@ -79,30 +60,30 @@ class barSortedStr:
             return True
         if other is None:
             return False
-        if isinstance(other,barSortedStr):
+        if isinstance(other, barSortedStr):
             other = other.str
             if other is None:
                 return False
         if not isinstance(other, str):
             return NotImplemented
-        if self.str[0:3]=="BAR":
-            if other[0:3]=="BAR":
-                return self.str<other
+        if self.str[0:3] == "BAR":
+            if other[0:3] == "BAR":
+                return self.str < other
             else:
                 return False
         else:
-            if other[0:3]=="BAR":
+            if other[0:3] == "BAR":
                 return True
             else:
-                return self.str<other
+                return self.str < other
 
     def __eq__(self, other):
         if self.str is None:
-            if other is None or (isinstance(other,barSortedStr) and other.str is None):
+            if other is None or (isinstance(other, barSortedStr) and other.str is None):
                 return True
             else:
                 return False
-        if isinstance(other,barSortedStr):
+        if isinstance(other, barSortedStr):
             other = other.str
             if other is None:
                 return False
@@ -113,14 +94,25 @@ class barSortedStr:
     def __repr__(self):
         return f"barSortedStr(value={self.str})"
 
+
 def _custom_conj(expr):
-    if isinstance(expr,(abstract_ZF,zeroFormAtom,abstDFAtom,abstDFMonom,abstract_DF)):
+    if isinstance(
+        expr, (abstract_ZF, zeroFormAtom, abstDFAtom, abstDFMonom, abstract_DF)
+    ):
         return expr._eval_conjugate()
     else:
         return sp.conjugate(expr)
 
+
 class zeroFormAtom(sp.Basic):
-    def __new__(cls, label, coframe_derivatives=tuple(), coframe=None, _markers=frozenset(), coframe_independants=dict()):
+    def __new__(
+        cls,
+        label,
+        coframe_derivatives=tuple(),
+        coframe=None,
+        _markers=frozenset(),
+        coframe_independants=dict(),
+    ):
         """
         Create a new zeroFormAtom instance.
 
@@ -130,25 +122,41 @@ class zeroFormAtom(sp.Basic):
         - coframe (abst_coframe, optional): marks the primary abst_coframe w.r.t. the zero forms printing/display behavior may be adjusted
         """
         if not isinstance(label, str):
-            raise TypeError(f"label must be type `str`. Instead received `{type(label)}`\n given label: {label}")
+            raise TypeError(
+                f"label must be type `str`. Instead received `{type(label)}`\n given label: {label}"
+            )
 
-        if not isinstance(coframe_derivatives,(tuple, list)):
-            raise ValueError(f"coframe_derivatives must be a tuple of tuples whose first entry is a coframe and whose subsequent entries are indices of coframe derivatives.\n given `coframe_derivatives` of type: {type(coframe_derivatives)}")
+        if not isinstance(coframe_derivatives, (tuple, list)):
+            raise ValueError(
+                f"coframe_derivatives must be a tuple of tuples whose first entry is a coframe and whose subsequent entries are indices of coframe derivatives.\n given `coframe_derivatives` of type: {type(coframe_derivatives)}"
+            )
         for elem in coframe_derivatives:
-            if not len(elem) == 0 and not isinstance(elem[0],abst_coframe):
-                raise ValueError(f"first elements in the `coframe_derivatives` tuples must be coframe type. Given object {elem} instead with type {type(elem)}")
-            if not all(isinstance(order, numbers.Integral) and order in range(elem[0].dimension) for order in elem[1:]):
-                raise ValueError(f"tuples in `coframe_derivatives` must begin with an abstCoframe instance followed by non-negative integers in the range of the corresponding coframe dimension. Instead of an integer tuple, recieved: {elem[1:]} \n with associated coframe basis: {elem[0]}")
-        coframe_derivatives = tuple([tuple(elem) for elem in coframe_derivatives if len(elem[1:])>0])
+            if not len(elem) == 0 and not isinstance(elem[0], abst_coframe):
+                raise ValueError(
+                    f"first elements in the `coframe_derivatives` tuples must be coframe type. Given object {elem} instead with type {type(elem)}"
+                )
+            if not all(
+                isinstance(order, numbers.Integral)
+                and order in range(elem[0].dimension)
+                for order in elem[1:]
+            ):
+                raise ValueError(
+                    f"tuples in `coframe_derivatives` must begin with an abstCoframe instance followed by non-negative integers in the range of the corresponding coframe dimension. Instead of an integer tuple, recieved: {elem[1:]} \n with associated coframe basis: {elem[0]}"
+                )
+        coframe_derivatives = tuple(
+            [tuple(elem) for elem in coframe_derivatives if len(elem[1:]) > 0]
+        )
         if coframe is None:
-            if len(coframe_derivatives)>0:
+            if len(coframe_derivatives) > 0:
                 coframe = coframe_derivatives[0][0]
             else:
                 coframe = abst_coframe(tuple(), {})
-        elif len(coframe_derivatives)>0 and coframe != coframe_derivatives[0][0]:
-            coframe_derivatives = ((coframe,),)+coframe_derivatives
+        elif len(coframe_derivatives) > 0 and coframe != coframe_derivatives[0][0]:
+            coframe_derivatives = ((coframe,),) + coframe_derivatives
         if not isinstance(coframe, abst_coframe):
-            raise TypeError('Expected given `coframe` to be None or have type `abst_coframe`')
+            raise TypeError(
+                "Expected given `coframe` to be None or have type `abst_coframe`"
+            )
 
         # Using SymPy's Basic constructor
         obj = sp.Basic.__new__(cls, label, coframe_derivatives, coframe)
@@ -157,17 +165,30 @@ class zeroFormAtom(sp.Basic):
         obj.coframe = coframe
         return obj
 
-    def __init__(self, label, coframe_derivatives=tuple(), coframe=None, _markers=frozenset(),coframe_independants=dict()):
+    def __init__(
+        self,
+        label,
+        coframe_derivatives=tuple(),
+        coframe=None,
+        _markers=frozenset(),
+        coframe_independants=dict(),
+    ):
         """
         Initialize attributes (already set by __new__).
         """
         self._markers = _markers
         self.coframe_independants = coframe_independants
-        self.is_constant = 'constant' in _markers
-        self.is_one = self.label == '_1' and self.is_constant
-        self._is_zero = self.label == '_0' and self.is_constant
-        self.secondary_coframes = [elem[0] for elem in self.coframe_derivatives if elem[0] != self.coframe]
-        self.related_coframes = [self.coframe] + self.secondary_coframes if self.coframe is not abst_coframe(tuple(), {})  else self.secondary_coframes
+        self.is_constant = "constant" in _markers
+        self.is_one = self.label == "_1" and self.is_constant
+        self._is_zero = self.label == "_0" and self.is_constant
+        self.secondary_coframes = [
+            elem[0] for elem in self.coframe_derivatives if elem[0] != self.coframe
+        ]
+        self.related_coframes = (
+            [self.coframe] + self.secondary_coframes
+            if self.coframe is not abst_coframe(tuple(), {})
+            else self.secondary_coframes
+        )
 
     @property
     def is_zero(self):
@@ -176,8 +197,10 @@ class zeroFormAtom(sp.Basic):
 
     @property
     def differential_order(self):
-        if not hasattr(self,'_differential_order'):
-            self._differential_order = sum([len(elem[1:]) for elem in self.coframe_derivatives])
+        if not hasattr(self, "_differential_order"):
+            self._differential_order = sum(
+                [len(elem[1:]) for elem in self.coframe_derivatives]
+            )
         return self._differential_order
 
     def _sage_(self):
@@ -189,7 +212,10 @@ class zeroFormAtom(sp.Basic):
         """
         if not isinstance(other, zeroFormAtom):
             return NotImplemented
-        return self.label == other.label and self.coframe_derivatives == other.coframe_derivatives
+        return (
+            self.label == other.label
+            and self.coframe_derivatives == other.coframe_derivatives
+        )
 
     def __hash__(self):
         """
@@ -204,21 +230,22 @@ class zeroFormAtom(sp.Basic):
         self_key = (
             self.label,
             len(self.coframe_derivatives),
-            tuple(elem[1:] for elem in self.coframe_derivatives)
+            tuple(elem[1:] for elem in self.coframe_derivatives),
         )
         other_key = (
             other.label,
             len(other.coframe_derivatives),
-            tuple(elem[1:] for elem in other.coframe_derivatives)
+            tuple(elem[1:] for elem in other.coframe_derivatives),
         )
         return self_key < other_key
 
-    def sort_key(self, order=None):     # for the sympy sorting.py default_sort_key
-        return (3,
+    def sort_key(self, order=None):  # for the sympy sorting.py default_sort_key
+        return (
+            3,
             self.label,
             len(self.coframe_derivatives),
-            tuple(elem[1:] for elem in self.coframe_derivatives)
-        )   # 3 is to group with sp.Symbol
+            tuple(elem[1:] for elem in self.coframe_derivatives),
+        )  # 3 is to group with sp.Symbol
 
     def _eval_conjugate(self):
         """
@@ -235,12 +262,18 @@ class zeroFormAtom(sp.Basic):
         for elem in self.coframe_derivatives:
             k = elem[0]
             v = elem[1:]
-            newCD += [tuple([k]+[k.conj_rules[index] for index in v])]
+            newCD += [tuple([k] + [k.conj_rules[index] for index in v])]
 
         # Return a new zeroFormAtom with the conjugated label
-        return zeroFormAtom(conjugated_label, coframe_derivatives=newCD, coframe=self.coframe, _markers=self._markers, coframe_independants=self.coframe_independants)
+        return zeroFormAtom(
+            conjugated_label,
+            coframe_derivatives=newCD,
+            coframe=self.coframe,
+            _markers=self._markers,
+            coframe_independants=self.coframe_independants,
+        )
 
-    def _eval_simplify(self,**kws):
+    def _eval_simplify(self, **kws):
         return self
 
     def __mul__(self, other):
@@ -253,11 +286,13 @@ class zeroFormAtom(sp.Basic):
             return other
         if self.is_zero:
             return abstract_ZF(0)
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("mul", self, other))
         return NotImplemented
 
-    def __rmul__(self,other):
+    def __rmul__(self, other):
         return self.__mul__(other)
 
     def __neg__(self):
@@ -267,7 +302,7 @@ class zeroFormAtom(sp.Basic):
         """
         Division with zeroFormAtom
         """
-        if isinstance(other, zeroFormAtom) or isinstance(other,_get_expr_num_types()):
+        if isinstance(other, zeroFormAtom) or isinstance(other, _get_expr_num_types()):
             return abstract_ZF(("div", self, other))
         return NotImplemented
 
@@ -275,23 +310,28 @@ class zeroFormAtom(sp.Basic):
         """
         Division with zeroFormAtom instances
         """
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("div", other, self))
 
         return NotImplemented
-
 
     def __pow__(self, exp):
         """
         Exponentiation of zeroFormAtom:
         - Returns a structured `abstract_ZF` exponentiation.
         """
-        if isinstance(exp, (zeroFormAtom, abstract_ZF)) or isinstance(exp,_get_expr_num_types()):
-            return abstract_ZF(('pow', self, exp))
+        if isinstance(exp, (zeroFormAtom, abstract_ZF)) or isinstance(
+            exp, _get_expr_num_types()
+        ):
+            return abstract_ZF(("pow", self, exp))
         return NotImplemented
 
     def __rpow__(self, other):
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("pow", other, self))
 
         return NotImplemented
@@ -300,14 +340,19 @@ class zeroFormAtom(sp.Basic):
         """
         Addition with zeroFormAtom
         """
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("add", self, other))
         return NotImplemented
+
     def __radd__(self, other):
         """
         Addition with zeroFormAtom
         """
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("add", self, other))
         return NotImplemented
 
@@ -315,34 +360,41 @@ class zeroFormAtom(sp.Basic):
         """
         Subtraction of zeroFormAtom:
         """
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("sub", self, other))
         return NotImplemented
+
     def __rsub__(self, other):
         """
         Subtraction of zeroFormAtom
         """
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other,_get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("sub", other, self))
         return NotImplemented
 
     def _canonicalize_step(self):
-        for count,elem in enumerate(self.coframe_derivatives):
+        for count, elem in enumerate(self.coframe_derivatives):
             zf = self
             partialsCount = len(elem)
-            if partialsCount>2:
-                for idx1 in range(1,partialsCount-1):
-                    idx2=idx1+1
-                    if elem[idx2]<elem[idx1]:
-                        return _swap_CFD_order(zf,count,idx1), False        # False for stabilized status
-        return self, True       # True for stabilized status
+            if partialsCount > 2:
+                for idx1 in range(1, partialsCount - 1):
+                    idx2 = idx1 + 1
+                    if elem[idx2] < elem[idx1]:
+                        return _swap_CFD_order(
+                            zf, count, idx1
+                        ), False  # False for stabilized status
+        return self, True  # True for stabilized status
 
-    def _eval_canonicalize(self,depth=1000):
+    def _eval_canonicalize(self, depth=1000):
         zf = self
         stabilized = False
         count = 0
-        while stabilized is False and count<depth:
-            if hasattr(zf,'_canonicalize_step'):
+        while stabilized is False and count < depth:
+            if hasattr(zf, "_canonicalize_step"):
                 zf, stabilized = zf._canonicalize_step()
             count += 1
         return zf
@@ -351,27 +403,35 @@ class zeroFormAtom(sp.Basic):
     def free_symbols(self):
         return {self}
 
-    def is_primitive(self,other,returnCD = False):
+    def is_primitive(self, other, returnCD=False):
         "compute if other element is a coframe derivative (of some order) of self"
-        if isinstance(other,abstract_ZF) and isinstance(other.base, zeroFormAtom):
+        if isinstance(other, abstract_ZF) and isinstance(other.base, zeroFormAtom):
             other = other.base
         if isinstance(other, zeroFormAtom):
             if self.label == other.label:
                 trip = False
                 CDlen = len(self.coframe_derivatives)
                 if CDlen <= len(other.coframe_derivatives):
-                    if CDlen==0:
+                    if CDlen == 0:
                         if returnCD:
-                            return True,other.coframe_derivatives
+                            return True, other.coframe_derivatives
                         return True
                     selfTail = self.coframe_derivatives[-1]
                     tailCDlen = len(selfTail)
-                    compareCD = list(other.coframe_derivatives[:CDlen-1])
-                    otherCompareTail = other.coframe_derivatives[CDlen-1][:tailCDlen]
-                    if self.coframe_derivatives[:-1] == compareCD and selfTail == otherCompareTail:
+                    compareCD = list(other.coframe_derivatives[: CDlen - 1])
+                    otherCompareTail = other.coframe_derivatives[CDlen - 1][:tailCDlen]
+                    if (
+                        self.coframe_derivatives[:-1] == compareCD
+                        and selfTail == otherCompareTail
+                    ):
                         trip = True
-                        trailingCD = [[other.coframe_derivatives[CDlen-1][0]]+list(other.coframe_derivatives[CDlen-1][tailCDlen:])]
-                        trailingCD = tuple(trailingCD + list(other.coframe_derivatives[CDlen:]))
+                        trailingCD = [
+                            [other.coframe_derivatives[CDlen - 1][0]]
+                            + list(other.coframe_derivatives[CDlen - 1][tailCDlen:])
+                        ]
+                        trailingCD = tuple(
+                            trailingCD + list(other.coframe_derivatives[CDlen:])
+                        )
                     else:
                         trailingCD = tuple()
                     if returnCD:
@@ -383,8 +443,8 @@ class zeroFormAtom(sp.Basic):
         else:
             return False
 
-    def is_diff_corollary(self,other,returnCD = False):
-        if isinstance(other,abstract_ZF) and isinstance(other.base, zeroFormAtom):
+    def is_diff_corollary(self, other, returnCD=False):
+        if isinstance(other, abstract_ZF) and isinstance(other.base, zeroFormAtom):
             return other.base.is_primitive(self, returnCD=returnCD)
         if isinstance(other, zeroFormAtom):
             return other.is_primitive(self, returnCD=returnCD)
@@ -396,87 +456,102 @@ class zeroFormAtom(sp.Basic):
     def as_ordered_factors(self):
         return (self,)
 
-    def _subs_dgcv(self,data,with_diff_corollaries = False):
+    def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
-        return self.subs(data, with_diff_corollaries = with_diff_corollaries)
+        return self.subs(data, with_diff_corollaries=with_diff_corollaries)
 
-    def subs(self, data, with_diff_corollaries = False):
+    def subs(self, data, with_diff_corollaries=False):
         """
         Symbolic substitution in zeroFormAtom.
         """
-        if isinstance(data, (list, tuple)) and all(isinstance(j, tuple) and len(j) == 2 for j in data):
+        if isinstance(data, (list, tuple)) and all(
+            isinstance(j, tuple) and len(j) == 2 for j in data
+        ):
             l1 = len(data)
             data = dict(data)
             if len(data) < l1:
-                warnings.warn('Provided substitution rules had repeat keys, and only one was used.')
+                warnings.warn(
+                    "Provided substitution rules had repeat keys, and only one was used."
+                )
 
         if isinstance(data, dict):
             if with_diff_corollaries:
                 for key in data.keys():
-                    truthVal, coefDer = self.is_diff_corollary(key,returnCD=True)
+                    truthVal, coefDer = self.is_diff_corollary(key, returnCD=True)
                     if truthVal:
                         new_value = data[key]
-                        if isinstance(new_value, (zeroFormAtom, abstract_ZF)) or isinstance(new_value,_get_expr_num_types()):
+                        if isinstance(
+                            new_value, (zeroFormAtom, abstract_ZF)
+                        ) or isinstance(new_value, _get_expr_num_types()):
                             for cd in coefDer:
-                                new_value = coframe_derivative(new_value,*cd)
+                                new_value = coframe_derivative(new_value, *cd)
                             return new_value
                         else:
-                            raise TypeError(f'subs() cannot replace a `zeroFormAtom` with object type {type(new_value)}.')
+                            raise TypeError(
+                                f"subs() cannot replace a `zeroFormAtom` with object type {type(new_value)}."
+                            )
             if self in data:
                 new_value = data[self]
-                if isinstance(new_value, (zeroFormAtom, abstract_ZF)) or isinstance(new_value,_get_expr_num_types()):
+                if isinstance(new_value, (zeroFormAtom, abstract_ZF)) or isinstance(
+                    new_value, _get_expr_num_types()
+                ):
                     return new_value
                 else:
-                    raise TypeError(f'subs() cannot replace a `zeroFormAtom` with object type {type(new_value)}.')
+                    raise TypeError(
+                        f"subs() cannot replace a `zeroFormAtom` with object type {type(new_value)}."
+                    )
             else:
                 return self
         else:
-            raise TypeError('`zeroFormAtom.subs()` received unsupported subs data.')
+            raise TypeError("`zeroFormAtom.subs()` received unsupported subs data.")
 
-    def _eval_subs(self, old, new): ###!!!
+    def _eval_subs(self, old, new):  ###!!!
         if self == old:
             return new
         return self
 
-    def expand(self,**kw):
+    def expand(self, **kw):
         return self
 
-    def factor(self,**kw):
+    def factor(self, **kw):
         return self
 
-    def numer(self,**kw):
+    def numer(self, **kw):
         return self
 
-    def denom(self,**kw):
+    def denom(self, **kw):
         return self
 
     def __repr__(self):
-        return (f"zeroFormAtom({self.label!r})")
+        return f"zeroFormAtom({self.label!r})"
 
     def __str__(self):
         """
         Fallback string representation.
         """
         if self.is_one:
-            return '1'
+            return "1"
         if self.is_zero:
-            return '0'
+            return "0"
 
-        if len(self.coframe_derivatives)>0 and (len(self.coframe_derivatives[0])>1 or len(self.coframe_derivatives)>1):
+        if len(self.coframe_derivatives) > 0 and (
+            len(self.coframe_derivatives[0]) > 1 or len(self.coframe_derivatives) > 1
+        ):
             return_str = self.label
             count = 0
-            partials_str = "_".join(map(str, [j+1 for j in self.coframe_derivatives[0][1:]]))
+            partials_str = "_".join(
+                map(str, [j + 1 for j in self.coframe_derivatives[0][1:]])
+            )
             return_str = f"D_{partials_str}({return_str})"
-            if len(self.coframe_derivatives[0])>1:
+            if len(self.coframe_derivatives[0]) > 1:
                 count = 1
             for elem in self.coframe_derivatives[1:]:
                 v = elem[1:]
-                count_str = '' if count == 0 else f'_{count}'
+                count_str = "" if count == 0 else f"_{count}"
                 partials_str = "_".join(map(str, v))
                 return_str = f"D_{partials_str}({return_str}){count_str}"
-                count +=1
+                count += 1
             return return_str
-
 
         return self.label
 
@@ -485,9 +560,9 @@ class zeroFormAtom(sp.Basic):
         LaTeX representation for zeroFormAtom.
         """
         if self.is_one:
-            return '1'
+            return "1"
         if self.is_zero:
-            return '0'
+            return "0"
 
         base_label = self.label
         conjugated = False
@@ -511,7 +586,9 @@ class zeroFormAtom(sp.Basic):
         # Process the base part
         formatted_label = process_basis_label(first_part)
 
-        if len(self.coframe_derivatives)>0 and (len(self.coframe_derivatives[0])>1 or len(self.coframe_derivatives)>1):
+        if len(self.coframe_derivatives) > 0 and (
+            len(self.coframe_derivatives[0]) > 1 or len(self.coframe_derivatives) > 1
+        ):
             partials = True
         else:
             partials = False
@@ -534,46 +611,54 @@ class zeroFormAtom(sp.Basic):
         def cIdx(idx, cf):
             idx = int(idx)
             if isinstance(cf, abst_coframe) and idx - 1 in cf.inverted_conj_rules:
-                return f'\\overline{{{1 + cf.inverted_conj_rules[idx - 1]}}}'
+                return f"\\overline{{{1 + cf.inverted_conj_rules[idx - 1]}}}"
             else:
                 return f"{idx}"
 
         # Convert string indices to LaTeX-compatible integers
-        lower_list = [cIdx(idx,self.coframe) for idx in lower_list if idx]
-        upper_list = [cIdx(idx,self.coframe) for idx in upper_list if idx]
+        lower_list = [cIdx(idx, self.coframe) for idx in lower_list if idx]
+        upper_list = [cIdx(idx, self.coframe) for idx in upper_list if idx]
 
         # Extract partial derivative indices
         partials_strs = []
-        if partials and len(self.coframe_derivatives[0])>1:
-            new_indices = [j+1 for j in self.coframe_derivatives[0][1:]]
-            new_indices_str = ",".join([cIdx(j,self.coframe) for j in new_indices])
+        if partials and len(self.coframe_derivatives[0]) > 1:
+            new_indices = [j + 1 for j in self.coframe_derivatives[0][1:]]
+            new_indices_str = ",".join([cIdx(j, self.coframe) for j in new_indices])
             partials_strs.extend([new_indices_str])
         elif self.coframe is not None:
-            partials_strs = ['']
+            partials_strs = [""]
         for elem in self.coframe_derivatives[1:]:
-            new_indices = [j+1 for j in elem[1:]]
-            new_indices_str = ",".join([cIdx(j,elem[0]) for j in new_indices])
+            new_indices = [j + 1 for j in elem[1:]]
+            new_indices_str = ",".join([cIdx(j, elem[0]) for j in new_indices])
             partials_strs.extend([new_indices_str])
 
         # Combine indices into the LaTeX string
         lower_str = ",".join(lower_list)
         # partials_strs = [",".join(map(cIdx, j)) for j in partials_indices]
-        first_partials_str = partials_strs[0] if len(partials_strs)>0 else ''
+        first_partials_str = partials_strs[0] if len(partials_strs) > 0 else ""
         upper_str = ",".join(upper_list)
 
         indices_str = ""
-        indices_str_partials = ""   # only update if conjugated==True
+        indices_str_partials = ""  # only update if conjugated==True
         if upper_str:
             indices_str += f"^{{{upper_str}}}"
             if first_partials_str and conjugated:
                 indices_str_partials += f"^{{\\vphantom{{{upper_str}}}}}"
-        if lower_str or 'verbose' in self._markers:
+        if lower_str or "verbose" in self._markers:
             if conjugated:
-                indices_str += f"_{{{lower_str}\\vphantom{{;{first_partials_str}}}}}".replace(r'\vphantom{;}}','}')
+                indices_str += (
+                    f"_{{{lower_str}\\vphantom{{;{first_partials_str}}}}}".replace(
+                        r"\vphantom{;}}", "}"
+                    )
+                )
                 if first_partials_str:
-                    indices_str_partials += f'_{{\\vphantom{{{lower_str}}};{first_partials_str}}}'
+                    indices_str_partials += (
+                        f"_{{\\vphantom{{{lower_str}}};{first_partials_str}}}"
+                    )
             else:
-                indices_str += f"_{{{lower_str};{first_partials_str}}}".replace(';}','}').replace(r'\vphantom{;}}','}')
+                indices_str += f"_{{{lower_str};{first_partials_str}}}".replace(
+                    ";}", "}"
+                ).replace(r"\vphantom{;}}", "}")
         elif first_partials_str:
             if conjugated:
                 if upper_str:
@@ -583,55 +668,89 @@ class zeroFormAtom(sp.Basic):
             else:
                 indices_str += f"_{{{first_partials_str}}}"
         pre_final_str = f"{formatted_label}{indices_str}"
-        if indices_str_partials != "":  #implies conjugated
-            pre_final_str = f'\\smash{{\\overline{{{pre_final_str}}}}}\\vphantom{{{formatted_label}}}{indices_str_partials}'
+        if indices_str_partials != "":  # implies conjugated
+            pre_final_str = f"\\smash{{\\overline{{{pre_final_str}}}}}\\vphantom{{{formatted_label}}}{indices_str_partials}"
         elif conjugated:
-            pre_final_str = f'\\overline{{{pre_final_str}}}'
+            pre_final_str = f"\\overline{{{pre_final_str}}}"
 
         final_str = pre_final_str
+
         def enum_print(count):
             if count == 0:
-                return r'0^\text{th}'
+                return r"0^\text{th}"
             if count == 1:
-                return r'1^\text{st}'
+                return r"1^\text{st}"
             if count == 2:
-                return r'2^\text{nd}'
+                return r"2^\text{nd}"
             if count == 3:
-                return r'3^\text{rd}'
-            return str(count)+r'^\text{th}'
+                return r"3^\text{rd}"
+            return str(count) + r"^\text{th}"
+
         count = 2
         for new_partials_str in partials_strs[1:]:
-            final_str = f'\\left.\\smash{{{final_str}}}\\vphantom{{{pre_final_str}}}\\right|_{{{new_partials_str}}}^{{\\boxed{{\\tiny{enum_print(count)}}}}}'
+            final_str = f"\\left.\\smash{{{final_str}}}\\vphantom{{{pre_final_str}}}\\right|_{{{new_partials_str}}}^{{\\boxed{{\\tiny{enum_print(count)}}}}}"
             count += 1
         return final_str
 
-    def _repr_latex_(self,raw=False):
-        return self._latex() if raw else f'${self._latex()}$'
+    def _repr_latex_(self, raw=False):
+        return self._latex() if raw else f"${self._latex()}$"
 
-def createZeroForm(labels, index_set={}, initial_index=1, assumeReal=False, coframe=None, coframe_independants=dict(), verbose_labeling=False,remove_guardrails=None):
+
+def createZeroForm(
+    labels,
+    index_set={},
+    initial_index=1,
+    assumeReal=False,
+    coframe=None,
+    coframe_independants=dict(),
+    verbose_labeling=False,
+    remove_guardrails=None,
+):
     if not isinstance(labels, str):
         raise TypeError(
             "`createZeroForm` requires its first argument to be a string, which will be used in lables for the created zero forms."
         )
+
     def reformat_string(input_string: str):
         # Replace commas with spaces, then split on spaces
         substrings = input_string.replace(",", " ").split()
         # Return the list of non-empty substrings
         return [s for s in substrings if len(s) > 0]
 
-    if isinstance(index_set,numbers.Integral) and index_set>0:
-        if not isinstance(initial_index,numbers.Integral):
+    if isinstance(index_set, numbers.Integral) and index_set > 0:
+        if not isinstance(initial_index, numbers.Integral):
             initial_index = 1
-        index_set = {'lower':list(range(initial_index,index_set+initial_index))}
-    elif not isinstance(index_set,dict):
+        index_set = {"lower": list(range(initial_index, index_set + initial_index))}
+    elif not isinstance(index_set, dict):
         index_set = {}
     if isinstance(labels, str):
         labels = reformat_string(labels)
 
     for label in labels:
-        _zeroFormFactory(label, index_set=index_set, assumeReal=assumeReal, coframe=coframe, coframe_independants=coframe_independants,verbose_labeling=verbose_labeling, _tempVar=None, _doNotUpdateVar=None, remove_guardrails=remove_guardrails)
+        _zeroFormFactory(
+            label,
+            index_set=index_set,
+            assumeReal=assumeReal,
+            coframe=coframe,
+            coframe_independants=coframe_independants,
+            verbose_labeling=verbose_labeling,
+            _tempVar=None,
+            _doNotUpdateVar=None,
+            remove_guardrails=remove_guardrails,
+        )
 
-def _zeroFormFactory(label, index_set={}, assumeReal=False, coframe=None, coframe_independants=dict(),verbose_labeling =False, _tempVar=None, _doNotUpdateVar=None, remove_guardrails=None):
+
+def _zeroFormFactory(
+    label,
+    index_set={},
+    assumeReal=False,
+    coframe=None,
+    coframe_independants=dict(),
+    verbose_labeling=False,
+    _tempVar=None,
+    _doNotUpdateVar=None,
+    remove_guardrails=None,
+):
     """
     Initializes zeroFormAtom systems, registers them in the VMF,
     and updates caller globals().
@@ -660,9 +779,10 @@ def _zeroFormFactory(label, index_set={}, assumeReal=False, coframe=None, cofram
     else:
         _tempVar = None
 
-    family_type = 'single'
+    family_type = "single"
     if index_set:
-        family_type = 'tuple'
+        family_type = "tuple"
+
         def expand_indices(index):
             if index is None:
                 return []
@@ -675,21 +795,30 @@ def _zeroFormFactory(label, index_set={}, assumeReal=False, coframe=None, cofram
         upper_indices = expand_indices(index_set.get("upper", None))
         lower_indices = expand_indices(index_set.get("lower", None))
         lhPairs = index_set.get("low_hi_pairs", None)
-        if isinstance(lhPairs,(list,tuple)) and len(lhPairs) == 1 and len(lhPairs[0][0])==0 and len(lhPairs[0][1])==0:
+        if (
+            isinstance(lhPairs, (list, tuple))
+            and len(lhPairs) == 1
+            and len(lhPairs[0][0]) == 0
+            and len(lhPairs[0][1]) == 0
+        ):
             lhPairs = None
 
         if upper_indices and lower_indices:
             index_combinations = list(carProd(lower_indices, upper_indices))
             if lhPairs:
-                index_combinations +=list(lhPairs)
+                index_combinations += list(lhPairs)
         elif lower_indices:
-            index_combinations = [(lo, []) for lo in lower_indices]  # Treat upper as empty
+            index_combinations = [
+                (lo, []) for lo in lower_indices
+            ]  # Treat upper as empty
             if lhPairs:
-                index_combinations +=list(lhPairs)
+                index_combinations += list(lhPairs)
         elif upper_indices:
-            index_combinations = [([], hi) for hi in upper_indices]  # Treat lower as empty
+            index_combinations = [
+                ([], hi) for hi in upper_indices
+            ]  # Treat lower as empty
             if lhPairs:
-                index_combinations +=list(lhPairs)
+                index_combinations += list(lhPairs)
         elif lhPairs:
             index_combinations = list(lhPairs)
         else:
@@ -697,19 +826,31 @@ def _zeroFormFactory(label, index_set={}, assumeReal=False, coframe=None, cofram
 
         def labeler(index_pair, verbose):
             lower, upper = index_pair
-            if verbose is True or len(upper)!=0 or len(lower)>1:
-                return f"{label}" + (f"_low_{'_'.join(map(str, lower))}" if lower else "") + (f"_hi_{'_'.join(map(str, upper))}" if upper else "")
-            elif len(lower)==1:
+            if verbose is True or len(upper) != 0 or len(lower) > 1:
+                return (
+                    f"{label}"
+                    + (f"_low_{'_'.join(map(str, lower))}" if lower else "")
+                    + (f"_hi_{'_'.join(map(str, upper))}" if upper else "")
+                )
+            elif len(lower) == 1:
                 return f"{label}" + str(lower[0])
             else:
                 return f"{label}"
-        family_names = [labeler(index_pair,verbose_labeling) for index_pair in index_combinations]
+
+        family_names = [
+            labeler(index_pair, verbose_labeling) for index_pair in index_combinations
+        ]
     else:
         family_names = [label]
 
     # Create zeroFormAtom instances
     family_values = tuple(
-        zeroFormAtom(name,coframe=coframe, _markers={'real'} if assumeReal else frozenset(),coframe_independants=coframe_independants)
+        zeroFormAtom(
+            name,
+            coframe=coframe,
+            _markers={"real"} if assumeReal else frozenset(),
+            coframe_independants=coframe_independants,
+        )
         for name in family_names
     )
 
@@ -729,94 +870,111 @@ def _zeroFormFactory(label, index_set={}, assumeReal=False, coframe=None, cofram
     eds_atoms[label] = {
         "family_type": family_type,
         "primary_coframe": coframe,
-        "degree":0,
+        "degree": 0,
         "family_values": family_values,
         "family_names": tuple(family_names),
         "tempVar": _tempVar,
-        "real":assumeReal if assumeReal else None,
+        "real": assumeReal if assumeReal else None,
         "conjugates": conjugates,
-        "family_relatives": family_relatives
+        "family_relatives": family_relatives,
     }
     variable_registry["_labels"][label] = {
         "path": ("eds", "atoms", label),
-        "children": set(family_names + list(conjugates.keys()))
+        "children": set(family_names + list(conjugates.keys())),
     }
 
     # Store in _cached_caller_globals
-    _cached_caller_globals[label] = family_values if family_type=='tuple' else family_values[0]
+    _cached_caller_globals[label] = (
+        family_values if family_type == "tuple" else family_values[0]
+    )
     for name, instance in zip(family_names, family_values):
         _cached_caller_globals[name] = instance  # Add each instance separately
     if assumeReal is not True:
-        _cached_caller_globals[f'BAR{label}'] = tuple(conjugates.values())
-    for k,v in conjugates.items():
+        _cached_caller_globals[f"BAR{label}"] = tuple(conjugates.values())
+    for k, v in conjugates.items():
         _cached_caller_globals[k] = v
+
 
 class abstract_ZF(sp.Basic):
     """
     Symbolic expression class that represents abstract zero forms. Supports representations of combinations of many scalar-like class, such as `float`, `int`, `zeroFormAtom`, and many sympy expressions
     """
+
     def __new__(cls, base):
         """
         Creates a new abstract_ZF instance.
         """
-        if base is None or base==list() or base==tuple():
+        if base is None or base == list() or base == tuple():
             base = 0
-        if isinstance(base,list):
+        if isinstance(base, list):
             base = tuple(base)
-        if isinstance(base,abstract_ZF):
+        if isinstance(base, abstract_ZF):
             base = base.base
-        if isinstance(base, abstDFAtom) and base.degree==0: ###!!!
+        if isinstance(base, abstDFAtom) and base.degree == 0:  ###!!!
             base = base.coeff
-        if isinstance(base,tuple):
+        if isinstance(base, tuple):
             op, *args = base  # Extract operator and operands
             new_args = []
             for arg in args:
-                if isinstance(arg, abstDFAtom) and arg.degree==0:   ###!!!
+                if isinstance(arg, abstDFAtom) and arg.degree == 0:  ###!!!
                     new_args += [arg.coeff]
-                if isinstance(arg,abstract_ZF):
+                if isinstance(arg, abstract_ZF):
                     new_args += [arg.base]
                 else:
                     new_args += [arg]
             args = new_args
 
-
         # Define sorting hierarchy: lower index = lower precedence
-        type_hierarchy = {int: 0, float: 0, sp.Expr: 1, zeroFormAtom: 2, abstract_ZF: 3, tuple: 4}
+        type_hierarchy = {
+            int: 0,
+            float: 0,
+            sp.Expr: 1,
+            zeroFormAtom: 2,
+            abstract_ZF: 3,
+            tuple: 4,
+        }
 
         # Helper function to get the hierarchy value for sorting
         def hierarchy_rank(obj):
             th = type_hierarchy.get(type(obj), -1)
-            if th<1:
-                return (th,th)
-            if th==1:
-                return (th,th)
+            if th < 1:
+                return (th, th)
+            if th == 1:
+                return (th, th)
             elif th == 2:
-                return (th,obj.label)
+                return (th, obj.label)
             else:
-                return (th,th)
+                return (th, th)
+
         def is_zero_check(x):
             """Helper function to check if x is zero."""
             return x == 0 or x == 0.0 or (hasattr(x, "is_zero") and x.is_zero)
+
         def is_one_check(x):
             """Helper function to check if x is zero."""
-            return x == 1 or x == 1.0 or x==sp.sympify(1) or (hasattr(x, "is_one") and x.is_one)
+            return (
+                x == 1
+                or x == 1.0
+                or x == sp.sympify(1)
+                or (hasattr(x, "is_one") and x.is_one)
+            )
 
         # If `base` is a tuple, process it
         if isinstance(base, tuple):
             op, *args = base  # Extract operator and operands
-            if op == 'sub':
-                if all(isinstance(j,_get_expr_num_types()) for j in args):
-                    base = args[0]-args[1]
-                elif args[0]==args[1]:
+            if op == "sub":
+                if all(isinstance(j, _get_expr_num_types()) for j in args):
+                    base = args[0] - args[1]
+                elif args[0] == args[1]:
                     base = 0
                 elif abstract_ZF(args[0]).is_zero:
-                    base = ('mul',-1,args[1])
+                    base = ("mul", -1, args[1])
                 elif abstract_ZF(args[1]).is_zero:
                     base = args[0]
-            elif op == 'div':
-                if all(isinstance(j,_get_expr_num_types()) for j in args):
-                    base = sp.Rational(args[0],args[1])
-                elif args[0]==args[1] and (not abstract_ZF(args[0]).is_zero):
+            elif op == "div":
+                if all(isinstance(j, _get_expr_num_types()) for j in args):
+                    base = sp.Rational(args[0], args[1])
+                elif args[0] == args[1] and (not abstract_ZF(args[0]).is_zero):
                     base = 1
                 elif abstract_ZF(args[0]).is_zero:
                     base = 0
@@ -824,7 +982,11 @@ class abstract_ZF(sp.Basic):
                 # Flatten nested structures (("add", ("add", x, y), z) --> ("add", x, y, z))
                 flat_args = []
                 for arg in args:
-                    if isinstance(arg, abstract_ZF) and isinstance(arg.base, tuple) and arg.base[0] == op:
+                    if (
+                        isinstance(arg, abstract_ZF)
+                        and isinstance(arg.base, tuple)
+                        and arg.base[0] == op
+                    ):
                         flat_args.extend(arg.base[1:])  # Expand nested elements
                     elif isinstance(arg, tuple) and arg[0] == op:
                         flat_args.extend(arg[1:])  # Expand nested elements
@@ -838,11 +1000,18 @@ class abstract_ZF(sp.Basic):
                 numeric_terms = [arg for arg in flat_args if hierarchy_rank(arg)[0] < 2]
                 other_terms = [arg for arg in flat_args if hierarchy_rank(arg)[0] >= 2]
 
-                if op=="mul" and (any((j==0 or j==0.0) for j in numeric_terms) or any(j.is_zero for j in other_terms if not isinstance(j,tuple))):
+                if op == "mul" and (
+                    any((j == 0 or j == 0.0) for j in numeric_terms)
+                    or any(j.is_zero for j in other_terms if not isinstance(j, tuple))
+                ):
                     base = 0
                 else:
-                    if op=="mul":
-                        other_terms = [j for j in other_terms if isinstance(j,tuple) or not j.is_one]
+                    if op == "mul":
+                        other_terms = [
+                            j
+                            for j in other_terms
+                            if isinstance(j, tuple) or not j.is_one
+                        ]
 
                     if op == "add":
                         new_other_terms = {}
@@ -856,9 +1025,16 @@ class abstract_ZF(sp.Basic):
                                 new_other_terms[term] = new_other_terms.get(term, 0) + 1
 
                             # Case 2: Multiplication structure (e.g., ('mul', 1, A))
-                            elif isinstance(term, tuple) and term[0] == "mul" and len(term) == 3 and isinstance(term[1], _get_expr_num_types()):
+                            elif (
+                                isinstance(term, tuple)
+                                and term[0] == "mul"
+                                and len(term) == 3
+                                and isinstance(term[1], _get_expr_num_types())
+                            ):
                                 coeff, base_term = term[1], term[2]
-                                new_other_terms[base_term] = new_other_terms.get(base_term, 0) + coeff
+                                new_other_terms[base_term] = (
+                                    new_other_terms.get(base_term, 0) + coeff
+                                )
 
                             # Case 3: Any other term, store as-is
                             else:
@@ -884,23 +1060,27 @@ class abstract_ZF(sp.Basic):
                             combined_numeric = sp.sympify(sum(numeric_terms))
                             if combined_numeric != 0:
                                 other_terms.insert(0, combined_numeric)
-                            elif (combined_numeric==0 or combined_numeric==0.0) and len(other_terms)==0:
+                            elif (
+                                combined_numeric == 0 or combined_numeric == 0.0
+                            ) and len(other_terms) == 0:
                                 other_terms = [combined_numeric]
                         elif op == "mul":
                             combined_numeric = sp.prod(numeric_terms)
-                            if combined_numeric == 0 or combined_numeric==0.0:
+                            if combined_numeric == 0 or combined_numeric == 0.0:
                                 other_terms = [combined_numeric]
-                            elif combined_numeric !=1 and combined_numeric!=1.0:
+                            elif combined_numeric != 1 and combined_numeric != 1.0:
                                 other_terms.insert(0, combined_numeric)
-                            elif (combined_numeric==1 or combined_numeric==1.0) and len(other_terms)==0:
+                            elif (
+                                combined_numeric == 1 or combined_numeric == 1.0
+                            ) and len(other_terms) == 0:
                                 other_terms = [combined_numeric]
 
                     # Update base
                     if len(other_terms) > 1:
                         base = (op, *other_terms)
-                    elif len(other_terms)==0:
+                    elif len(other_terms) == 0:
                         base = 0
-                    elif hasattr(other_terms[0],'base'):
+                    elif hasattr(other_terms[0], "base"):
                         base = other_terms[0].base
                     else:
                         base = other_terms[0]
@@ -918,22 +1098,35 @@ class abstract_ZF(sp.Basic):
                         base = 0
                     elif is_one_check(left):
                         base = 1
-                    elif isinstance(left,_get_expr_num_types()) and isinstance(right,_get_expr_num_types()):
-                        base =left**right
-                    elif isinstance(left, abstract_ZF) and isinstance(left.base, tuple) and left.base[0] == "pow":
+                    elif isinstance(left, _get_expr_num_types()) and isinstance(
+                        right, _get_expr_num_types()
+                    ):
+                        base = left**right
+                    elif (
+                        isinstance(left, abstract_ZF)
+                        and isinstance(left.base, tuple)
+                        and left.base[0] == "pow"
+                    ):
                         inner_base, inner_exp = left.base[1], left.base[2]
 
-                        base = ("pow", inner_base,  ( "mul", inner_exp, right))
+                        base = ("pow", inner_base, ("mul", inner_exp, right))
 
             # Assign updated base
-            if isinstance(base,(tuple,list)): 
-                base = tuple([j.base if isinstance(j,abstract_ZF) else j for j in base])
+            if isinstance(base, (tuple, list)):
+                base = tuple(
+                    [j.base if isinstance(j, abstract_ZF) else j for j in base]
+                )
             obj = super().__new__(cls, base)
-            obj.base = base 
+            obj.base = base
             return obj
 
-        elif not (isinstance(base, (zeroFormAtom, abstract_ZF)) or isinstance(base,_get_expr_num_types())):
-            raise TypeError("Base must be zeroFormAtom, int, float, sympy.Expr, abstract_ZF, or an operation tuple.")
+        elif not (
+            isinstance(base, (zeroFormAtom, abstract_ZF))
+            or isinstance(base, _get_expr_num_types())
+        ):
+            raise TypeError(
+                "Base must be zeroFormAtom, int, float, sympy.Expr, abstract_ZF, or an operation tuple."
+            )
 
         # Call sp.Basic constructor
         obj = super().__new__(cls, base)
@@ -941,26 +1134,33 @@ class abstract_ZF(sp.Basic):
         return obj
 
     def __init__(self, base):
-        self._is_zero = (self.base == 0 or self.base == 0.0 or
-                        (isinstance(self.base, zeroFormAtom) and self.base.is_zero) or
-                        (isinstance(self.base, abstract_ZF) and self.base.is_zero))
+        self._is_zero = (
+            self.base == 0
+            or self.base == 0.0
+            or (isinstance(self.base, zeroFormAtom) and self.base.is_zero)
+            or (isinstance(self.base, abstract_ZF) and self.base.is_zero)
+        )
 
-        self.is_one = (self.base == 1 or self.base == 1.0 or
-                    (isinstance(self.base, zeroFormAtom) and self.base.is_one) or
-                    (isinstance(self.base, abstract_ZF) and self.base.is_one))
+        self.is_one = (
+            self.base == 1
+            or self.base == 1.0
+            or (isinstance(self.base, zeroFormAtom) and self.base.is_one)
+            or (isinstance(self.base, abstract_ZF) and self.base.is_one)
+        )
 
     @property
     def is_zero(self):
         """Returns True if the expression simplifies to zero."""
-        return self._is_zero 
+        return self._is_zero
 
     @property
     def tree_leaves(self):
-        if not hasattr(self,'_leaves'):
+        if not hasattr(self, "_leaves"):
             self._leaves = None
         if self._leaves is None:
+
             def gather_leaves(base):
-                if isinstance(base,abstract_ZF):
+                if isinstance(base, abstract_ZF):
                     leaves = gather_leaves(base.base)
                 elif isinstance(base, tuple):
                     leaves = set()
@@ -970,19 +1170,20 @@ class abstract_ZF(sp.Basic):
                 else:
                     leaves = {base}
                 return leaves
+
             self._leaves = gather_leaves(self.base)
         return self._leaves
 
     @property
     def free_symbols(self):
-        if not hasattr(self,'_free_symbols'):
+        if not hasattr(self, "_free_symbols"):
             self._free_symbols = None
         if self._free_symbols is None:
             FS = set()
             for leaf in self.tree_leaves:
-                if hasattr(leaf,'free_symbols'):
+                if hasattr(leaf, "free_symbols"):
                     FS |= leaf.free_symbols
-                elif isinstance(leaf,zeroFormAtom):
+                elif isinstance(leaf, zeroFormAtom):
                     FS |= {leaf}
             self._free_symbols = FS
         return self._free_symbols
@@ -1004,87 +1205,102 @@ class abstract_ZF(sp.Basic):
             return NotImplemented
         return self.base == other.base
 
-    def sort_key(self, order=None):     # for the sympy sorting.py default_sort_key
-        return (4, self.base)       # 4 is to group with function-like objects
+    def sort_key(self, order=None):  # for the sympy sorting.py default_sort_key
+        return (4, self.base)  # 4 is to group with function-like objects
 
     def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
-        return self.subs(data, with_diff_corollaries = with_diff_corollaries)
+        return self.subs(data, with_diff_corollaries=with_diff_corollaries)
 
-    def subs(self, data, with_diff_corollaries = False):
+    def subs(self, data, with_diff_corollaries=False):
         """
         Symbolic substitution in abstract_ZF.
         """
-        if isinstance(self.base,numbers.Number):
+        if isinstance(self.base, numbers.Number):
             return self
-        if isinstance(data, (list, tuple)) and all(isinstance(j, tuple) and len(j) == 2 for j in data):
+        if isinstance(data, (list, tuple)) and all(
+            isinstance(j, tuple) and len(j) == 2 for j in data
+        ):
             l1 = len(data)
             data = dict(data)
             if len(data) < l1:
-                warnings.warn('Provided substitution rules had repeat keys, and only one was used.')
-        if isinstance(self.base,zeroFormAtom):
-            return abstract_ZF(self.base.subs(data,with_diff_corollaries=with_diff_corollaries))
-        if isinstance(self.base,_get_expr_types()):
+                warnings.warn(
+                    "Provided substitution rules had repeat keys, and only one was used."
+                )
+        if isinstance(self.base, zeroFormAtom):
+            return abstract_ZF(
+                self.base.subs(data, with_diff_corollaries=with_diff_corollaries)
+            )
+        if isinstance(self.base, _get_expr_types()):
             new_subs = dict()
             spare_subs = dict()
-            for k,v in data.items():
-                if isinstance(k,_get_expr_types()):
-                    if isinstance(v,_get_expr_num_types()):
+            for k, v in data.items():
+                if isinstance(k, _get_expr_types()):
+                    if isinstance(v, _get_expr_num_types()):
                         new_subs[k] = v
                     else:
                         spare_subs[k] = v
             new_base = self.base
-            if len(new_subs)>0:
+            if len(new_subs) > 0:
                 new_base = new_base.subs(new_subs)
-            if len(spare_subs)>0:
-                new_base = _sympy_to_abstract_ZF(new_base,spare_subs)
+            if len(spare_subs) > 0:
+                new_base = _sympy_to_abstract_ZF(new_base, spare_subs)
             return abstract_ZF(new_base)
-        if isinstance(self.base,tuple):
-            op,*args = self.base
-            def sub_process(arg,sub_data):
-                if isinstance(arg,tuple):
+        if isinstance(self.base, tuple):
+            op, *args = self.base
+
+            def sub_process(arg, sub_data):
+                if isinstance(arg, tuple):
                     arg = abstract_ZF(arg)
-                if isinstance(arg, abstDFAtom) and arg.degree==0:   ###!!!
+                if isinstance(arg, abstDFAtom) and arg.degree == 0:  ###!!!
                     arg = arg.coeff
-                    warnings.warn('DEGUB8493')
-                if isinstance(arg, (zeroFormAtom,abstract_ZF)):
-                    newArg = arg.subs(sub_data,with_diff_corollaries=with_diff_corollaries)
-                    if isinstance(newArg,abstDFAtom):
-                        if newArg.degree==0:
+                    warnings.warn("DEGUB8493")
+                if isinstance(arg, (zeroFormAtom, abstract_ZF)):
+                    newArg = arg.subs(
+                        sub_data, with_diff_corollaries=with_diff_corollaries
+                    )
+                    if isinstance(newArg, abstDFAtom):
+                        if newArg.degree == 0:
                             newArg = newArg.coeff
                         else:
-                            raise ValueError('dgcv subs methods do not support replacing 0-forms with higher degree forms.')
+                            raise ValueError(
+                                "dgcv subs methods do not support replacing 0-forms with higher degree forms."
+                            )
                     return newArg
-                if isinstance(arg,_get_expr_types()):
+                if isinstance(arg, _get_expr_types()):
                     new_subs = dict()
                     spare_subs = dict()
-                    for k,v in data.items():
-                        if isinstance(k,_get_expr_types()):
-                            if isinstance(v,_get_expr_num_types()):
+                    for k, v in data.items():
+                        if isinstance(k, _get_expr_types()):
+                            if isinstance(v, _get_expr_num_types()):
                                 new_subs[k] = v
                             else:
                                 spare_subs[k] = v
-                    if len(new_subs)>0:
+                    if len(new_subs) > 0:
                         arg = arg.subs(new_subs)
-                    if len(spare_subs)>0:
-                        arg = abstract_ZF(_sympy_to_abstract_ZF(arg,spare_subs))
-                    if isinstance(arg,abstDFAtom):
-                        if arg.degree==0:
+                    if len(spare_subs) > 0:
+                        arg = abstract_ZF(_sympy_to_abstract_ZF(arg, spare_subs))
+                    if isinstance(arg, abstDFAtom):
+                        if arg.degree == 0:
                             arg = arg.coeff
                         else:
-                            raise ValueError('dgcv subs methods do not support replacing 0-forms with higher degree forms.')
+                            raise ValueError(
+                                "dgcv subs methods do not support replacing 0-forms with higher degree forms."
+                            )
                     return arg
                 return arg
-            new_base = tuple([op]+[sub_process(arg,data) for arg in args])     
+
+            new_base = tuple([op] + [sub_process(arg, data) for arg in args])
             return _loop_ZF_format_conversions(abstract_ZF(new_base))
 
     def _eval_conjugate(self):
         def recursive_conjugate(expr):
-            if isinstance(expr,tuple):
+            if isinstance(expr, tuple):
                 op, *args = expr
-                return tuple([op]+[recursive_conjugate(arg) for arg in args])
+                return tuple([op] + [recursive_conjugate(arg) for arg in args])
             else:
                 return _custom_conj(expr)
+
         return abstract_ZF(recursive_conjugate(self.base))
 
     def __add__(self, other):
@@ -1092,13 +1308,16 @@ class abstract_ZF(sp.Basic):
         Addition of abstract_ZF instances.
         Supports addition with int, float, and sympy.Expr.
         """
-        if not (isinstance(other, (abstract_ZF, zeroFormAtom)) or isinstance(other, _get_expr_num_types())):
+        if not (
+            isinstance(other, (abstract_ZF, zeroFormAtom))
+            or isinstance(other, _get_expr_num_types())
+        ):
             return NotImplemented
         if other == 0:
             return self
         return abstract_ZF(("add", self, other))
 
-    def __radd__(self,other):
+    def __radd__(self, other):
         return self.__add__(other)
 
     def __sub__(self, other):
@@ -1108,14 +1327,16 @@ class abstract_ZF(sp.Basic):
         """
         if isinstance(other, zeroFormAtom):
             other = abstract_ZF(other)
-        if not (isinstance(other, (abstract_ZF)) or isinstance(other, _get_expr_num_types())):
+        if not (
+            isinstance(other, (abstract_ZF)) or isinstance(other, _get_expr_num_types())
+        ):
             return NotImplemented
         if other == 0:
             return self
         return abstract_ZF(("sub", self, other))
 
-    def __rsub__(self,other):
-        return -1*(self-other)
+    def __rsub__(self, other):
+        return -1 * (self - other)
 
     def __mul__(self, other):
         """
@@ -1125,26 +1346,40 @@ class abstract_ZF(sp.Basic):
         if isinstance(other, abstract_ZF):
             # If multiplying same base, add exponents (x^a * x^b --> x^(a + b))
             if (
-                isinstance(self.base, tuple) and self.base[0] == "pow" and
-                isinstance(other.base, tuple) and other.base[0] == "pow"
+                isinstance(self.base, tuple)
+                and self.base[0] == "pow"
+                and isinstance(other.base, tuple)
+                and other.base[0] == "pow"
             ):
                 base1, exp1 = self.base[1], self.base[2]
                 base2, exp2 = other.base[1], other.base[2]
                 if base1 == base2:
                     return abstract_ZF(("pow", base1, ("add", exp1, exp2)))  # x^(a+b)
 
-            return abstract_ZF(("mul", self.base, other.base))  # Default multiplication for abstract_ZF instances
+            return abstract_ZF(
+                ("mul", self.base, other.base)
+            )  # Default multiplication for abstract_ZF instances
 
         elif isinstance(other, _get_expr_num_types()):
-            if isinstance(self.base,tuple) and self.base[0]=='mul' and isinstance(self.base[1], _get_expr_num_types()):
-                factors = tuple(['mul']+[other*f if count==0 else f for count,f in enumerate(self.base[1:])])
-            else: 
+            if (
+                isinstance(self.base, tuple)
+                and self.base[0] == "mul"
+                and isinstance(self.base[1], _get_expr_num_types())
+            ):
+                factors = tuple(
+                    ["mul"]
+                    + [
+                        other * f if count == 0 else f
+                        for count, f in enumerate(self.base[1:])
+                    ]
+                )
+            else:
                 factors = ("mul", other, self.base)
             return abstract_ZF(factors)
         elif isinstance(other, zeroFormAtom):
             return abstract_ZF(("mul", self.base, other))
 
-        return NotImplemented 
+        return NotImplemented
 
     def __rmul__(self, other):
         """
@@ -1161,7 +1396,9 @@ class abstract_ZF(sp.Basic):
         Division of abstract_ZF instances.
         Supports division with int, float, and sympy.Expr.
         """
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("div", self, other))
 
         return NotImplemented
@@ -1171,7 +1408,9 @@ class abstract_ZF(sp.Basic):
         Division of abstract_ZF instances.
         Supports division with int, float, and sympy.Expr.
         """
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("div", other, self))
 
         return NotImplemented
@@ -1181,7 +1420,9 @@ class abstract_ZF(sp.Basic):
         Exponentiation of abstract_ZF instances.
         Supports exponentiation with int, float, and sympy.Expr.
         """
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("pow", self, other))
 
         return NotImplemented
@@ -1190,22 +1431,33 @@ class abstract_ZF(sp.Basic):
         """
         Exponentiation of abstract_ZF instances.
         """
-        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
+        if isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             return abstract_ZF(("pow", other, self))
 
         return NotImplemented
 
-    def _eval_simplify(self, ratio=None, measure=None, inverse=True, doit=True, rational=True, expand=False, **kwargs):
+    def _eval_simplify(
+        self,
+        ratio=None,
+        measure=None,
+        inverse=True,
+        doit=True,
+        rational=True,
+        expand=False,
+        **kwargs,
+    ):
         """
         Simplifies the abstract_ZF instance using algebraic rules.
         """
-        return _loop_ZF_format_conversions(self, withSimplify = True)
+        return _loop_ZF_format_conversions(self, withSimplify=True)
         # if isinstance(self.base, tuple):
         #     op, *args = self.base
 
         #     # Recursively simplify operands with the same keyword arguments
-        #     args = [arg._eval_simplify(ratio=ratio, measure=measure, inverse=inverse, 
-        #                             doit=doit, rational=rational, expand=expand, **kwargs) 
+        #     args = [arg._eval_simplify(ratio=ratio, measure=measure, inverse=inverse,
+        #                             doit=doit, rational=rational, expand=expand, **kwargs)
         #             if isinstance(arg, abstract_ZF) else arg for arg in args]
 
         #     # Apply `expand=True` to distribute multiplication over addition
@@ -1231,7 +1483,7 @@ class abstract_ZF(sp.Basic):
 
         #         if op == "pow":
         #             base, exp = args
-        #             if isinstance(exp, int) and exp>0:
+        #             if isinstance(exp, numbers.Integral) and exp>0:
         #                 if isinstance(base, abstract_ZF) and isinstance(base.base, tuple) and base.base[0] == "add":
         #                     base = base.base
         #                 if isinstance(base, tuple) and base[0] == "add":
@@ -1297,16 +1549,22 @@ class abstract_ZF(sp.Basic):
                     else:
                         return elem
                 else:
-                    raise TypeError("If assume_method=True, you must pass a string method name.")
+                    raise TypeError(
+                        "If assume_method=True, you must pass a string method name."
+                    )
             else:
                 return func_or_method_name(elem)
-        return _loop_ZF_format_conversions(self, withSimplify=False, reformatter=formatter)
+
+        return _loop_ZF_format_conversions(
+            self, withSimplify=False, reformatter=formatter
+        )
 
     def numer(self):
         def numer_from_sympy(x):
             if isinstance(x, sp.Basic):
                 return x.as_numer_denom()[0]
             return x
+
         return self._apply_with_sympify_loop(numer_from_sympy)
 
     def denom(self):
@@ -1314,6 +1572,7 @@ class abstract_ZF(sp.Basic):
             if isinstance(x, sp.Basic):
                 return x.as_numer_denom()[1]
             return 1
+
         return self._apply_with_sympify_loop(denom_from_sympy)
 
     def as_numer_denom(self):
@@ -1340,12 +1599,22 @@ class abstract_ZF(sp.Basic):
                 """
                 expr_str = str(expr)
                 if context_op == "mul" and ("+" in expr_str or "-" in expr_str):
-                    if position == 0 and ('-' not in expr_str[1:] and '+' not in expr_str[1:]):
+                    if position == 0 and (
+                        "-" not in expr_str[1:] and "+" not in expr_str[1:]
+                    ):
                         return False
                     return True  # Wrap sums inside products
-                if context_op == "pow" and any(j in expr_str for j in {"+", "-", "*", "/"}) and position == 0:
+                if (
+                    context_op == "pow"
+                    and any(j in expr_str for j in {"+", "-", "*", "/"})
+                    and position == 0
+                ):
                     return True  # base of expontents with sums/products/divs should be wrapped
-                if context_op == "div" and position == 0 and (any(j in expr_str for j in {"+", "/"}) or '-' in expr_str[1:]):
+                if (
+                    context_op == "div"
+                    and position == 0
+                    and (any(j in expr_str for j in {"+", "/"}) or "-" in expr_str[1:])
+                ):
                     return True  # base of expontents with sums/products/divs should be wrapped
                 if context_op == "sub" and ("+" in expr_str or "-" in expr_str):
                     return True
@@ -1384,50 +1653,88 @@ class abstract_ZF(sp.Basic):
                 Determines whether an expression needs parentheses based on its operator.
                 """
                 expr_str = str(expr)
-                if context_op == "mul" and any(j in expr_str for j in {"+", "-","add","sub"}):
-                    if position == 0 and ('-' not in expr_str[1:] and '+' not in expr_str[1:]):
+                if context_op == "mul" and any(
+                    j in expr_str for j in {"+", "-", "add", "sub"}
+                ):
+                    if position == 0 and (
+                        "-" not in expr_str[1:] and "+" not in expr_str[1:]
+                    ):
                         return False
                     return True  # Wrap sums inside products
-                if context_op == "pow" and any(j in expr_str for j in {"+", "-", "*", "/","add","sub","mul","div"}) and position == 0:
+                if (
+                    context_op == "pow"
+                    and any(
+                        j in expr_str
+                        for j in {"+", "-", "*", "/", "add", "sub", "mul", "div"}
+                    )
+                    and position == 0
+                ):
                     return True  # base of expontents with sums/products/divs should be wrapped
-                if context_op == "div" and position == 0 and (any(j in expr_str for j in {"+", "/","add","div"}) or '-' in expr_str[1:] or 'sub' in expr_str[1:]):
+                if (
+                    context_op == "div"
+                    and position == 0
+                    and (
+                        any(j in expr_str for j in {"+", "/", "add", "div"})
+                        or "-" in expr_str[1:]
+                        or "sub" in expr_str[1:]
+                    )
+                ):
                     return True  # base of expontents with sums/products/divs should be wrapped
-                if context_op == "sub" and (j in expr_str for j in {"+", "-","add","sub"}):
+                if context_op == "sub" and (
+                    j in expr_str for j in {"+", "-", "add", "sub"}
+                ):
                     return True
                 return False
 
             formatted_args = []
             for count, arg in enumerate(args):
-                if count==0 and op=='mul' and arg in {1,1.0, -1, -1.0}:
-                    if arg in {1,1.0}:
-                        if len(args)==1:
-                            formatted_args.append('1')
-                    elif arg in {-1,-1.0}:
-                        if len(args)==1:
-                            formatted_args.append('-1')
+                if count == 0 and op == "mul" and arg in {1, 1.0, -1, -1.0}:
+                    if arg in {1, 1.0}:
+                        if len(args) == 1:
+                            formatted_args.append("1")
+                    elif arg in {-1, -1.0}:
+                        if len(args) == 1:
+                            formatted_args.append("-1")
                         else:
-                            formatted_args.append('-')
-                elif op=='pow' and isinstance(args[1],numbers.Rational) and all(isinstance(j,numbers.Integral) and j>0 for j in [args[1].numerator,args[1].denominator-1]):
-                    op = '_handled'
-                    if isinstance(arg,tuple):
+                            formatted_args.append("-")
+                elif (
+                    op == "pow"
+                    and isinstance(args[1], numbers.Rational)
+                    and all(
+                        isinstance(j, numbers.Integral) and j > 0
+                        for j in [args[1].numerator, args[1].denominator - 1]
+                    )
+                ):
+                    op = "_handled"
+                    if isinstance(arg, tuple):
                         arg_latex = f"{{{abstract_ZF(arg)._latex(printer=printer)}}}"
                     else:
-                        arg_latex = f"{{{arg._latex(printer=printer)}}}" if hasattr(arg, "_latex") else sp.latex(arg)
-                    if args[1].numerator==1:
-                        if args[1].denominator==2:
-                            formatted_str = f'\\sqrt{{{arg_latex}}}'
+                        arg_latex = (
+                            f"{{{arg._latex(printer=printer)}}}"
+                            if hasattr(arg, "_latex")
+                            else sp.latex(arg)
+                        )
+                    if args[1].numerator == 1:
+                        if args[1].denominator == 2:
+                            formatted_str = f"\\sqrt{{{arg_latex}}}"
                         else:
-                            formatted_str = f'\\sqrt[{args[1].denominator}]{{{arg_latex}}}'
+                            formatted_str = (
+                                f"\\sqrt[{args[1].denominator}]{{{arg_latex}}}"
+                            )
                     else:
-                        if args[1].denominator==2:
-                            formatted_str = f'\\left(\\sqrt{{{arg_latex}}}\\right)^{{{args[1].numerator}}}'
+                        if args[1].denominator == 2:
+                            formatted_str = f"\\left(\\sqrt{{{arg_latex}}}\\right)^{{{args[1].numerator}}}"
                         else:
-                            formatted_str = f'\\left(\\sqrt[{args[1].denominator}]{{{arg_latex}}}\\right)^{{{args[1].numerator}}}'
+                            formatted_str = f"\\left(\\sqrt[{args[1].denominator}]{{{arg_latex}}}\\right)^{{{args[1].numerator}}}"
                 else:
-                    if isinstance(arg,tuple):
+                    if isinstance(arg, tuple):
                         arg_latex = f"{{{abstract_ZF(arg)._latex(printer=printer)}}}"
                     else:
-                        arg_latex = f"{{{arg._latex(printer=printer)}}}" if hasattr(arg, "_latex") else sp.latex(arg)
+                        arg_latex = (
+                            f"{{{arg._latex(printer=printer)}}}"
+                            if hasattr(arg, "_latex")
+                            else sp.latex(arg)
+                        )
                     if needs_parentheses(arg, op, count):
                         arg_latex = f"\\left({arg_latex}\\right)"
                     formatted_args.append(arg_latex)
@@ -1444,70 +1751,74 @@ class abstract_ZF(sp.Basic):
             elif op == "pow":
                 formatted_str = f"{formatted_args[0]}^{{{formatted_args[1]}}}"
 
-            return formatted_str.replace("+ {\\left(-1\\right) ", "- { ").replace("+ -", "-").replace("+ {-", "-{")
+            return (
+                formatted_str.replace("+ {\\left(-1\\right) ", "- { ")
+                .replace("+ -", "-")
+                .replace("+ {-", "-{")
+            )
 
         return sp.latex(self.base)
 
-    def _repr_latex_(self,raw=False):
+    def _repr_latex_(self, raw=False):
         """
         Jupyter Notebook LaTeX representation for abstract_ZF.
         """
         return sp.latex(self) if raw else f"${sp.latex(self)}$"
 
-    def to_sympy(self,subs_rules={}):
-        return _sympify_abst_ZF(self,subs_rules)[0][0]
+    def to_sympy(self, subs_rules={}):
+        return _sympify_abst_ZF(self, subs_rules)[0][0]
 
     def _canonicalize_step(self):
-        if isinstance(self.base,abstract_ZF):
+        if isinstance(self.base, abstract_ZF):
             zf = self.base
         else:
             zf = self
         if isinstance(zf.base, zeroFormAtom):
             zf, stabilized = zf.base._canonicalize_step()
-            if isinstance(zf,zeroFormAtom):
+            if isinstance(zf, zeroFormAtom):
                 return abstract_ZF(zf), stabilized
             else:
                 return zf, stabilized
-        if isinstance(zf.base,_get_expr_num_types()):
-            return zf, True     # True for stabilized
-        if isinstance(zf.base,tuple):
-            stabilized = True   # default, may change
+        if isinstance(zf.base, _get_expr_num_types()):
+            return zf, True  # True for stabilized
+        if isinstance(zf.base, tuple):
+            stabilized = True  # default, may change
             op, *args = zf.base
             new_base = [op]
             for arg in args:
-                if isinstance(arg,tuple):
+                if isinstance(arg, tuple):
                     arg = abstract_ZF(arg)
-                if hasattr(arg,'_canonicalize_step'):
+                if hasattr(arg, "_canonicalize_step"):
                     new_arg, stab = arg._canonicalize_step()
                     stabilized = stabilized and stab
                 else:
                     new_arg = arg
-                if isinstance(new_arg,abstract_ZF):
+                if isinstance(new_arg, abstract_ZF):
                     new_arg = new_arg.base
                 new_base.append(new_arg)
             return abstract_ZF(tuple(new_base)), stabilized
         return zf, True
 
-    def _eval_canonicalize(self,depth=1000):
+    def _eval_canonicalize(self, depth=1000):
         zf = self
         stabilized = False
         count = 0
-        while stabilized is False and count<depth:
-            if hasattr(zf,'_canonicalize_step'):
+        while stabilized is False and count < depth:
+            if hasattr(zf, "_canonicalize_step"):
                 zf, stabilized = zf._canonicalize_step()
             count += 1
         return zf
 
 
-
 class abstDFAtom(sp.Basic):
-
-    def __new__(cls, coeff, degree, label=None, ext_deriv_order=0, _markers=frozenset()):
-        if hasattr(coeff,'is_zero') and coeff.is_zero:
+    def __new__(
+        cls, coeff, degree, label=None, ext_deriv_order=0, _markers=frozenset()
+    ):
+        if hasattr(coeff, "is_zero") and coeff.is_zero:
             coeff = 0
-        elif hasattr(coeff,'is_one') and coeff.is_one:
+        elif hasattr(coeff, "is_one") and coeff.is_one:
             coeff = 1
-        if isinstance(coeff,numbers.Integral):
+        if isinstance(coeff, numbers.Integral):
             coeff = sp.sympify(coeff)
 
         obj = sp.Basic.__new__(cls, coeff, degree, label, ext_deriv_order, _markers)
@@ -1516,10 +1827,12 @@ class abstDFAtom(sp.Basic):
         obj.coeff = coeff
         obj._coeff = coeff
         obj.ext_deriv_order = ext_deriv_order
-        obj._markers=_markers
+        obj._markers = _markers
         return obj
 
-    def __init__(self, coeff, degree, label=None, ext_deriv_order=0, _markers=frozenset()):
+    def __init__(
+        self, coeff, degree, label=None, ext_deriv_order=0, _markers=frozenset()
+    ):
         self.coeffs = [coeff]
 
     def _sage_(self):
@@ -1548,33 +1861,50 @@ class abstDFAtom(sp.Basic):
         if self.label:
             if "real" in self._markers:
                 label = self.label
-            elif self.label[0:3]=="BAR":
-                label=self.label[3:]
+            elif self.label[0:3] == "BAR":
+                label = self.label[3:]
             else:
-                label=f"BAR{self.label}"
+                label = f"BAR{self.label}"
         else:
             label = None
+
         def cMarkers(marker):
             if marker == "holomorphic":
                 return "antiholomorphic"
             if marker == "antiholomorphic":
                 return "holomorphic"
             return marker
+
         new_markers = frozenset([cMarkers(j) for j in self._markers])
         coeff = _custom_conj(self.coeff)
-        return abstDFAtom(coeff,self.degree,label=label,ext_deriv_order=self.ext_deriv_order,_markers=new_markers)
+        return abstDFAtom(
+            coeff,
+            self.degree,
+            label=label,
+            ext_deriv_order=self.ext_deriv_order,
+            _markers=new_markers,
+        )
 
     def __repr__(self):
         """String representation for abstDFAtom."""
+
         def extDerFormat(string):
-            if isinstance(self.ext_deriv_order,numbers.Integral) and self.ext_deriv_order>0:
-                return f'extDer({string},order = {self.ext_deriv_order})'
+            if (
+                isinstance(self.ext_deriv_order, numbers.Integral)
+                and self.ext_deriv_order > 0
+            ):
+                return f"extDer({string},order = {self.ext_deriv_order})"
             else:
                 return string
-        if isinstance(self.coeff,(zeroFormAtom,abstract_ZF)):
+
+        if isinstance(self.coeff, (zeroFormAtom, abstract_ZF)):
             return extDerFormat(self.coeff.__repr__())
         coeff_sympy = sp.sympify(self.coeff)
-        if len(coeff_sympy.free_symbols)==0 and self.ext_deriv_order is not None and self.ext_deriv_order>0:
+        if (
+            len(coeff_sympy.free_symbols) == 0
+            and self.ext_deriv_order is not None
+            and self.ext_deriv_order > 0
+        ):
             return 0
         if coeff_sympy == 1:
             return str(self.label) if self.label else "1"
@@ -1582,31 +1912,46 @@ class abstDFAtom(sp.Basic):
             return f"-{self.label}" if self.label else "-1"
         else:
             # Wrap in parentheses if there are multiple terms
-            coeff_str = f"({coeff_sympy})" if len(coeff_sympy.as_ordered_terms()) > 1 else str(coeff_sympy)
-            return extDerFormat(f"{coeff_str}{self.label}") if self.label else extDerFormat(coeff_str)
+            coeff_str = (
+                f"({coeff_sympy})"
+                if len(coeff_sympy.as_ordered_terms()) > 1
+                else str(coeff_sympy)
+            )
+            return (
+                extDerFormat(f"{coeff_str}{self.label}")
+                if self.label
+                else extDerFormat(coeff_str)
+            )
 
     def _latex(self, printer=None):
         """LaTeX representation for abstDFAtom."""
+
         def extDerFormat(string):
-            if self.ext_deriv_order==1:
-                return f'D\\left({string}\\right)'
-            elif self.ext_deriv_order is not None and self.ext_deriv_order>1:
-                return f'D^{self.ext_deriv_order}\\left({string}\\right)'
+            if self.ext_deriv_order == 1:
+                return f"D\\left({string}\\right)"
+            elif self.ext_deriv_order is not None and self.ext_deriv_order > 1:
+                return f"D^{self.ext_deriv_order}\\left({string}\\right)"
             else:
                 return string
+
         def bar_labeling(label):
-            if label[0:3]=="BAR":
-                to_print =  process_basis_label(label[3:])
+            if label[0:3] == "BAR":
+                to_print = process_basis_label(label[3:])
                 if "_" in to_print:
                     return f"\\overline{{{to_print}".replace("_", "}^", 1)
                 else:
                     return f"\\overline{{{to_print}}}"
             else:
                 return process_basis_label(label).replace("_", "^", 1)
-        if isinstance(self.coeff,(zeroFormAtom,abstract_ZF)):
+
+        if isinstance(self.coeff, (zeroFormAtom, abstract_ZF)):
             return extDerFormat(self.coeff._latex(printer=printer))
         coeff_sympy = sp.sympify(self.coeff)
-        if len(coeff_sympy.free_symbols)==0 and self.ext_deriv_order is not None and self.ext_deriv_order>0:
+        if (
+            len(coeff_sympy.free_symbols) == 0
+            and self.ext_deriv_order is not None
+            and self.ext_deriv_order > 0
+        ):
             return 0
         if coeff_sympy == 1:
             return bar_labeling(self.label) if self.label else "1"
@@ -1614,22 +1959,38 @@ class abstDFAtom(sp.Basic):
             return f"-{bar_labeling(self.label)}" if self.label else "-1"
         else:
             # Wrap in parentheses if there are multiple terms
-            coeff_latex = f"\\left({sp.latex(coeff_sympy)}\\right)" if len(coeff_sympy.as_ordered_terms()) > 1 else sp.latex(coeff_sympy)
-            return extDerFormat(f"{coeff_latex}{bar_labeling(self.label)}") if self.label else coeff_latex
+            coeff_latex = (
+                f"\\left({sp.latex(coeff_sympy)}\\right)"
+                if len(coeff_sympy.as_ordered_terms()) > 1
+                else sp.latex(coeff_sympy)
+            )
+            return (
+                extDerFormat(f"{coeff_latex}{bar_labeling(self.label)}")
+                if self.label
+                else coeff_latex
+            )
 
     def _repr_latex_(self):
         return f"${sp.latex(self)}$"
 
     def __str__(self):
         def extDerFormat(string):
-            if isinstance(self.ext_deriv_order,numbers.Integral) and self.ext_deriv_order!=0:
-                return f'{string}_extD_{self.ext_deriv_order}'
+            if (
+                isinstance(self.ext_deriv_order, numbers.Integral)
+                and self.ext_deriv_order != 0
+            ):
+                return f"{string}_extD_{self.ext_deriv_order}"
             else:
                 return string
-        if isinstance(self.coeff,(zeroFormAtom,abstract_ZF)):
+
+        if isinstance(self.coeff, (zeroFormAtom, abstract_ZF)):
             return extDerFormat(self.coeff.__repr__())
         coeff_sympy = sp.sympify(self.coeff)
-        if len(coeff_sympy.free_symbols)==0 and self.ext_deriv_order is not None and self.ext_deriv_order>0:
+        if (
+            len(coeff_sympy.free_symbols) == 0
+            and self.ext_deriv_order is not None
+            and self.ext_deriv_order > 0
+        ):
             return 0
         if coeff_sympy == 1:
             return str(self.label) if self.label else "1"
@@ -1637,20 +1998,31 @@ class abstDFAtom(sp.Basic):
             return f"-{self.label}" if self.label else "-1"
         else:
             # Wrap in parentheses if there are multiple terms
-            coeff_str = f"({coeff_sympy})" if len(coeff_sympy.as_ordered_terms()) > 1 else str(coeff_sympy)
-            return extDerFormat(f"{coeff_str}{self.label}") if self.label else extDerFormat(coeff_str)
+            coeff_str = (
+                f"({coeff_sympy})"
+                if len(coeff_sympy.as_ordered_terms()) > 1
+                else str(coeff_sympy)
+            )
+            return (
+                extDerFormat(f"{coeff_str}{self.label}")
+                if self.label
+                else extDerFormat(coeff_str)
+            )
 
     def to_sympy(self):
         if self.degree == 0:
             if self.label is not None:
-                warnings.warn('`abstDFAtom.to_sympy()` was called for an instance with nontrivial basis label, and that label is not encoded in the method\'s output.')
-            if hasattr(self.coeff, 'to_sympy'):
+                warnings.warn(
+                    "`abstDFAtom.to_sympy()` was called for an instance with nontrivial basis label, and that label is not encoded in the method's output."
+                )
+            if hasattr(self.coeff, "to_sympy"):
                 return self.coeff.to_sympy()
             else:
                 return sp.sympify(self.coeff)
         else:
-            warnings.warn('`abstDFAtom.to_sympy()` was called for an instance with positive degree, so `None` was returned.')
-
+            warnings.warn(
+                "`abstDFAtom.to_sympy()` was called for an instance with positive degree, so `None` was returned."
+            )
 
     def has_common_factor(self, other):
         if not isinstance(other, (abstDFAtom, abstDFMonom)):
@@ -1665,70 +2037,121 @@ class abstDFAtom(sp.Basic):
 
         elif isinstance(other, abstDFMonom):
             # Match against all factors in the monomial
-            return any(self.has_common_factor(factor) for factor in other.factors_sorted)
+            return any(
+                self.has_common_factor(factor) for factor in other.factors_sorted
+            )
 
         return False
 
-    def _eval_simplify(self, ratio=None, measure=None, inverse=True, doit=True, rational=True, expand=False, **kwargs):
-        return abstDFAtom(sp.simplify(self.coeff), self.degree, self.label, _markers=self._markers)
+    def _eval_simplify(
+        self,
+        ratio=None,
+        measure=None,
+        inverse=True,
+        doit=True,
+        rational=True,
+        expand=False,
+        **kwargs,
+    ):
+        return abstDFAtom(
+            sp.simplify(self.coeff), self.degree, self.label, _markers=self._markers
+        )
 
-    def _eval_canonicalize(self,depth = 1000):
-        if hasattr(self.coeff,'_eval_canonicalize'):
+    def _eval_canonicalize(self, depth=1000):
+        if hasattr(self.coeff, "_eval_canonicalize"):
             new_coeff = self.coeff._eval_canonicalize(depth=depth)
         else:
             new_coeff = self.coeff
         return abstDFAtom(new_coeff, self.degree, self.label, _markers=self._markers)
 
     def _induce_method_from_descending(self, method_name, **kwargs):
-        new_coeff = getattr(self.coeff, method_name)(**kwargs) if hasattr(self.coeff, method_name) else self.coeff
-        return abstDFAtom(new_coeff, self.degree, self.label, ext_deriv_order=self.ext_deriv_order, _markers=self._markers)
+        new_coeff = (
+            getattr(self.coeff, method_name)(**kwargs)
+            if hasattr(self.coeff, method_name)
+            else self.coeff
+        )
+        return abstDFAtom(
+            new_coeff,
+            self.degree,
+            self.label,
+            ext_deriv_order=self.ext_deriv_order,
+            _markers=self._markers,
+        )
 
     def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
-        return self.subs(data, with_diff_corollaries = with_diff_corollaries)
+        return self.subs(data, with_diff_corollaries=with_diff_corollaries)
 
-    def subs(self,subs_data,with_diff_corollaries=False):
-        if isinstance(subs_data, (list, tuple)) and all(isinstance(j, tuple) and len(j) == 2 for j in subs_data):
+    def subs(self, subs_data, with_diff_corollaries=False):
+        if isinstance(subs_data, (list, tuple)) and all(
+            isinstance(j, tuple) and len(j) == 2 for j in subs_data
+        ):
             l1 = len(subs_data)
             subs_data = dict(subs_data)
             if len(subs_data) < l1:
-                warnings.warn('Provided substitution rules had repeat keys, and only one was used.')
+                warnings.warn(
+                    "Provided substitution rules had repeat keys, and only one was used."
+                )
         if self in subs_data:
             return subs_data[self]
         new_coeff = None
-        if isinstance(self.coeff,(zeroFormAtom,abstract_ZF)):
-            new_coeff = (self.coeff).subs(subs_data,with_diff_corollaries = with_diff_corollaries)
-        elif isinstance(self.coeff,_get_expr_types()):
-            if not all(isinstance(k,_get_expr_types()) and isinstance(v,_get_expr_num_types()) for k,v in subs_data.items()):
-                new_coeff = abstract_ZF(_sympy_to_abstract_ZF(self.coeff,subs_rules=subs_data))
+        if isinstance(self.coeff, (zeroFormAtom, abstract_ZF)):
+            new_coeff = (self.coeff).subs(
+                subs_data, with_diff_corollaries=with_diff_corollaries
+            )
+        elif isinstance(self.coeff, _get_expr_types()):
+            if not all(
+                isinstance(k, _get_expr_types())
+                and isinstance(v, _get_expr_num_types())
+                for k, v in subs_data.items()
+            ):
+                new_coeff = abstract_ZF(
+                    _sympy_to_abstract_ZF(self.coeff, subs_rules=subs_data)
+                )
             else:
                 new_coeff = (self.coeff).subs(subs_data)
-        for k,v in subs_data.items():
+        for k, v in subs_data.items():
             if isinstance(k, abstDFAtom):
-                if self.degree==k.degree and self.label == k.label and self.ext_deriv_order == k.ext_deriv_order and self._markers == k._markers:
+                if (
+                    self.degree == k.degree
+                    and self.label == k.label
+                    and self.ext_deriv_order == k.ext_deriv_order
+                    and self._markers == k._markers
+                ):
                     if new_coeff is None:
-                        return (self.coeff/k.coeff)*v
+                        return (self.coeff / k.coeff) * v
                     else:
-                        return (new_coeff/k.coeff)*v
+                        return (new_coeff / k.coeff) * v
         if new_coeff is None:
             return self
         else:
-            return abstDFAtom(new_coeff,self.degree,self.label,self.ext_deriv_order,_markers=self._markers)
+            return abstDFAtom(
+                new_coeff,
+                self.degree,
+                self.label,
+                self.ext_deriv_order,
+                _markers=self._markers,
+            )
 
     @property
     def free_symbols(self):
-        if hasattr(self.coeff,'free_symbols'):
+        if hasattr(self.coeff, "free_symbols"):
             return self.coeff.free_symbols
         return set()
 
-    @property 
+    @property
     def _seperated_form(self):
         if self.coeff == 1:
             newAtom = self
         else:
-            newAtom = abstDFAtom(1, self.degree, label = self.label, ext_deriv_order=self.ext_deriv_order,_markers = self._markers)
+            newAtom = abstDFAtom(
+                1,
+                self.degree,
+                label=self.label,
+                ext_deriv_order=self.ext_deriv_order,
+                _markers=self._markers,
+            )
         return newAtom, self.coeff
-
 
     def __mul__(self, other):
         """Handle left multiplication."""
@@ -1738,8 +2161,12 @@ class abstDFAtom(sp.Basic):
         elif isinstance(other, abstDFMonom):
             # Prepend this atom as a factor to the monomial's factors
             return abstDFMonom([self] + other.factors_sorted)
-        elif isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
-            return abstDFAtom(self.coeff * other, self.degree, self.label, _markers=self._markers)
+        elif isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
+            return abstDFAtom(
+                self.coeff * other, self.degree, self.label, _markers=self._markers
+            )
         else:
             return NotImplemented
 
@@ -1748,21 +2175,27 @@ class abstDFAtom(sp.Basic):
         if isinstance(other, abstDFMonom):
             # Append this atom as a factor to the monomial
             return abstDFMonom(other.factors_sorted + [self])
-        elif isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(other, _get_expr_num_types()):
-            return abstDFAtom(self.coeff * other, self.degree, self.label,_markers=self._markers)
+        elif isinstance(other, (zeroFormAtom, abstract_ZF)) or isinstance(
+            other, _get_expr_num_types()
+        ):
+            return abstDFAtom(
+                self.coeff * other, self.degree, self.label, _markers=self._markers
+            )
         else:
             return NotImplemented
 
     def __truediv__(self, other):
         if isinstance(other, abstDFAtom) and other.degree == 0:
-            if other.label is None or other.label == '':
+            if other.label is None or other.label == "":
                 other = other.coeff
             else:
-                other = other.coeff*zeroFormAtom(other.label,_markers = other._markers)
-        if isinstance(other,(abstract_ZF,zeroFormAtom)) or isinstance(other, _get_expr_num_types()):
+                other = other.coeff * zeroFormAtom(other.label, _markers=other._markers)
+        if isinstance(other, (abstract_ZF, zeroFormAtom)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             if other == 0:
                 raise ZeroDivisionError("division by zero")
-            return (1/other)*self
+            return (1 / other) * self
         return NotImplemented
 
     def __neg__(self):
@@ -1777,13 +2210,22 @@ class abstDFAtom(sp.Basic):
         if isinstance(other, (abstDFMonom, abstDFAtom)):
             return abstract_DF([abstDFMonom([self]), other])
         elif isinstance(other, zeroFormAtom):
-            return abstract_DF([abstDFMonom([self]), abstDFMonom([abstDFAtom(other,0,_markers=other._markers)])])
+            return abstract_DF(
+                [
+                    abstDFMonom([self]),
+                    abstDFMonom([abstDFAtom(other, 0, _markers=other._markers)]),
+                ]
+            )
         elif isinstance(other, abstract_ZF):
-            return abstract_DF([abstDFMonom([self]), abstDFMonom([abstDFAtom(other,0)])])
+            return abstract_DF(
+                [abstDFMonom([self]), abstDFMonom([abstDFAtom(other, 0)])]
+            )
         elif isinstance(other, abstract_DF):
             return abstract_DF((abstDFMonom([self]),) + tuple(other.terms))
         else:
-            raise TypeError(f"Unsupported operand type {type(other)} for + with `abstDFAtom`")
+            raise TypeError(
+                f"Unsupported operand type {type(other)} for + with `abstDFAtom`"
+            )
 
     def __sub__(self, other):
         """Subtraction with another atom or monomial returns an abstract_DF."""
@@ -1796,10 +2238,14 @@ class abstDFAtom(sp.Basic):
         elif isinstance(other, abstract_DF):
             negated_terms = tuple([-1 * term for term in other.terms])
             return abstract_DF([abstDFMonom([self])] + list(negated_terms))
-        elif isinstance(other, (zeroFormAtom,abstract_ZF)):
-            return abstract_DF([abstDFMonom([self]), abstDFMonom([abstDFAtom(-1*other,0)])])
+        elif isinstance(other, (zeroFormAtom, abstract_ZF)):
+            return abstract_DF(
+                [abstDFMonom([self]), abstDFMonom([abstDFAtom(-1 * other, 0)])]
+            )
         else:
-            raise TypeError(f"Unsupported operand type for - with `abstDFAtom`: {type(other)}")
+            raise TypeError(
+                f"Unsupported operand type for - with `abstDFAtom`: {type(other)}"
+            )
 
     def __radd__(self, other):
         return self.__add__(other)
@@ -1825,7 +2271,16 @@ class abstDFAtom(sp.Basic):
             return False
         return self.label < other.label
 
-def createDiffForm(labels, degree, number_of_variables=None, initialIndex=1, assumeReal=False, remove_guardrails=None,return_obj = False):
+
+def createDiffForm(
+    labels,
+    degree,
+    number_of_variables=None,
+    initialIndex=1,
+    assumeReal=False,
+    remove_guardrails=None,
+    return_obj=False,
+):
     """
     Initializes abstDFAtom systems, registers them in the VMF,
     and updates caller globals().
@@ -1838,46 +2293,67 @@ def createDiffForm(labels, degree, number_of_variables=None, initialIndex=1, ass
     - assumeReal (bool, optional): If True, marks instances as real and skips conjugate handling.
     - remove_guardrails (None, optional): If set, bypasses safeguards for label validation.
     """
-    if isinstance(labels,(list,tuple)):
-        if len(set(labels))<len(labels):
-            raise NameError('`createDiffForm` was given the same label repeatedly. Labels need to be distinct.')
-        if isinstance(degree,(list,tuple)):
-            if len(degree)<len(labels):
-                degree = list(degree)+([degree[-1]]*(len(labels)-len(degree)))
+    if isinstance(labels, (list, tuple)):
+        if len(set(labels)) < len(labels):
+            raise NameError(
+                "`createDiffForm` was given the same label repeatedly. Labels need to be distinct."
+            )
+        if isinstance(degree, (list, tuple)):
+            if len(degree) < len(labels):
+                degree = list(degree) + ([degree[-1]] * (len(labels) - len(degree)))
         else:
-            degree = [degree]*len(labels)
-        if isinstance(number_of_variables,(list,tuple)):
-            if len(number_of_variables)<len(labels):
-                number_of_variables = list(number_of_variables)+([number_of_variables[-1]]*(len(labels)-len(number_of_variables)))
+            degree = [degree] * len(labels)
+        if isinstance(number_of_variables, (list, tuple)):
+            if len(number_of_variables) < len(labels):
+                number_of_variables = list(number_of_variables) + (
+                    [number_of_variables[-1]] * (len(labels) - len(number_of_variables))
+                )
         else:
-            number_of_variables = [number_of_variables]*len(labels)
-        if isinstance(initialIndex,(list,tuple)):
-            if len(initialIndex)<len(labels):
-                initialIndex = list(initialIndex)+([initialIndex[-1]]*(len(labels)-len(initialIndex)))
+            number_of_variables = [number_of_variables] * len(labels)
+        if isinstance(initialIndex, (list, tuple)):
+            if len(initialIndex) < len(labels):
+                initialIndex = list(initialIndex) + (
+                    [initialIndex[-1]] * (len(labels) - len(initialIndex))
+                )
         else:
-            initialIndex = [initialIndex]*len(labels)
-        if isinstance(assumeReal,(list,tuple)):
-            if len(assumeReal)<len(labels):
-                assumeReal = list(assumeReal)+([assumeReal[-1]]*(len(labels)-len(assumeReal)))
+            initialIndex = [initialIndex] * len(labels)
+        if isinstance(assumeReal, (list, tuple)):
+            if len(assumeReal) < len(labels):
+                assumeReal = list(assumeReal) + (
+                    [assumeReal[-1]] * (len(labels) - len(assumeReal))
+                )
         else:
-            assumeReal = [assumeReal]*len(labels)
-        if isinstance(remove_guardrails,(list,tuple)):
-            if len(remove_guardrails)<len(labels):
-                remove_guardrails = list(remove_guardrails)+([remove_guardrails[-1]]*(len(labels)-len(remove_guardrails)))
+            assumeReal = [assumeReal] * len(labels)
+        if isinstance(remove_guardrails, (list, tuple)):
+            if len(remove_guardrails) < len(labels):
+                remove_guardrails = list(remove_guardrails) + (
+                    [remove_guardrails[-1]] * (len(labels) - len(remove_guardrails))
+                )
         else:
-            remove_guardrails = [remove_guardrails]*len(labels)
-        if isinstance(return_obj,(list,tuple)):
-            if len(return_obj)<len(labels):
-                return_obj = list(return_obj)+([return_obj[-1]]*(len(labels)-len(return_obj)))
+            remove_guardrails = [remove_guardrails] * len(labels)
+        if isinstance(return_obj, (list, tuple)):
+            if len(return_obj) < len(labels):
+                return_obj = list(return_obj) + (
+                    [return_obj[-1]] * (len(labels) - len(return_obj))
+                )
         else:
-            return_obj = [return_obj]*len(labels)
+            return_obj = [return_obj] * len(labels)
         for idx in range(len(labels)):
-            createDiffForm(labels[idx],degree[idx],number_of_variables[idx],initialIndex[idx],assumeReal[idx],remove_guardrails[idx],return_obj[idx])
+            createDiffForm(
+                labels[idx],
+                degree[idx],
+                number_of_variables[idx],
+                initialIndex[idx],
+                assumeReal[idx],
+                remove_guardrails[idx],
+                return_obj[idx],
+            )
     else:
         if not isinstance(labels, str):
             raise TypeError(
                 "`createDiffForm` requires its first argument to be a string, which will be used in lables for the created DF."
             )
+
         def reformat_string(input_string: str):
             # Replace commas with spaces, then split on spaces
             substrings = input_string.replace(",", " ").split()
@@ -1887,18 +2363,46 @@ def createDiffForm(labels, degree, number_of_variables=None, initialIndex=1, ass
         if isinstance(labels, str):
             labels = reformat_string(labels)
         if return_obj is True:
-            returnList = [] 
+            returnList = []
         for label in labels:
             if return_obj is True:
-                returnList.append(_DFFactory(label,degree, number_of_variables=number_of_variables, initialIndex=initialIndex, assumeReal=assumeReal, remove_guardrails=remove_guardrails,return_obj=True))
+                returnList.append(
+                    _DFFactory(
+                        label,
+                        degree,
+                        number_of_variables=number_of_variables,
+                        initialIndex=initialIndex,
+                        assumeReal=assumeReal,
+                        remove_guardrails=remove_guardrails,
+                        return_obj=True,
+                    )
+                )
             else:
-                _DFFactory(label,degree, number_of_variables=number_of_variables, initialIndex=initialIndex, assumeReal=assumeReal, remove_guardrails=remove_guardrails)
+                _DFFactory(
+                    label,
+                    degree,
+                    number_of_variables=number_of_variables,
+                    initialIndex=initialIndex,
+                    assumeReal=assumeReal,
+                    remove_guardrails=remove_guardrails,
+                )
         if return_obj is True:
-            if len(returnList)==1:
+            if len(returnList) == 1:
                 return returnList[0]
             return returnList
 
-def _DFFactory(label,degree, number_of_variables=None, initialIndex=1, assumeReal=False, _tempVar=None, _doNotUpdateVar=None, remove_guardrails=None,return_obj = False):
+
+def _DFFactory(
+    label,
+    degree,
+    number_of_variables=None,
+    initialIndex=1,
+    assumeReal=False,
+    _tempVar=None,
+    _doNotUpdateVar=None,
+    remove_guardrails=None,
+    return_obj=False,
+):
     """
     Initializes abstDFAtom systems, registers them in the VMF,
     and updates caller globals().
@@ -1928,19 +2432,26 @@ def _DFFactory(label,degree, number_of_variables=None, initialIndex=1, assumeRea
     else:
         _tempVar = None
 
-    family_type = 'single'
+    family_type = "single"
     if number_of_variables:
-        family_type = 'tuple'
+        family_type = "tuple"
 
         family_names = [
-            f"{label}{index}" for index in range(initialIndex,number_of_variables+initialIndex)
+            f"{label}{index}"
+            for index in range(initialIndex, number_of_variables + initialIndex)
         ]
     else:
         family_names = [label]
 
     # Create zeroFormAtom instances
     family_values = tuple(
-        abstDFAtom(1, degree, label=name, ext_deriv_order=0, _markers= {'real'} if assumeReal else frozenset())
+        abstDFAtom(
+            1,
+            degree,
+            label=name,
+            ext_deriv_order=0,
+            _markers={"real"} if assumeReal else frozenset(),
+        )
         for name in family_names
     )
 
@@ -1960,13 +2471,13 @@ def _DFFactory(label,degree, number_of_variables=None, initialIndex=1, assumeRea
     eds_atoms[label] = {
         "family_type": family_type,
         "primary_coframe": None,
-        "degree":degree,
+        "degree": degree,
         "family_values": family_values,
         "family_names": tuple(family_names),
         "tempVar": _tempVar,
-        "real":assumeReal if assumeReal else None,
+        "real": assumeReal if assumeReal else None,
         "conjugates": conjugates,
-        "family_relatives": family_relatives
+        "family_relatives": family_relatives,
     }
 
     children_set = set(family_names)
@@ -1974,31 +2485,35 @@ def _DFFactory(label,degree, number_of_variables=None, initialIndex=1, assumeRea
         children_set.update(conjugates.keys())
     variable_registry["_labels"][label] = {
         "path": ("eds", "atoms", label),
-        "children": children_set
+        "children": children_set,
     }
 
     # Store in _cached_caller_globals
-    _cached_caller_globals[label] = family_values if family_type=='tuple' else family_values[0]
+    _cached_caller_globals[label] = (
+        family_values if family_type == "tuple" else family_values[0]
+    )
     for name, instance in zip(family_names, family_values):
         _cached_caller_globals[name] = instance  # Add each instance separately
     if assumeReal is not True:
-        _cached_caller_globals[f'BAR{label}'] = tuple(conjugates.values())
-    for k,v in conjugates.items():
+        _cached_caller_globals[f"BAR{label}"] = tuple(conjugates.values())
+    for k, v in conjugates.items():
         _cached_caller_globals[k] = v
     if return_obj:
         return _cached_caller_globals[label]
 
+
 class abstDFMonom(sp.Basic):
     def __new__(cls, factors):
         if not isinstance(factors, (list, tuple)):
-            raise TypeError('`abstDFMonom` expects `factors` to be a list or tuple')
+            raise TypeError("`abstDFMonom` expects `factors` to be a list or tuple")
         if not all(isinstance(elem, abstDFAtom) for elem in factors):
-            raise TypeError('`abstDFMonom` expects `factors` to be a list of `abstDFAtom`')
+            raise TypeError(
+                "`abstDFMonom` expects `factors` to be a list of `abstDFAtom`"
+            )
 
         return sp.Basic.__new__(cls, *factors)
 
     def __init__(self, factors):
-
         class DegreeLabelSortable:
             def __init__(self, atom):
                 self.degree = atom.degree
@@ -2019,38 +2534,56 @@ class abstDFMonom(sp.Basic):
             def __le__(self, other):
                 return self < other or self == other
 
-        weighted_objs = [SortableObj((j, (j.degree,barSortedStr(j.label)))) for j in factors]
+        weighted_objs = [
+            SortableObj((j, (j.degree, barSortedStr(j.label)))) for j in factors
+        ]
         parity, objs_sorted, _ = weightedPermSign(
-            weighted_objs, [DegreeLabelSortable(j) for j in factors], returnSorted=True, use_degree_attribute=True
+            weighted_objs,
+            [DegreeLabelSortable(j) for j in factors],
+            returnSorted=True,
+            use_degree_attribute=True,
         )
 
         if parity == -1:
-            objs_sorted = [SortableObj((abstDFAtom(-1, 0), (0,None)))] + objs_sorted
+            objs_sorted = [SortableObj((abstDFAtom(-1, 0), (0, None)))] + objs_sorted
 
         coeffFactor = 1
         new_objs = []
 
         for j in objs_sorted:
-            if coeffFactor!=0:
+            if coeffFactor != 0:
                 coeffFactor = coeffFactor * j.value.coeff if j.value.coeff else 0
             if j.place[0] != 0:
-                new_objs.append(abstDFAtom(1, j.value.degree, j.value.label,j.value.ext_deriv_order,j.value._markers))
+                new_objs.append(
+                    abstDFAtom(
+                        1,
+                        j.value.degree,
+                        j.value.label,
+                        j.value.ext_deriv_order,
+                        j.value._markers,
+                    )
+                )
 
-        consolidated_factor = abstDFAtom(coeffFactor, 0) ### check !!!
-        if coeffFactor==0:
-            self.factors_sorted = [abstDFAtom(0,0)]
+        consolidated_factor = abstDFAtom(coeffFactor, 0)  ### check !!!
+        if coeffFactor == 0:
+            self.factors_sorted = [abstDFAtom(0, 0)]
             self._coeff = 0
         else:
             self.factors_sorted = [consolidated_factor] + new_objs
             self._coeff = coeffFactor
-        if len(self.factors_sorted)!=len(set(self.factors_sorted)) or len(self.factors_sorted)==0:
-            self.factors_sorted = [abstDFAtom(0,0)]
+        if (
+            len(self.factors_sorted) != len(set(self.factors_sorted))
+            or len(self.factors_sorted) == 0
+        ):
+            self.factors_sorted = [abstDFAtom(0, 0)]
         self.factors = factors
         self.str_ids = tuple(
-            "<Coeff>" if i == 0 and factor.label is None else (factor.label if factor.label is not None else "<None>")
+            "<Coeff>"
+            if i == 0 and factor.label is None
+            else (factor.label if factor.label is not None else "<None>")
             for i, factor in enumerate(self.factors_sorted)
         )
-        self.degree = sum(factor.degree for factor in self.factors if factor.coeff!=0)
+        self.degree = sum(factor.degree for factor in self.factors if factor.coeff != 0)
 
     def _sage_(self):
         raise AttributeError
@@ -2061,7 +2594,9 @@ class abstDFMonom(sp.Basic):
         """
         if not isinstance(other, abstDFMonom):
             return NotImplemented
-        return self.factors_sorted == other.factors_sorted and self.degree == other.degree
+        return (
+            self.factors_sorted == other.factors_sorted and self.degree == other.degree
+        )
 
     def __hash__(self):
         """
@@ -2069,23 +2604,29 @@ class abstDFMonom(sp.Basic):
         """
         return hash((tuple(self.factors_sorted), self.degree))
 
-    def sort_key(self, order=None):     # for the sympy sorting.py default_sort_key
-        return (4, self.degree, tuple(self.factors_sorted))     # 4 is to group with function-like objects
+    def sort_key(self, order=None):  # for the sympy sorting.py default_sort_key
+        return (
+            4,
+            self.degree,
+            tuple(self.factors_sorted),
+        )  # 4 is to group with function-like objects
 
     @property
     def is_zero(self):
-        return self._coeff==0
+        return self._coeff == 0
 
     @property
     def coeff(self):
         coeff = 1
         for factor in self.factors_sorted:
-            if isinstance(factor,abstDFAtom) and factor.degree==0:
+            if isinstance(factor, abstDFAtom) and factor.degree == 0:
                 factor = factor.coeff
             if factor == 0:
                 coeff = 0
                 break
-            if isinstance(factor,(abstract_ZF,zeroFormAtom)) or isinstance(factor, _get_expr_num_types()):
+            if isinstance(factor, (abstract_ZF, zeroFormAtom)) or isinstance(
+                factor, _get_expr_num_types()
+            ):
                 coeff *= factor
         return coeff
 
@@ -2096,25 +2637,43 @@ class abstDFMonom(sp.Basic):
     def _eval_conjugate(self):
         return abstDFMonom([j._eval_conjugate() for j in self.factors])
 
-    def _eval_simplify(self, ratio=None, measure=None, inverse=True, doit=True, rational=True, expand=False, **kwargs):
+    def _eval_simplify(
+        self,
+        ratio=None,
+        measure=None,
+        inverse=True,
+        doit=True,
+        rational=True,
+        expand=False,
+        **kwargs,
+    ):
         return abstDFMonom([j._eval_simplify() for j in self.factors])
 
-    def _eval_canonicalize(self,depth = 1000):
+    def _eval_canonicalize(self, depth=1000):
         def _canon(obj):
-            if hasattr(obj,'_eval_canonicalize'):
+            if hasattr(obj, "_eval_canonicalize"):
                 return obj._eval_canonicalize(depth=depth)
             return obj
+
         return abstDFMonom([_canon(j) for j in self.factors])
 
     def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
-        return self.subs(data, with_diff_corollaries = with_diff_corollaries)
+        return self.subs(data, with_diff_corollaries=with_diff_corollaries)
 
-    def subs(self,subs_data,with_diff_corollaries=False):
-        return abstDFMonom([j._subs_dgcv(subs_data,with_diff_corollaries = with_diff_corollaries) for j in self.factors_sorted])
+    def subs(self, subs_data, with_diff_corollaries=False):
+        return abstDFMonom(
+            [
+                j._subs_dgcv(subs_data, with_diff_corollaries=with_diff_corollaries)
+                for j in self.factors_sorted
+            ]
+        )
 
     def _induce_method_from_descending(self, method_name, **kwargs):
-        new_factors = [getattr(j, method_name)(**kwargs) if hasattr(j, method_name) else j for j in self.factors_sorted]
+        new_factors = [
+            getattr(j, method_name)(**kwargs) if hasattr(j, method_name) else j
+            for j in self.factors_sorted
+        ]
         return abstDFMonom(new_factors)
 
     def _latex(self, printer=None):
@@ -2123,44 +2682,49 @@ class abstDFMonom(sp.Basic):
         """
         # Handle the leading degree 0 factor (coefficient)
         coeff0 = self.factors_sorted[0]
-        if isinstance(coeff0,abstDFAtom):
+        if isinstance(coeff0, abstDFAtom):
             coeff_inner = coeff0.coeff
         else:
             coeff_inner = coeff0
-        if isinstance(coeff_inner,zeroFormAtom):
+        if isinstance(coeff_inner, zeroFormAtom):
             if coeff_inner.is_one:
-                coeff_latex = ''
-            elif ((-1)*coeff_inner).is_one:
-                coeff_latex = '-'
+                coeff_latex = ""
+            elif ((-1) * coeff_inner).is_one:
+                coeff_latex = "-"
             elif coeff_inner.is_zero:
-                coeff_latex = '0'
+                coeff_latex = "0"
             else:
                 coeff_latex = sp.latex(coeff0)
-        elif isinstance(coeff_inner,abstract_ZF):
+        elif isinstance(coeff_inner, abstract_ZF):
             if coeff_inner.is_one:
-                coeff_latex = ''
-            elif (-1*coeff_inner).is_one:
-                coeff_latex = '-'
+                coeff_latex = ""
+            elif (-1 * coeff_inner).is_one:
+                coeff_latex = "-"
             elif coeff_inner.is_zero:
-                coeff_latex = '0'
+                coeff_latex = "0"
             else:
                 coeff_latex = sp.latex(coeff0)
-                if isinstance(coeff_inner.base,tuple) and coeff_inner.base[0] in {'sub','add'}:
-                    coeff_latex = f'\\left({coeff_latex}\\right)'
+                if isinstance(coeff_inner.base, tuple) and coeff_inner.base[0] in {
+                    "sub",
+                    "add",
+                }:
+                    coeff_latex = f"\\left({coeff_latex}\\right)"
         else:
-            if coeff_inner==1 or coeff_inner==1.0:
-                coeff_latex = ''
-            elif coeff_inner==-1 or coeff_inner==-1.0:
-                coeff_latex ='-'
-            elif coeff_inner==0 or coeff_inner==0.0:
-                coeff_latex = '0'
+            if coeff_inner == 1 or coeff_inner == 1.0:
+                coeff_latex = ""
+            elif coeff_inner == -1 or coeff_inner == -1.0:
+                coeff_latex = "-"
+            elif coeff_inner == 0 or coeff_inner == 0.0:
+                coeff_latex = "0"
             else:
                 coeff_latex = sp.latex(coeff0)
 
         # Join the remaining factors using '\wedge'
         if len(self.factors_sorted) > 1:
             # Generate LaTeX for all non-coefficient factors
-            factors_latex = " \\wedge ".join(factor._latex(printer=printer) for factor in self.factors_sorted[1:])
+            factors_latex = " \\wedge ".join(
+                factor._latex(printer=printer) for factor in self.factors_sorted[1:]
+            )
 
             # Combine coefficient and factors, but omit '\cdot' if coeff_latex is empty or "-"
             if coeff_latex in ["", "-"]:
@@ -2170,9 +2734,9 @@ class abstDFMonom(sp.Basic):
         else:
             # Only the degree 0 factor (no other factors to join)
             if coeff_latex == "":
-                return '1'
+                return "1"
             elif coeff_latex == "-":
-                return '-1'
+                return "-1"
             return coeff_latex
 
     def __repr__(self):
@@ -2181,16 +2745,19 @@ class abstDFMonom(sp.Basic):
         """
         # Handle the coefficient (first factor)
         coeff0 = self.factors_sorted[0]
-        if isinstance(coeff0,abstDFAtom):
+        if isinstance(coeff0, abstDFAtom):
             coeff_inner = coeff0.coeff
         else:
             coeff_inner = coeff0
-        if isinstance(coeff_inner,zeroFormAtom):
+        if isinstance(coeff_inner, zeroFormAtom):
             coeff_str = coeff0.__str__()
-        elif isinstance(coeff_inner,abstract_ZF):
+        elif isinstance(coeff_inner, abstract_ZF):
             coeff_str = coeff0.__str__()
-            if isinstance(coeff_inner.base,tuple) and coeff_inner.base[0] in {'sub','add'}:
-                coeff_str = f'({coeff_str})'
+            if isinstance(coeff_inner.base, tuple) and coeff_inner.base[0] in {
+                "sub",
+                "add",
+            }:
+                coeff_str = f"({coeff_str})"
         else:
             coeff_str = str(coeff0)
         # Join the other factors using '*'
@@ -2218,11 +2785,13 @@ class abstDFMonom(sp.Basic):
         elif isinstance(other, abstDFAtom):
             # Append the atom as a factor to this monomial
             return abstDFMonom(self.factors_sorted + [other])
-        elif isinstance(other, (abstract_ZF,zeroFormAtom)) or isinstance(other, _get_expr_num_types()):
+        elif isinstance(other, (abstract_ZF, zeroFormAtom)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             # Scalar multiplication (prepend as an atom with degree 0)
             other_sympy = sp.sympify(other)
             return abstDFMonom([abstDFAtom(other_sympy, 0)] + self.factors_sorted)
-        elif isinstance(other, (abstract_ZF,zeroFormAtom)):
+        elif isinstance(other, (abstract_ZF, zeroFormAtom)):
             return abstDFMonom([abstDFAtom(other, 0)] + self.factors_sorted)
         else:
             # Allow Python to try __rmul__ of the other operand
@@ -2233,21 +2802,25 @@ class abstDFMonom(sp.Basic):
         if isinstance(other, _get_expr_num_types()):
             other_sympy = sp.sympify(other)
             return abstDFMonom([abstDFAtom(other_sympy, 0)] + self.factors_sorted)
-        elif isinstance(other, (abstract_ZF,zeroFormAtom)):
+        elif isinstance(other, (abstract_ZF, zeroFormAtom)):
             return abstDFMonom([abstDFAtom(other, 0)] + self.factors_sorted)
         else:
-            raise TypeError(f"Unsupported operand type(s) for *: '{type(other).__name__}' and 'abstDFMonom'")
+            raise TypeError(
+                f"Unsupported operand type(s) for *: '{type(other).__name__}' and 'abstDFMonom'"
+            )
 
     def __truediv__(self, other):
         if isinstance(other, abstDFAtom) and other.degree == 0:
-            if other.label is None or other.label == '':
+            if other.label is None or other.label == "":
                 other = other.coeff
             else:
-                other = other.coeff*zeroFormAtom(other.label,_markers = other._markers)
-        if isinstance(other,(abstract_ZF,zeroFormAtom)) or isinstance(other, _get_expr_num_types()):
+                other = other.coeff * zeroFormAtom(other.label, _markers=other._markers)
+        if isinstance(other, (abstract_ZF, zeroFormAtom)) or isinstance(
+            other, _get_expr_num_types()
+        ):
             if other == 0:
                 raise ZeroDivisionError("division by zero")
-            return (1/other)*self
+            return (1 / other) * self
         return NotImplemented
 
     def __neg__(self):
@@ -2263,7 +2836,7 @@ class abstDFMonom(sp.Basic):
             return abstract_DF([self, other])
         elif isinstance(other, abstract_DF):
             return abstract_DF((self,) + tuple(other.terms))
-        elif isinstance(other, (abstract_ZF,zeroFormAtom)):
+        elif isinstance(other, (abstract_ZF, zeroFormAtom)):
             return abstract_DF([self, abstDFAtom(other, 0)])
         elif isinstance(other, _get_expr_num_types()):
             other_sympy = sp.sympify(other)
@@ -2282,10 +2855,10 @@ class abstDFMonom(sp.Basic):
         elif isinstance(other, abstract_DF):
             negated_terms = tuple([-1 * term for term in other.terms])
             return abstract_DF([self] + negated_terms)
-        elif isinstance(other, (abstract_ZF,zeroFormAtom)):
-            return abstract_DF([self, abstDFAtom(-1*other, 0)])
+        elif isinstance(other, (abstract_ZF, zeroFormAtom)):
+            return abstract_DF([self, abstDFAtom(-1 * other, 0)])
         elif isinstance(other, _get_expr_num_types()):
-            other_sympy = -1*sp.sympify(other)
+            other_sympy = -1 * sp.sympify(other)
             return abstract_DF([self, abstDFAtom(other_sympy, 0)])
         else:
             raise TypeError("Unsupported operand type for - with `abstDFMonom`")
@@ -2296,28 +2869,31 @@ class abstDFMonom(sp.Basic):
     def __rsub__(self, other):
         return other + (-self)
 
-
     @property
     def free_symbols(self):
         var_set = set()
         for factor in self.factors_sorted:
-            if hasattr(factor,'free_symbols'):
+            if hasattr(factor, "free_symbols"):
                 var_set |= factor.free_symbols
         return var_set
+
 
 class abstract_DF(sp.Basic):
     def __new__(cls, terms):
         # Validate terms input
         if not isinstance(terms, (list, tuple)):
-            raise TypeError('`abstract_DF` expects `terms` to be a list or tuple')
+            raise TypeError("`abstract_DF` expects `terms` to be a list or tuple")
         if not all(isinstance(elem, (abstDFMonom, abstDFAtom)) for elem in terms):
-            raise TypeError('`abstract_DF` expects `terms` to be a list of `abstDFMonom` or `abstDFAtom`')
+            raise TypeError(
+                "`abstract_DF` expects `terms` to be a list of `abstDFMonom` or `abstDFAtom`"
+            )
         return super().__new__(cls, *terms)
 
     def __init__(self, terms):
         """
         Initialize abstract_DF with a simplified list of terms.
         """
+
         def process_abstDF(elem):
             """
             Check that all elements are abstDFMonom/Atom instances.
@@ -2327,20 +2903,28 @@ class abstract_DF(sp.Basic):
             elif isinstance(elem, abstDFAtom):
                 return abstDFMonom([elem])
             else:
-                raise TypeError("`abstract_DF` initializer expects `abstDFMonom` or `abstDFAtom` instances")
+                raise TypeError(
+                    "`abstract_DF` initializer expects `abstDFMonom` or `abstDFAtom` instances"
+                )
 
         # Process terms into abstDFMonom instances
-        processed_terms = [process_abstDF(term) for term in terms if not process_abstDF(term).is_zero]
+        processed_terms = [
+            process_abstDF(term) for term in terms if not process_abstDF(term).is_zero
+        ]
         # Handle empty terms: default to trivial zero form
         if not terms:
             terms = [abstDFAtom(0, 0)]
 
         # Simplify terms by combining like terms and removing zeros
         collected_terms = tuple(self.simplify_terms(processed_terms))
-        if len(collected_terms)==0:
-            collected_terms=(abstDFMonom([abstDFAtom(0,0)]),)
+        if len(collected_terms) == 0:
+            collected_terms = (abstDFMonom([abstDFAtom(0, 0)]),)
         self.terms = collected_terms
-        self.degree = self.terms[0].degree if all(j.degree == self.terms[0].degree for j in self.terms) else None
+        self.degree = (
+            self.terms[0].degree
+            if all(j.degree == self.terms[0].degree for j in self.terms)
+            else None
+        )
 
     def _sage_(self):
         raise AttributeError
@@ -2359,12 +2943,17 @@ class abstract_DF(sp.Basic):
             # Skip combining terms that contain "<None>" in their key
             if "<None>" in key:
                 # Treat these terms individually
-                term_dict[id(term)] = {"coeff": term.factors_sorted[0].coeff, "tail": term.factors_sorted[1:]}
+                term_dict[id(term)] = {
+                    "coeff": term.factors_sorted[0].coeff,
+                    "tail": term.factors_sorted[1:],
+                }
                 continue
 
             # Extract the leading coefficient and trailing factors
             coeff = term.factors_sorted[0].coeff  # Leading coefficient
-            tail = term.factors_sorted[1:]       # Trailing factors (actual abstDFAtom instances)
+            tail = term.factors_sorted[
+                1:
+            ]  # Trailing factors (actual abstDFAtom instances)
 
             # Combine coefficients for like terms
             if key in term_dict:
@@ -2375,7 +2964,8 @@ class abstract_DF(sp.Basic):
         # Rebuild simplified terms list
         simplified_terms = [
             abstDFMonom([abstDFAtom(data["coeff"], 0)] + data["tail"])
-            for key, data in term_dict.items() if data["coeff"] != 0
+            for key, data in term_dict.items()
+            if data["coeff"] != 0
         ]
 
         if not simplified_terms:
@@ -2388,8 +2978,8 @@ class abstract_DF(sp.Basic):
     def coeffs(self):
         coeff_list = []
         for term in self.terms:
-            if hasattr(term,'factors_sorted') and len(term.factors_sorted)>0:
-                coeff_list += [term.factors_sorted[0]] 
+            if hasattr(term, "factors_sorted") and len(term.factors_sorted) > 0:
+                coeff_list += [term.factors_sorted[0]]
         return coeff_list
 
     def __eq__(self, other):
@@ -2404,39 +2994,57 @@ class abstract_DF(sp.Basic):
         """
         Hash the abstract_DF instance based on its terms.
         """
-        return hash((self.terms,self.degree))
+        return hash((self.terms, self.degree))
 
-    def sort_key(self, order=None):     # for the sympy sorting.py default_sort_key
-        return (4, self.degree, self.terms)     # 4 is to group with function-like objects
+    def sort_key(self, order=None):  # for the sympy sorting.py default_sort_key
+        return (4, self.degree, self.terms)  # 4 is to group with function-like objects
 
     def _eval_conjugate(self):
         return abstract_DF([j._eval_conjugate() for j in self.terms])
 
-    def _eval_simplify(self, ratio=None, measure=None, inverse=True, doit=True, rational=True, expand=False, **kwargs):
+    def _eval_simplify(
+        self,
+        ratio=None,
+        measure=None,
+        inverse=True,
+        doit=True,
+        rational=True,
+        expand=False,
+        **kwargs,
+    ):
         return abstract_DF([j._eval_simplify() for j in self.terms])
 
-    def _eval_canonicalize(self,depth = 1000):
+    def _eval_canonicalize(self, depth=1000):
         def _canon(obj):
-            if hasattr(obj,'_eval_canonicalize'):
+            if hasattr(obj, "_eval_canonicalize"):
                 return obj._eval_canonicalize(depth=depth)
             return obj
+
         return abstract_DF([_canon(j) for j in self.terms])
 
     def _subs_dgcv(self, data, with_diff_corollaries=False):
         # an alias for regular subs so that other functions can know the with_diff_corollaries keyword is available
-        return self.subs(data, with_diff_corollaries = with_diff_corollaries)
+        return self.subs(data, with_diff_corollaries=with_diff_corollaries)
 
-    def subs(self,subs_data,with_diff_corollaries=False):
-        return abstract_DF([j._subs_dgcv(subs_data,with_diff_corollaries=with_diff_corollaries) for j in self.terms])
+    def subs(self, subs_data, with_diff_corollaries=False):
+        return abstract_DF(
+            [
+                j._subs_dgcv(subs_data, with_diff_corollaries=with_diff_corollaries)
+                for j in self.terms
+            ]
+        )
 
     def _induce_method_from_descending(self, method_name, **kwargs):
-        new_terms = [getattr(j, method_name)(**kwargs) if hasattr(j, method_name) else j for j in self.terms]
+        new_terms = [
+            getattr(j, method_name)(**kwargs) if hasattr(j, method_name) else j
+            for j in self.terms
+        ]
         return abstract_DF(new_terms)
 
     def __add__(self, other):
         if isinstance(other, _get_expr_num_types()):
             other = abstract_ZF(other)
-        if isinstance(other, (abstract_ZF,zeroFormAtom)):
+        if isinstance(other, (abstract_ZF, zeroFormAtom)):
             other = abstDFAtom(other, 0)
         elif isinstance(other, _get_expr_num_types()):
             other = abstDFAtom(sp.sympify(other), 0)
@@ -2452,7 +3060,7 @@ class abstract_DF(sp.Basic):
     def __sub__(self, other):
         if isinstance(other, _get_expr_num_types()):
             other = abstract_ZF(other)
-        if isinstance(other, (abstract_ZF,zeroFormAtom)):
+        if isinstance(other, (abstract_ZF, zeroFormAtom)):
             other = abstDFAtom(other, 0)
         elif isinstance(other, _get_expr_num_types()):
             other = abstDFAtom(sp.sympify(other), 0)
@@ -2473,7 +3081,7 @@ class abstract_DF(sp.Basic):
         return other + (-self)
 
     def __mul__(self, other):
-        if isinstance(other, (abstract_ZF,zeroFormAtom)):
+        if isinstance(other, (abstract_ZF, zeroFormAtom)):
             other = abstDFAtom(other, 0)
         elif isinstance(other, _get_expr_num_types()):
             other = abstDFAtom(sp.sympify(other), 0)
@@ -2493,7 +3101,7 @@ class abstract_DF(sp.Basic):
             NotImplemented
 
     def __rmul__(self, other):
-        if isinstance(other, (abstract_ZF,zeroFormAtom)):
+        if isinstance(other, (abstract_ZF, zeroFormAtom)):
             other = abstDFAtom(other, 0)
         elif isinstance(other, _get_expr_num_types()):
             other = abstDFAtom(sp.sympify(other), 0)
@@ -2519,12 +3127,14 @@ class abstract_DF(sp.Basic):
         # Build the string for terms
         terms_repr = [repr(term) for term in self.terms]
 
-        result = terms_repr[0] if len(terms_repr)>0 else ""
+        result = terms_repr[0] if len(terms_repr) > 0 else ""
         for term in terms_repr[1:]:
             if term.startswith("-"):
-                result += f" - {term[1:]}"  # Add space before "-" and strip the leading "-"
+                result += (
+                    f" - {term[1:]}"  # Add space before "-" and strip the leading "-"
+                )
             else:
-                result += f" + {term}"      # Add "+" before positive terms
+                result += f" + {term}"  # Add "+" before positive terms
         return result
 
     def _latex(self, printer=None):
@@ -2535,12 +3145,14 @@ class abstract_DF(sp.Basic):
         # Build the LaTeX string for terms
         terms_latex = [term._latex(printer=printer) for term in self.terms]
 
-        result = terms_latex[0] if len(terms_latex)>0 else ""
+        result = terms_latex[0] if len(terms_latex) > 0 else ""
         for term in terms_latex[1:]:
             if term.startswith("-"):
-                result += " - " + term[1:]  # Add space before "-" and strip the leading "-"
+                result += (
+                    " - " + term[1:]
+                )  # Add space before "-" and strip the leading "-"
             else:
-                result +=  " + " + term      # Add "+" before positive terms
+                result += " + " + term  # Add "+" before positive terms
         return result
 
     def _repr_latex_(self):
@@ -2553,9 +3165,10 @@ class abstract_DF(sp.Basic):
     def free_symbols(self):
         var_set = set()
         for term in self.terms:
-            if hasattr(term,'free_symbols'):
+            if hasattr(term, "free_symbols"):
                 var_set |= term.free_symbols
         return var_set
+
 
 class abst_coframe(sp.Basic):
     def __new__(cls, coframe_basis, structure_equations, min_conj_rules={}):
@@ -2568,16 +3181,22 @@ class abst_coframe(sp.Basic):
         """
 
         # Validate basis
-        if not isinstance(coframe_basis,(list,tuple)) and len(coframe_basis)>0:
-            raise TypeError(f"Given `coframe_basis` must be a non-empty list/tuple. Instead recieved type {type(coframe_basis)}")
-        if len(coframe_basis)!= len(set(coframe_basis)):
+        if not isinstance(coframe_basis, (list, tuple)) and len(coframe_basis) > 0:
+            raise TypeError(
+                f"Given `coframe_basis` must be a non-empty list/tuple. Instead recieved type {type(coframe_basis)}"
+            )
+        if len(coframe_basis) != len(set(coframe_basis)):
             counter = Counter(coframe_basis)
             repeated_elements = [item for item, count in counter.items() if count > 1]
-            raise TypeError(f"`coframe_basis` should not have repeated elements\nRepeated elements: {repeated_elements}")
+            raise TypeError(
+                f"`coframe_basis` should not have repeated elements\nRepeated elements: {repeated_elements}"
+            )
         # Validate basis elements
         for df in coframe_basis:
-            if not isinstance(df,abstDFAtom):
-                raise TypeError(f"Given `coframe_basis` should contain only `abstDFAtom` instances. Instead recieved {type(df)}")
+            if not isinstance(df, abstDFAtom):
+                raise TypeError(
+                    f"Given `coframe_basis` should contain only `abstDFAtom` instances. Instead recieved {type(df)}"
+                )
 
         # Validate structure_equations input
         if not isinstance(structure_equations, dict):
@@ -2586,29 +3205,42 @@ class abst_coframe(sp.Basic):
         # Validate keys and values
         for key, value in structure_equations.items():
             if key not in coframe_basis:
-                raise TypeError(f"Keys in `structure_equations` dict must be also be in `coframe_basis`.\nErroneus key recieved{key}")
+                raise TypeError(
+                    f"Keys in `structure_equations` dict must be also be in `coframe_basis`.\nErroneus key recieved{key}"
+                )
             if value is None:
                 structure_equations[key] = abstract_DF([])
             elif not isinstance(value, abstract_DF):
-                raise TypeError("Values in structure_equations dict must be abstract_DF instances or None.")
-
+                raise TypeError(
+                    "Values in structure_equations dict must be abstract_DF instances or None."
+                )
 
         forms_tuple = tuple(coframe_basis)
         #### the following may be a useful alternative for resolving ordering ambiguity
         # forms_tuple = tuple(sorted(structure_equations.keys(), key=lambda x: (x.degree, x.label)))
 
-        conj_atoms = list(min_conj_rules.keys())+list(min_conj_rules.values())
-        if len(conj_atoms)!=len(set(conj_atoms)) or not all(isinstance(j,numbers.Integral) for j in conj_atoms) or not all (j in range(len(forms_tuple)) for j in conj_atoms):
-            raise ValueError(f'`conj_rules` should be an invertible dict containing `int` indices in the range 0 to {len(forms_tuple)}')
+        conj_atoms = list(min_conj_rules.keys()) + list(min_conj_rules.values())
+        if (
+            len(conj_atoms) != len(set(conj_atoms))
+            or not all(isinstance(j, numbers.Integral) for j in conj_atoms)
+            or not all(j in range(len(forms_tuple)) for j in conj_atoms)
+        ):
+            raise ValueError(
+                f"`conj_rules` should be an invertible dict containing `int` indices in the range 0 to {len(forms_tuple)}"
+            )
         # Create the instance
         obj = super().__new__(cls, forms_tuple)
         obj.forms = forms_tuple
         obj.structure_equations = structure_equations  # dictionary (mutable)
         obj.min_conj_rules = min_conj_rules
         obj.inverted_conj_rules = {v: k for k, v in min_conj_rules.items()}
-        obj.conj_rules = min_conj_rules | {v: k for k, v in min_conj_rules.items()} | {j:j for j in range(len(forms_tuple)) if j not in conj_atoms}
-        obj.hash_key = create_key('hash_key',key_length=16)
-        obj.dimension = len (forms_tuple)
+        obj.conj_rules = (
+            min_conj_rules
+            | {v: k for k, v in min_conj_rules.items()}
+            | {j: j for j in range(len(forms_tuple)) if j not in conj_atoms}
+        )
+        obj.hash_key = create_key("hash_key", key_length=16)
+        obj.dimension = len(forms_tuple)
         return obj
 
     def __init__(self, *args, **kwargs):
@@ -2622,7 +3254,11 @@ class abst_coframe(sp.Basic):
         raise AttributeError
 
     def structure_coeff(self, lo1, lo2, hi):
-        if not (0 <= lo1 < self.dimension and 0 <= lo2 < self.dimension and 0 <= hi < self.dimension):
+        if not (
+            0 <= lo1 < self.dimension
+            and 0 <= lo2 < self.dimension
+            and 0 <= hi < self.dimension
+        ):
             raise IndexError(
                 f"indices out of bounds: lo1={lo1}, lo2={lo2}, hi={hi}; "
                 f"expected in range 0 to {self.dimension - 1}"
@@ -2639,17 +3275,19 @@ class abst_coframe(sp.Basic):
             for term in df.terms:
                 scale = 1
                 termCoeff = term.coeff
-                if isinstance(termCoeff,abstDFAtom) and termCoeff.degree == 0:
+                if isinstance(termCoeff, abstDFAtom) and termCoeff.degree == 0:
                     scale = termCoeff
-                elif isinstance(termCoeff, (zeroFormAtom, abstract_ZF)) or isinstance(termCoeff, _get_expr_num_types()):
+                elif isinstance(termCoeff, (zeroFormAtom, abstract_ZF)) or isinstance(
+                    termCoeff, _get_expr_num_types()
+                ):
                     scale = termCoeff
 
                 for count, factor in enumerate(term.factors_sorted):
                     if factor == form1:
-                        if form2 in term.factors_sorted[count+1:]:
+                        if form2 in term.factors_sorted[count + 1 :]:
                             return scale
                     elif factor == form2:
-                        if form1 in term.factors_sorted[count+1:]:
+                        if form1 in term.factors_sorted[count + 1 :]:
                             return -scale
 
         return coeff
@@ -2658,22 +3296,18 @@ class abst_coframe(sp.Basic):
         """
         Return another abst_coframe instance with the same coframe_basis and current structure equations, but with a new hash key. Useful for modifying structure equations of the copy without changing the original.
         """
-        return abst_coframe(self.forms,self.structure_equations,self.min_conj_rules)
+        return abst_coframe(self.forms, self.structure_equations, self.min_conj_rules)
 
     def __eq__(self, other):
         if not isinstance(other, abst_coframe):
             return NotImplemented
-        return (
-            self.forms == other.forms
-            and 
-            self.hash_key == other.hash_key
-        )
+        return self.forms == other.forms and self.hash_key == other.hash_key
 
     def __hash__(self):
-        return hash((self.forms,self.hash_key))
+        return hash((self.forms, self.hash_key))
 
-    def sort_key(self, order=None):     # for the sympy sorting.py default_sort_key
-        return (10, self.forms)         # 10 is to group with misc objects
+    def sort_key(self, order=None):  # for the sympy sorting.py default_sort_key
+        return (10, self.forms)  # 10 is to group with misc objects
 
     def __lt__(self, other):
         if not isinstance(other, abst_coframe):
@@ -2690,9 +3324,15 @@ class abst_coframe(sp.Basic):
         """
         LaTeX representation of the coframe as a list of 1-forms.
         """
-        return r"\{" + r", ".join(form._latex(printer=printer) for form in self.forms) + r"\}"
+        return (
+            r"\{"
+            + r", ".join(form._latex(printer=printer) for form in self.forms)
+            + r"\}"
+        )
 
-    def update_structure_equations(self, replace_symbols = {}, replace_eqns = {}, simplify=True):
+    def update_structure_equations(
+        self, replace_symbols={}, replace_eqns={}, simplify=True
+    ):
         """
         Update the structure equation for a specific form.
 
@@ -2700,33 +3340,51 @@ class abst_coframe(sp.Basic):
         - form: An abstDFAtom instance representing the 1-form to update.
         - equation: An abstract_DF instance or None representing the new structure equation.
         """
-        if not (isinstance(replace_symbols,dict) and isinstance(replace_eqns,dict)):
-            raise TypeError('If specified, `replace_symbols` and `replace_eqns` should be `dict` type')
+        if not (isinstance(replace_symbols, dict) and isinstance(replace_eqns, dict)):
+            raise TypeError(
+                "If specified, `replace_symbols` and `replace_eqns` should be `dict` type"
+            )
         for key in replace_symbols.keys():
             if key in self.structure_equations.items():
-                warnings.warn('It appears `replace_symbols` dictionary passed to `update_structure_equations` contains a 1-form in the coframe. Probably this dictionary key-value pair should be assigned to the `replace_eqns` dictionary instead, i.e. use `update_structure_equations(replace_eqns=...)` instead ')
+                warnings.warn(
+                    "It appears `replace_symbols` dictionary passed to `update_structure_equations` contains a 1-form in the coframe. Probably this dictionary key-value pair should be assigned to the `replace_eqns` dictionary instead, i.e. use `update_structure_equations(replace_eqns=...)` instead "
+                )
         for key, value in self.structure_equations.items():
-            if hasattr(value, 'subs') and callable(getattr(value, 'subs')):
+            if hasattr(value, "subs") and callable(getattr(value, "subs")):
                 if simplify:
-                    if isinstance(value,abstDFAtom):
-                        self.structure_equations[key]=(value.subs(replace_symbols))._eval_simplify()
+                    if isinstance(value, abstDFAtom):
+                        self.structure_equations[key] = (
+                            value.subs(replace_symbols)
+                        )._eval_simplify()
                     else:
-                        self.structure_equations[key]=sp.simplify(value.subs(replace_symbols))
+                        self.structure_equations[key] = sp.simplify(
+                            value.subs(replace_symbols)
+                        )
                 else:
-                    self.structure_equations[key]=value.subs(replace_symbols)
+                    self.structure_equations[key] = value.subs(replace_symbols)
         for key, value in replace_eqns.items():
             if key in self.forms:
-                self.structure_equations[key]=value
+                self.structure_equations[key] = value
         if simplify:
             for key, value in self.structure_equations.items():
                 if value is None:
                     self.structure_equations[key] = abstract_DF([])
-                elif isinstance(value,abstDFAtom):
-                    self.structure_equations[key]=key._eval_simplify(value)
+                elif isinstance(value, abstDFAtom):
+                    self.structure_equations[key] = key._eval_simplify(value)
                 else:
-                    self.structure_equations[key]=sp.simplify(value)
+                    self.structure_equations[key] = sp.simplify(value)
 
-def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, complete_to_complex_cf = None,  integrable_complex_struct=False, markers=dict(),remove_guardrails=False):
+
+def createCoframe(
+    label,
+    coframe_labels,
+    str_eqns=None,
+    str_eqns_labels=None,
+    complete_to_complex_cf=None,
+    integrable_complex_struct=False,
+    markers=dict(),
+    remove_guardrails=False,
+):
     """
     Create a coframe with specified 1-forms and structure equations.
 
@@ -2748,33 +3406,46 @@ def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, co
     coframe_labels = list(coframe_labels)
 
     if complete_to_complex_cf is None:
-        complete_to_complex_cf = ['standard']*len(coframe_labels)
+        complete_to_complex_cf = ["standard"] * len(coframe_labels)
     elif complete_to_complex_cf is True:
         complete_to_complex_cf = []
         for coVec in coframe_labels:
-            if 'holomorphic' in markers.get(coVec,{}):
-                complete_to_complex_cf += ['holomorphic']
-                if 'antiholomorphic' in markers.get(coVec,{}):
-                    warnings.warn('A coframe label was given to `createCoframe` with conflicting property markers \"holomorphic\" and \"antiholomorphic\". The coframe was created assuming \"holomorphic\" is correct')
-                if 'real' in markers.get(coVec,{}):
-                    warnings.warn('A coframe label was given to `createCoframe` with conflicting property markers \"holomorphic\" and \"real\". The coframe was created assuming \"holomorphic\" is correct')
-            elif 'antiholomorphic' in markers.get(coVec,{}):
-                complete_to_complex_cf += ['antiholomorphic']
-                if 'real' in markers.get(coVec,{}):
-                    warnings.warn('A coframe label was given to `createCoframe` with conflicting property markers \"antiholomorphic\" and \"real\". The coframe was created assuming \"antiholomorphic\" is correct')
-            elif 'real' in markers.get(coVec,{}):
-                complete_to_complex_cf += ['real']
+            if "holomorphic" in markers.get(coVec, {}):
+                complete_to_complex_cf += ["holomorphic"]
+                if "antiholomorphic" in markers.get(coVec, {}):
+                    warnings.warn(
+                        'A coframe label was given to `createCoframe` with conflicting property markers "holomorphic" and "antiholomorphic". The coframe was created assuming "holomorphic" is correct'
+                    )
+                if "real" in markers.get(coVec, {}):
+                    warnings.warn(
+                        'A coframe label was given to `createCoframe` with conflicting property markers "holomorphic" and "real". The coframe was created assuming "holomorphic" is correct'
+                    )
+            elif "antiholomorphic" in markers.get(coVec, {}):
+                complete_to_complex_cf += ["antiholomorphic"]
+                if "real" in markers.get(coVec, {}):
+                    warnings.warn(
+                        'A coframe label was given to `createCoframe` with conflicting property markers "antiholomorphic" and "real". The coframe was created assuming "antiholomorphic" is correct'
+                    )
+            elif "real" in markers.get(coVec, {}):
+                complete_to_complex_cf += ["real"]
             else:
-                complete_to_complex_cf += ['standard']
-    elif complete_to_complex_cf=="fromHol":
-        complete_to_complex_cf = ['holomorphic']*len(coframe_labels)
-    elif complete_to_complex_cf=="fromAntihol":
-        complete_to_complex_cf = ['antiholomorphic']*len(coframe_labels)
-    elif not isinstance(complete_to_complex_cf,(list,tuple)) or len(complete_to_complex_cf)!=len(coframe_labels):
-        warnings.warn('`createCoframe` was given an unexpected value for `complete_to_complex_cf`. Proceeding as if `complete_to_complex_cf=None`.')
-        complete_to_complex_cf = ['standard']*len(coframe_labels)
+                complete_to_complex_cf += ["standard"]
+    elif complete_to_complex_cf == "fromHol":
+        complete_to_complex_cf = ["holomorphic"] * len(coframe_labels)
+    elif complete_to_complex_cf == "fromAntihol":
+        complete_to_complex_cf = ["antiholomorphic"] * len(coframe_labels)
+    elif not isinstance(complete_to_complex_cf, (list, tuple)) or len(
+        complete_to_complex_cf
+    ) != len(coframe_labels):
+        warnings.warn(
+            "`createCoframe` was given an unexpected value for `complete_to_complex_cf`. Proceeding as if `complete_to_complex_cf=None`."
+        )
+        complete_to_complex_cf = ["standard"] * len(coframe_labels)
 
-    closed_assumptions = [next(iter(markers[j].intersection({'closed'})),None) if j in markers else None for j in coframe_labels]
+    closed_assumptions = [
+        next(iter(markers[j].intersection({"closed"})), None) if j in markers else None
+        for j in coframe_labels
+    ]
 
     # Create abstDFAtom instances for coframe labels
     elem_list = []
@@ -2782,42 +3453,55 @@ def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, co
     conjugates_labels = []
     augments_counter = 0
     for count, coframe_label in enumerate(coframe_labels):
-        if complete_to_complex_cf[count]=="real":
-            coframe_label = validate_label(coframe_label, remove_guardrails=remove_guardrails)
-            _DFFactory(coframe_label,1,assumeReal=True)
+        if complete_to_complex_cf[count] == "real":
+            coframe_label = validate_label(
+                coframe_label, remove_guardrails=remove_guardrails
+            )
+            _DFFactory(coframe_label, 1, assumeReal=True)
             elem = _cached_caller_globals[coframe_label]
             elem_list.append(elem)
-        elif complete_to_complex_cf[count]=="holomorphic" or complete_to_complex_cf[count]=="antiholomorphic":
-            if coframe_label[0:3]=="BAR":
-                paired_label = validate_label(coframe_label[3:], remove_guardrails=remove_guardrails)
-                _DFFactory(paired_label,1)
+        elif (
+            complete_to_complex_cf[count] == "holomorphic"
+            or complete_to_complex_cf[count] == "antiholomorphic"
+        ):
+            if coframe_label[0:3] == "BAR":
+                paired_label = validate_label(
+                    coframe_label[3:], remove_guardrails=remove_guardrails
+                )
+                _DFFactory(paired_label, 1)
                 coframe_label = f"BAR{paired_label}"
             else:
-                coframe_label = validate_label(coframe_label, remove_guardrails=remove_guardrails)
-                _DFFactory(coframe_label,1)
+                coframe_label = validate_label(
+                    coframe_label, remove_guardrails=remove_guardrails
+                )
+                _DFFactory(coframe_label, 1)
                 paired_label = f"BAR{coframe_label}"
             elem = _cached_caller_globals[coframe_label]
             cElem = _cached_caller_globals[paired_label]
             elem_list.append(elem)
             conjugates_list.append(cElem)
             conjugates_labels.append(cElem.label)
-            min_conj_rules = min_conj_rules | {count:len(coframe_labels)+augments_counter}
+            min_conj_rules = min_conj_rules | {
+                count: len(coframe_labels) + augments_counter
+            }
             augments_counter += 1
         else:
-            coframe_label = validate_label(coframe_label, remove_guardrails=remove_guardrails)
-            _DFFactory(coframe_label,1)
+            coframe_label = validate_label(
+                coframe_label, remove_guardrails=remove_guardrails
+            )
+            _DFFactory(coframe_label, 1)
             elem = _cached_caller_globals[coframe_label]
             elem_list.append(elem)
 
     init_dimension = len(coframe_labels)
-    coframe_labels+=conjugates_labels
-    elem_list+=conjugates_list
+    coframe_labels += conjugates_labels
+    elem_list += conjugates_list
 
     # Build the coframe_dict
-    coframe_dict = {elem:abstract_DF([]) for elem in elem_list}
+    coframe_dict = {elem: abstract_DF([]) for elem in elem_list}
 
     # Register the coframe in the caller's globals
-    coframe = abst_coframe(elem_list,coframe_dict,min_conj_rules)
+    coframe = abst_coframe(elem_list, coframe_dict, min_conj_rules)
     label = validate_label(label, remove_guardrails=remove_guardrails)
     _cached_caller_globals[label] = coframe
 
@@ -2833,13 +3517,17 @@ def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, co
             for j in range(i + 1, len(coframe_labels)):
                 for k in range(init_dimension):
                     if (i, j, k) not in str_eqns or str_eqns[(i, j, k)] is None:
-                        low_hi_pairs.append([[i+1,j+1],[k+1]])
-                        scale = 0 if closed_assumptions[k]=='closed' else 1
+                        low_hi_pairs.append([[i + 1, j + 1], [k + 1]])
+                        scale = 0 if closed_assumptions[k] == "closed" else 1
                         # Generate and validate the coefficient label
                         # if str_eqns_labels not in _cached_caller_globals:
                         #     _cached_caller_globals[str_eqns_labels] = tuple()
-                        coeff_label = f"{str_eqns_labels}_low_{i+1}_{j+1}_hi_{k+1}"
-                        coeff_label = validate_label(coeff_label, remove_guardrails=remove_guardrails)
+                        coeff_label = (
+                            f"{str_eqns_labels}_low_{i + 1}_{j + 1}_hi_{k + 1}"
+                        )
+                        coeff_label = validate_label(
+                            coeff_label, remove_guardrails=remove_guardrails
+                        )
 
                         # Create a zeroFormAtom and register it
                         # _cached_caller_globals[coeff_label] = zeroFormAtom(label=coeff_label,coframe=_cached_caller_globals[label])
@@ -2848,9 +3536,19 @@ def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, co
 
                         # Update str_eqns
                         # str_eqns[(i, j, k)] = abstDFAtom(_cached_caller_globals[coeff_label], 0)*scale
-                        str_eqns[coeff_label] = [(i, j, k),scale]
-        _zeroFormFactory(str_eqns_labels,{'low_hi_pairs':low_hi_pairs},coframe=_cached_caller_globals[label],remove_guardrails=remove_guardrails)
-        str_eqns = {(k if isinstance(k, tuple) else v[0]): (v if isinstance(k,tuple) else v[1] * _cached_caller_globals[k]) for k, v in str_eqns.items()}
+                        str_eqns[coeff_label] = [(i, j, k), scale]
+        _zeroFormFactory(
+            str_eqns_labels,
+            {"low_hi_pairs": low_hi_pairs},
+            coframe=_cached_caller_globals[label],
+            remove_guardrails=remove_guardrails,
+        )
+        str_eqns = {
+            (k if isinstance(k, tuple) else v[0]): (
+                v if isinstance(k, tuple) else v[1] * _cached_caller_globals[k]
+            )
+            for k, v in str_eqns.items()
+        }
     else:
         # Fill missing terms with None
         for i in range(len(coframe_labels)):
@@ -2859,7 +3557,6 @@ def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, co
                     if (i, j, k) not in str_eqns:
                         str_eqns[(i, j, k)] = None
 
-
     # Update coframe!!!!
     update_dict = {}
     for k in range(init_dimension):
@@ -2867,13 +3564,17 @@ def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, co
         for i in range(len(coframe_labels)):
             for j in range(i + 1, len(coframe_labels)):
                 if (i, j, k) in str_eqns and str_eqns[(i, j, k)] is not None:
-                    kth_term_list.append(str_eqns[(i, j, k)] * elem_list[i] * elem_list[j])
+                    kth_term_list.append(
+                        str_eqns[(i, j, k)] * elem_list[i] * elem_list[j]
+                    )
         if kth_term_list:
             update_dict[elem_list[k]] = abstract_DF(kth_term_list)
-    inv_dict = {v:k for k,v in min_conj_rules.items()}
-    for v in range(init_dimension,len(coframe_labels)):
+    inv_dict = {v: k for k, v in min_conj_rules.items()}
+    for v in range(init_dimension, len(coframe_labels)):
         if update_dict[elem_list[inv_dict[v]]]:
-            update_dict[elem_list[v]] = update_dict[elem_list[inv_dict[v]]]._eval_conjugate()
+            update_dict[elem_list[v]] = update_dict[
+                elem_list[inv_dict[v]]
+            ]._eval_conjugate()
 
     _cached_caller_globals[label].update_structure_equations(replace_eqns=update_dict)
 
@@ -2888,16 +3589,18 @@ def createCoframe(label, coframe_labels, str_eqns=None, str_eqns_labels=None, co
 
     # Add the labels to the variable registry
     vr = get_variable_registry()
-    vr["eds"]["coframes"][label] = {"dimension":len(coframe_labels),
-                                    "children": coframe_labels,
-                                    "cousins": coeff_labels,
-                                    "cousins_vals": _cached_caller_globals[str_eqns_labels],
-                                    "cousins_parent": str_eqns_labels
-                                    }
+    vr["eds"]["coframes"][label] = {
+        "dimension": len(coframe_labels),
+        "children": coframe_labels,
+        "cousins": coeff_labels,
+        "cousins_vals": _cached_caller_globals[str_eqns_labels],
+        "cousins_parent": str_eqns_labels,
+    }
     vr["_labels"][label] = {
         "path": ("eds", "coframes", label),
-        "children": set(coframe_labels + coeff_labels)
+        "children": set(coframe_labels + coeff_labels),
     }
+
 
 def coframe_derivative(df, coframe, *cfIndex):
     """
@@ -2917,14 +3620,20 @@ def coframe_derivative(df, coframe, *cfIndex):
         result = df
         for idx in cfIndex:
             if not isinstance(idx, numbers.Integral) or idx < 0:
-                raise ValueError(f"`coframe_derivative` indices (i.e., optional arguments) must all be non-negative integers. Received {idx}.")
+                raise ValueError(
+                    f"`coframe_derivative` indices (i.e., optional arguments) must all be non-negative integers. Received {idx}."
+                )
             result = coframe_derivative(result, coframe, idx)
         return result
     cfIndex = cfIndex[0]
     if not isinstance(cfIndex, numbers.Integral) or cfIndex < 0:
-        raise ValueError(f"optional `cfIndex` arguments must all be non-negative integers. Recieved {cfIndex}.")
+        raise ValueError(
+            f"optional `cfIndex` arguments must all be non-negative integers. Recieved {cfIndex}."
+        )
     if cfIndex >= coframe.dimension:
-        raise IndexError(f"`cfIndex` {cfIndex} is out of bounds for coframe with {coframe.dimension} forms.")
+        raise IndexError(
+            f"`cfIndex` {cfIndex} is out of bounds for coframe with {coframe.dimension} forms."
+        )
 
     if isinstance(df, zeroFormAtom):
         return _cofrDer_zeroFormAtom(df, coframe, cfIndex)
@@ -2932,20 +3641,25 @@ def coframe_derivative(df, coframe, *cfIndex):
         return _cofrDer_abstract_ZF(df, coframe, cfIndex)
     elif isinstance(df, abstDFAtom) and df.degree == 0:
         coeff = df.coeff
-        if isinstance(df.label,str):
-            other = zeroFormAtom(df.label,_markers=df._markers)
+        if isinstance(df.label, str):
+            other = zeroFormAtom(df.label, _markers=df._markers)
         else:
-            other =  1
-        newDF = coeff*other
+            other = 1
+        newDF = coeff * other
         return coframe_derivative(newDF, coframe, cfIndex)
     elif isinstance(df, _get_expr_num_types()):
         return 0
     else:
         if isinstance(df, abstDFAtom):
-            raise TypeError(f"`coframe_derivative` does not support type `{type(df).__name__}` with nonzero degree.")
-        raise TypeError(f"`coframe_derivative` does not support type `{type(df).__name__}`.")
+            raise TypeError(
+                f"`coframe_derivative` does not support type `{type(df).__name__}` with nonzero degree."
+            )
+        raise TypeError(
+            f"`coframe_derivative` does not support type `{type(df).__name__}`."
+        )
 
-def extDer(df, coframe=None, order=1, with_canonicalize = False, with_simplify = False):
+
+def extDer(df, coframe=None, order=1, with_canonicalize=False, with_simplify=False):
     """
     Exterior derivative operator `extDer()` for various differential forms.
 
@@ -2958,8 +3672,16 @@ def extDer(df, coframe=None, order=1, with_canonicalize = False, with_simplify =
     Returns:
     - The exterior derivative of the form.
     """
-    if hasattr(df, '_dgcv_eds_applyfunc'):
-        return df._dgcv_eds_applyfunc(lambda elem: extDer(elem, coframe=coframe, order=order, with_canonicalize = with_canonicalize, with_simplify = with_simplify))
+    if hasattr(df, "_dgcv_eds_applyfunc"):
+        return df._dgcv_eds_applyfunc(
+            lambda elem: extDer(
+                elem,
+                coframe=coframe,
+                order=order,
+                with_canonicalize=with_canonicalize,
+                with_simplify=with_simplify,
+            )
+        )
 
     if not isinstance(order, numbers.Integral) or order < 1:
         raise ValueError("`order` must be a positive integer.")
@@ -2968,11 +3690,19 @@ def extDer(df, coframe=None, order=1, with_canonicalize = False, with_simplify =
         ddf = extDer(extDer(df, coframe=coframe), coframe=coframe, order=order - 1)
     else:
         if coframe is None:
-            if isinstance(df,abstDFAtom):
-                return abstDFAtom(df.coeff,df.degree,label=df.label,ext_deriv_order=df.ext_deriv_order+order,_markers=df._markers)
-            if isinstance(df,(zeroFormAtom,abstract_ZF)):
-                markers = df._markers if hasattr(df,'_markers') else frozenset()
-                return extDer(abstDFAtom(df,0,_markers=markers),coframe=None, order=order)
+            if isinstance(df, abstDFAtom):
+                return abstDFAtom(
+                    df.coeff,
+                    df.degree,
+                    label=df.label,
+                    ext_deriv_order=df.ext_deriv_order + order,
+                    _markers=df._markers,
+                )
+            if isinstance(df, (zeroFormAtom, abstract_ZF)):
+                markers = df._markers if hasattr(df, "_markers") else frozenset()
+                return extDer(
+                    abstDFAtom(df, 0, _markers=markers), coframe=None, order=order
+                )
 
         # distribute cases to helper functions based on the type of `df`
         if isinstance(df, zeroFormAtom):
@@ -2985,22 +3715,22 @@ def extDer(df, coframe=None, order=1, with_canonicalize = False, with_simplify =
             ddf = _extDer_abstDFMonom(df, coframe)
         elif isinstance(df, abstract_DF):
             ddf = _extDer_abstract_DF(df, coframe)
-        elif isinstance(df,_get_expr_num_types()):
+        elif isinstance(df, _get_expr_num_types()):
             return 0
         else:
             raise TypeError(f"`extDer` does not support type `{type(df).__name__}`.")
     if with_canonicalize and with_simplify:
-        if hasattr(ddf,'_eval_canonicalize'):
+        if hasattr(ddf, "_eval_canonicalize"):
             ddf = ddf._eval_canonicalize()
-        if hasattr(ddf,'_eval_simplify'):
+        if hasattr(ddf, "_eval_simplify"):
             return ddf._eval_simplify()
         else:
             return ddf
     if with_canonicalize:
-        if hasattr(ddf,'_eval_canonicalize'):
+        if hasattr(ddf, "_eval_canonicalize"):
             return ddf._eval_canonicalize()
     if with_simplify:
-        if hasattr(ddf,'_eval_simplify'):
+        if hasattr(ddf, "_eval_simplify"):
             return ddf._eval_simplify()
     return ddf
 
@@ -3010,6 +3740,7 @@ def _extDer_zeroFormAtom(df, coframe):
     Compute the exterior derivative for zeroFormAtom.
     """
     return _extDer_abstract_ZF(abstract_ZF(df), coframe)
+
 
 def _extDer_abstract_ZF(df, coframe):
     """
@@ -3023,39 +3754,86 @@ def _extDer_abstract_ZF(df, coframe):
     - The exterior derivative as an `abstract_DF` expression.
     """
     if coframe is None:
-        return abstDFAtom(df, 1, ext_deriv_order=1,
-                          _markers=frozenset([j for j in df._markers if j not in {"holomorphic", "antiholomorphic"}]))
+        return abstDFAtom(
+            df,
+            1,
+            ext_deriv_order=1,
+            _markers=frozenset(
+                [j for j in df._markers if j not in {"holomorphic", "antiholomorphic"}]
+            ),
+        )
 
     # Compute one-form terms using `coframe_derivative`
-    oneForms = [coframe_derivative(df, coframe, j) * coframe.forms[j] for j in range(coframe.dimension)]
+    oneForms = [
+        coframe_derivative(df, coframe, j) * coframe.forms[j]
+        for j in range(coframe.dimension)
+    ]
 
     # Sum the terms
     return sum(oneForms[1:], oneForms[0])
 
-def _extDer_abstDFAtom(df:abstDFAtom, coframe:abst_coframe):
+
+def _extDer_abstDFAtom(df: abstDFAtom, coframe: abst_coframe):
     """
     Compute the exterior derivative for abstDFAtom.
     """
     if coframe is None:
-        order = df.ext_deriv_order+1 if df.ext_deriv_order else 1
-        return abstDFAtom(df.coeff,df.degree+1,df.label,order,_markers=frozenset([j for j in df._markers if (j!="holomorphic" and j!="antiholomorphic")]))
-    str_eqns = {dfKey._seperated_form[0]:(value,dfKey._seperated_form[1])  for dfKey,value in coframe.structure_equations.items()}
-    dfAtom,coeff = df._seperated_form
+        order = df.ext_deriv_order + 1 if df.ext_deriv_order else 1
+        return abstDFAtom(
+            df.coeff,
+            df.degree + 1,
+            df.label,
+            order,
+            _markers=frozenset(
+                [
+                    j
+                    for j in df._markers
+                    if (j != "holomorphic" and j != "antiholomorphic")
+                ]
+            ),
+        )
+    str_eqns = {
+        dfKey._seperated_form[0]: (value, dfKey._seperated_form[1])
+        for dfKey, value in coframe.structure_equations.items()
+    }
+    dfAtom, coeff = df._seperated_form
     if dfAtom in str_eqns:
         dfData = str_eqns[dfAtom]
-        if coeff==1 and dfData[1]==1:
+        if coeff == 1 and dfData[1] == 1:
             return dfData[0]
-        return coeff*dfData[1]*dfData[0]
-    if isinstance(df.coeff,(zeroFormAtom,abstract_ZF)):
-        new_markers = frozenset([j for j in df._markers if (j!="holomorphic" and j!="antiholomorphic")])
-        return extDer(df.coeff,coframe=coframe)*abstDFAtom(1,df.degree,df.label,df.ext_deriv_order,_markers=new_markers)+(df.coeff)*extDer(abstDFAtom(1,df.degree,df.label,df.ext_deriv_order,_markers=df._markers),coframe=coframe)
-    if isinstance(df.coeff, _get_expr_types()) and len(get_free_symbols((df.coeff)))>0:
-        new_markers = frozenset([j for j in df._markers if (j!="holomorphic" and j!="antiholomorphic")])
-        return abstDFAtom(df.coeff,1,ext_deriv_order=1)*abstDFAtom(1,df.degree,df.label,df.ext_deriv_order,_markers=new_markers)+(df.coeff)*extDer(abstDFAtom(1,df.degree,df.label,df.ext_deriv_order,_markers=df._markers),coframe=coframe)
+        return coeff * dfData[1] * dfData[0]
+    if isinstance(df.coeff, (zeroFormAtom, abstract_ZF)):
+        new_markers = frozenset(
+            [j for j in df._markers if (j != "holomorphic" and j != "antiholomorphic")]
+        )
+        return extDer(df.coeff, coframe=coframe) * abstDFAtom(
+            1, df.degree, df.label, df.ext_deriv_order, _markers=new_markers
+        ) + (df.coeff) * extDer(
+            abstDFAtom(
+                1, df.degree, df.label, df.ext_deriv_order, _markers=df._markers
+            ),
+            coframe=coframe,
+        )
+    if (
+        isinstance(df.coeff, _get_expr_types())
+        and len(get_free_symbols((df.coeff))) > 0
+    ):
+        new_markers = frozenset(
+            [j for j in df._markers if (j != "holomorphic" and j != "antiholomorphic")]
+        )
+        return abstDFAtom(df.coeff, 1, ext_deriv_order=1) * abstDFAtom(
+            1, df.degree, df.label, df.ext_deriv_order, _markers=new_markers
+        ) + (df.coeff) * extDer(
+            abstDFAtom(
+                1, df.degree, df.label, df.ext_deriv_order, _markers=df._markers
+            ),
+            coframe=coframe,
+        )
     # if df.label:
     #     order = df.ext_deriv_order+1 if df.ext_deriv_order else 1
     #     return (df.coeff)*abstDFAtom(1,df.degree,df.label,order,_markers=df._markers)
-    return abstDFAtom(0,df.degree+1)
+    return abstDFAtom(0, df.degree + 1)
+
 
 def _extDer_abstDFMonom(df, coframe):
     """
@@ -3065,23 +3843,29 @@ def _extDer_abstDFMonom(df, coframe):
     fs = df.factors_sorted
     next_degree = 0
     for idx, factor in enumerate(fs):
-        sign = 1 if next_degree%2==0 else -1
+        sign = 1 if next_degree % 2 == 0 else -1
         first_part = df.factors_sorted[:idx]
-        last_part = df.factors_sorted[idx + 1:]
-        if len(df.factors_sorted)==1:
+        last_part = df.factors_sorted[idx + 1 :]
+        if len(df.factors_sorted) == 1:
             term = extDer(factor, coframe=coframe)
-        elif idx==0:
+        elif idx == 0:
             term = extDer(factor, coframe=coframe) * abstDFMonom(last_part)
         elif idx == len(df.factors_sorted) - 1:
-            term = sign * abstDFMonom(first_part) * extDer(factor, coframe=coframe) 
+            term = sign * abstDFMonom(first_part) * extDer(factor, coframe=coframe)
         else:
-            term = sign * abstDFMonom(first_part) * extDer(factor, coframe=coframe) * abstDFMonom(last_part)
-        if isinstance(factor,abstDFAtom):
+            term = (
+                sign
+                * abstDFMonom(first_part)
+                * extDer(factor, coframe=coframe)
+                * abstDFMonom(last_part)
+            )
+        if isinstance(factor, abstDFAtom):
             next_degree = factor.degree
         else:
             next_degree = 0
         result += term
     return result
+
 
 def _extDer_abstract_DF(df, coframe):
     """
@@ -3091,6 +3875,7 @@ def _extDer_abstract_DF(df, coframe):
     for term in df.terms:
         result += extDer(term, coframe=coframe)
     return result
+
 
 def _cofrDer_zeroFormAtom(zf, cf, cfIndex):
     """
@@ -3112,10 +3897,12 @@ def _cofrDer_zeroFormAtom(zf, cf, cfIndex):
         raise ValueError("`cfIndex` must be a non-negative integer.")
 
     if cfIndex >= cf.dimension:
-        raise IndexError(f"`cfIndex` {cfIndex} is out of bounds for coframe with {cf.dimension} forms.")
+        raise IndexError(
+            f"`cfIndex` {cfIndex} is out of bounds for coframe with {cf.dimension} forms."
+        )
 
     if cf in zf.coframe_independants and cfIndex in zf.coframe_independants[cf]:
-        return 0*zf
+        return 0 * zf
 
     # Helper function to increment the partial derivative orders
     def raise_indices(int_list, int_index):
@@ -3123,13 +3910,11 @@ def _cofrDer_zeroFormAtom(zf, cf, cfIndex):
         new_list[int_index] += 1
         return tuple(new_list)
 
-
-    if len(zf.coframe_derivatives)>0 and zf.coframe_derivatives[-1][0]==cf:
-        new_cd_elem = tuple(zf.coframe_derivatives[-1])+(cfIndex,)
-        new_CD = tuple(zf.coframe_derivatives[:-1])+(new_cd_elem,)
+    if len(zf.coframe_derivatives) > 0 and zf.coframe_derivatives[-1][0] == cf:
+        new_cd_elem = tuple(zf.coframe_derivatives[-1]) + (cfIndex,)
+        new_CD = tuple(zf.coframe_derivatives[:-1]) + (new_cd_elem,)
     else:
-        new_CD = zf.coframe_derivatives+((cf,cfIndex),)
-
+        new_CD = zf.coframe_derivatives + ((cf, cfIndex),)
 
     # Compute the new derivative
     return zeroFormAtom(
@@ -3137,8 +3922,9 @@ def _cofrDer_zeroFormAtom(zf, cf, cfIndex):
         coframe_derivatives=new_CD,
         coframe=zf.coframe,
         _markers=zf._markers,
-        coframe_independants=zf.coframe_independants
+        coframe_independants=zf.coframe_independants,
     )
+
 
 def _cofrDer_abstract_ZF(df, cf, cfIndex):
     """
@@ -3156,7 +3942,7 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
     """
     if isinstance(df, _get_expr_num_types()):  # Scalars differentiate to 0
         return 0
-    if hasattr(df, 'base'):
+    if hasattr(df, "base"):
         df = df.base
     if isinstance(df, zeroFormAtom):
         return _cofrDer_zeroFormAtom(df, cf, cfIndex)
@@ -3164,51 +3950,86 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
         op, *args = df
 
         if op == "add":  # d(f + g) = df + dg
-            return abstract_ZF(("add", *[_cofrDer_abstract_ZF(arg, cf, cfIndex) for arg in args]))
+            return abstract_ZF(
+                ("add", *[_cofrDer_abstract_ZF(arg, cf, cfIndex) for arg in args])
+            )
 
         if op == "sub":  # d(f - g) = df - dg
-            return abstract_ZF(("sub", *[_cofrDer_abstract_ZF(arg, cf, cfIndex) for arg in args]))
+            return abstract_ZF(
+                ("sub", *[_cofrDer_abstract_ZF(arg, cf, cfIndex) for arg in args])
+            )
 
         elif op == "mul":  # Product Rule: d(fg) = df g + f dg
             terms = []
             for i, term in enumerate(args):
-                other_factors = args[:i] + args[i+1:]
-                terms.append(abstract_ZF(("mul", _cofrDer_abstract_ZF(term, cf, cfIndex), *other_factors)))
+                other_factors = args[:i] + args[i + 1 :]
+                terms.append(
+                    abstract_ZF(
+                        ("mul", _cofrDer_abstract_ZF(term, cf, cfIndex), *other_factors)
+                    )
+                )
             return abstract_ZF(("add", *terms))
 
         elif op == "div":  # Quotient Rule: d(f/g) = (df g - f dg) / g²
             num, denom = args
             dnum = _cofrDer_abstract_ZF(num, cf, cfIndex)
             ddenom = _cofrDer_abstract_ZF(denom, cf, cfIndex)
-            return abstract_ZF(("div", ("sub", abstract_ZF(("mul", dnum, denom)), abstract_ZF(("mul", num, ddenom))), ("pow", denom, 2)))
+            return abstract_ZF(
+                (
+                    "div",
+                    (
+                        "sub",
+                        abstract_ZF(("mul", dnum, denom)),
+                        abstract_ZF(("mul", num, ddenom)),
+                    ),
+                    ("pow", denom, 2),
+                )
+            )
 
         elif op == "pow":  # Power Rule: d(f^g)
             base, exponent = args
             if isinstance(exponent, _get_expr_num_types()):
                 dbase = _cofrDer_abstract_ZF(base, cf, cfIndex)
-                new_exp = exponent-1
+                new_exp = exponent - 1
                 return abstract_ZF(("mul", exponent, ("pow", base, new_exp), dbase))
-            elif isinstance(base,_get_expr_num_types()):
-                return abstract_ZF(("mul", sp.ln(base), ("pow", base, exponent), _cofrDer_abstract_ZF(exponent, cf, cfIndex)))
+            elif isinstance(base, _get_expr_num_types()):
+                return abstract_ZF(
+                    (
+                        "mul",
+                        sp.ln(base),
+                        ("pow", base, exponent),
+                        _cofrDer_abstract_ZF(exponent, cf, cfIndex),
+                    )
+                )
             else:
-                raise NotImplementedError(f'coframe derivatives are not implemented for type {type(base)} raised to type {type(exponent)}')
+                raise NotImplementedError(
+                    f"coframe derivatives are not implemented for type {type(base)} raised to type {type(exponent)}"
+                )
 
     return 0  # If df is constant, return 0
 
-def simplify_with_PDEs(expr,PDEs:dict,tryLess=False, iterations = 1):
+
+def simplify_with_PDEs(expr, PDEs: dict, tryLess=False, iterations=1):
     """
     Simplifies expressions under quasilinear PDE constraints. Given `PDEs` should be a dictionary whose key is either a sympy.Symbol or a dgcv.zeroFormAtom. For zeroFormAtom keys if their differential order is nonzero, then their corresponding key value must represent an expression whose differential order is not higher. The algorithm is optimized for the case where such key values has strictly lower order, and edge case optimizations for the genearl case will be implemented later.
     """
-    if iterations>1:
-        return simplify_with_PDEs(simplify_with_PDEs(expr,PDEs,tryLess=tryLess, iterations = iterations - 1),PDEs,tryLess=tryLess, iterations = 1)
+    if iterations > 1:
+        return simplify_with_PDEs(
+            simplify_with_PDEs(expr, PDEs, tryLess=tryLess, iterations=iterations - 1),
+            PDEs,
+            tryLess=tryLess,
+            iterations=1,
+        )
+
     def expr_order(expression):
         ex_order = 0
-        if hasattr(expression,'free_symbols'):
+        if hasattr(expression, "free_symbols"):
             vars = expression.free_symbols
             for var in vars:
-                if hasattr(var,'differential_order'):
-                    ex_order = max(ex_order,var.differential_order)
+                if hasattr(var, "differential_order"):
+                    ex_order = max(ex_order, var.differential_order)
         return ex_order
+
     ex_order = expr_order(expr)
     regular_handling = True
     subs_order = 0
@@ -3216,51 +4037,64 @@ def simplify_with_PDEs(expr,PDEs:dict,tryLess=False, iterations = 1):
     if ex_order > 0:
         regular_handling = False
         trip = True
-        for k,v in PDEs.items():
+        for k, v in PDEs.items():
             kOrder = expr_order(k)
             vOrder = expr_order(v)
-            subs_order = max(subs_order,kOrder)
-            if kOrder<vOrder:       # implies v has free_symbols attribute
+            subs_order = max(subs_order, kOrder)
+            if kOrder < vOrder:  # implies v has free_symbols attribute
                 for elem in v.free_symbols:
-                    if isinstance(elem,zeroFormAtom) and isinstance(k,zeroFormAtom) and k.is_primitive(elem):
-                        raise ValueError('`simplify_with_PDEs` recieved `PDEs` dictionary in an unsupported format. All PDEs should be solved for a variable whose higher order partials do not appear elsewhere in the expression.')
-            if kOrder == vOrder and kOrder>0:
+                    if (
+                        isinstance(elem, zeroFormAtom)
+                        and isinstance(k, zeroFormAtom)
+                        and k.is_primitive(elem)
+                    ):
+                        raise ValueError(
+                            "`simplify_with_PDEs` recieved `PDEs` dictionary in an unsupported format. All PDEs should be solved for a variable whose higher order partials do not appear elsewhere in the expression."
+                        )
+            if kOrder == vOrder and kOrder > 0:
                 trip = False
-    standardEQs = {v:k for v,k in PDEs.items() if isinstance(v,_get_expr_types()) and not hasattr(v,'_subs_dgcv')}
+    standardEQs = {
+        v: k
+        for v, k in PDEs.items()
+        if isinstance(v, _get_expr_types()) and not hasattr(v, "_subs_dgcv")
+    }
+
     def _custom_subs(elem):
-        if hasattr(elem,'_subs_dgcv'):
-            return elem._subs_dgcv(PDEs,with_diff_corollaries=True)
-        elif hasattr(elem,'subs'):
+        if hasattr(elem, "_subs_dgcv"):
+            return elem._subs_dgcv(PDEs, with_diff_corollaries=True)
+        elif hasattr(elem, "subs"):
             return elem.subs(standardEQs)
         else:
             return elem
+
     new_expr = _custom_subs(expr)
     if trip or not tryLess or not regular_handling:
-        for _ in range(ex_order-1):
+        for _ in range(ex_order - 1):
             new_expr = _custom_subs(new_expr)
-    if hasattr(new_expr,'_subs_dgcv'):
-        if hasattr(new_expr,'_eval_simplify'):
+    if hasattr(new_expr, "_subs_dgcv"):
+        if hasattr(new_expr, "_eval_simplify"):
             return new_expr._eval_simplify()
         else:
             return new_expr
     else:
         return sp.simplify(new_expr)
 
-def _sympify_abst_ZF(zf:abstract_ZF, varDict):
-    if isinstance(zf.base,abstract_ZF):
+
+def _sympify_abst_ZF(zf: abstract_ZF, varDict):
+    if isinstance(zf.base, abstract_ZF):
         return _sympify_abst_ZF(zf.base, varDict)
-    if isinstance(zf.base,(int,float,sp.Expr,sp.NumberSymbol)) or zf.base == sp.I:
+    if isinstance(zf.base, (int, float, sp.Expr, sp.NumberSymbol)) or zf.base == sp.I:
         return [zf.base], varDict
-    if isinstance(zf.base,zeroFormAtom):
-        return _equation_formatting(zf.base,varDict)
-    if isinstance(zf.base,tuple):
+    if isinstance(zf.base, zeroFormAtom):
+        return _equation_formatting(zf.base, varDict)
+    if isinstance(zf.base, tuple):
         op, *args = zf.base
         new_args = []
         constructedVarDict = varDict
         for arg in args:
-            if isinstance(arg,tuple):
+            if isinstance(arg, tuple):
                 arg = abstract_ZF(arg)
-            if isinstance(arg,abstract_ZF):
+            if isinstance(arg, abstract_ZF):
                 new_arg, new_dict = _sympify_abst_ZF(arg, constructedVarDict)
             else:
                 new_data = _equation_formatting(arg, constructedVarDict)
@@ -3271,21 +4105,24 @@ def _sympify_abst_ZF(zf:abstract_ZF, varDict):
                     new_dict = dict()
             new_args += new_arg
             constructedVarDict |= new_dict
-        if op == 'mul':
+        if op == "mul":
             zf_formatted = [prod(new_args)]
-        if op == 'add':
+        if op == "add":
             zf_formatted = [sum(new_args)]
-        if op == 'pow':
-            zf_formatted = [new_args[0]**new_args[1]]
-        if op == 'sub':
-            zf_formatted = [new_args[0]-new_args[1]]
-        if op == 'div':
-            if all(isinstance(arg,(float,int)) for arg in new_args):
-                zf_formatted = [sp.Rational(new_args[0],new_args[1])]
+        if op == "pow":
+            zf_formatted = [new_args[0] ** new_args[1]]
+        if op == "sub":
+            zf_formatted = [new_args[0] - new_args[1]]
+        if op == "div":
+            if all(isinstance(arg, numbers.Number) for arg in new_args):
+                zf_formatted = [sp.Rational(new_args[0], new_args[1])]
             else:
-                zf_formatted = [new_args[0]/new_args[1]]
+                zf_formatted = [new_args[0] / new_args[1]]
         return zf_formatted, constructedVarDict
-    raise ValueError(f'`_sympify_abst_ZF` was given an unsupport expression, of type {type(zf.base)}')
+    raise ValueError(
+        f"`_sympify_abst_ZF` was given an unsupport expression, of type {type(zf.base)}"
+    )
+
 
 def _sympy_to_abstract_ZF(expr, subs_rules={}):
     """
@@ -3304,30 +4141,42 @@ def _sympy_to_abstract_ZF(expr, subs_rules={}):
         return subs_rules.get(expr, expr)  # Replace if found, else return as-is
 
     # If the expr is already a number (int, float, sympy.Number)
-    if isinstance(expr, (int, float, sp.Number)):  
+    if isinstance(expr, (int, float, sp.Number)):
         return expr  # Directly return simple atomic elements
 
     # Handle operators that map directly to abstract_ZF:
     if isinstance(expr, sp.Add):
-        return ('add', *[_sympy_to_abstract_ZF(arg, subs_rules) for arg in expr.args])
+        return ("add", *[_sympy_to_abstract_ZF(arg, subs_rules) for arg in expr.args])
 
     if isinstance(expr, sp.Mul):
-        return ('mul', *[_sympy_to_abstract_ZF(arg, subs_rules) for arg in expr.args])
+        return ("mul", *[_sympy_to_abstract_ZF(arg, subs_rules) for arg in expr.args])
 
     if isinstance(expr, sp.Pow):
         if len(expr.args) != 2:
             raise ValueError("Pow must have exactly 2 arguments.")
         base, exp = expr.args
-        return ('pow', _sympy_to_abstract_ZF(base, subs_rules), _sympy_to_abstract_ZF(exp, subs_rules))
+        return (
+            "pow",
+            _sympy_to_abstract_ZF(base, subs_rules),
+            _sympy_to_abstract_ZF(exp, subs_rules),
+        )
 
     # Handle subtraction (rewrite as 'sub' instead of 'add' with negative)
-    if isinstance(expr, sp.Add) and any(isinstance(arg, sp.Mul) and -1 in arg.args for arg in expr.args):
+    if isinstance(expr, sp.Add) and any(
+        isinstance(arg, sp.Mul) and -1 in arg.args for arg in expr.args
+    ):
         args = list(expr.args)
         if len(args) == 2 and isinstance(args[1], sp.Mul) and -1 in args[1].args:
-            return ('sub', _sympy_to_abstract_ZF(args[0], subs_rules), _sympy_to_abstract_ZF(args[1].args[1], subs_rules))
+            return (
+                "sub",
+                _sympy_to_abstract_ZF(args[0], subs_rules),
+                _sympy_to_abstract_ZF(args[1].args[1], subs_rules),
+            )
 
     # Handle division (rewrite as 'div' instead of 'mul' with reciprocal)
-    if isinstance(expr, sp.Mul) and any(isinstance(arg, sp.Pow) and arg.args[1] == -1 for arg in expr.args):
+    if isinstance(expr, sp.Mul) and any(
+        isinstance(arg, sp.Pow) and arg.args[1] == -1 for arg in expr.args
+    ):
         num = []
         denom = []
         for arg in expr.args:
@@ -3337,39 +4186,56 @@ def _sympy_to_abstract_ZF(expr, subs_rules={}):
                 num.append(arg)  # Numerator part
 
         if len(num) == 1 and len(denom) == 1:
-            return ('div', _sympy_to_abstract_ZF(num[0], subs_rules), _sympy_to_abstract_ZF(denom[0], subs_rules))
+            return (
+                "div",
+                _sympy_to_abstract_ZF(num[0], subs_rules),
+                _sympy_to_abstract_ZF(denom[0], subs_rules),
+            )
 
     # Handle conjugation
     if isinstance(expr, sp.conjugate):
-        return abstract_ZF(_sympy_to_abstract_ZF(expr.args[0], subs_rules))._eval_conjugate().base
+        return (
+            abstract_ZF(_sympy_to_abstract_ZF(expr.args[0], subs_rules))
+            ._eval_conjugate()
+            .base
+        )
 
-    if isinstance(expr,sp.exp):
-        return ('pow',sp.E,_sympy_to_abstract_ZF(expr.args[0],subs_rules))
+    if isinstance(expr, sp.exp):
+        return ("pow", sp.E, _sympy_to_abstract_ZF(expr.args[0], subs_rules))
 
     # Raise error for unsupported operations
     if isinstance(expr, sp.Function):
-        raise ValueError(f"Unsupported operation: {expr.func.__name__} is not yet supported for the dgcv 0-form classes. Error for type: {type(expr)}")
+        raise ValueError(
+            f"Unsupported operation: {expr.func.__name__} is not yet supported for the dgcv 0-form classes. Error for type: {type(expr)}"
+        )
 
     if isinstance(expr, sp.Rational):
-        return ('div', expr.p, expr.q)  # Handle rational numbers explicitly
+        return ("div", expr.p, expr.q)  # Handle rational numbers explicitly
 
     if isinstance(expr, sp.NumberSymbol) or expr == sp.I:
         return expr  # named mathematical constants
 
-    raise ValueError(f"Unsupported operation: {expr} cannot be mapped to abstract_ZF. Error for type: {type(expr)}")
+    raise ValueError(
+        f"Unsupported operation: {expr} cannot be mapped to abstract_ZF. Error for type: {type(expr)}"
+    )
 
-def _loop_ZF_format_conversions(expr, withSimplify = False, reformatter = None):
+
+def _loop_ZF_format_conversions(expr, withSimplify=False, reformatter=None):
     def format(elem):
         if reformatter is None or not callable(reformatter):
             return elem
         else:
             return reformatter(elem)
-    if isinstance(expr,abstDFAtom) and expr.degree == 0:
-        expr = expr.coeff       # gaurantess expr is scalar (i.e., float/int/abstract_ZF etc.)
-    expr,varD=_sympify_abst_ZF(expr,{})
+
+    if isinstance(expr, abstDFAtom) and expr.degree == 0:
+        expr = (
+            expr.coeff
+        )  # gaurantess expr is scalar (i.e., float/int/abstract_ZF etc.)
+    expr, varD = _sympify_abst_ZF(expr, {})
     expr = sp.simplify(format(expr[0])) if withSimplify else format(expr[0])
-    varD = {sp.symbols(k):v[0] for k,v in varD.items()}
-    return abstract_ZF(_sympy_to_abstract_ZF(expr,varD))
+    varD = {sp.symbols(k): v[0] for k, v in varD.items()}
+    return abstract_ZF(_sympy_to_abstract_ZF(expr, varD))
+
 
 def _generate_str_id(base_str: str, *dicts: dict) -> str:
     """
@@ -3378,24 +4244,33 @@ def _generate_str_id(base_str: str, *dicts: dict) -> str:
     """
     candidate = base_str
     while any(candidate in d for d in dicts):
-        random_suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+        random_suffix = "".join(
+            random.choices(string.ascii_letters + string.digits, k=6)
+        )
         candidate = f"{base_str}_{random_suffix}"
 
     return candidate
 
-def _equation_formatting(eqn,variables_dict):
+
+def _equation_formatting(eqn, variables_dict):
     var_dict = dict()
-    if (isinstance(eqn,(tuple,list)) and len(eqn)==0) or eqn is None:
-        return [],var_dict
-    if isinstance(eqn,_get_expr_num_types()) and not isinstance(eqn,zeroFormAtom):
-         return [sp.sympify(eqn)], var_dict
-    if get_dgcv_category(eqn) in ['algebra_element','subalgebra_element','vector_space_element']:
+    if (isinstance(eqn, (tuple, list)) and len(eqn) == 0) or eqn is None:
+        return [], var_dict
+    if get_dgcv_category(eqn) == "expression":
+        eqn = eqn.polyExpr
+    if isinstance(eqn, _get_expr_num_types()) and not isinstance(eqn, zeroFormAtom):
+        return [sp.sympify(eqn)], var_dict
+    if get_dgcv_category(eqn) in [
+        "algebra_element",
+        "subalgebra_element",
+        "vector_space_element",
+    ]:
         return [sp.sympify(term) for term in eqn.coeffs] or [], var_dict
-    if get_dgcv_category(eqn) == 'tensorProduct':
+    if get_dgcv_category(eqn) in ["tensorProduct", "fastTensorProduct"]:
         return [sp.sympify(term) for term in eqn.coeff_dict.values()] or [], var_dict
-    if isinstance(eqn,zeroFormAtom):
+    if isinstance(eqn, zeroFormAtom):
         not_found_filter = True
-        for k,v in variables_dict.items():
+        for k, v in variables_dict.items():
             if eqn == v[0]:
                 identifier = k
                 eqn_formatted = v[1]
@@ -3408,80 +4283,139 @@ def _equation_formatting(eqn,variables_dict):
                 eqn_formatted = variables_dict[candidate_str][1]
                 # nothing new to add to var_dict here.
             else:
-                identifier = _generate_str_id(candidate_str,variables_dict,_cached_caller_globals)
-                eqn_formatted =  [sp.symbols(identifier)]   # The single variable is the equation
-                var_dict[identifier] = (eqn,eqn_formatted)  # string label --> (original, formatted)
-        return eqn_formatted,var_dict
-    if isinstance(eqn,abstract_ZF):
-        eqn_formatted,var_dict= _sympify_abst_ZF(eqn,variables_dict)
+                identifier = _generate_str_id(
+                    candidate_str, variables_dict, _cached_caller_globals
+                )
+                eqn_formatted = [
+                    sp.symbols(identifier)
+                ]  # The single variable is the equation
+                var_dict[identifier] = (
+                    eqn,
+                    eqn_formatted,
+                )  # string label --> (original, formatted)
         return eqn_formatted, var_dict
-    elif isinstance(eqn,abstDFAtom):
-        eqn_formatted,var_dict = _equation_formatting(eqn._coeff,variables_dict)
+    if isinstance(eqn, abstract_ZF):
+        eqn_formatted, var_dict = _sympify_abst_ZF(eqn, variables_dict)
         return eqn_formatted, var_dict
-    elif isinstance(eqn,abstDFMonom):
-        eqn_formatted,var_dict = _equation_formatting(eqn._coeff,variables_dict)
+    elif isinstance(eqn, abstDFAtom):
+        eqn_formatted, var_dict = _equation_formatting(eqn._coeff, variables_dict)
         return eqn_formatted, var_dict
-    elif isinstance(eqn,abstract_DF):
+    elif isinstance(eqn, abstDFMonom):
+        eqn_formatted, var_dict = _equation_formatting(eqn._coeff, variables_dict)
+        return eqn_formatted, var_dict
+    elif isinstance(eqn, abstract_DF):
         terms = []
         var_dict = dict()
         for term in eqn.terms:
-            new_term,new_var_dict = _equation_formatting(term,variables_dict|var_dict)
-            var_dict = var_dict|new_var_dict
+            new_term, new_var_dict = _equation_formatting(
+                term, variables_dict | var_dict
+            )
+            var_dict = var_dict | new_var_dict
             terms += new_term
         return terms, var_dict
 
-def _swap_CFD_order(zf:zeroFormAtom,co1,co2):
+
+def _swap_CFD_order(zf: zeroFormAtom, co1, co2):
     cf_derivatives = list(zf.coframe_derivatives)
     target_elem = cf_derivatives[co1]
     cf = target_elem[0]
     swap_form_idx1 = target_elem[co2]
-    swap_form_idx2 = target_elem[co2+1]
+    swap_form_idx2 = target_elem[co2 + 1]
+
     def permIdx(idx):
         if idx == co2:
-            return co2+1
-        if idx == co2+1:
+            return co2 + 1
+        if idx == co2 + 1:
             return co2
         return idx
-    permuted_elem = tuple([target_elem[permIdx(idx)] for idx in range(len(target_elem))])
-    lower_order_starts = [[k if idx == co2 else target_elem[idx] for idx in range(co2+1)] for k in range(cf.dimension)]
-    lower_order_tail = list(target_elem[co2+2:])
-    if len(lower_order_tail)>0:
-        injection_CFD = tuple([tuple([target_elem[0]]+lower_order_tail)]+cf_derivatives[co1+1:])
+
+    permuted_elem = tuple(
+        [target_elem[permIdx(idx)] for idx in range(len(target_elem))]
+    )
+    lower_order_starts = [
+        [k if idx == co2 else target_elem[idx] for idx in range(co2 + 1)]
+        for k in range(cf.dimension)
+    ]
+    lower_order_tail = list(target_elem[co2 + 2 :])
+    if len(lower_order_tail) > 0:
+        injection_CFD = tuple(
+            [tuple([target_elem[0]] + lower_order_tail)] + cf_derivatives[co1 + 1 :]
+        )
     else:
-        injection_CFD = tuple(cf_derivatives[co1+1:])
-    lower_order_CFD = tuple([cf_derivatives[:co1]+[tuple(j)] for j in lower_order_starts])
-    lower_order_atoms = [zeroFormAtom(zf.label, coframe_derivatives=CFD, coframe=zf.coframe, _markers=zf._markers,coframe_independants=zf.coframe_independants) for CFD in lower_order_CFD]
+        injection_CFD = tuple(cf_derivatives[co1 + 1 :])
+    lower_order_CFD = tuple(
+        [cf_derivatives[:co1] + [tuple(j)] for j in lower_order_starts]
+    )
+    lower_order_atoms = [
+        zeroFormAtom(
+            zf.label,
+            coframe_derivatives=CFD,
+            coframe=zf.coframe,
+            _markers=zf._markers,
+            coframe_independants=zf.coframe_independants,
+        )
+        for CFD in lower_order_CFD
+    ]
     lower_order_terms = []
-    for idx,atom in enumerate(lower_order_atoms):
-        coeffZF = cf.structure_coeff(swap_form_idx1,swap_form_idx2,idx)
-        lower_ord_zf = coeffZF*atom
-        if coeffZF !=0:
+    for idx, atom in enumerate(lower_order_atoms):
+        coeffZF = cf.structure_coeff(swap_form_idx1, swap_form_idx2, idx)
+        lower_ord_zf = coeffZF * atom
+        if coeffZF != 0:
             for elem in injection_CFD:
                 lower_ord_zf = coframe_derivative(lower_ord_zf, *elem)
             lower_order_terms.append(lower_ord_zf)
 
-    swapped_CFD = tuple(cf_derivatives[:co1]+[permuted_elem]+cf_derivatives[co1+1:])
-    swapped_atom = zeroFormAtom(zf.label, coframe_derivatives=swapped_CFD, coframe=zf.coframe, _markers=zf._markers,coframe_independants=zf.coframe_independants)
+    swapped_CFD = tuple(
+        cf_derivatives[:co1] + [permuted_elem] + cf_derivatives[co1 + 1 :]
+    )
+    swapped_atom = zeroFormAtom(
+        zf.label,
+        coframe_derivatives=swapped_CFD,
+        coframe=zf.coframe,
+        _markers=zf._markers,
+        coframe_independants=zf.coframe_independants,
+    )
     for term in lower_order_terms:
         swapped_atom += term
     return swapped_atom
+
 
 def _add_passthrough_methods(cls, method_names):
     for name in method_names:
         if not hasattr(cls, name):
             setattr(cls, name, lambda self, **kw: self)
     return cls
+
+
 for cls in [zeroFormAtom]:
-    _add_passthrough_methods(cls, [
-        "factor", "expand", "simplify", "trigsimp", "cancel", "together", "apart",
-        "ratsimp", "powsimp", "logcombine", "expand_log", "expand_trig",
-        "expand_power_exp", "expand_power_base","numer","denom"
-    ])
+    _add_passthrough_methods(
+        cls,
+        [
+            "factor",
+            "expand",
+            "simplify",
+            "trigsimp",
+            "cancel",
+            "together",
+            "apart",
+            "ratsimp",
+            "powsimp",
+            "logcombine",
+            "expand_log",
+            "expand_trig",
+            "expand_power_exp",
+            "expand_power_base",
+            "numer",
+            "denom",
+        ],
+    )
+
 
 def _add_induced_methods(cls, method_names):
     def make_method(method_name):
         def method(self, **kwargs):
             return self._induce_method_from_descending(method_name, **kwargs)
+
         return method
 
     for name in method_names:
@@ -3489,23 +4423,58 @@ def _add_induced_methods(cls, method_names):
             setattr(cls, name, make_method(name))
     return cls
 
-for cls in [abstDFAtom,abstDFMonom,abstract_DF]:
-    _add_induced_methods(cls, [
-        "factor", "expand", "simplify", "trigsimp", "cancel", "together", "apart",
-        "ratsimp", "powsimp", "logcombine", "expand_log", "expand_trig",
-        "expand_power_exp", "expand_power_base","numer","denom"
-    ])
+
+for cls in [abstDFAtom, abstDFMonom, abstract_DF]:
+    _add_induced_methods(
+        cls,
+        [
+            "factor",
+            "expand",
+            "simplify",
+            "trigsimp",
+            "cancel",
+            "together",
+            "apart",
+            "ratsimp",
+            "powsimp",
+            "logcombine",
+            "expand_log",
+            "expand_trig",
+            "expand_power_exp",
+            "expand_power_base",
+            "numer",
+            "denom",
+        ],
+    )
+
 
 def _add_sympify_loop_methods(cls, method_names):
     for name in method_names:
         if not hasattr(cls, name):
+
             def method(self, _name=name, **kw):
                 func = getattr(sp, _name)
                 return self._apply_with_sympify_loop(func, assume_method=False, **kw)
+
             setattr(cls, name, method)
 
-_add_sympify_loop_methods(abstract_ZF, [
-    "factor", "expand", "simplify", "trigsimp", "cancel", "together", "apart",
-    "ratsimp", "powsimp", "logcombine", "expand_log", "expand_trig",
-    "expand_power_exp", "expand_power_base"
-])
+
+_add_sympify_loop_methods(
+    abstract_ZF,
+    [
+        "factor",
+        "expand",
+        "simplify",
+        "trigsimp",
+        "cancel",
+        "together",
+        "apart",
+        "ratsimp",
+        "powsimp",
+        "logcombine",
+        "expand_log",
+        "expand_trig",
+        "expand_power_exp",
+        "expand_power_base",
+    ],
+)

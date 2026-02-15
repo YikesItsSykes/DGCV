@@ -1,1123 +1,601 @@
 """
-dgcv: Differential Geometry with Complex Variables
+package: dgcv - Differential Geometry with Complex Variables
+module: Riemannian_geometry
 
-This module provides tools for Riemannian geometry within the dgcv package. It includes 
-functions and classes for defining and manipulating metrics, Christoffel symbols, curvature tensors, 
+Description:
+This module provides tools for Riemannian geometry within the dgcv package. It includes
+functions and classes for defining and manipulating metrics, Christoffel symbols, curvature tensors,
 and Levi-Civita connections.
 
 Key Classes:
-    - metricClass: Represents a Riemannian metric and provides methods to compute Christoffel symbols, 
+    - metricClass: Represents a Riemannian metric and provides methods to compute Christoffel symbols,
       Riemann curvature, Ricci curvature, scalar curvature, and Weyl curvature.
-    - LeviCivitaConnectionClass: Defines a Levi-Civita connection based on a set of Christoffel symbols 
+    - LeviCivitaConnectionClass: Defines a Levi-Civita connection based on a set of Christoffel symbols
       of the second kind.
 
 Key Functions:
-    - metric_from_matrix(): Creates a metricClass object from a given coordinate space and matrix representation 
+    - metric_from_matrix(): Creates a metricClass object from a given coordinate space and matrix representation
       of the metric.
 
-Author: David Sykes (https://github.com/YikesItsSykes)
-
-Dependencies:
-    - sympy
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
 
 License:
     MIT License
 """
-import re
-import warnings
 
-import sympy as sp
-from sympy import ImmutableSparseNDimArray, Matrix
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
+from __future__ import annotations
 
-from ._config import greek_letters
-from ._safeguards import get_variable_registry
-from .combinatorics import carProd_with_weights_without_R, permSign
+from typing import Any, Dict, Literal, Optional, Sequence, Tuple
+
+from ._safeguards import get_dgcv_category, retrieve_passkey
+from .arrays import _spool, array_dgcv, matrix_dgcv
+from .backends import simplify_dgcv as simplify
+from .backends._calculus import diff
+from .backends._types_and_constants import rational
+from .base import dgcv_class
+from .conversions import allToReal, allToSym
 from .dgcv_core import (
-    STFClass,
-    VFClass,
-    allToHol,
-    allToReal,
-    allToSym,
-    changeVFBasis,
-    tensorField,
+    assemble_tensor_field,
+    tensor_field_class,
 )
+from .vmf import vmf_lookup
+
+__all__ = ["metricClass", "metric_from_matrix"]
 
 
-# Reimannian cetric class
-class metricClass(sp.Basic):
-
-    def __new__(cls, STF):
-        # Call sp.Basic.__new__ with only the positional arguments
-        obj = sp.Basic.__new__(cls, STF)
-        return obj
-
-    def __init__(self, STF):
-        if not isinstance(STF, STFClass):
-            raise TypeError(
-                "The `metric` class initializer expects a symmtric tensor field class (STFClass) object in its first argument."
-            )
-        if STF.degree != 2:
-            raise TypeError(
-                "The `metric` class initializer expects a symmtric tensor field class (STFClass) object of degree 2 in its first argument."
-            )
-        self.varSpace = STF.varSpace
-        self.degree = STF.degree
-        self._simplifyKW = STF._simplifyKW
-        self.dgcvType = STF.dgcvType
-        self.SymTensorField = STF
-        self._varSpace_type = STF._varSpace_type
-
-        self.MetricDataDict = STF.STFClassDataDict
-        self.MetricDataMinimal = STF.STFClassDataMinimal
-        self.coeffsInKFormBasis = STF.coeffsInKFormBasis
-        self.kFormBasisGenerators = STF.kFormBasisGenerators
-        self._realVarSpace = None
-        self._holVarSpace = None
-        self._antiholVarSpace = None
-        self._imVarSpace = None
-        self._coeff_dicts = None
-        self._coeffArray = None
-        self._matrixRep = None
-        self._matrixRepInv = None
-        self._matrixRep_real = None
-        self._matrixRep_hol = None
-        self._matrixRep_sym = None
-        self._CFFK = None  # Christoffel cache
-        self._CFSK = None  # Christoffel cache
-        self._RCT13 = None  # Riemann Curvature cache
-        self._RCT04 = None  # Riemann Curvature cache
-        self._Ricci = None  # Ricci tensor cache
-        self._SCT = None  # Scalar curvature tensor cache
-        self._tracelessRicci = None  # traceless Ricci curvature cache
-        self._Weyl = None  # Weyl curvature cache
-        self._Einstein = None  # Einstein curvature cache
-
-    @property
-    def realVarSpace(self):
-        if self.dgcvType == "standard":
-            return self._realVarSpace
-        if self._realVarSpace is None or self._imVarSpace is None:
-            self.coeff_dicts
-            return self._realVarSpace + self._imVarSpace
-        return self._realVarSpace + self._imVarSpace
-
-    @property
-    def holVarSpace(self):
-        if self.dgcvType == "standard":
-            return self._holVarSpace
-        if self._holVarSpace is None:
-            self.coeff_dicts
-            return self._holVarSpace
-        return self._holVarSpace
-
-    @property
-    def antiholVarSpace(self):
-        if self.dgcvType == "standard":
-            return self._antiholVarSpace
-        if self._antiholVarSpace is None:
-            self.coeff_dicts
-            return self._antiholVarSpace
-        return self._antiholVarSpace
-
-    @property
-    def compVarSpace(self):
-        if self.dgcvType == "standard":
-            return self._holVarSpace + self._antiholVarSpace
-        if self._holVarSpace is None or self._antiholVarSpace is None:
-            self.coeff_dicts
-            return self._holVarSpace + self._antiholVarSpace
-        return self._holVarSpace + self._antiholVarSpace
-
-    @property
-    def coeff_dicts(
+# -----------------------------------------------------------------------------
+# body
+# -----------------------------------------------------------------------------
+class metricClass(dgcv_class):
+    def __init__(
         self,
-    ):  # Retrieves coeffs in different variable formats and updates *VarSpace and _coeff_dicts caches if needed
-        if self.dgcvType == "standard" or all(
-            j is not None
-            for j in [
-                self._realVarSpace,
-                self._holVarSpace,
-                self._antiholVarSpace,
-                self._imVarSpace,
-                self._coeff_dicts,
-            ]
-        ):
-            return self._coeff_dicts
-        variable_registry = get_variable_registry()
-        CVS = variable_registry["complex_variable_systems"]
-        if self._coeff_dicts is None:
-            exhaust1 = list(self.varSpace)
-            populate = {
-                "compCoeffDataDict": dict(),
-                "realCoeffDataDict": dict(),
-                "holVarDict": dict(),
-                "antiholVarDict": dict(),
-                "realVarDict": dict(),
-                "imVarDict": dict(),
-                "preProcessMinDataToHol": dict(),
-                "preProcessMinDataToReal": dict(),
-            }
-            if self._varSpace_type == "real":
-                for var in self.varSpace:
-                    varStr = str(var)
-                    if var in exhaust1:
-                        for parent in CVS.values():
-                            if varStr in parent["variable_relatives"]:
-                                cousin = (
-                                    set(
-                                        parent["variable_relatives"][varStr][
-                                            "complex_family"
-                                        ][2:]
-                                    )
-                                    - {var}
-                                ).pop()
-                                if cousin in exhaust1:
-                                    exhaust1.remove(cousin)
-                                if (
-                                    parent["variable_relatives"][varStr][
-                                        "complex_positioning"
-                                    ]
-                                    == "real"
-                                ):
-                                    realVar = var
-                                    exhaust1.remove(var)
-                                    imVar = cousin
-                                else:
-                                    realVar = cousin
-                                    exhaust1.remove(var)
-                                    imVar = var
-                                holVar = parent["variable_relatives"][varStr][
-                                    "complex_family"
-                                ][0]
-                                antiholVar = parent["variable_relatives"][varStr][
-                                    "complex_family"
-                                ][1]
-                                populate["holVarDict"][holVar] = [realVar, imVar]
-                                populate["antiholVarDict"][antiholVar] = [
-                                    realVar,
-                                    imVar,
-                                ]
-                                populate["realVarDict"][realVar] = [holVar, antiholVar]
-                                populate["imVarDict"][imVar] = [holVar, antiholVar]
-            else:  # self._varSpace_type == 'complex'
-                for var in self.varSpace:
-                    varStr = str(var)
-                    if var in exhaust1:
-                        for parent in CVS.values():
-                            if varStr in parent["variable_relatives"]:
-                                cousin = (
-                                    set(
-                                        parent["variable_relatives"][varStr][
-                                            "complex_family"
-                                        ][:2]
-                                    )
-                                    - {var}
-                                ).pop()
-                                if cousin in exhaust1:
-                                    exhaust1.remove(cousin)
-                                if (
-                                    parent["variable_relatives"][varStr][
-                                        "complex_positioning"
-                                    ]
-                                    == "holomorphic"
-                                ):
-                                    holVar = var
-                                    exhaust1.remove(var)
-                                    antiholVar = cousin
-                                else:
-                                    holVar = cousin
-                                    exhaust1.remove(var)
-                                    antiholVar = var
-                                realVar = parent["variable_relatives"][varStr][
-                                    "complex_family"
-                                ][2]
-                                imVar = parent["variable_relatives"][varStr][
-                                    "complex_family"
-                                ][3]
-                                populate["holVarDict"][holVar] = [realVar, imVar]
-                                populate["antiholVarDict"][antiholVar] = [
-                                    realVar,
-                                    imVar,
-                                ]
-                                populate["realVarDict"][realVar] = [holVar, antiholVar]
-                                populate["imVarDict"][imVar] = [holVar, antiholVar]
-            self._realVarSpace = tuple(populate["realVarDict"].keys())
-            self._holVarSpace = tuple(populate["holVarDict"].keys())
-            self._antiholVarSpace = tuple(populate["antiholVarDict"].keys())
-            self._imVarSpace = tuple(populate["imVarDict"].keys())
+        STF: tensor_field_class,
+        *,
+        varSpace: None | Sequence[Any] = None,
+        variable_inference_behavior: Literal["max", "min"] = "min",
+        formatting: Literal["complex", "real"] = "complex",
+    ):
+        if get_dgcv_category(STF) != "tensor_field":
+            raise TypeError("metricClass expects a tensor_field_class instance.")
 
-            if self.degree == 0:
-                if self._varSpace_type == "real":
-                    populate["realCoeffDataDict"] = [
-                        self.varSpace,
-                        self.MetricClassDataDict,
-                    ]
-                    populate["compCoeffDataDict"] = [
-                        self._holVarSpace + self._antiholVarSpace,
-                        {0: self.MetricClassDataDict[0]},
-                    ]
-                else:
-                    populate["compCoeffDataDict"] = [
-                        self.varSpace,
-                        self.MetricClassDataDict,
-                    ]
-                    populate["realCoeffDataDict"] = [
-                        self._realVarSpace + self._imVarSpace,
-                        {0: self.MetricClassDataDict[0]},
-                    ]
-            else:
+        if formatting not in ("complex", "real"):
+            raise ValueError("formatting must be 'complex' or 'real'.")
 
-                def _retrieve_indices(term, typeSet=None):
-                    if typeSet == "symb":
-                        dictLoc = populate["realVarDict"] | populate["imVarDict"]
-                        refTuple = self._holVarSpace + self._antiholVarSpace
-                        termList = dictLoc[term]
-                    elif typeSet == "real":
-                        dictLoc = populate["holVarDict"] | populate["antiholVarDict"]
-                        refTuple = self._realVarSpace + self._imVarSpace
-                        termList = dictLoc[term]
-                    index_a = refTuple.index(termList[0])
-                    index_b = refTuple.index(termList[1], index_a + 1)
-                    return [index_a, index_b]
+        tf = allToSym(STF) if formatting == "complex" else allToReal(STF)
 
-                if self._varSpace_type == "real":
-                    populate["preProcessMinDataToHol"] = {
-                        j: _retrieve_indices(self.varSpace[j], "symb")
-                        for j in range(len(self.varSpace))
-                    }
-                else:  # if self._varSpace_type == 'complex'
-                    populate["preProcessMinDataToReal"] = {
-                        j: _retrieve_indices(self.varSpace[j], "real")
-                        for j in range(len(self.varSpace))
-                    }
+        deg = getattr(tf, "total_degree", None)
+        cd = getattr(tf, "coeff_dict", None)
+        shape = getattr(tf, "data_shape", None)
 
-                def decorateWithWeights(index, target="symb"):
-                    if target == "symb":
-                        if 2 * index < len(self.varSpace):
-                            holScale = sp.Rational(1, 2)  # d_z coeff of d_x
-                            antiholScale = sp.Rational(1, 2)  # d_BARz coeff of d_x
-                        else:
-                            holScale = -sp.I / 2  # d_z coeff of d_y
-                            antiholScale = sp.I / 2  # d_BARz coeff of d_y
-                        return [
-                            [populate["preProcessMinDataToHol"][index][0], holScale],
-                            [
-                                populate["preProcessMinDataToHol"][index][1],
-                                antiholScale,
-                            ],
-                        ]
-                    else:  # converting from hol to real
-                        if 2 * index < len(self.varSpace):
-                            realScale = 1  # d_x coeff in d_z
-                            imScale = sp.I  # d_y coeff in d_z
-                        else:
-                            realScale = 1  # d_x coeff of d_BARz
-                            imScale = -sp.I  # d_y coeff of d_BARz
-                        return [
-                            [populate["preProcessMinDataToReal"][index][0], realScale],
-                            [populate["preProcessMinDataToReal"][index][1], imScale],
-                        ]
+        if deg != 2:
+            raise TypeError(
+                f"metricClass expects a degree-2 tensor field. recieved: {tf}"
+            )
+        if not isinstance(cd, dict) or not all(k[2] == 0 and k[3] == 0 for k in cd):
+            raise TypeError("metricClass expects a pure covariant (0,2) tensor field.")
+        if shape != "symmetric":
+            raise TypeError("metricClass expects data_shape='symmetric'.")
 
-                def weightedOrdering(arg):
-                    return [tuple(sorted(arg[0])), permSign(arg[0]) * arg[1]]
+        if variable_inference_behavior not in ("max", "min"):
+            raise ValueError("variable_inference_behavior must be 'max' or 'min'.")
 
-                otherDict = dict()
-                for j in self.MetricDataMinimal:
-                    if self._varSpace_type == "real":
-                        reformatTarget = "symb"
-                    else:
-                        reformatTarget = "real"
-                    termIndices = [
-                        decorateWithWeights(k, target=reformatTarget) for k in j[0]
-                    ]
-                    prodWithWeights = carProd_with_weights_without_R(*termIndices)
-                    prodWWRescaled = [[k[0], j[1] * k[1]] for k in prodWithWeights]
-                    prodWithWeightedOrder = [
-                        weightedOrdering(j) for j in prodWWRescaled
-                    ]
-                    for term in prodWithWeightedOrder:
-                        if term[0] in otherDict:
-                            oldVal = otherDict[term[0]]
-                            otherDict[term[0]] = allToSym(oldVal + term[1])
-                        else:
-                            otherDict[term[0]] = allToSym(term[1])
+        inferred = (
+            tf.infer_minimal_varSpace()
+            if variable_inference_behavior == "min"
+            else tf.infer_varSpace(formatting="any")
+        )
 
-                if self._varSpace_type == "real":
-                    populate["realCoeffDataDict"] = [
-                        self.varSpace,
-                        self.MetricClassDataDict,
-                    ]
-                    populate["compCoeffDataDict"] = [
-                        self._holVarSpace + self._antiholVarSpace,
-                        otherDict,
-                    ]
-                else:
-                    populate["compCoeffDataDict"] = [
-                        self.varSpace,
-                        self.MetricClassDataDict,
-                    ]
-                    populate["realCoeffDataDict"] = [
-                        self._realVarSpace + self._imVarSpace,
-                        otherDict,
-                    ]
-
-            self._coeff_dicts = populate
-
-            return populate
-        else:
-            return self._coeff_dicts
-
-    @property
-    def coeffArray(self):
-        def entry_rule(indexTuple):
-            sortedTuple = tuple(sorted(indexTuple))
-            if sortedTuple in self.MetricClassDataDict:
-                return self.MetricClassDataDict[sortedTuple]
-            else:
-                return 0
-
-        def generate_indices(shape):
-            """Recursively generates all index tuples for an arbitrary dimensional array."""
-            if len(shape) == 1:
-                return [(i,) for i in range(shape[0])]
-            else:
-                return [
-                    (i,) + t
-                    for i in range(shape[0])
-                    for t in generate_indices(shape[1:])
-                ]
-
-        shape = (len(self.varSpace),) * self.degree
-        sparse_data = {
-            indices: entry_rule(indices) for indices in generate_indices(shape)
-        }
-
-        # Convert the sparse array to a list of lists (if 2D)
-        return ImmutableSparseNDimArray(sparse_data, shape)
-
-    @property
-    def matrixRep(self):
-        if self._matrixRep is None:
-            self._matrixRep = Matrix(self.SymTensorField.coeffArray)
-            return self._matrixRep
-        else:
-            return self._matrixRep
-
-    @property
-    def matrixRepInv(self):
-        if self._matrixRepInv is None:
-            self._matrixRepInv = self.matrixRep.inv()
-            return self._matrixRepInv
-        else:
-            return self._matrixRepInv
-
-    @property
-    def matrixRep_real(self):
-        if self._matrixRep_real is None:
-            self._matrixRep_real = sp.simplify(self.matrixRep.applyfunc(allToReal))
-            return self._matrixRep_real
-        else:
-            return self._matrixRep_real
-
-    @property
-    def matrixRep_hol(self):
-        if self._matrixRep_hol is None:
-            self._matrixRep_hol = sp.simplify(self.matrixRep.applyfunc(allToHol))
-            return self._matrixRep_hol
-        else:
-            return self._matrixRep_hol
-
-    @property
-    def matrixRep_sym(self):
-        if self._matrixRep_sym is None:
-            self._matrixRep_sym = sp.simplify(self.matrixRep.applyfunc(allToSym))
-            return self._matrixRep_sym
-        else:
-            return self._matrixRep_sym
-
-    @property
-    def Christoffel_symbols_of_the_second_kind(self):
-        """
-        the last index is the raised one...
-        """
-        if self._CFSK is None:
-            mat = self.matrixRep
-            matInv = self.matrixRepInv
-            vs = self.varSpace
-            dim = len(vs)
-
-            def entry_rule(indexTuple):
-                return sp.simplify(
-                    sum(
-                        [
-                            sp.Rational(1, 2)
-                            * matInv[indexTuple[2], j]
-                            * (
-                                sp.diff(mat[j, indexTuple[1]], vs[indexTuple[0]])
-                                + sp.diff(mat[indexTuple[0], j], vs[indexTuple[1]])
-                                - sp.diff(mat[indexTuple[0], indexTuple[1]], vs[j])
-                            )
-                            for j in range(dim)
-                        ]
-                    )
+        if varSpace is not None:
+            vs = tuple(varSpace)
+            missing = [v for v in inferred if v not in vs]
+            if missing:
+                raise ValueError(
+                    "Provided varSpace does not contain all inferred variables: "
+                    + ", ".join(str(x) for x in missing)
                 )
+        else:
+            vs = tuple(inferred)
 
-            def generate_indices(shape):
-                """Recursively generates all index tuples for an arbitrary dimensional array."""
-                if len(shape) == 1:
-                    return [(i,) for i in range(shape[0])]
-                else:
-                    return [
-                        (i,) + t
-                        for i in range(shape[0])
-                        for t in generate_indices(shape[1:])
-                    ]
+        self.SymTensorField = tf
+        self.varSpace = vs
+        _, vs_map = tf.infer_varSpace(
+            formatting="real" if formatting == "real" else "complex",
+            return_dict=True,
+        )
 
-            shape = (dim,) * 3
-            sparse_data = {
-                indices: entry_rule(indices) for indices in generate_indices(shape)
-            }
-            self._CFSK = ImmutableSparseNDimArray(sparse_data, shape)
+        self._sysidx_to_pos = {}
+        for pos, atom in enumerate(self.varSpace):
+            syslbl, local_idx = vs_map[atom]
+            self._sysidx_to_pos[(syslbl, local_idx)] = pos
+        self.formatting = formatting
+        self.variable_inference_behavior = variable_inference_behavior
+
+        self._dgcv_class_check = retrieve_passkey()
+        self._dgcv_category = "metric"
+
+        self._matrixRep: Optional[matrix_dgcv] = None
+        self._matrixRepInv: Optional[matrix_dgcv] = None
+        self._coeffArray: Optional[array_dgcv] = None
+
+        self._Gamma2_cache: Optional[Dict[Tuple[int, int, int], Any]] = None
+        self._Gamma1_cache: Optional[Dict[Tuple[int, int, int], Any]] = None
+        self._R13_cache: Optional[Dict[Tuple[int, int, int, int], Any]] = None
+        self._R04_cache: Optional[Dict[Tuple[int, int, int, int], Any]] = None
+        self._Ricci_cache: Optional[Dict[Tuple[int, int], Any]] = None
+
+        self._CFFK = None
+        self._CFSK = None
+        self._RCT13 = None
+        self._RCT04 = None
+        self._Ricci = None
+        self._SCT = None
+        self._tracelessRicci = None
+        self._Weyl = None
+        self._Einstein = None
+
+    @property
+    def coeffArray(self) -> array_dgcv:
+        if self._coeffArray is None:
+            dim = len(self.varSpace)
+            shp = (dim, dim)
+            flat = {}
+            data = self.SymTensorField.coeff_dict
+            for k, v in data.items():
+                if not v or not isinstance(k, tuple) or len(k) != 6:
+                    continue
+                i, j, _, _, sys_i, sys_j = k
+                try:
+                    ii = self._sysidx_to_pos[(sys_i, i)]
+                    jj = self._sysidx_to_pos[(sys_j, j)]
+                except KeyError:
+                    continue
+                flat[(ii, jj)] = flat.get((ii, jj), 0) + v
+                if ii != jj:
+                    flat[(jj, ii)] = flat.get((jj, ii), 0) + v
+            self._coeffArray = array_dgcv(flat, shape=shp)
+        return self._coeffArray
+
+    @property
+    def matrixRep(self) -> matrix_dgcv:
+        if self._matrixRep is None:
+            dim = len(self.varSpace)
+            M = matrix_dgcv.zeros(dim, dim)
+            data = self.SymTensorField.coeff_dict
+            for k, v in data.items():
+                if not v or not isinstance(k, tuple) or len(k) != 6:
+                    continue
+                i, j, _, _, sys_i, sys_j = k
+                try:
+                    ii = self._sysidx_to_pos[(sys_i, i)]
+                    jj = self._sysidx_to_pos[(sys_j, j)]
+                except KeyError:
+                    continue
+                cur = M[ii, jj]
+                M[ii, jj] = cur + v if cur else v
+                if ii != jj:
+                    cur2 = M[jj, ii]
+                    M[jj, ii] = cur2 + v if cur2 else v
+            self._matrixRep = M
+        return self._matrixRep
+
+    @property
+    def matrixRepInv(self) -> matrix_dgcv:
+        if self._matrixRepInv is None:
+            self._matrixRepInv = self.matrixRep.inverse()
+        return self._matrixRepInv
+
+    def _Gamma2(self, j: int, k: int, i: int):
+        """
+        Gamma_{j,k}^i indexing convention:
+        - last index is the raised one, cached by (j,k,i)
+        """
+        cache = self._Gamma2_cache
+        if cache is None:
+            cache = self._Gamma2_cache = {}
+        key = (j, k, i)
+        hit = cache.get(key, None)
+        if hit is not None:
+            return hit
+
+        g = self.matrixRep
+        ginv = self.matrixRepInv
+        vs = self.varSpace
+        dim = len(vs)
+        half = rational(1, 2)
+
+        s = 0
+        for m in range(dim):
+            s += ginv[i, m] * (
+                diff(g[m, k], vs[j]) + diff(g[j, m], vs[k]) - diff(g[j, k], vs[m])
+            )
+        val = simplify(half * s)
+        cache[key] = val
+        return val
+
+    def _Gamma1(self, a: int, b: int, c: int):
+        """
+        Γ_{a,b,c} symbols of the first kind:
+        1/2(D_b g_{c,a} + D_a g_{c,b} - D_c g_{a,b})
+        cached by (a,b,c)
+        """
+        cache = self._Gamma1_cache
+        if cache is None:
+            cache = self._Gamma1_cache = {}
+        key = (a, b, c)
+        hit = cache.get(key, None)
+        if hit is not None:
+            return hit
+
+        g = self.matrixRep
+        vs = self.varSpace
+        half = rational(1, 2)
+        val = simplify(
+            half * (diff(g[c, a], vs[b]) + diff(g[c, b], vs[a]) - diff(g[a, b], vs[c]))
+        )
+        cache[key] = val
+        return val
+
+    def __str__(self):
+        return str(self.SymTensorField)
+
+    def _repr_latex_(self, raw: bool = False, **kwargs):
+        f = getattr(self.SymTensorField, "_repr_latex_", None)
+        if callable(f):
+            return f(raw=raw, **kwargs)
+        return str(self)
+
+    def _local_info_for_index(self, i: int) -> str:
+        cache = getattr(self, "_local_systems", None)
+        if cache is None:
+            cache = self._local_systems = {}
+        hit = cache.get(i, None)
+        if hit is not None:
+            return hit
+
+        atom = self.varSpace[i]
+        info = vmf_lookup(atom, path=True, system_index=True)
+        p = info.get("path")
+        idx = info.get("system_index")
+        if not (isinstance(p, tuple) and len(p) >= 3):
+            raise KeyError(f"metricClass: could not resolve system label for {atom}.")
+        lab = p[1]
+        cache[i] = (lab, idx)
+        return lab, idx
+
+    @property
+    def Christoffel_symbols_of_the_second_kind(self) -> array_dgcv:
+        if self._CFSK is None:
+            dim = len(self.varSpace)
+            shp = (dim, dim, dim)
+            flat = {}
+            for j in range(dim):
+                for k in range(dim):
+                    for i in range(dim):
+                        v = self._Gamma2(j, k, i)
+                        if v:
+                            flat[_spool((j, k, i), shp)] = v
+            self._CFSK = array_dgcv(flat, shape=shp)
         return self._CFSK
 
     @property
-    def Christoffel_symbols_of_the_first_kind(self):
+    def Christoffel_symbols_of_the_first_kind(self) -> array_dgcv:
         if self._CFFK is None:
-            mat = self.matrixRep
-            vs = self.varSpace
-            dim = len(vs)
-
-            def entry_rule(indexTuple):
-                return sp.Rational(1, 2) * (
-                    sp.diff(mat[indexTuple[2], indexTuple[0]], vs[indexTuple[1]])
-                    + sp.diff(mat[indexTuple[2], indexTuple[1]], vs[indexTuple[0]])
-                    - sp.diff(mat[indexTuple[0], indexTuple[1]], vs[indexTuple[2]])
-                )
-
-            def generate_indices(shape):
-                """Recursively generates all index tuples for an arbitrary dimensional array."""
-                if len(shape) == 1:
-                    return [(i,) for i in range(shape[0])]
-                else:
-                    return [
-                        (i,) + t
-                        for i in range(shape[0])
-                        for t in generate_indices(shape[1:])
-                    ]
-
-            shape = (dim,) * 3
-            sparse_data = {
-                indices: entry_rule(indices) for indices in generate_indices(shape)
-            }
-
-            self._CFFK = ImmutableSparseNDimArray(sparse_data, shape)
+            dim = len(self.varSpace)
+            shp = (dim, dim, dim)
+            flat = {}
+            for a in range(dim):
+                for b in range(dim):
+                    for c in range(dim):
+                        v = self._Gamma1(a, b, c)
+                        if v:
+                            flat[_spool((a, b, c), shp)] = v
+            self._CFFK = array_dgcv(flat, shape=shp)
         return self._CFFK
 
+    def _R13(self, r: int, j: int, k: int, i: int):
+        cache = self._R13_cache
+        if cache is None:
+            cache = self._R13_cache = {}
+        key = (r, j, k, i)
+        hit = cache.get(key, None)
+        if hit is not None:
+            return hit
+
+        vs = self.varSpace
+        dim = len(vs)
+
+        term = diff(self._Gamma2(j, r, i), vs[k]) - diff(self._Gamma2(k, r, i), vs[j])
+
+        s1 = 0
+        s2 = 0
+        for s in range(dim):
+            s1 += self._Gamma2(k, s, i) * self._Gamma2(j, r, s)
+            s2 += self._Gamma2(j, s, i) * self._Gamma2(k, r, s)
+
+        val = simplify(term + s1 - s2)
+        cache[key] = val
+        return val
+
     @property
-    def RiemannCurvature_1_3_type(self):
-        """ "
-        This is the (1,3)-tensor version of the Riemann tensor. The last index is the raised one...
-        """
+    def RiemannCurvature_1_3_type(self) -> array_dgcv:
         if self._RCT13 is None:
-            Gamma = self.Christoffel_symbols_of_the_second_kind
-            vs = self.varSpace
-            dim = len(vs)
-
-            def entry_rule(indexTuple):
-                # term1=diff(Gamma[indexTuple[2],indexTuple[0],indexTuple[3]],vs[indexTuple[1]])-diff(Gamma[indexTuple[1],indexTuple[0],indexTuple[3]],vs[indexTuple[2]])
-                # term2=sum([Gamma[indexTuple[2],indexTuple[0],p]*Gamma[indexTuple[1],p,indexTuple[3]]-Gamma[indexTuple[1],indexTuple[0],p]*Gamma[indexTuple[2],p,indexTuple[3]] for p in range(dim)])
-                # return sp.simplify(term1-term2)
-                r = indexTuple[0]
-                j = indexTuple[1]
-                k = indexTuple[2]
-                i = indexTuple[3]
-                term = (
-                    sp.diff(Gamma[j, r, i], vs[k])
-                    - sp.diff(Gamma[k, r, i], vs[j])
-                    + sum([Gamma[k, s, i] * Gamma[j, r, s] for s in range(len(vs))])
-                    - sum([Gamma[j, s, i] * Gamma[k, r, s] for s in range(len(vs))])
-                )
-                return sp.simplify(term)
-
-            def generate_indices(shape):
-                """Recursively generates all index tuples for an arbitrary dimensional array."""
-                if len(shape) == 1:
-                    return [(i,) for i in range(shape[0])]
-                else:
-                    return [
-                        (i,) + t
-                        for i in range(shape[0])
-                        for t in generate_indices(shape[1:])
-                    ]
-
-            shape = (dim,) * 4
-            sparse_data = {
-                indices: entry_rule(indices) for indices in generate_indices(shape)
-            }
-            self._RCT13 = ImmutableSparseNDimArray(sparse_data, shape)
+            dim = len(self.varSpace)
+            shp = (dim, dim, dim, dim)
+            flat = {}
+            for r in range(dim):
+                for j in range(dim):
+                    for k in range(dim):
+                        for i in range(dim):
+                            v = self._R13(r, j, k, i)
+                            if v:
+                                flat[_spool((r, j, k, i), shp)] = v
+            self._RCT13 = array_dgcv(flat, shape=shp)
         return self._RCT13
 
+    def _R04(self, a: int, b: int, c: int, d: int):
+        cache = self._R04_cache
+        if cache is None:
+            cache = self._R04_cache = {}
+        key = (a, b, c, d)
+        hit = cache.get(key, None)
+        if hit is not None:
+            return hit
+
+        g = self.matrixRep
+        dim = len(self.varSpace)
+
+        s = 0
+        for p in range(dim):
+            s += g[a, p] * self._R13(b, c, d, p)
+
+        val = simplify(-s)
+        cache[key] = val
+        return val
+
+    def _Ricci_entry(self, i: int, j: int):
+        cache = self._Ricci_cache
+        if cache is None:
+            cache = self._Ricci_cache = {}
+        key = (i, j)
+        hit = cache.get(key, None)
+        if hit is not None:
+            return hit
+
+        ginv = self.matrixRepInv
+        dim = len(self.varSpace)
+
+        s = 0
+        for p in range(dim):
+            for q in range(dim):
+                s += ginv[p, q] * self._R04(i, p, j, q)
+
+        val = simplify(s)
+        cache[key] = val
+        return val
+
     @property
-    def RiemannCurvature(self):
-        """
-        This is the (0,4)-tensor version of the Riemann tensor. The last index is the raised one...
-        """
+    def RiemannCurvature(self) -> tensor_field_class:
         if self._RCT04 is None:
-            mat = self.matrixRep
-            RCT = self.RiemannCurvature_1_3_type
             dim = len(self.varSpace)
+            cd = {}
+            for a in range(dim):
+                sa, ia = self._local_info_for_index(a)
+                for b in range(dim):
+                    sb, ib = self._local_info_for_index(b)
+                    for c in range(dim):
+                        sc, ic = self._local_info_for_index(c)
+                        for d in range(dim):
+                            sd, idd = self._local_info_for_index(d)
+                            v = self._R04(a, b, c, d)
+                            if v:
+                                cd[(ia, ib, ic, idd, 0, 0, 0, 0, sa, sb, sc, sd)] = v
 
-            def entry_rule(indexTuple):
-                return sp.simplify(
-                    -sum(
-                        [
-                            mat[indexTuple[0], p]
-                            * RCT[indexTuple[1], indexTuple[2], indexTuple[3], p]
-                            for p in range(dim)
-                        ]
-                    )
-                )
-
-            def generate_indices(shape):
-                """Recursively generates all index tuples for an arbitrary dimensional array."""
-                if len(shape) == 1:
-                    return [(i,) for i in range(shape[0])]
-                else:
-                    return [
-                        (i,) + t
-                        for i in range(shape[0])
-                        for t in generate_indices(shape[1:])
-                    ]
-
-            shape = (dim,) * 4
-            sparse_data = {
-                indices: entry_rule(indices) for indices in generate_indices(shape)
-            }
-            self._RCT04 = tensorField(self.varSpace, sparse_data, valence=(0,0,0,0), dgcvType=self.dgcvType)
+            self._RCT04 = tensor_field_class(
+                coeff_dict=cd,
+                data_shape="general",
+                dgcvType=self.SymTensorField.dgcvType,
+                _simplifyKW=self.SymTensorField._simplifyKW,
+                variable_spaces=getattr(self.SymTensorField, "_variable_spaces", None),
+                parameters=getattr(self.SymTensorField, "parameters", set()),
+            )
         return self._RCT04
 
     @property
-    def RicciTensor(self):
-
+    def RicciTensor(self) -> tensor_field_class:
         if self._Ricci is None:
-            mat = self.matrixRepInv
-            RCT = self.RiemannCurvature.coeffArray
             dim = len(self.varSpace)
+            cd = {}
+            for i in range(dim):
+                si, ii = self._local_info_for_index(i)
+                for j in range(i, dim):
+                    sj, ij = self._local_info_for_index(j)
+                    v = self._Ricci_entry(i, j)
+                    if v:
+                        cd[(ii, ij, 0, 0, si, sj)] = v
 
-            def entry_rule(indexTuple):
-                return sp.simplify(
-                    sum(
-                        [
-                            mat[p, q] * RCT[indexTuple[0], p, indexTuple[1], q]
-                            for p in range(dim)
-                            for q in range(dim)
-                        ]
-                    )
-                )
-
-            def generate_indices(shape):
-                """Recursively generates all index tuples for an arbitrary dimensional array."""
-                if len(shape) == 1:
-                    return [(i,) for i in range(shape[0])]
-                else:
-                    return [
-                        (i,) + t
-                        for i in range(shape[0])
-                        for t in generate_indices(shape[1:])
-                    ]
-
-            shape = (dim,) * 2
-            sparse_data = {
-                indices: entry_rule(indices) for indices in generate_indices(shape)
-            }
-            self._Ricci = STFClass(
-                self.varSpace,
-                sparse_data,
-                self.degree,
-                dgcvType=self.dgcvType,
-                _simplifyKW=self._simplifyKW,
+            self._Ricci = tensor_field_class(
+                coeff_dict=cd,
+                data_shape="symmetric",
+                dgcvType=self.SymTensorField.dgcvType,
+                _simplifyKW=self.SymTensorField._simplifyKW,
+                variable_spaces=getattr(self.SymTensorField, "_variable_spaces", None),
+                parameters=getattr(self.SymTensorField, "parameters", set()),
             )
         return self._Ricci
 
     @property
     def scalarCurvature(self):
-
         if self._SCT is None:
-            mat = self.matrixRepInv
-            RCT = self.RicciTensor.coeffArray
+            ginv = self.matrixRepInv
+            Ric = self.RicciTensor
             dim = len(self.varSpace)
-            self._SCT = sp.simplify(
-                sum([mat[p, q] * RCT[p, q] for p in range(dim) for q in range(dim)])
-            )
+
+            s = 0
+            for p in range(dim):
+                sp, ip = self._local_info_for_index(p)
+                for q in range(dim):
+                    sq, iq = self._local_info_for_index(q)
+                    v = Ric.coeff_dict.get(
+                        (ip, iq, 0, 0, sp, sq),
+                        Ric.coeff_dict.get((iq, ip, 0, 0, sq, sp), 0),
+                    )
+                    if v:
+                        s += ginv[p, q] * v
+            self._SCT = simplify(s)
         return self._SCT
 
     @property
-    def tracelessRicci(self):
-
-        if self._tracelessRicci is None:
+    def Einstein_tensor(self) -> tensor_field_class:
+        if self._Einstein is None:
             Ric = self.RicciTensor
             SC = self.scalarCurvature
-            self._tracelessRicci = (
-                Ric - sp.Rational(1, len(self.varSpace)) * SC * self.SymTensorField
-            )
-        return self._Ricci
-
-    @property
-    def WeylCurvature(self):
-        """
-        The Weyl curvature tensor.
-        """
-        if self._Weyl is None:
-            g = self.matrixRep
-            RCT = self.RiemannCurvature.coeffArray
-            R = self.scalarCurvature
-            TR = self.tracelessRicci.coeffArray
-            dim = len(self.varSpace)
-
-            def entry_rule(iT):
-                if dim < 3:
-                    return 0
-                else:
-                    term1 = RCT[iT[0], iT[1], iT[2], iT[3]] - sp.Rational(
-                        1, (dim - 1) * (dim)
-                    ) * R * (
-                        g[iT[0], iT[2]] * g[iT[1], iT[3]]
-                        - g[iT[0], iT[3]] * g[iT[1], iT[2]]
-                    )
-                    term2 = sp.Rational(1, dim - 2) * (
-                        TR[iT[0], iT[2]] * g[iT[1], iT[3]]
-                        - TR[iT[1], iT[2]] * g[iT[0], iT[3]]
-                        + TR[iT[1], iT[3]] * g[iT[0], iT[2]]
-                        - TR[iT[0], iT[3]] * g[iT[1], iT[2]]
-                    )
-                    return sp.simplify(term1 - term2)
-
-            def generate_indices(shape):
-                """Recursively generates all index tuples for an arbitrary dimensional array."""
-                if len(shape) == 1:
-                    return [(i,) for i in range(shape[0])]
-                else:
-                    return [
-                        (i,) + t
-                        for i in range(shape[0])
-                        for t in generate_indices(shape[1:])
-                    ]
-
-            shape = (dim,) * 4
-            sparse_data = {
-                indices: entry_rule(indices) for indices in generate_indices(shape)
-            }
-            self._Weyl = tensorField(self.varSpace, sparse_data, valence=(0,0,0,0), dgcvType=self.dgcvType)
-        return self._Weyl
-
-    @property
-    def Einstein_tensor(self):
-
-        if self._tracelessRicci is None:
-            Ric = self.RicciTensor
-            SC = self.scalarCurvature
-            self._tracelessRicci = Ric - sp.Rational(1, 2) * SC * self.SymTensorField
-        return self._Ricci
+            self._Einstein = Ric - rational(1, 2) * SC * self.SymTensorField
+        return self._Einstein
 
     def sectionalCurvature(self, vf1, vf2):
-        # RCT = self.RiemannCurvature
-        value = self.RiemannCurvature(vf1, vf2, vf1, vf2) / (
+        num = self.RiemannCurvature(vf1, vf2, vf1, vf2)
+        den = (
             self.SymTensorField(vf1, vf1) * self.SymTensorField(vf2, vf2)
             - (self.SymTensorField(vf1, vf2)) ** 2
         )
-        return value
-
-    def __repr__(self):
-        return self._generate_representation()
-
-    def __str__(self):
-        return self._generate_representation()
-
-    def _sympystr(self, printer):
-        """
-        custom _repr_latex_ is used when calling sympy.latex().
-        """
-        return self.__repr__()
-
-    def _latex(self, printer=None):
-        """
-        custom _repr_latex_ is used when calling sympy.latex().
-        """
-        return self._repr_latex_()
-
-    def _generate_representation(self):
-        if self.degree == 0:
-            return str(self.MetricDataMinimal[0][1])
-
-        basisLoc = [" ".join(j) for j in self.kFormBasisGenerators]
-
-        termsLoc = "".join(
-            [
-                self._labelerLoc(self.coeffsInKFormBasis[j]) + basisLoc[j]
-                for j in range(len(basisLoc))
-                if self.coeffsInKFormBasis[j] != 0
-            ]
-        )
-        if not termsLoc:
-            termsLoc = "0*" + basisLoc[0]
-        elif termsLoc[0] == "+":
-            termsLoc = termsLoc[1:]
-
-        return termsLoc
-
-    def simplify_format(self, format_type=None, skipVar=None):
-        """
-        Prepares the differential dorm for custom simplification.
-
-        Parameters
-        ----------
-        arg : str
-            The simplification rule to apply. Options include 'real', 'holomorphic', and 'symbolic_conjugate'.
-
-        skipVar : list, optional
-            A list of strings that are parent labels for dgcv variable systems to exclude from the simplification process.
-
-        Returns
-        -------
-        metric
-            A new DFClass instance with updated simplification settings.
-        """
-        if format_type not in {None, "holomorphic", "real", "symbolic_conjugate"}:
-            warnings.warn(
-                "simplify_format() recieved an unsupported first argument. Try None, 'holomorphic', 'real',  or 'symbolic_conjugate' instead."
-            )
-        return metricClass(
-            self.SymTensorField.simplify_format(
-                format_type=format_type, skipVar=skipVar
-            )
-        )
-
-    def _eval_simplify(self, **kwargs):
-        """
-        Applies the simplification based on the current simplification settings in the self._simplifyKW attribute.
-
-        Returns
-        -------
-        DFClass
-            A simplified DFClass object.
-        """
-        if self._simplifyKW["simplify_rule"] is None:
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(b, **kwargs) for a, b in self.MetricDataDict.items()
-            }
-        elif self._simplifyKW["simplify_rule"] == "holomorphic":
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(
-                    allToHol(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for a, b in self.MetricDataDict.items()
-            }
-        elif self._simplifyKW["simplify_rule"] == "real":
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(
-                    allToReal(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for a, b in self.MetricDataDict.items()
-            }
-        elif self._simplifyKW["simplify_rule"] == "symbolic_conjugate":
-            # Simplify each element in the coeffs list
-            simplified_coeffs = {
-                a: sp.simplify(
-                    allToSym(b, skipVar=self._simplifyKW["simplify_ignore_list"]),
-                    **kwargs,
-                )
-                for a, b in self.MetricDataDict.items()
-            }
-        else:
-            warnings.warn(
-                "_eval_simplify recieved an unsupported STFClass._simplifyKW['simplify_rule']. It is recommend to only set the _simplifyKW['simplify_rule'] attribute to None, 'holomorphic', 'real',  or 'symbolic_conjugate'."
-            )
-            simplified_coeffs = {
-                a: sp.simplify(b, **kwargs) for a, b in self.MetricDataDict.items()
-            }
-
-        # Return a new instance of DFClass with simplified coeffs
-
-        # Return a new instance of DFClass with simplified coeffs
-        return metricClass(
-            STFClass(
-                self.varSpace,
-                simplified_coeffs,
-                self.degree,
-                dgcvType=self.dgcvType,
-                _simplifyKW=self._simplifyKW,
-            )
-        )
-
-    def subs(self, subsData):
-        return metricClass(self.SymTensorField.subs(subsData))
-
-    def _labelerLoc(self, coeff):
-        if str(coeff)[0] == "-":
-            return (
-                f"{coeff}*"
-                if "+" not in str(coeff)[1:] and "-" not in str(coeff)[1:]
-                else f"+({coeff})*"
-            )
-        elif coeff == 1:
-            return "+"
-        elif coeff == -1:
-            return "-"
-        elif "+" in str(coeff) or "-" in str(coeff):
-            return f"+({coeff})*"
-        else:
-            return f"+{coeff}*"
-
-    def _convert_to_greek(self, var_name):
-        for name, greek in greek_letters.items():
-            if var_name.startswith(name):
-                return var_name.replace(name, greek, 1)
-        return var_name
-
-    def _process_var_label(self, var):
-        var_str = str(var)
-        if var_str.startswith("BAR"):
-            # Remove "BAR" prefix
-            var_str = var_str[3:]
-
-            # Regular expression to match label part and trailing number part
-            match = re.match(
-                r"([a-zA-Z_]+)(\d*)$", var_str
-            )  # Match label followed by optional digits
-
-            if match:
-                label_part = match.group(1)  # The label part
-                number_part = match.group(2)  # The number part (if any)
-
-                # Remove trailing underscores in label part
-                label_part = label_part.rstrip("_")
-
-                # Convert label part to Greek if applicable
-                label_part = self._convert_to_greek(label_part)
-
-                # Return LaTeX formatted string
-                return (
-                    rf"\overline{{{label_part}_{{{number_part}}}}}"
-                    if number_part
-                    else label_part
-                )
-        else:
-            # Return LaTeX for non-BAR variables
-            return sp.latex(var)
-
-    def _repr_latex_(self):
-        if self.degree == 0:
-            return f"${self._process_var_label(self.coeffsInKFormBasis[0])}$"
-
-        terms = []
-        varLabels = [[self.varSpace[k] for k in j[0]] for j in self.MetricDataMinimal]
-        for coeff, var_list in zip(self.coeffsInKFormBasis, varLabels):
-            if coeff == 0:
-                continue
-            latex_vars = [f"d {self._process_var_label(var)}" for var in var_list]
-            differential_form = " \\odot ".join(latex_vars)
-            latex_coeff = self._format_coeff(coeff)
-            term = f"{latex_coeff}{differential_form}"
-            terms.append(term)
-
-        if not terms:
-            latex_var_0 = self._process_var_label(varLabels[0][0])
-            return f"$0 d{latex_var_0}$"
-
-        latex_str = terms[0]
-        for term in terms[1:]:
-            latex_str += f" {term}" if term.startswith("-") else f" + {term}"
-
-        return f"${latex_str}$"
-
-    def _format_coeff(self, coeff):
-        if coeff == 1:
-            return ""
-        elif coeff == -1:
-            return "-"
-        elif sp.sympify(coeff).is_Atom or len(coeff.as_ordered_terms()) == 1:
-            return sp.latex(coeff)
-        else:
-            return f"\\left({sp.latex(coeff)}\\right)"
+        return num / den
 
 
-class LeviCivitaConnectionClass(sp.Basic):
+# class LeviCivitaConnectionClass(dgcv_class):
+#     def __init__(
+#         self,
+#         varSpace,
+#         Christoffel_symbols_of_the_second_kind,
+#         variable_handling_default="standard",
+#     ):
+#         self.varSpace = tuple(varSpace)
+#         dim = len(self.varSpace)
 
-    def __new__(
-        cls,
-        varSpace,
-        Christoffel_symbols_of_the_second_kind,
-        variable_handling_default="standard",
-    ):
-        # Call sp.Basic.__new__ with only the positional arguments
-        obj = sp.Basic.__new__(cls, varSpace, Christoffel_symbols_of_the_second_kind)
-        return obj
+#         Gamma = Christoffel_symbols_of_the_second_kind
+#         if not isinstance(Gamma, array_dgcv):
+#             try:
+#                 Gamma = array_dgcv(Gamma, shape=(dim, dim, dim))
+#             except Exception as e:
+#                 raise TypeError(
+#                     "LeviCivitaConnectionClass expects Christoffel symbols as array_dgcv "
+#                     "or array-like data convertible to array_dgcv. "
+#                     f"Failed to convert input: {e}"
+#                 )
 
-    from sympy.tensor.array import ImmutableSparseNDimArray
+#         if Gamma.shape != (dim, dim, dim):
+#             raise TypeError(
+#                 "Christoffel_symbols_of_the_second_kind must have shape (dim,dim,dim) matching varSpace."
+#             )
 
-    def __init__(
-        self,
-        varSpace,
-        Christoffel_symbols_of_the_second_kind,
-        variable_handling_default="standard",
-    ):
-        # Attempt to convert the input to an ImmutableSparseNDimArray
-        if not isinstance(
-            Christoffel_symbols_of_the_second_kind, ImmutableSparseNDimArray
-        ):
-            try:
-                Christoffel_symbols_of_the_second_kind = ImmutableSparseNDimArray(
-                    Christoffel_symbols_of_the_second_kind
-                )
-            except Exception as e:
-                raise TypeError(
-                    "The `LeviCivitaConnection` class initializer expects an ImmutableSparseNDimArray "
-                    "or array-like data that can be converted to one. "
-                    f"Failed to convert the input: {e}"
-                )
+#         self.Christoffel_symbols = Gamma
 
-        # Check the shape of the Christoffel symbols
-        shapeCheck = Christoffel_symbols_of_the_second_kind.shape
-        if len(shapeCheck) != 3 or len(set(shapeCheck)) != 1:
-            raise TypeError(
-                "The `LeviCivitaConnection` class initializer was given array data for the "
-                "`Christoffel_symbols_of_the_second_kind` of invalid shape."
-            )
+#         if variable_handling_default == "complex":
+#             variable_registry = get_variable_registry()
+#             cd = variable_registry["conversion_dictionaries"]
+#             if all(v in cd["realToSym"] for v in self.varSpace):
+#                 self._varSpace_type = "real"
+#             elif all(v in cd["symToReal"] for v in self.varSpace):
+#                 self._varSpace_type = "complex"
+#             else:
+#                 raise KeyError(
+#                     "For variable_handling_default='complex', varSpace must come from one dgcv complex-variable family."
+#                 )
+#         else:
+#             self._varSpace_type = "standard"
 
-        # Check that the coordinate space matches the Christoffel symbols' size
-        if len(varSpace) != shapeCheck[0]:
-            raise TypeError(
-                "The `LeviCivitaConnection` class initializer was given array data for the "
-                "`Christoffel_symbols_of_the_second_kind` of invalid size relative to the provided coordinate space. "
-                "Number of coordinates must match the Christoffel symbols' index range."
-            )
+#         self._dgcv_class_check = retrieve_passkey()
+#         self._dgcv_category = "LeviCivitaConnection"
 
-        # Handle variable type based on the default handling mode
-        if variable_handling_default == "complex":
-            variable_registry = get_variable_registry()
-            if all(
-                var in variable_registry["conversion_dictionaries"]["realToSym"]
-                for var in varSpace
-            ):
-                self._varSpace_type = "real"
-            elif all(
-                var in variable_registry["conversion_dictionaries"]["symToReal"]
-                for var in varSpace
-            ):
-                self._varSpace_type = "complex"
-            else:
-                raise KeyError(
-                    "To initialize a `LeviCivitaConnectionClass` instance with variable_handling_default='complex', "
-                    "`varSpace` must contain only variables from dgcv's complex variables systems, and all variables in "
-                    "`varSpace` must be simultaneously among the real and imaginary types, or simultaneously among the "
-                    "holomorphic and antiholomorphic types. Use `complexVarProc` to easily create dgcv complex variable systems."
-                )
-        else:
-            self._varSpace_type = "standard"
+#     def __call__(self, vf1, vf2):
+#         if not (isinstance(vf1, VFClass) and isinstance(vf2, VFClass)):
+#             raise TypeError(
+#                 "LeviCivitaConnectionClass only operates on pairs of VFClass objects."
+#             )
 
-        # Assign attributes
-        self.Christoffel_symbols = Christoffel_symbols_of_the_second_kind
-        self.varSpace = varSpace
+#         dim = len(self.varSpace)
+#         shpG = (dim, dim, dim)
+#         Gdata = self.Christoffel_symbols._data
 
-    def __call__(self, vf1, vf2):
-        if not all([isinstance(vf1, VFClass), isinstance(vf2, VFClass)]):
-            raise TypeError(
-                "`LeviCivitaConnectionClass` only operates on pairs of VFClass objects."
-            )
-        dimLoc = len(self.varSpace)
+#         def Gamma(j, k, L):
+#             return Gdata.get(_spool((j, k, L), shpG), 0)
 
-        def _coeff(VF1, VF2, L):
-            term1 = sum(
-                [
-                    sp.diff(VF2.coeffs[L], self.varSpace[j]) * VF1.coeffs[j]
-                    for j in range(dimLoc)
-                ]
-            )
-            term2 = sum(
-                [
-                    self.Christoffel_symbols[j, k, L] * VF1.coeffs[j] * VF2.coeffs[k]
-                    for j in range(dimLoc)
-                    for k in range(dimLoc)
-                ]
-            )
-            return term1 + term2
+#         def _coeff(VF1, VF2, L):
+#             term1 = 0
+#             for j in range(dim):
+#                 cj = VF1.coeffs[j]
+#                 if cj != 0:
+#                     term1 += diff(VF2.coeffs[L], self.varSpace[j]) * cj
 
-        if self._varSpace_type == "standard":
-            vf1 = changeVFBasis(vf1, self.varSpace)
-            vf2 = changeVFBasis(vf2, self.varSpace)
-            newCoeffs = [_coeff(vf1, vf2, L) for L in range(dimLoc)]
-            return VFClass(self.varSpace, newCoeffs)
-        elif self._varSpace_type == "real":
-            vf1 = changeVFBasis(allToReal(vf1), self.varSpace)
-            vf2 = changeVFBasis(allToReal(vf2), self.varSpace)
-            newCoeffs = [_coeff(vf1, vf2, L) for L in range(dimLoc)]
-            return VFClass(self.varSpace, newCoeffs, dgcvType="complex")
-        elif self._varSpace_type == "complex":
-            vf1 = changeVFBasis(allToSym(vf1), self.varSpace)
-            vf2 = changeVFBasis(allToSym(vf2), self.varSpace)
-            newCoeffs = [_coeff(vf1, vf2, L) for L in range(dimLoc)]
-            return VFClass(self.varSpace, newCoeffs, dgcvType="complex")
+#             term2 = 0
+#             for j in range(dim):
+#                 cj = VF1.coeffs[j]
+#                 if cj == 0:
+#                     continue
+#                 for k in range(dim):
+#                     ck = VF2.coeffs[k]
+#                     if ck == 0:
+#                         continue
+#                     g = Gamma(j, k, L)
+#                     if g != 0:
+#                         term2 += g * cj * ck
+#             return term1 + term2
+
+#         if self._varSpace_type == "standard":
+#             vf1 = changeVFBasis(vf1, self.varSpace)
+#             vf2 = changeVFBasis(vf2, self.varSpace)
+#             newCoeffs = [_coeff(vf1, vf2, L) for L in range(dim)]
+#             return VFClass(self.varSpace, newCoeffs)
+
+#         if self._varSpace_type == "real":
+#             vf1 = changeVFBasis(allToReal(vf1), self.varSpace)
+#             vf2 = changeVFBasis(allToReal(vf2), self.varSpace)
+#             newCoeffs = [_coeff(vf1, vf2, L) for L in range(dim)]
+#             return VFClass(self.varSpace, newCoeffs, dgcvType="complex")
+
+#         # complex
+#         vf1 = changeVFBasis(allToSym(vf1), self.varSpace)
+#         vf2 = changeVFBasis(allToSym(vf2), self.varSpace)
+#         newCoeffs = [_coeff(vf1, vf2, L) for L in range(dim)]
+#         return VFClass(self.varSpace, newCoeffs, dgcvType="complex")
+
+#     def __dgcv_simplify__(self, method=None, **kwargs):
+#         return self._eval_simplify(**kwargs)
+
+#     def _eval_simplify(self, **kwargs):
+#         return self
 
 
 def metric_from_matrix(coordinates, matrix):
+    coords = tuple(coordinates)
+    n = len(coords)
 
-    if isinstance(matrix, list):
-        if all(isinstance(j, list) for j in matrix):
-            if all(len(j) == len(matrix[0]) for j in matrix):
-                pass
-            else:
-                raise TypeError(
-                    "The second argument `metric_from_matrix` should be a list of lists in the shape of a square 2-d. array."
-                )
-        else:
+    if isinstance(matrix, array_dgcv):
+        if matrix.shape != (n, n):
             raise TypeError(
-                "The second argument `metric_from_matrix` should be a list of lists in the shape of a square 2-d. array."
+                "metric_from_matrix: array_dgcv must have shape (n,n) matching len(coordinates)."
             )
+
+        def entry(i, j):
+            return matrix[i, j]
+
     else:
-        raise TypeError(
-            "The second argument `metric_from_matrix` should be a list of lists in the shape of a square 2-d. array."
-        )
+        M = matrix if isinstance(matrix, matrix_dgcv) else matrix_dgcv(matrix)
+        if M.shape != (n, n):
+            raise TypeError(
+                "metric_from_matrix: matrix must be coercible to a square (n,n) matrix matching len(coordinates)."
+            )
 
-    def entry_rule(iT):  # define tensor field value for a particular index tuple
-        return matrix[iT[0]][iT[1]]
+        def entry(i, j):
+            return M[i, j]
 
-    deg = 2
+    sparse_data = {}
+    for i in range(n):
+        for j in range(i, n):
+            v = entry(i, j)
+            if v != 0:
+                sparse_data[(i, j)] = v
 
-    def generate_nondecreasing_indices(shape, min_val=0):
-        """
-        Recursively generates all index tuples of nondecreasing integer lists for an arbitrary dimensional array.
-
-        Parameters
-        ----------
-        shape : tuple
-            A tuple where each element defines the dimension (length) of each axis.
-        min_val : int, optional
-            The minimum value allowed for the current index, with nondecreasing order.
-
-        Returns
-        -------
-        list of tuples
-            All possible index tuples with nondecreasing integer values.
-        """
-        if len(shape) == 1:
-            # Generate the indices for the last dimension, constrained by min_val
-            return [(i,) for i in range(min_val, shape[0])]
-        else:
-            # Recursively generate indices for the next dimensions, with nondecreasing order
-            return [
-                (i,) + t
-                for i in range(min_val, shape[0])
-                for t in generate_nondecreasing_indices(shape[1:], i)
-            ]
-
-    shape = (len(coordinates),) * deg
-    sparse_data = {
-        indices: entry_rule(indices)
-        for indices in generate_nondecreasing_indices(shape)
-    }
-    return metricClass(STFClass(coordinates, sparse_data, deg))
+    return metricClass(assemble_tensor_field(coords, sparse_data, shape="symmetric"))

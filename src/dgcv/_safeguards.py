@@ -1,3 +1,16 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+module: _safeguards
+
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv)
+
+License:
+    MIT License
+"""
+
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
 import random
 import string
 import warnings
@@ -12,21 +25,31 @@ from .vmf import clearVar
 _passkey = "".join(random.choices(string.ascii_letters + string.digits, k=16))
 public_key = "".join(random.choices(string.ascii_letters + string.digits, k=8))
 
+
+# -----------------------------------------------------------------------------
+# utilities
+# -----------------------------------------------------------------------------
 def get_dgcv_category(obj):
-    if getattr(obj, '_dgcv_class_check', None) == _passkey:
-        return getattr(obj, '_dgcv_category', None)
+    if getattr(obj, "_dgcv_class_check", None) == _passkey:
+        return getattr(obj, "_dgcv_category", None)
     return None
 
-def query_dgcv_categories(obj,cat):
-    if getattr(obj, '_dgcv_class_check', None) == _passkey:
-            if isinstance(cat,(list,tuple,set,dict)):
-                return any(c in getattr(obj, '_dgcv_categories', {get_dgcv_category(obj)}) for c in cat)
-            return cat in getattr(obj, '_dgcv_categories', {get_dgcv_category(obj)})
+
+def query_dgcv_categories(obj, cat):
+    if getattr(obj, "_dgcv_class_check", None) == _passkey:
+        if isinstance(cat, (list, tuple, set, dict)):
+            return any(
+                c in getattr(obj, "_dgcv_categories", {get_dgcv_category(obj)})
+                for c in cat
+            )
+        return cat in getattr(obj, "_dgcv_categories", {get_dgcv_category(obj)})
+
 
 def check_dgcv_category(obj):
-    return getattr(obj, '_dgcv_class_check', None) == _passkey
+    return getattr(obj, "_dgcv_class_check", None) == _passkey
 
-def create_key(prefix=None, avoid_caller_globals=False, key_length = 8):
+
+def create_key(prefix=None, avoid_caller_globals=False, key_length=8):
     """
     Generates a unique alphanumeric key with an optional prefix.
 
@@ -60,17 +83,20 @@ def create_key(prefix=None, avoid_caller_globals=False, key_length = 8):
         if not avoid_caller_globals or key not in caller_globals:
             return key
 
+
 def retrieve_passkey():
     """
     Returns the internal passkey for use within dgcv functions.
     """
     return _passkey
 
+
 def retrieve_public_key():
     """
     Returns the public key for use in function and variable names.
     """
     return public_key
+
 
 def protected_caller_globals():
     """
@@ -118,6 +144,7 @@ def protected_caller_globals():
         "__package__",
     }
 
+
 def validate_label_list(basis_labels):
     """
     Validates a list of basis labels by checking if they are already present in _cached_caller_globals.
@@ -136,7 +163,7 @@ def validate_label_list(basis_labels):
     existing_labels = []
     to_clear = []
     detailed_message = ""
-    if get_dgcv_settings_registry()['ask_before_overwriting_objects_in_vmf'] is False:
+    if get_dgcv_settings_registry()["ask_before_overwriting_objects_in_vmf"] is False:
         overwritePermissionGranted = True
     else:
         overwritePermissionGranted = False
@@ -151,14 +178,29 @@ def validate_label_list(basis_labels):
 
             # Check standard, complex, and finite algebra systems
             for system_type, sub_type, system_type_name, family_names_address in [
-                ("standard_variable_systems","","standard coordinate","variable_relatives"),
-                ("complex_variable_systems","","complex coordinate","variable_relatives"),
-                ("finite_algebra_systems","","finite-dimensional algebra","family_names"),
-                ("eds","atoms","atomic differential forms","family_relatives"),
-                ("eds","coframes","exterior differential","family_relatives"),
+                (
+                    "standard_variable_systems",
+                    "",
+                    "standard coordinate",
+                    "variable_relatives",
+                ),
+                (
+                    "complex_variable_systems",
+                    "",
+                    "complex coordinate",
+                    "variable_relatives",
+                ),
+                (
+                    "finite_algebra_systems",
+                    "",
+                    "finite-dimensional algebra",
+                    "family_names",
+                ),
+                ("eds", "atoms", "atomic differential forms", "family_relatives"),
+                ("eds", "coframes", "exterior differential", "family_relatives"),
             ]:
                 if system_type in variable_registry:
-                    if sub_type!="" and sub_type in variable_registry[system_type]:
+                    if sub_type != "" and sub_type in variable_registry[system_type]:
                         innerVR = variable_registry[system_type][sub_type]
                     else:
                         innerVR = variable_registry[system_type]
@@ -180,7 +222,10 @@ def validate_label_list(basis_labels):
                     else:
                         # Check if the label is a child variable
                         for parent_label, parent_data in innerVR.items():
-                            if (family_names_address in parent_data and label in parent_data[family_names_address]):
+                            if (
+                                family_names_address in parent_data
+                                and label in parent_data[family_names_address]
+                            ):
                                 # The label is a child variable
                                 if overwritePermissionGranted is True:
                                     detailed_message += (
@@ -196,7 +241,7 @@ def validate_label_list(basis_labels):
                                         f"the dgcv function `clearVar('{parent_label}')` to first clear the obstructing objects."
                                     )
 
-    if len(existing_labels)>0:
+    if len(existing_labels) > 0:
         if overwritePermissionGranted is True:
             warning_message = (
                 f"The following basis labels were already defined in the current namespace: {existing_labels}. "
@@ -215,13 +260,18 @@ def validate_label_list(basis_labels):
             warning_message += detailed_message
 
         if overwritePermissionGranted is True:
-            if get_dgcv_settings_registry()['forgo_warnings'] is not True:
-                warnings.warn(warning_message+"\n To suppress warnings such as this, set `set_dgcv_settings(forgo_warnings=True)`.",UserWarning)
+            if get_dgcv_settings_registry()["forgo_warnings"] is not True:
+                warnings.warn(
+                    warning_message
+                    + "\n To suppress warnings such as this, set `set_dgcv_settings(forgo_warnings=True)`.",
+                    UserWarning,
+                )
                 clearVar(*to_clear)
             else:
-                clearVar(*to_clear,report=False)
+                clearVar(*to_clear, report=False)
         else:
             raise ValueError(warning_message)
+
 
 def protect_variable_relatives():
     variable_registry = get_variable_registry()
@@ -233,6 +283,7 @@ def protect_variable_relatives():
         ],
         (),
     )
+
 
 def validate_label(label, remove_guardrails=False):
     """
@@ -321,7 +372,15 @@ def validate_label(label, remove_guardrails=False):
 
     return reformatted_label
 
-def unique_label(label, remove_guardrails=False, version_prefix="v", tex_v_prefix="v.", tex_label=None, protected=set()):
+
+def unique_label(
+    label,
+    remove_guardrails=False,
+    version_prefix="v",
+    tex_v_prefix="v.",
+    tex_label=None,
+    protected=set(),
+):
     """
     Validate a label and, if it already exists in the VMF, append
     a minimal version suffix to make it unique.

@@ -18,9 +18,7 @@ from .eds import (
     createCoframe,
     createDiffForm,
     createZeroForm,
-    expand_dgcv,
     extDer,
-    factor_dgcv,
     simplify_with_PDEs,
     zeroFormAtom,
 )
@@ -29,8 +27,6 @@ from .eds_representations import DF_representation
 
 __all__ = [
     "zeroFormAtom",
-    "factor_dgcv",
-    "expand_dgcv",
     "createZeroForm",
     "createDiffForm",
     "abst_coframe",

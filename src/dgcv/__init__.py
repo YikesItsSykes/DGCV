@@ -1,26 +1,48 @@
 """
 dgcv: Package Initialization
 
-The dgcv package integrates tools for differential geometry with a framework for conveniently working with complex variables. The `__init__.py` module initializes core components of the package.
+The dgcv package (Differential Geometry with Complex Variables) provides
+tools for differential geometry together a framework for conveniently
+working with complex variables.
 
-Initialization:
-    - Global Cache and Variable Management Framework: Automatically sets up the global cache and variable registry systems that underly dgcv's Variable Management Framework (VMF). The VMF tracks and caches relationships between variables (of coordinate systems) and related objects, and it is fundamental in much of the library's functionalities.
-    - Warnings Configuration: Configures dgcv-specific warning behaviors.
+The top-level ``__init__.py`` initializes core infrastructure used
+throughout the library, principally building light-weight backend
+dictionaries for dgcv's variable management framework (VMF).
 
-Dependencies:
-    - sympy: Provides base symbolic computation tools.
-    - IPython: Supports output display formatting for Jupyter notebooks.
+Initialization
+--------------
+- Variable Management Framework (VMF):
+  Automatically initializes the an active namespace hook and variable registry
+  systems underlying dgcv's Variable Management Framework. The VMF tracks
+  coordinate systems, algebraic objects, differential forms, tensor fields,
+  and related structures, and coordinates their interaction across modules.
 
-Author: David Sykes (https://www.realandimaginary.com/dgcv/)
+- Backend Detection and Routing:
+  Detects available symbolic engines (e.g., SymPy or Sage) and configures
+  dgcv's symbolic routing layer according to the active settings. there are
+  no hard dependencies on a single backend engine; compatible engines are
+  detected and used if available.
+
+- Display Integration:
+  Detects rich display environments (such as IPython/Jupyter) and enables
+  LaTeX-aware rendering when supported and enabled in dgcv settings.
+
+Dependencies
+------------
+dgcv has no mandatory hard dependency , but at least one supported backend
+is recommended (currently supported: SymPy or Sage).
+Optional integrations (e.g., IPython) are used automatically if present.
+
+Author: David Sykes
+https://www.realandimaginary.com/dgcv/
 
 License:
     MIT License
-
 """
 
-# Imports
-
-# getting current version for dgcv settings defaults
+# -----------------------------------------------------------------------------
+# preliminary imports
+# -----------------------------------------------------------------------------
 from importlib.metadata import PackageNotFoundError, version
 
 try:
@@ -29,27 +51,33 @@ except PackageNotFoundError:
     __version__ = "unknown"
 
 
-from ._config import cache_globals, configure_warnings, get_variable_registry
+from ._config import (
+    cache_globals,
+    configure_convenient_labels,
+    configure_warnings,
+    get_variable_registry,
+)
 
-############# Variable Management Framework (VMF) tools
-# Initialize the globals pointer cache when dgcv is imported
+# -----------------------------------------------------------------------------
+# Variable Management Framework (VMF) tools
+# -----------------------------------------------------------------------------
 cache_globals()
-
-# Initialize variable_registry when dgcv is imported
 _ = get_variable_registry()
-import numbers
 
+
+# -----------------------------------------------------------------------------
+# remaining imports
+# -----------------------------------------------------------------------------
 from ._config import canonicalize
 from ._dgcv_display import (
     DGCV_init_printing,
     LaTeX,
     LaTeX_eqn_system,
     LaTeX_list,
-    clean_LaTeX,
     display_DGCV,
     show,
 )
-from ._settings import set_dgcv_settings
+from ._settings import reset_dgcv_settings, set_dgcv_settings, view_dgcv_settings
 from .algebras.algebras_aux import algebraDataFromMatRep, algebraDataFromVF
 from .algebras.algebras_core import (
     adjointRepresentation,
@@ -67,9 +95,28 @@ from .algebras.algebras_secondary import (
     subalgebra_class,
     subalgebra_element,
 )
-from .backends._sage_backend import get_sage_module, is_sage_available
+from .arrays import array_dgcv, matrix_dgcv
+from .backends import (
+    expand_dgcv,
+    factor_dgcv,
+    get_free_symbols,
+    simplify_dgcv,
+    subs_dgcv,
+)
 from .combinatorics import carProd, chooseOp, permSign, split_number
 from .complex_structures import Del, DelBar, KahlerStructure
+from .conversions import (
+    allToHol,
+    allToReal,
+    allToSym,
+    cleanUpConjugation,
+    holToReal,
+    holToSym,
+    realToHol,
+    realToSym,
+    symToHol,
+    symToReal,
+)
 from .coordinate_maps import coordinate_map
 from .CR_geometry import (
     findWeightedCRSymmetries,
@@ -85,21 +132,11 @@ from .dgcv_core import (
     VF_coeffs,
     VFClass,
     addDF,
-    addSTF,
     addVF,
-    allToHol,
-    allToReal,
-    allToSym,
     antiholVF_coeffs,
-    changeDFBasis,
-    changeSTFBasis,
-    changeTFBasis,
-    changeVFBasis,
-    cleanUpConjugation,
+    assemble_tensor_field,
     complex_struct_op,
     complexVFC,
-    compress_dgcv_class,
-    compressDGCVClass,  # deprecated
     conj_with_hol_coor,
     conj_with_real_coor,
     conjComplex,
@@ -107,25 +144,23 @@ from .dgcv_core import (
     conjugate_dgcv,
     createVariables,
     dgcvPolyClass,
+    differential_form_class,
     exteriorProduct,
-    holToReal,
-    holToSym,
     holVF_coeffs,
     im_with_hol_coor,
     im_with_real_coor,
+    polynomial_dgcv,
     re_with_hol_coor,
     re_with_real_coor,
     realPartOfVF,
-    realToHol,
-    realToSym,
     scaleDF,
-    scaleTF,
     scaleVF,
-    symToHol,
-    symToReal,
     temporaryVariables,
+    tensor_field_class,
     tensor_product,
     tensorField,
+    vector_field_class,
+    wedge,
 )
 from .eds import (
     DF_representation,
@@ -136,9 +171,7 @@ from .eds import (
     createCoframe,
     createDiffForm,
     createZeroForm,
-    expand_dgcv,
     extDer,
-    factor_dgcv,
     simplify_with_PDEs,
     transform_coframe,
     zeroFormAtom,
@@ -152,12 +185,12 @@ from .polynomials import (
     getWeightedTerms,
     monomialWeight,
 )
+from .printing._string_processing import clean_LaTeX
 from .Riemannian_geometry import (
-    LeviCivitaConnectionClass,
     metric_from_matrix,
     metricClass,
 )
-from .solvers import simplify_dgcv, solve_dgcv
+from .solvers import solve_dgcv
 from .styles import get_DGCV_themes, get_dgcv_themes  # get_DGCV_themes is deprecated
 from .tensors import (
     createVectorSpace,
@@ -180,17 +213,28 @@ from .vector_fields_and_differential_forms import (
     interiorProduct,
     makeZeroForm,
 )
-from .vmf import DGCV_snapshot, clearVar, listVar, variableSummary, vmf_summary
+from .vmf import (
+    DGCV_snapshot,
+    clear_vmf,
+    clearVar,
+    listVar,
+    variableSummary,
+    vmf_lookup,
+    vmf_summary,
+)
 
-# Default functions/classes
+# -----------------------------------------------------------------------------
+# broadcasting
+# -----------------------------------------------------------------------------
 __all__ = [
     ############ dgcv default functions/classes ####
+    # From _config
+    "configure_convenient_labels",
     # From _dgcv_display
     "LaTeX",  # Custom LaTeX renderer for dgcv objects
     "LaTeX_eqn_system",  # Custom LaTeX renderer for dictionaries
     # or lists representing equation systems
     "LaTeX_list",
-    "clean_LaTeX",
     "display_DGCV",  # deprecated
     "show",  # Augments IPython.display.display
     # with support for dgcv object like
@@ -198,18 +242,9 @@ __all__ = [
     "DGCV_init_printing",  # Augments SymPy.init_printing for dgcv
     # objects
     # From _settings
+    "reset_dgcv_settings",
     "set_dgcv_settings",
-    # From combinatorics
-    "carProd",  # Cartesian product
-    "chooseOp",  # Choose operation
-    "permSign",  # Permutation sign
-    "split_number",
-    # From complexStructures
-    "Del",  # Holomorphic derivative operator
-    "DelBar",  # Anti-holomorphic derivative operator
-    "KahlerStructure",  # Represents a Kähler structure
-    # From _config
-    "canonicalize",  # Reformat supported objects canonically
+    "view_dgcv_settings",
     # From algebras
     "algebra_element_class",  # Algebra element class
     "subalgebra_element",
@@ -224,6 +259,25 @@ __all__ = [
     "killingForm",  # Compute the Killing form
     "vector_space_endomorphisms",
     "subalgebra_class",
+    # From arrays
+    "array_dgcv",  # light-weight array representation
+    "matrix_dgcv",  # light-weight matrix representation
+    # From backends
+    "expand_dgcv",
+    "factor_dgcv",
+    "get_free_symbols",
+    "subs_dgcv",
+    # From combinatorics
+    "carProd",  # Cartesian product
+    "chooseOp",  # Choose operation
+    "permSign",  # Permutation sign
+    "split_number",
+    # From complexStructures
+    "Del",  # Holomorphic derivative operator
+    "DelBar",  # Anti-holomorphic derivative operator
+    "KahlerStructure",  # Represents a Kähler structure
+    # From _config
+    "canonicalize",  # Reformat supported objects canonically
     # From coordinateMaps
     "coordinate_map",  # Transforms coordinates systems
     # From CRGeometry
@@ -233,36 +287,32 @@ __all__ = [
     "tangencyObstruction",  # Obstruction for VF to be tangent to submanifold
     "weightedHomogeneousVF",  # Produce general weighted homogeneous vector fields
     # From dgcv_core
-    "tensorField",  # Tensor field class
-    "DFClass",  # Differential form class
+    "assemble_tensor_field",
+    "DFClass",  # Depricated - old differential form class (now just a dispatch shim)
+    "differential_form_class",
     "DGCVPolyClass",  # deprecated
     "dgcvPolyClass",  # dgcv polynomial class
     "DGCV_snapshot",  # deprecated
-    "vmf_summary",  # Summarize initialized dgcv objects
-    "STFClass",  # Symmetric tensor field class
-    "VFClass",  # Vector field class
+    "STFClass",  # Depricated - old symmetric tensor field class (now just a dispatch shim)
+    "vector_field_class",
+    "VFClass",  # # Depricated - old vector field class (now just a dispatch shim)
     "VF_bracket",  # Lie bracket of vector fields
     "VF_coeffs",  # Coefficients of vector fields
-    "addDF",  # Add differential forms
-    "addSTF",  # Add symmetric tensor fields
-    "addVF",  # Add vector fields
+    "addDF",  # Depricated -  Add differential forms
+    "addVF",  # Depricated - Add vector fields
     "allToHol",  # Convert dgcv expressions to holomorphic
+    "tensor_field_class",
     # coordinate format
     "allToReal",  # Convert all fields to real
     # coordinate format
     "allToSym",  # Convert all fields to symbolic
     # conjugate coordinate format
     "antiholVF_coeffs",  # Anti-holomorphic coefficients of vector field
-    "changeDFBasis",  # Change basis for differential forms
-    "changeSTFBasis",  # Change basis for symmetric tensor fields
-    "changeTFBasis",  # Change basis for tensor fields
-    "changeVFBasis",  # Change basis for vector fields
     "cleanUpConjugation",  # Cleanup conjugation operations
     "clearVar",  # Clear dgcv objects from globals()
+    "clear_vmf",
     "complexVFC",  # Complex coordingate vector field coefficients
     "complex_struct_op",  # Complex structure operator
-    "compressDGCVClass",  # deprecated
-    "compress_dgcv_class",  # Removes superfluous variables from tensorField variable spaces
     "conjComplex",  # Conjugate complex variables
     "conj_with_hol_coor",  # Conjugate with holomorphic coordinate formatting
     "conj_with_real_coor",  # Conjugate with real coordinate formatting
@@ -277,22 +327,22 @@ __all__ = [
     "im_with_hol_coor",  # Imaginary part with holomorphic coordinate format
     "im_with_real_coor",  # Imaginary part with real coordinate format
     "listVar",  # List objects from the dgcv VMF
+    "polynomial_dgcv",  # dgcv polynomial class
     "realPartOfVF",  # Real part of vector fields
     "realToHol",  # Convert real to holomorphic fomrat
     "realToSym",  # Convert real to symbolic conjugates format
     "re_with_hol_coor",  # Real part with holomorphic coordinate format
     "re_with_real_coor",  # Real part with real coordinate format
-    "scaleDF",  # Scale differential forms
-    "scaleTF",  # Scale tensor fields
-    "scaleVF",  # Scale vector fields
+    "scaleDF",  # Depricated - Scale differential forms
+    "scaleVF",  # Depricated - Scale vector fields
     "symToHol",  # Convert symbolic conjugates to holomorphic format
     "symToReal",  # Convert symbolic conjugates to real format
-    "tensor_product",  # Compute tensor product of tensorField instances
-    "variableSummary",  # Depricated - use DGCV_snapshot instead
+    "tensorField",  # Tensor field class
+    "tensor_product",  # Depricated - Compute tensor product of tensorField instances
+    "variableSummary",  # Depricated - use vmf_summary instead
+    "wedge",  # wedge product of tensor field classes
     # From eds
     "zeroFormAtom",
-    "factor_dgcv",
-    "expand_dgcv",
     "createZeroForm",
     "createDiffForm",
     "abst_coframe",
@@ -311,13 +361,14 @@ __all__ = [
     "function_dgcv",
     # From morphisms
     "homomorphism",
+    # From printing/
+    "clean_LaTeX",
     # From polynomials
     "createBigradPolynomial",  # Create bigraded polynomial
     "createPolynomial",  # Create polynomial
     "getWeightedTerms",  # Get weighted terms of a polynomial
     "monomialWeight",  # Compute monomial weights
     # From RiemannianGeometry
-    "LeviCivitaConnectionClass",  # Levi-Civita connection class
     "metric_from_matrix",  # Create metric from matrix
     "metricClass",  # Metric class
     # From styles
@@ -327,12 +378,12 @@ __all__ = [
     "solve_dgcv",  # supports solving equations with various dgcv types
     "simplify_dgcv",  #
     # From tensors
+    "createVectorSpace",  # Create vector_space_class class instances with labeling
+    "multi_tensor_product",  # Form tensorProduct from multiple factors
+    # of vector space and their dual spaces
     "vector_space_class",  # Class representing vector spaces
     "vector_space_element",  # Class representing elements in a vector space
     "tensorProduct",  # Class representing elements in tensor products (of VS elements)
-    "multi_tensor_product", #Form tensorProduct from multiple factors
-    # of vector space and their dual spaces
-    "createVectorSpace",  # Create vector_space_class class instances with labeling
     # From vectorFieldsAndDifferentialForms
     "LieDerivative",  # Compute Lie derivative
     "annihilator",  # Compute annihilator
@@ -346,23 +397,13 @@ __all__ = [
     "get_VF",  # Get vector field from label in VMF
     "interiorProduct",  # Compute interior product
     "makeZeroForm",  # Create zero-form from scalar
+    # From vmf
+    "vmf_lookup",  # find details about an object stored in the VMF
+    "vmf_summary",  # Summarize initialized dgcv objects
 ]
 
 
-# Configure warnings
+# -----------------------------------------------------------------------------
+# additional configurations
+# -----------------------------------------------------------------------------
 configure_warnings()
-
-
-# Register Sage’s numeric types with numbers ABCs for isinstance checks
-if is_sage_available():
-    try:
-        sage = get_sage_module()
-        from sage.all import Integer as SageInteger  # type: ignore
-        from sage.all import Rational as SageRational  # type: ignore
-        from sage.all import RealNumber as SageFloat  # type: ignore
-
-        numbers.Integral.register(SageInteger)
-        numbers.Real.register(SageFloat)
-        numbers.Rational.register(SageRational)
-    except Exception:
-        pass

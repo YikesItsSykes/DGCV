@@ -1,308 +1,153 @@
 """
-dgcv: Differential Geometry with Complex Variables
+package: dgcv - Differential Geometry with Complex Variables
+module: CR_geometry
 
-This module provides tools specific to CR (Cauchy-Riemann) geometry within the dgcv package. 
+Description: This module provides tools specific to CR (Cauchy-Riemann) geometry within the dgcv package.
 It includes functions for constructing CR hypersurfaces and  computing symmetries.
 
 Key Functions:
-    - tangencyObstruction(): Computes the tangency obstruction for a holomorphic vector field's 
+    - tangencyObstruction(): Computes the tangency obstruction for a holomorphic vector field's
       real part to be tangent to a CR hypersurface.
-    - weightedHomogeneousVF(): Creates a general weighted homogeneous vector field in a 
+    - weightedHomogeneousVF(): Creates a general weighted homogeneous vector field in a
       specified coordinate space.
-    - findWeightedCRSymmetries(): Attempts to find infinitesimal symmetries of a weighted CR 
+    - findWeightedCRSymmetries(): Attempts to find infinitesimal symmetries of a weighted CR
       hypersurface.
-    - model2Nondegenerate(): Builds the defining equation for a 2-nondegenerate model 
+    - model2Nondegenerate(): Builds the defining equation for a 2-nondegenerate model
       hypersurface.
 
-Author: David Sykes (https://github.com/YikesItsSykes)
-
-Dependencies:
-    - sympy
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
 
 License:
     MIT License
 """
 
-############## dependencies
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
+from __future__ import annotations
 
-import sympy as sp
+from typing import Any, Iterable, List, Sequence, Tuple
 
-from ._config import _cached_caller_globals, get_variable_registry
-from ._safeguards import create_key, retrieve_passkey
-from .dgcv_core import (
-    VFClass,
-    addVF,
-    allToReal,
-    holToReal,
-    holVF_coeffs,
-    realPartOfVF,
-    scaleVF,
-    symToReal,
-    variableProcedure,
+from ._safeguards import create_key, query_dgcv_categories, retrieve_passkey
+from .arrays import matrix_dgcv
+from .backends import simplify_dgcv
+from .backends._engine import engine_module
+from .backends._symbolic_router import (
+    _scalar_is_zero,
+    as_numer_denom,
+    cancel,
+    conjugate,
+    expand,
+    get_free_symbols,
+    im,
+    subs,
 )
+from .backends._types_and_constants import imag_unit
+from .conversions import allToReal
+from .dgcv_core import holVF_coeffs, polynomial_dgcv, realPartOfVF, variableProcedure
 from .polynomials import createMultigradedPolynomial
-from .solvers import simplify_dgcv, solve_dgcv
-from .vector_fields_and_differential_forms import assembleFromHolVFC, get_VF
-from .vmf import clearVar, listVar
+from .solvers import solve_dgcv
+from .vector_fields_and_differential_forms import get_VF
+from .vmf import clearVar, listVar, vmf_lookup
+
+__all__ = [
+    "tangencyObstruction",
+    "weightedHomogeneousVF",
+    "findWeightedCRSymmetries",
+    "model2Nondegenerate",
+]
 
 
-def tangencyObstruction(vf, CR_defining_expr, graph_variable, simplify=False, data_already_in_real_coor=False, *args):
-    """
-    Computes the tangency obstruction for a holomorphic vector field with respect to a CR hypersurface.
+# -----------------------------------------------------------------------------
+# CR tools
+# -----------------------------------------------------------------------------
+def tangencyObstruction(
+    vf,
+    CR_defining_expr,
+    graph_variable,
+    simplify: bool = False,
+    data_already_in_real_coor: bool = False,
+    *args,
+):
+    CR_defs = _as_list(CR_defining_expr)
+    graph_vars = _as_list(graph_variable)
 
-    This function computes the Lie derivative of the real part of a holomorphic vector field applied
-    to the defining equation of a CR hypersurface and then substitutes the defining equation into the result.
-    The output is zero (up to simplification) if and only if the vector field is a symmetry of the hypersurface.
-
-    Parameters:
-    -----------
-    vf : VFClass
-        A holomorphic vector field in the complex coordinate 
-    CR_defining_expr : sympy expression (or list of expressions)
-        A defining function of the CR hypersurface, expressed in holomorphic or real variables.
-    graph_variable : sympy symbol (or list of variables)
-        The real variable whose value is set equal to the defining function to define the hypersurface.
-    simplify : bool, optional
-        If True, applies sp.simplify to the final result.
-    *args:
-        Additional arguments (unused).
-
-    Returns:
-    --------
-    sympy expression
-        The tangency obstruction.
-
-    Raises:
-    -------
-    TypeError
-        If the first argument is not a VFClass instance with dgcvType='complex'.
-    """
-    if not isinstance(CR_defining_expr,(list,tuple)):
-        CR_defining_expr=[CR_defining_expr]
-    if not isinstance(graph_variable,(list,tuple)):
-        graph_variable=[graph_variable]
-    if data_already_in_real_coor is not True:
-        graph_variable = [allToReal(j) for j in graph_variable]
-        vf = allToReal(vf)
-        CR_defining_expr = [allToReal(j) for j in CR_defining_expr]
-
-    if not (isinstance(vf, VFClass) and vf.dgcvType == "complex"):
-        raise TypeError(
-            "`tangencyObstruction` requires its first argument to be a VFClass instance with dgcvType='complex'"
+    if len(CR_defs) != len(graph_vars):
+        raise ValueError(
+            "`graph_variable` and `CR_defining_expr` must have the same length."
         )
-    rVF=realPartOfVF(vf)
-    real_eval = [rVF(j - k) for j,k in zip(graph_variable,CR_defining_expr)]
-    if len(graph_variable)>1:
-        varset=set(graph_variable)
-        gv_presence=[varset.intersection(expr.free_symbols) for expr in CR_defining_expr]
-        def _presence(var):
-            return len([s for s in gv_presence if var in s])
-        sorted_gv = sorted(graph_variable,key=lambda x:_presence(x))
-        substituted_expr=[]
-        for j in real_eval:
-            term=j
-            for var in sorted_gv:
-                term=term.subs({var:CR_defining_expr[graph_variable.index(var)]})
-            substituted_expr.append(term)
-    else:
-        substituted_expr = [j.subs(dict(zip(graph_variable, CR_defining_expr))) for j in real_eval]
+
+    if not data_already_in_real_coor:
+        graph_vars = [allToReal(v) for v in graph_vars]
+        CR_defs = [allToReal(f) for f in CR_defs]
+        vf = allToReal(vf)
+
+    rVF = realPartOfVF(vf)
+    real_eval = [rVF(gv - f) for gv, f in zip(graph_vars, CR_defs)]
+
+    mapping = dict(zip(graph_vars, CR_defs))
+    out = [subs(expr, mapping) for expr in real_eval]
 
     if simplify:
-        substituted_expr = [simplify_dgcv(j) for j in substituted_expr]
-    return substituted_expr
+        out = [simplify_dgcv(x) for x in out]
+
+    return out
 
 
 def weightedHomogeneousVF(
-    varSpace, weight, weights, varLabel, degreeCap=0, _tempVar=None, assumeReal=None
+    varSpace,
+    weight,
+    weights,
+    varLabel,
+    degreeCap: int = 0,
+    _tempVar=None,
+    assumeReal=None,
 ):
-    """
-    Creates a weighted homogeneous vector field in a given coordinate space.
-
-    This function generates a general weighted homogeneous vector field in the space of variables provided
-    in *varSpace*, with weights specified in *weights*. The polynomial degree of variables with zero weight can be bounded by *degreeCap*.
-
-    Parameters:
-    -----------
-    varSpace : tuple or list
-        A tuple or list of variables, initialized by *varWithVF* or *complexVarProc*.
-    weight : int
-        An integer specifying the weight of the vector field.
-    weights : list of int
-        A list of non-negative integer weights corresponding to the variables in *arg1*.
-    varLabel : str
-        A string label for the variables in the returned vector field.
-    degreeCap : int, optional
-        Maximum polynomial degree for zero-weight variables (default is 0).
-    _tempVar : any, optional
-        Internal key.
-    assumeReal : bool, optional
-        Whether to assume the variables are real (default is False).
-
-    Returns:
-    --------
-    VFClass
-        A weighted homogeneous vector field.
-
-    Raises:
-    -------
-    NA
-    """
-    pListLoc = []
-    if not isinstance(weight, (list,tuple)):
+    if not _is_sequence(weight):
         weight = [weight]
-    if not isinstance(weights[0],(list,tuple)):
+    if not weights or not _is_sequence(weights[0]):
         weights = [weights]
-    if not all(len(weightList)==len(varSpace) for weightList in weights):
-        raise KeyError('weight systems given to weightedHomogeneousVF must be lists whose length is the number of variables given.')
+
+    weight_list = list(weight)
+    weight_systems = list(weights)
+
+    if not all(len(ws) == len(varSpace) for ws in weight_systems):
+        raise KeyError(
+            "`weightedHomogeneousVF` expects each weight system to match len(varSpace)."
+        )
+    if len(weight_list) != len(weight_systems):
+        raise KeyError(
+            "`weightedHomogeneousVF` expects len(weight) == number of weight systems."
+        )
+
+    polys = []
     for j in range(len(varSpace)):
-        pListLoc.append(
+        degs = [d + ws[j] for d, ws in zip(weight_list, weight_systems)]
+        polys.append(
             createMultigradedPolynomial(
-                varLabel + "_" + str(j) + "_",
-                [d + L[j] for d,L in zip(weight,weights)],
+                f"{varLabel}_{j}_",
+                degs,
                 varSpace,
-                weights,
+                weight_systems,
                 degreeCap=degreeCap,
                 _tempVar=_tempVar,
                 assumeReal=assumeReal,
-                report=False
+                report=False,
             )
         )
-    return sum([scaleVF(pListLoc[j], get_VF(varSpace[j])[0]) for j in range(len(varSpace))])
 
+    Dz_list = get_VF(*varSpace)
+    out = None
+    for p, Dz in zip(polys, Dz_list):
+        if not p:
+            continue
+        term = p * Dz
+        out = term if out is None else (out + term)
 
-def findWeightedCRSymmetries_old(
-    arg1,
-    arg2,
-    arg3,
-    arg4,
-    arg5,
-    arg6,
-    degreeCap=0,
-    returnVectorFieldBasis=False,
-    applyNumer=False,
-    simplifyingFactor=None,
-    simplify=False
-):
-    """
-    ***This function's algorithm will be revised in future updates***
+    if out is None:
+        out = type(Dz_list[0])(coeff_dict={tuple(): 0}, data_shape="all")
 
-    Attempts to find all infinitesimal symmetries of a rigid CR hypersurface given by setting one variable *arg5* equal to a defining function *arg1* in the variable space *arg2* with weighted homogeneity *arg3* w.r.t. to non-negative integer weights in *arg4*. Variables in the returned vector field's coefficients are labeled by *arg6*.
-
-    Only polynomial vector fields are searched for, so if a variable is assigned weight zero, the function cannot search across general symmetries. In such cases, it rather searches all possible symmetries with polynomial degree in the zero-weighted variables up to the specified bound *degreeCap*. If *degreeCap* is not specified, then it defaults to zero.
-
-    The algorithm is most succesful when the function *arg1* must be a polynomial.
-
-    The function *arg1* should not depend on the variable *arg5* (i.e., the algorithm is not intended for implicit defining equations). If there is such dependence *findWeightedCRSymmetries* may still find some but not all symmetries.
-
-
-    Args:
-        arg1: Defining function of a rigid CR hypersurface.
-        arg2: a tuple or list of complex variables parameterizing the space that the above CR hypersurface is defined in (not including the transverse direction symmetry).
-        arg3: list of non-negative integer weights corresponding to the variables in *arg1* (must have the same length as *arg1*). If 0 is among the weights, then then proceedure will only test polynomial vector fields with polynomial degree in the weight zero variables up to the weight specified in *degreeCap*. By default, degreeCap=0, and can be set to any positive integer.
-        arg4: int
-        arg5: The real variable that when set equal to the defining function defines the CR hypersurface.
-        arg6: str
-        degreeCap: (optional keyword) set this keyword argument equal to any positive integer. If not specified, it defaults to zero.
-        applyNumer: (optional keyword) True or False. Set equal to true if defining equation is rational but not polynomial. It can help the internal solvers.
-
-    Returns:
-        coefficient list for a holomorphic vector field containing variables, and any set real value for these variables defines an infinitesimal symmetry. **Note, indeed only real values for the variables define actual symmetries**
-
-    Raises:
-        NA
-    """
-    def extractRIVar(arg1):
-        return sum([list(holToReal(j).atoms(sp.Symbol)) for j in arg1], [])
-    Akey = create_key(prefix='A',key_length=5)
-    Bkey = create_key(prefix='B',key_length=5)
-    VFLoc = addVF(
-        weightedHomogeneousVF(
-            arg2,
-            arg4,
-            arg3,
-            Akey,
-            _tempVar=retrieve_passkey(),
-            degreeCap=degreeCap,
-            assumeReal=True,
-        ),
-        scaleVF(sp.I,weightedHomogeneousVF(
-                arg2,
-                arg4,
-                arg3,
-                Bkey,
-                _tempVar=retrieve_passkey(),
-                degreeCap=degreeCap,
-                assumeReal=True,
-            ),
-        ),
-    )
-    tanObst = tangencyObstruction(VFLoc, arg1, arg5, simplify=simplify)
-    varLoc = tanObst.atoms(sp.Symbol)
-    varLoc1 = {j for j in varLoc}
-    varComp = set(extractRIVar(arg2))
-    varLoc.difference_update(varComp)
-    varLoc1.difference_update(varLoc)
-    varComp.difference_update(varLoc1)
-    variableProcedure(arg6, len(varLoc), assumeReal=True)
-    if applyNumer:
-        if varLoc1 == set():
-            varLoc1 = set(arg2)
-        coefList = sp.poly_from_expr(sp.expand(sp.numer(tanObst)), *varLoc1)[0].coeffs()
-        solutions = sp.solve(coefList, varLoc)
-    elif simplifyingFactor is None:
-        if varLoc1 == set():
-            varLoc1 = set(arg2)
-        coefList = sp.poly_from_expr(sp.expand(tanObst), *varLoc1)[0].coeffs()
-        solutions = sp.solve(coefList, varLoc)
-    else:
-        if varLoc1 == set():
-            varLoc1 = set(arg2)
-
-        coefList = sp.poly_from_expr(
-            sp.expand(simplify(symToReal(simplifyingFactor) * tanObst)), *varLoc1
-        )[0].coeffs()
-        solutions = sp.solve(coefList, varLoc)
-    if len(solutions) == 0:
-        if tanObst!=0:
-            clearVar(*listVar(temporary_only=True), report=False)
-            raise ValueError(f"no solution to this system: {coefList}")
-        else:
-            solutions=dict()
-    if type(solutions) is dict:
-        VFCLoc = [j.subs(solutions) for j in holVF_coeffs(VFLoc, arg2)]
-        subVar = sum(VFCLoc).atoms(sp.Symbol)
-        subVar.difference_update(set(arg2))
-        variableProcedure(arg6, len(subVar), assumeReal=True)
-        VFCLoc = [
-            j.subs(dict(zip(subVar, eval(arg6, _cached_caller_globals))))
-            for j in VFCLoc
-        ]
-        clearVar(*listVar(temporary_only=True), report=False)
-        if returnVectorFieldBasis:
-            VFListLoc = []
-            for j in eval(arg6, _cached_caller_globals):
-                VFCLocTemp = [
-                    k.subs(j, 1).subs(
-                        [(ll, 0) for ll in eval(arg6, _cached_caller_globals)]
-                    )
-                    for k in VFCLoc
-                ]
-                VFListLoc.append(assembleFromHolVFC(VFCLocTemp, arg2))
-            clearVar(arg6, report=False)
-            return VFListLoc, VFCLoc
-        else:
-            return VFCLoc
-    else:
-        VFCLoc = holVF_coeffs(VFLoc, arg2)
-        subVar = sum(VFCLoc).atoms(sp.Symbol)
-        subVar.difference_update(set(arg2))
-        variableProcedure(arg6, len(subVar), assumeReal=True)
-        VFCLoc = [
-            j.subs(dict(zip(subVar, eval(arg6, _cached_caller_globals))))
-            for j in VFCLoc
-        ]
-        clearVar(*listVar(temporary_only=True), report=False)
-        return VFCLoc, solutions
+    return out
 
 
 def findWeightedCRSymmetries(
@@ -311,218 +156,350 @@ def findWeightedCRSymmetries(
     coordinate_weights,
     symmetry_weight,
     graph_variable,
-    coeff_label = None,
-    degreeCap = 0,
-    returnVectorFieldBasis = False,
-    returnAllformats = False,
-    simplifyingFactor = None,
-    assume_polynomial = False,
-    simplify=False,
-    parameters = None
+    coeff_label=None,
+    degreeCap: int = 0,
+    returnVectorFieldBasis: bool = False,
+    returnAllformats: bool = False,
+    simplifyingFactor=None,
+    assume_polynomial: bool = False,
+    simplify: bool = False,
+    parameters=None,
 ):
-    """
-    """
-    if not isinstance(coordinate_weights[0],(list,tuple)):
+    if not coordinate_weights or not _is_sequence(coordinate_weights[0]):
         coordinate_weights = [coordinate_weights]
-    if not isinstance(symmetry_weight,(list,tuple)):
+    if not _is_sequence(symmetry_weight):
         symmetry_weight = [symmetry_weight]
-    if not len(symmetry_weight)==len(coordinate_weights):
-        raise KeyError('`findWeightedCRSymmetries` was given a tuple of weight systems whose length does not match the length of given symmetry weights to test for.')
+
+    weight_systems = list(coordinate_weights)
+    sym_weight_list = list(symmetry_weight)
+
+    if len(sym_weight_list) != len(weight_systems):
+        raise KeyError(
+            "`findWeightedCRSymmetries` requires one symmetry weight per weight system."
+        )
+
     if returnAllformats:
         returnVectorFieldBasis = True
-    vr = get_variable_registry()
-    cd = vr['conversion_dictionaries']
-    def extractRIVar(coordinate_list):
-        return set(sum([[cd['real_part'].get(var,var),cd['im_part'].get(var,var)] for var in coordinate_list], []))
-    VFLoc = addVF(
-        weightedHomogeneousVF(
-            holomorphic_coordinates,
-            symmetry_weight,
-            coordinate_weights,
-            "ALoc",
-            _tempVar=retrieve_passkey(),
-            degreeCap=degreeCap,
-            assumeReal=True,
-        ),
-        scaleVF(sp.I,weightedHomogeneousVF(
-                holomorphic_coordinates,
-                symmetry_weight,
-                coordinate_weights,
-                "BLoc",
-                _tempVar=retrieve_passkey(),
-                degreeCap=degreeCap,
-                assumeReal=True,
-            ),
-        ),
+
+    def _coord_ri_from_vmf(coords):
+        out = set()
+        for v in coords:
+            info = vmf_lookup(v, relatives=True)
+            if info.get("type") != "coordinate":
+                continue
+            rel = info.get("relatives") or {}
+            r = rel.get("real", None)
+            i = rel.get("imag", None)
+            if r is not None:
+                out.add(r)
+            if i is not None:
+                out.add(i)
+            if r is None and i is None:
+                out.add(v)
+        return out
+
+    vfA = weightedHomogeneousVF(
+        holomorphic_coordinates,
+        sym_weight_list,
+        weight_systems,
+        "ALoc",
+        _tempVar=retrieve_passkey(),
+        degreeCap=degreeCap,
+        assumeReal=True,
     )
-    tanObst = tangencyObstruction(VFLoc, graph_function, graph_variable, simplify=simplify)
-    varLoc = set() 
-    for TO in tanObst:
-        varLoc|=TO.atoms(sp.Symbol)
-    varLoc1 = varLoc.copy()
-    varComp = extractRIVar(holomorphic_coordinates)
-    varLoc.difference_update(varComp)
-    varLoc1.difference_update(varLoc)
-    varComp.difference_update(varLoc1)
-    if coeff_label is None:
-        coeff_label = create_key(prefix='X',key_length=5)
-    variableProcedure(coeff_label, len(varLoc), assumeReal=True)
-    # if simplifyingFactor is not None and assume_polynomial is not True:
-    #     assume_polynomial = True
-    #     terms = tanObst.as_ordered_terms() if isinstance(tanObst, sp.Add) else [tanObst]
-    #     new_terms = []
-    #     for term in terms:
-    #         num, den = term.as_numer_denom()
-    #         den_sq = den**2
-    #         midCheck = None
-    #         if isinstance(den_sq,numbers.Number):
-    #             new_terms.append(num * (simplifyingFactor**2))
-    #         else:
-    #             midCheck = sp.simplify(den_sq/simplifyingFactor)
-    #         if midCheck is not None:
-    #             if isinstance(midCheck,numbers.Number):
-    #                 new_terms.append(num * den)
-    #             elif isinstance(sp.simplify(midCheck/simplifyingFactor**2),numbers.Number):
-    #                 new_terms.append(num)
-    #         else:
-    #             print("│ simplifyingFactor fails to enable the optimization algorithm... using fallback")
-    #             assume_polynomial = False
-    #             break
-    #     if assume_polynomial is True:
-    #         tanObst = sum(new_terms)
+    vfB = weightedHomogeneousVF(
+        holomorphic_coordinates,
+        sym_weight_list,
+        weight_systems,
+        "BLoc",
+        _tempVar=retrieve_passkey(),
+        degreeCap=degreeCap,
+        assumeReal=True,
+    )
 
-    if not assume_polynomial:
-        if varLoc1 == set():
-            varLoc1 = set(holomorphic_coordinates)
-        coefList=[]
-        for TO in tanObst:
-            numer = sp.cancel(TO).as_numer_denom()[0]
-            coefList += list(sp.poly_from_expr(sp.expand(numer), *varLoc1)[0].coeffs())
-            # coefList = sp.poly_from_expr(sp.expand(sp.numer(tanObst)), *varLoc1)[0].coeffs()
-        solutions = solve_dgcv(coefList, varLoc, method="auto")
-    else:
-        if varLoc1 == set():
-            varLoc1 = set(holomorphic_coordinates)
-        coefList=[]
-        for TO in tanObst:
-            coefList += list(sp.poly_from_expr(sp.expand(TO), *varLoc1)[0].coeffs())
-        solutions = solve_dgcv(coefList, varLoc, method="auto")
-    if len(solutions) == 0:
-        if set(tanObst)!={0}:
-            clearVar(*listVar(temporary_only=True), report=False)
-            raise ValueError(f"no solution to this system: {coefList}")
-        else:
-            solutions=dict()
-            VFCLoc = [0 for _ in holomorphic_coordinates]
-    else:
-        if isinstance(solutions,(list,tuple)):
-            solutions = solutions[0]
-        VFCLoc = [j.subs(solutions) for j in holVF_coeffs(VFLoc, holomorphic_coordinates)]
+    vf_candidate_holo = vfA + imag_unit() * vfB
 
-    subVar = set()
-    for term in VFCLoc:
-        if hasattr(term, 'atoms'):
-            subVar |= term.atoms(sp.Symbol)
-    subVar.difference_update(set(holomorphic_coordinates))
+    tan_obst_list = tangencyObstruction(
+        vf_candidate_holo,
+        graph_function,
+        graph_variable,
+        simplify=simplify,
+    )
+
+    free = get_free_symbols
+    unwrap = _unwrap_symbolic
+
+    var_all = set()
+    for TO in tan_obst_list:
+        var_all.update(free(unwrap(TO)))
+
+    coord_ri = _coord_ri_from_vmf(holomorphic_coordinates)
+
+    unknowns = set(var_all) - set(coord_ri)
     if parameters is not None:
-        subVar.difference_update(set(parameters))
-    variableProcedure(coeff_label, len(subVar), assumeReal=True)
-    coeff_vars = _cached_caller_globals[coeff_label]
-    VFCLoc = [j.subs(dict(zip(subVar, coeff_vars))) if hasattr(j,'subs') else j for j in VFCLoc]
-    clearVar(*listVar(temporary_only=True), report=False)
-    if returnVectorFieldBasis:
-        VFListLoc = []
-        for j in coeff_vars:
-            VFCLocTemp = [k.subs(j, 1).subs([(ll, 0) for ll in coeff_vars]) for k in VFCLoc]
-            VFListLoc.append(assembleFromHolVFC(VFCLocTemp, holomorphic_coordinates))
-        clearVar(coeff_label, report=False)
-        if returnAllformats:
-            return VFCLoc,VFListLoc
-        return VFListLoc
-    else:
-        return VFCLoc
+        unknowns -= set(parameters)
 
+    if coeff_label is None:
+        coeff_label = create_key(prefix="X", key_length=5)
 
+    unknowns_t = _stable_tuple(unknowns)
 
+    graph_vars = _as_list(graph_variable)
+    poly_gens_vars = _stable_tuple(list(coord_ri) + list(graph_vars))
 
-def model2Nondegenerate(arg1, arg2, arg3, arg4, return_matrices=False, simplify=True):
-    """
-    Builds the defining equation for a 2-nondegnerate model hypersurface using the general formula from the arXiv preprint arXiv:2404.06525.
-
-    Args:
-        arg1: nondegenerate s-by-s hermitian matrix
-        arg2: s-by-s symmetric matrix valued function of some complex variables whose differential at zero is injective, and whose value at zero is zero.
-        arg3: a length s tuple of complex variables, different from those appearing in *arg2*
-        arg4: a single complex variable, different from those appearing in *arg2* and *arg3*
-
-    Returns:
-        A sympy expression. Setting this expression equal to zero defines the 2-nondegenerate model.
-
-    Raises:
-        NA
-    """
-
-    def format_mat(mat):
-        if isinstance(mat,(tuple,list)):
-            if all(isinstance(elem,(tuple,list)) for elem in mat):
-                if len(set(len(elem) for elem in mat))==1:
-                    mat = sp.Matrix(mat)
-        if isinstance(mat,sp.Matrix):
-            return mat
-        else:
-            raise TypeError('`model2Nondegenerate` expects first to arguments to be array-like data.')
-
-    arg1 = format_mat(arg1)
-    arg2 = format_mat(arg2)
-    def simplify_rules(expr):
-        if simplify:
-            return sp.simplify(expr)
-        else:
-            return expr
-    BARSLoc = sp.conjugate(arg2)
-    zVecLoc = sp.Matrix(arg3)
-    bzVecLoc = sp.Matrix([sp.conjugate(j) for j in arg3])
-    sizeLoc = arg1.shape[0]
-    hFun = (sp.Rational(1, 2)) * (
-        (arg1 * (sp.eye(sizeLoc) - (BARSLoc * sp.Transpose(arg1) * arg2 * arg1)) ** (-1))
-        + ((sp.eye(sizeLoc) - (arg1 * BARSLoc * sp.Transpose(arg1) * arg2)) ** (-1) * arg1)
-    )
-    sFun = (
-        arg1
-        * ((sp.eye(sizeLoc) - (BARSLoc * sp.Transpose(arg1) * arg2 * arg1)) ** (-1))
-        * BARSLoc
-        * sp.Transpose(arg1)
-    )
-    bsFun = (
-        sp.Transpose(arg1)
-        * ((sp.eye(sizeLoc) - (arg2 * arg1 * BARSLoc * sp.Transpose(arg1))) ** (-1))
-        * arg2
-        * arg1
-    )
-    if return_matrices:
-        return (
-            simplify_rules(
-                (
-                    sp.Transpose(zVecLoc) * hFun * bzVecLoc
-                    + (sp.Rational(1, 2))
-                    * (
-                        sp.Transpose(zVecLoc) * sFun * zVecLoc
-                        + sp.Transpose(bzVecLoc) * bsFun * bzVecLoc
-                    )
-                )[0]
-            )
-            - sp.im(arg4),
-            hFun,
-            sFun,
+    coef_eqns = []
+    for TO in tan_obst_list:
+        expr = unwrap(TO)
+        expr = allToReal(expr)
+        if not assume_polynomial:
+            expr = as_numer_denom(cancel(expr))[0]
+        expr = expand(expr)
+        P = (
+            expr
+            if query_dgcv_categories(expr, "polynomial")
+            else polynomial_dgcv(expr, poly_gens_vars)
         )
-    else:
-        return simplify_rules(
-            (
-                sp.Transpose(zVecLoc) * hFun * bzVecLoc
-                + (sp.Rational(1, 2))
-                * (
-                    sp.Transpose(zVecLoc) * sFun * zVecLoc
-                    + sp.Transpose(bzVecLoc) * bsFun * bzVecLoc
-                )
-            )[0]
-        ) - sp.im(arg4)
+        coef_eqns.extend([allToReal(c) for c in P.get_coeffs(format="unformatted")])
+
+    solutions = solve_dgcv(coef_eqns, unknowns_t, method="linsolve")
+
+    if not solutions:
+        if len(tan_obst_list) == 0 or all(
+            _scalar_is_zero(unwrap(x)) for x in tan_obst_list
+        ):
+            clearVar(*listVar(temporary_only=True), report=False)
+            if not returnVectorFieldBasis:
+                return [0 for _ in holomorphic_coordinates]
+            if returnAllformats:
+                return [0 for _ in holomorphic_coordinates], []
+            return []
+        clearVar(*listVar(temporary_only=True), report=False)
+        raise ValueError(
+            "findWeightedCRSymmetries: no solution to the coefficient system."
+        )
+
+    sol = solutions[0] if isinstance(solutions, (list, tuple)) else solutions
+
+    vf_solved = subs(vf_candidate_holo, sol)
+
+    VFCLoc = holVF_coeffs(vf_solved, holomorphic_coordinates)
+
+    sub_syms = set()
+    for term in VFCLoc:
+        sub_syms.update(free(unwrap(term)))
+
+    sub_syms -= set(holomorphic_coordinates)
+    sub_syms -= set(coord_ri)
+    if parameters is not None:
+        sub_syms.difference_update(parameters)
+
+    if not sub_syms:
+        clearVar(*listVar(temporary_only=True), report=False)
+        if not returnVectorFieldBasis:
+            return VFCLoc
+        if returnAllformats:
+            return VFCLoc, []
+        return []
+
+    sub_syms_t = _stable_tuple(sub_syms)
+
+    created = variableProcedure(
+        coeff_label,
+        len(sub_syms_t),
+        assumeReal=True,
+        return_created_object=True,
+    )
+    coeff_vars = tuple(created[0]) if created else ()
+
+    repl = dict(zip(sub_syms_t, coeff_vars))
+    vf_param = subs(vf_solved, repl)
+
+    clearVar(*listVar(temporary_only=True), report=False)
+
+    if not returnVectorFieldBasis:
+        return holVF_coeffs(vf_param, holomorphic_coordinates)
+
+    zeroing = {w: 0 for w in coeff_vars}
+    VF_basis = []
+    for v in coeff_vars:
+        d = dict(zeroing)
+        d[v] = 1
+        VF_basis.append(subs(vf_param, d))
+
+    clearVar(coeff_label, report=False)
+
+    if returnAllformats:
+        return holVF_coeffs(vf_param, holomorphic_coordinates), VF_basis
+    return VF_basis
+
+
+def model2Nondegenerate(
+    hermitian_matrix: Any,
+    symmetric_matrix_function: Any,
+    base_coordinates: Sequence[Any],
+    transverse_coordinate: Any,
+    return_matrices: bool = False,
+    simplify: bool = True,
+):
+    mod = _sym_engine_module()
+
+    def _simp(x: Any) -> Any:
+        return simplify_dgcv(x) if simplify else x
+
+    def _as_md(mat: Any):
+        if query_dgcv_categories(mat, {"matrix"}):
+            return mat
+        try:
+            return matrix_dgcv(mat)
+        except Exception:
+            pass
+
+        if hasattr(mod, "Matrix"):
+            try:
+                return matrix_dgcv(mod.Matrix(mat))
+            except Exception:
+                pass
+        if hasattr(mod, "matrix"):
+            try:
+                return matrix_dgcv(mod.matrix(mat))
+            except Exception:
+                pass
+        raise TypeError("`model2Nondegenerate` expects array-like matrix data.")
+
+    def _eye(n: int):
+        try:
+            return matrix_dgcv(
+                [[1 if i == j else 0 for j in range(n)] for i in range(n)]
+            )
+        except Exception:
+            pass
+        if hasattr(mod, "eye"):
+            return mod.eye(n)
+        if hasattr(mod, "eye_matrix"):
+            return mod.eye_matrix(n)
+        if hasattr(mod, "identity_matrix"):
+            return mod.identity_matrix(n)
+        if hasattr(mod, "Identity"):
+            return mod.Identity(n)
+        raise TypeError("No identity matrix constructor available.")
+
+    def _T(M: Any):
+        t = getattr(M, "T", None)
+        if t is not None:
+            return t() if callable(t) else t
+        tr = getattr(M, "transpose", None)
+        if callable(tr):
+            return tr()
+        if hasattr(mod, "transpose"):
+            return mod.transpose(M)
+        raise TypeError("Matrix transpose not supported for this object.")
+
+    def _inv(M: Any):
+        inv = getattr(M, "inv", None)
+        if callable(inv):
+            return inv()
+        try:
+            return M ** (-1)
+        except Exception:
+            pass
+        inv2 = getattr(M, "inverse", None)
+        if callable(inv2):
+            return inv2()
+        raise TypeError("Matrix inversion not supported for this object.")
+
+    def _mat_conj(M: Any):
+        if query_dgcv_categories(M, {"matrix"}):
+            return M.apply(conjugate, in_place=False, skip_none=True)
+        try:
+            return conjugate(M)
+        except Exception:
+            pass
+        raise TypeError("Matrix conjugation not supported for this object.")
+
+    A = _as_md(hermitian_matrix)
+    S = _as_md(symmetric_matrix_function)
+
+    shp = getattr(A, "shape", None)
+    if not (isinstance(shp, tuple) and len(shp) == 2 and shp[0] == shp[1]):
+        raise TypeError("`hermitian_matrix` must be square.")
+    n = int(shp[0])
+
+    Iden = _eye(n)
+    BARS = _mat_conj(S)
+
+    zVec = matrix_dgcv([[v] for v in base_coordinates])
+    bzVec = matrix_dgcv([[conjugate(v)] for v in base_coordinates])
+
+    half = mod.Rational(1, 2) if hasattr(mod, "Rational") else (1 / 2)
+
+    At = _T(A)
+    zt = _T(zVec)
+    bzt = _T(bzVec)
+
+    M1 = Iden - (BARS * At * S * A)
+    M2 = Iden - (A * BARS * At * S)
+
+    hFun = half * (A * _inv(M1) + _inv(M2) * A)
+    sFun = A * _inv(M1) * BARS * At
+    bsFun = At * _inv(Iden - (S * A * BARS * At)) * S * A
+
+    expr = (zt * hFun * bzVec)[0, 0] + half * (
+        (zt * sFun * zVec)[0, 0] + (bzt * bsFun * bzVec)[0, 0]
+    )
+
+    result = _simp(expr) - im(transverse_coordinate)
+
+    if return_matrices:
+        return result, hFun, sFun
+    return result
+
+
+# -----------------------------------------------------------------------------
+# utilities
+# -----------------------------------------------------------------------------
+def _sym_engine_module():
+    return engine_module()
+
+
+def _is_sequence(x: Any) -> bool:
+    return isinstance(x, (list, tuple))
+
+
+def _as_list(x: Any) -> List[Any]:
+    return list(x) if _is_sequence(x) else [x]
+
+
+def _stable_tuple(seq: Iterable[Any]) -> Tuple[Any, ...]:
+    out: List[Any] = []
+    seen = set()
+    for x in seq:
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return tuple(out)
+
+
+def _unwrap_symbolic(obj: Any) -> Any:
+    if obj is None:
+        return obj
+
+    f = getattr(obj, "as_expr", None)
+    if callable(f):
+        try:
+            return f()
+        except TypeError:
+            return f
+
+    for attr in ("polyExpr", "_polyExpr", "expr", "_expr"):
+        if hasattr(obj, attr):
+            return getattr(obj, attr)
+
+    P = getattr(obj, "poly_obj_unformatted", None)
+    if P is not None and hasattr(P, "as_expr"):
+        try:
+            return P.as_expr()
+        except Exception:
+            pass
+
+    return obj

@@ -1,6 +1,25 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+module: styles
+
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
+
+License:
+    MIT License
+"""
+
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
 import random
 import warnings
 
+__all__ = ["get_dgcv_themes"]
+
+
+# -----------------------------------------------------------------------------
+# body
+# -----------------------------------------------------------------------------
 # Base styles shared across all themes
 base_style = {
     "header": {
@@ -897,34 +916,37 @@ style_guide = {
         "header": {
             "props": [
                 ("background-color", "#4B0082"),  # Deep indigo
-                ("color", "#FFDAB9"),             # Soft peach for header text
+                ("color", "#FFDAB9"),  # Soft peach for header text
                 ("font-family", "Georgia, serif"),
                 ("font-size", "20px"),
             ]
         },
         "col_heading": {
             "props": [
-                ("background-color", "#FF4500"),  # Vibrant orange-red for column headings
-                ("color", "#FFF5EE"),             # Seashell white text for contrast
+                (
+                    "background-color",
+                    "#FF4500",
+                ),  # Vibrant orange-red for column headings
+                ("color", "#FFF5EE"),  # Seashell white text for contrast
                 ("font-size", "22px"),
             ]
         },
         "row_heading": {
             "props": [
                 ("background-color", "#800080"),  # Rich purple for row headings
-                ("color", "#FFDAB9"),             # Soft peach text
+                ("color", "#FFDAB9"),  # Soft peach text
             ]
         },
         "row": {
             "props": [
                 ("background-color", "#FFDEAD"),  # Navajo white for rows
-                ("color", "#4B0082"),             # Deep indigo text for readability
+                ("color", "#4B0082"),  # Deep indigo text for readability
             ]
         },
         "alt_row": {
             "props": [
                 ("background-color", "#FFE4B5"),  # Moccasin for alternate rows
-                ("color", "#4B0082"),             # Deep indigo text
+                ("color", "#4B0082"),  # Deep indigo text
             ]
         },
         "hover": {
@@ -998,11 +1020,13 @@ style_guide = {
         },
     },
     "sci_fi_green": {
-        "table": {"props": [("border", "2px solid #39FF14")]},  # Hologram-like neon green border
+        "table": {
+            "props": [("border", "2px solid #39FF14")]
+        },  # Hologram-like neon green border
         "header": {
             "props": [
                 ("background-color", "#001f00"),  # Very dark green/black background
-                ("color", "#39FF14"),             # Neon green text
+                ("color", "#39FF14"),  # Neon green text
                 ("font-family", "Orbitron, sans-serif"),
                 ("font-size", "20px"),
             ]
@@ -1029,11 +1053,13 @@ style_guide = {
         },
     },
     "sci_fi_magenta": {
-        "table": {"props": [("border", "2px solid #FF00FF")]},  # Hologram-like magenta border
+        "table": {
+            "props": [("border", "2px solid #FF00FF")]
+        },  # Hologram-like magenta border
         "header": {
             "props": [
                 ("background-color", "#300033"),  # Dark purple background
-                ("color", "#FF00FF"),             # Vivid magenta text
+                ("color", "#FF00FF"),  # Vivid magenta text
                 ("font-family", "Orbitron, sans-serif"),
                 ("font-size", "20px"),
             ]
@@ -1060,11 +1086,16 @@ style_guide = {
         },
     },
     "sci_fi_orange": {
-        "table": {"props": [("border", "2px solid #FFA500")]},  # Hologram-like orange border
+        "table": {
+            "props": [("border", "2px solid #FFA500")]
+        },  # Hologram-like orange border
         "header": {
             "props": [
-                ("background-color", "#331900"),  # Deep, dark brownish-orange background
-                ("color", "#FFA500"),             # Bright orange text
+                (
+                    "background-color",
+                    "#331900",
+                ),  # Deep, dark brownish-orange background
+                ("color", "#FFA500"),  # Bright orange text
                 ("font-family", "Orbitron, sans-serif"),
                 ("font-size", "20px"),
             ]
@@ -1223,7 +1254,10 @@ style_guide = {
             ]
         },
         "row_heading": {
-            "props": [("background-color", "#3c3836"), ("color", "#7daea3")],  # Gruvbox blue
+            "props": [
+                ("background-color", "#3c3836"),
+                ("color", "#7daea3"),
+            ],  # Gruvbox blue
         },
         "row": {
             "props": [
@@ -1233,7 +1267,10 @@ style_guide = {
         },
         "alt_row": {
             "props": [
-                ("background-color", "#282828"),  # Gruvbox medium-dark for alternate rows
+                (
+                    "background-color",
+                    "#282828",
+                ),  # Gruvbox medium-dark for alternate rows
                 ("color", "#a9b665"),  # Gruvbox green for alternate text
             ]
         },
@@ -1241,13 +1278,18 @@ style_guide = {
             "props": [
                 ("background-color", "#3c3836"),  # Gruvbox medium-dark for hover
                 ("color", "#7daea3"),  # Gruvbox blue/cyan for brighter text on hover
-                ("box-shadow", "0 0 10px rgba(125, 174, 163, 0.5)"),  # Blue shadow to match text color
+                (
+                    "box-shadow",
+                    "0 0 10px rgba(125, 174, 163, 0.5)",
+                ),  # Blue shadow to match text color
                 ("transform", "scale(1.01)"),
             ]
         },
     },
     "gruvbox_light": {
-        "table": {"props": [("border", "2px solid #a9b665")]},  # Gruvbox green for borders
+        "table": {
+            "props": [("border", "2px solid #a9b665")]
+        },  # Gruvbox green for borders
         "header": {
             "props": [
                 ("background-color", "#f9f5d7"),  # Gruvbox light-muted
@@ -1264,10 +1306,17 @@ style_guide = {
             ]
         },
         "row_heading": {
-            "props": [("background-color", "#fbf1c7"), ("color", "#7daea3")],  # Gruvbox blue
+            "props": [
+                ("background-color", "#fbf1c7"),
+                ("color", "#7daea3"),
+            ],  # Gruvbox blue
         },
-        "row": {"props": [("background-color", "#fbf1c7"), ("color", "#665c54")]},  # Gruvbox muted text
-        "alt_row": {"props": [("background-color", "#f2e5bc"), ("color", "#928374")]},  # Muted alternate rows
+        "row": {
+            "props": [("background-color", "#fbf1c7"), ("color", "#665c54")]
+        },  # Gruvbox muted text
+        "alt_row": {
+            "props": [("background-color", "#f2e5bc"), ("color", "#928374")]
+        },  # Muted alternate rows
         "hover": {
             "props": [
                 ("background-color", "#a9b665"),  # Gruvbox green for hover
@@ -1295,10 +1344,17 @@ style_guide = {
             ]
         },
         "row_heading": {
-            "props": [("background-color", "#a9b665"), ("color", "#202020")],  # Gruvbox green
+            "props": [
+                ("background-color", "#a9b665"),
+                ("color", "#202020"),
+            ],  # Gruvbox green
         },
-        "row": {"props": [("background-color", "#89b482"), ("color", "#282828")]},  # Gruvbox cyan
-        "alt_row": {"props": [("background-color", "#7daea3"), ("color", "#282828")]},  # Gruvbox aqua
+        "row": {
+            "props": [("background-color", "#89b482"), ("color", "#282828")]
+        },  # Gruvbox cyan
+        "alt_row": {
+            "props": [("background-color", "#7daea3"), ("color", "#282828")]
+        },  # Gruvbox aqua
         "hover": {
             "props": [
                 ("background-color", "#d3869b"),  # Gruvbox magenta for hover
@@ -1493,7 +1549,7 @@ style_guide = {
         "header": {
             "props": [
                 ("background-color", "#2E8B57"),  # SeaGreen for header
-                ("color", "#F0F8FF"),          # AliceBlue text
+                ("color", "#F0F8FF"),  # AliceBlue text
                 ("font-family", "Georgia, serif"),
                 ("font-size", "18px"),
             ]
@@ -1501,7 +1557,7 @@ style_guide = {
         "col_heading": {
             "props": [
                 ("background-color", "#4682B4"),  # SteelBlue for column headings
-                ("color", "#F0F8FF"),               # AliceBlue text
+                ("color", "#F0F8FF"),  # AliceBlue text
                 ("font-size", "16px"),
             ]
         },
@@ -1514,13 +1570,13 @@ style_guide = {
         "row": {
             "props": [
                 ("background-color", "#B0E0E6"),  # PowderBlue for rows
-                ("color", "#2F4F4F"),              # DarkSlateGray text
+                ("color", "#2F4F4F"),  # DarkSlateGray text
             ]
         },
         "alt_row": {
             "props": [
                 ("background-color", "#AFEEEE"),  # PaleTurquoise for alternate rows
-                ("color", "#2F4F4F"),              # DarkSlateGray text
+                ("color", "#2F4F4F"),  # DarkSlateGray text
             ]
         },
         "hover": {
@@ -1533,7 +1589,9 @@ style_guide = {
         },
     },
     "turtle_shell": {
-        "table": {"props": [("border", "2px solid #556b2f")]},  # Olive-green border reminiscent of a turtle's shell
+        "table": {
+            "props": [("border", "2px solid #556b2f")]
+        },  # Olive-green border reminiscent of a turtle's shell
         "header": {
             "props": [
                 ("background-color", "#6b8e23"),  # Earthy green background
@@ -1577,7 +1635,9 @@ style_guide = {
         },
     },
     "sourdough": {
-        "table": {"props": [("border", "2px solid #d2a679")]},  # Warm, baked crust border
+        "table": {
+            "props": [("border", "2px solid #d2a679")]
+        },  # Warm, baked crust border
         "header": {
             "props": [
                 ("background-color", "#f4e1d2"),  # Soft, floury background
@@ -1588,7 +1648,10 @@ style_guide = {
         },
         "col_heading": {
             "props": [
-                ("background-color", "#e6d0b3"),  # Warm mid-tone reminiscent of a well-baked loaf
+                (
+                    "background-color",
+                    "#e6d0b3",
+                ),  # Warm mid-tone reminiscent of a well-baked loaf
                 ("color", "#8b5a2b"),
                 ("font-size", "16px"),
             ]
@@ -1665,11 +1728,13 @@ style_guide = {
         },
     },
     "too_much": {
-        "table": {"props": [("border", "2px dashed #FF4500")]},  # Bold orange dashed border
+        "table": {
+            "props": [("border", "2px dashed #FF4500")]
+        },  # Bold orange dashed border
         "header": {
             "props": [
                 ("background-color", "#000000"),  # Black background
-                ("color", "#FF4500"),             # Vibrant orange text
+                ("color", "#FF4500"),  # Vibrant orange text
                 ("font-family", "Impact, sans-serif"),
                 ("font-size", "20px"),
             ]
@@ -1677,7 +1742,7 @@ style_guide = {
         "col_heading": {
             "props": [
                 ("background-color", "#FF4500"),  # Orange for column headings
-                ("color", "#000000"),             # Black text
+                ("color", "#000000"),  # Black text
                 ("font-size", "18px"),
             ]
         },
@@ -1690,7 +1755,7 @@ style_guide = {
         "row": {
             "props": [
                 ("background-color", "#1a1a1a"),  # Dark gray for rows
-                ("color", "#FFFFFF"),             # White text
+                ("color", "#FFFFFF"),  # White text
             ]
         },
         "alt_row": {
@@ -1709,11 +1774,13 @@ style_guide = {
         },
     },
     "purples": {
-        "table": {"props": [("border", "2px dashed #6A5ACD")]},  # SlateBlue dashed border
+        "table": {
+            "props": [("border", "2px dashed #6A5ACD")]
+        },  # SlateBlue dashed border
         "header": {
             "props": [
                 ("background-color", "#2D2B55"),  # Dark blue/purple background
-                ("color", "#E6E6FA"),             # Soft lavender text
+                ("color", "#E6E6FA"),  # Soft lavender text
                 ("font-family", "Impact, sans-serif"),
                 ("font-size", "20px"),
             ]
@@ -1721,7 +1788,7 @@ style_guide = {
         "col_heading": {
             "props": [
                 ("background-color", "#6A5ACD"),  # SlateBlue for column headings
-                ("color", "#2D2B55"),             # Dark blue text for contrast
+                ("color", "#2D2B55"),  # Dark blue text for contrast
                 ("font-size", "18px"),
             ]
         },
@@ -1734,12 +1801,15 @@ style_guide = {
         "row": {
             "props": [
                 ("background-color", "#3F3F7A"),  # Muted indigo for rows
-                ("color", "#F5F5F5"),             # Light, off-white text
+                ("color", "#F5F5F5"),  # Light, off-white text
             ]
         },
         "alt_row": {
             "props": [
-                ("background-color", "#4A4A8A"),  # Slightly lighter indigo for alternate rows
+                (
+                    "background-color",
+                    "#4A4A8A",
+                ),  # Slightly lighter indigo for alternate rows
                 ("color", "#F5F5F5"),
             ]
         },
@@ -1757,7 +1827,7 @@ style_guide = {
         "header": {
             "props": [
                 ("background-color", "#005F73"),  # Deep teal for header background
-                ("color", "#EDF6F9"),             # Off-white text for contrast
+                ("color", "#EDF6F9"),  # Off-white text for contrast
                 ("font-family", "Helvetica, sans-serif"),
                 ("font-size", "20px"),
             ]
@@ -1765,7 +1835,7 @@ style_guide = {
         "col_heading": {
             "props": [
                 ("background-color", "#00A8E8"),  # Vibrant blue for column headings
-                ("color", "#005F73"),             # Matching deep teal text
+                ("color", "#005F73"),  # Matching deep teal text
                 ("font-size", "18px"),
             ]
         },
@@ -1778,18 +1848,24 @@ style_guide = {
         "row": {
             "props": [
                 ("background-color", "#CAF0F8"),  # Light, refreshing blue for rows
-                ("color", "#023047"),             # Dark blue text for readability
+                ("color", "#023047"),  # Dark blue text for readability
             ]
         },
         "alt_row": {
             "props": [
-                ("background-color", "#ADE8F4"),  # Slightly different blue for alternate rows
+                (
+                    "background-color",
+                    "#ADE8F4",
+                ),  # Slightly different blue for alternate rows
                 ("color", "#023047"),
             ]
         },
         "hover": {
             "props": [
-                ("background-color", "#90E0EF"),  # Brighter blue on hover for a dynamic feel
+                (
+                    "background-color",
+                    "#90E0EF",
+                ),  # Brighter blue on hover for a dynamic feel
                 ("color", "#023047"),
                 ("box-shadow", "0 0 10px rgba(0, 168, 232, 0.5)"),
                 ("transform", "scale(1.02)"),
@@ -1801,7 +1877,7 @@ style_guide = {
         "header": {
             "props": [
                 ("background-color", "#B87333"),  # Brass background
-                ("color", "#FFF8DC"),             # Soft cream text (Cornsilk)
+                ("color", "#FFF8DC"),  # Soft cream text (Cornsilk)
                 ("font-family", "Georgia, serif"),
                 ("font-size", "20px"),
             ]
@@ -1809,7 +1885,7 @@ style_guide = {
         "col_heading": {
             "props": [
                 ("background-color", "#A97142"),  # Slightly darker brass tone
-                ("color", "#FFF8DC"),             # Creamy text for contrast
+                ("color", "#FFF8DC"),  # Creamy text for contrast
                 ("font-size", "22px"),
             ]
         },
@@ -1822,7 +1898,7 @@ style_guide = {
         "row": {
             "props": [
                 ("background-color", "#D2B48C"),  # Tan background for rows
-                ("color", "#4B3621"),             # Dark brown text for readability
+                ("color", "#4B3621"),  # Dark brown text for readability
             ]
         },
         "alt_row": {
@@ -1858,7 +1934,10 @@ style_guide = {
             ]
         },
         "row_heading": {
-            "props": [("background-color", "#24283b"), ("color", "#a9b1d6")],  # accent blue
+            "props": [
+                ("background-color", "#24283b"),
+                ("color", "#a9b1d6"),
+            ],  # accent blue
         },
         "row": {
             "props": [
@@ -1876,70 +1955,83 @@ style_guide = {
             "props": [
                 ("background-color", "#2f3549"),  # medium-dark blue for hover
                 ("color", "#7dcfff"),  # blue/cyan for brighter text on hover
-                ("box-shadow", "0 0 10px rgba(125, 207, 255, 0.5)"),  # Blue shadow to match text color
-                ("transform", "scale(1.005)")
+                (
+                    "box-shadow",
+                    "0 0 10px rgba(125, 207, 255, 0.5)",
+                ),  # Blue shadow to match text color
+                ("transform", "scale(1.005)"),
             ]
         },
-        "inner": {
-            "props": [
-                ("border-right", "1px solid #c0caf5")
-            ]
-        },
+        "inner": {"props": [("border-right", "1px solid #c0caf5")]},
     },
 }
+
 
 def get_DGCV_themes():
     warnings.warn(
         "`get_DGCV_themes` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
         "It will be removed in 2026. Please use `get_dgcv_themes` instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     return get_dgcv_themes()
+
+
 def get_dgcv_themes():
     """Returns a list of available theme names (keys) from the style_guide dictionary."""
     return sorted(style_guide.keys())
 
 
-dgcv_display_theme = 'dark'
-def _set_dgcv_default_theme(theme:str):
+dgcv_display_theme = "dark"
+
+
+def _set_dgcv_default_theme(theme: str):
     global dgcv_display_theme
     dgcv_display_theme = theme
+
 
 def get_style(theme_name):
     """
     Retrieve the style properties for the given theme name in the required format.
     """
-    if theme_name == 'random':
+    if theme_name == "random":
         theme_name = random.choice(list(style_guide.keys()))
         from ._settings import get_dgcv_settings_registry
-        if get_dgcv_settings_registry().get('DEBUG',False) is True:
-            print(f'theme name: {theme_name}')
-            print('=============================')
-    if theme_name == 'chalkboard':
-        theme_name = random.choice([
-            "chalkboard_green", "chalkboard_blue", "chalkboard_red",
-            "chalkboard_black", "chalkboard_teal", "chalkboard_yellow"
-        ])
-    if theme_name == 'gruv':
-        theme_name = random.choice([
-            "gruvbox_dark", "gruvbox_colorful", "gruvbox_light"
-        ])
-    if theme_name == 'dark':
-        theme_name = random.choice([
-            "gruvbox_dark", "dark_high_contrast_bright", 'dark_blue',
-            'dark_high_contrast', 'dark_high_contrast_bright',
-            'dark_modern', 'dark_moody', 'dark_purple'
-        ])
+
+        if get_dgcv_settings_registry().get("DEBUG", False) is True:
+            print(f"theme name: {theme_name}")
+            print("=============================")
+    if theme_name == "chalkboard":
+        theme_name = random.choice(
+            [
+                "chalkboard_green",
+                "chalkboard_blue",
+                "chalkboard_red",
+                "chalkboard_black",
+                "chalkboard_teal",
+                "chalkboard_yellow",
+            ]
+        )
+    if theme_name == "gruv":
+        theme_name = random.choice(
+            ["gruvbox_dark", "gruvbox_colorful", "gruvbox_light"]
+        )
+    if theme_name == "dark":
+        theme_name = "dark_modern"
     if theme_name not in style_guide:
-        theme_name = random.choice([
-            "gruvbox_dark", "gruvbox_colorful", "chalkboard_teal",
-            "chalkboard_black", "blueprint"
-        ])
+        theme_name = random.choice(
+            [
+                "gruvbox_dark",
+                "gruvbox_colorful",
+                "chalkboard_teal",
+                "chalkboard_black",
+                "blueprint",
+            ]
+        )
 
     theme = style_guide[theme_name]
 
-    # Map the refactored keys back to selectors
+    # Map formatted keys back to selectors
     selector_mapping = {
         "table": "table",
         "header": "thead th",

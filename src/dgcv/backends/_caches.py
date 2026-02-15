@@ -1,56 +1,69 @@
-import numbers
+from ._types_and_constants import (
+    expr_numeric_types as _get_expr_num_types,  # noqa: F401
+)
+from ._types_and_constants import (
+    expr_types as _get_expr_types,  # noqa: F401
+)
+from ._types_and_constants import (
+    fast_scalar_types as _get_fast_scalar_types,  # noqa: F401
+)
+from ._types_and_constants import (
+    is_atomic as _is_atomic,  # noqa: F401
+)
 
-import sympy as sp
+# import numbers
 
-from ._sage_backend import get_sage_module, is_sage_available
+# import sympy as sp
 
-_expr_types_cache = None
-_expr_numeric_types = None
-_fast_scalar_types = None
-_atomic_predicate = None
+# from ._sage_backend import get_sage_module, is_sage_available
 
-def _get_expr_types():
-    global _expr_types_cache
-    if _expr_types_cache is None:
-        types = [sp.Expr]
-        if is_sage_available():
-            get_sage_module()
-            from sage.symbolic.expression import Expression as SageExpression
-            types.append(SageExpression)
-        _expr_types_cache = tuple(types)
-    return _expr_types_cache
+# _expr_types_cache = None
+# _expr_numeric_types = None
+# _fast_scalar_types = None
+# _atomic_predicate = None
 
-def _get_expr_num_types():
-    global _expr_numeric_types
-    if _expr_numeric_types is None:
-        _expr_numeric_types = (numbers.Number,)+_get_expr_types()
-    return _expr_numeric_types
+# def _get_expr_types():
+#     global _expr_types_cache
+#     if _expr_types_cache is None:
+#         types = [sp.Expr]
+#         if is_sage_available():
+#             get_sage_module()
+#             from sage.symbolic.expression import Expression as SageExpression
+#             types.append(SageExpression)
+#         _expr_types_cache = tuple(types)
+#     return _expr_types_cache
 
-def _get_fast_scalar_types():
-    global _fast_scalar_types
-    if _fast_scalar_types is None:
-        types = [sp.Integer, sp.Rational]
-        if is_sage_available():
-            get_sage_module()
-            from sage.rings.integer import Integer as SageInteger
-            from sage.rings.rational import Rational as SageRational
-            types.extend([SageInteger, SageRational])
-        _fast_scalar_types = tuple(types)
-    return _fast_scalar_types
+# def _get_expr_num_types():
+#     global _expr_numeric_types
+#     if _expr_numeric_types is None:
+#         _expr_numeric_types = (numbers.Number,)+_get_expr_types()
+#     return _expr_numeric_types
 
-def _is_atomic(expr):
-    global _atomic_predicate
-    if _atomic_predicate is None:
-        def sympy_atomic(elem):
-            return isinstance(elem, sp.Basic) and bool(elem.is_Atom)
-        if is_sage_available():
-            get_sage_module()
-            from sage.symbolic.expression import Expression as _SageExpr
-            def atomic(elem):
-                if isinstance(elem, _SageExpr):
-                    return bool(elem.is_symbol())
-                return sympy_atomic(elem)
-        else:
-            atomic = sympy_atomic
-        _atomic_predicate = atomic
-    return _atomic_predicate(expr)
+# def _get_fast_scalar_types():
+#     global _fast_scalar_types
+#     if _fast_scalar_types is None:
+#         types = [sp.Integer, sp.Rational]
+#         if is_sage_available():
+#             get_sage_module()
+#             from sage.rings.integer import Integer as SageInteger
+#             from sage.rings.rational import Rational as SageRational
+#             types.extend([SageInteger, SageRational])
+#         _fast_scalar_types = tuple(types)
+#     return _fast_scalar_types
+
+# def _is_atomic(expr):
+#     global _atomic_predicate
+#     if _atomic_predicate is None:
+#         def sympy_atomic(elem):
+#             return isinstance(elem, sp.Basic) and bool(elem.is_Atom)
+#         if is_sage_available():
+#             get_sage_module()
+#             from sage.symbolic.expression import Expression as _SageExpr
+#             def atomic(elem):
+#                 if isinstance(elem, _SageExpr):
+#                     return bool(elem.is_symbol())
+#                 return sympy_atomic(elem)
+#         else:
+#             atomic = sympy_atomic
+#         _atomic_predicate = atomic
+#     return _atomic_predicate(expr)

@@ -1,13 +1,34 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+module: _tables
+
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
+
+License:
+    MIT License
+"""
+
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
 import html as _html
+import numbers
 import re
 import uuid
 from html import escape as _esc
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
+__all__ = ["TableView", "panel_view", "build_plain_table", "build_matrix_table"]
+
+# -----------------------------------------------------------------------------
+# core classes
+# -----------------------------------------------------------------------------
 CSSRule = Dict[str, object]  # {"selector": str, "props": List[Tuple[str,str]]}
+
 
 def _props_to_css(props: Iterable[Tuple[str, str]]) -> str:
     return "; ".join(f"{k}: {v}" for (k, v) in props)
+
 
 def styles_to_css(formatted_styles: List[CSSRule]) -> str:
     rules = []
@@ -19,6 +40,7 @@ def styles_to_css(formatted_styles: List[CSSRule]) -> str:
     rules.append("table { border-collapse: collapse; }")
     return "\n".join(rules)
 
+
 def merge_styles(*style_lists: List[CSSRule]) -> List[CSSRule]:
     out: List[CSSRule] = []
     for lst in style_lists:
@@ -26,15 +48,18 @@ def merge_styles(*style_lists: List[CSSRule]) -> List[CSSRule]:
             out.extend(lst)
     return out
 
+
 def _strip_tags_simple(s: str) -> str:
     s = re.sub(r"<[^>]+>", "", s)
     return _html.unescape(s)
+
 
 def _coerce_html(x: object, *, html_safe: bool) -> str:
     if x is None:
         return ""
     s = str(x)
     return s if html_safe else _esc(s)
+
 
 def _scoped_css(
     scope_id: str,
@@ -60,9 +85,14 @@ def _scoped_css(
             if align not in {"left", "center", "right"}:
                 continue
             nth = col0 + offset  # 1-based index for nth-child
-            lines.append(f"#{scope_id} thead th:nth-child({nth}) {{ text-align: {align}; }}")
-            lines.append(f"#{scope_id} tbody td:nth-child({nth}) {{ text-align: {align}; }}")
+            lines.append(
+                f"#{scope_id} thead th:nth-child({nth}) {{ text-align: {align}; }}"
+            )
+            lines.append(
+                f"#{scope_id} tbody td:nth-child({nth}) {{ text-align: {align}; }}"
+            )
     return "<style>\n" + "\n".join(lines) + "\n</style>"
+
 
 def _parse_theme_border(theme_styles: List[CSSRule]):
     val = None
@@ -70,31 +100,43 @@ def _parse_theme_border(theme_styles: List[CSSRule]):
     for sd in theme_styles:
         if sd.get("selector") == "table":
             for k, v in sd.get("props", []):
-                if k in {"border-top","border-right","border-bottom","border-left"}:
+                if k in {"border-top", "border-right", "border-bottom", "border-left"}:
                     sides.add(k)
-                    if not val: 
+                    if not val:
                         val = v
                 elif k == "border" and not val:
                     val = v
-    if not val: 
-        return ("1px","solid","#ccc", sides)
+    if not val:
+        return ("1px", "solid", "#ccc", sides)
     parts = val.split()
     thickness = parts[0] if parts else "1px"
     color = parts[-1] if parts else "#ccc"
     return (thickness, "solid", color, sides)
 
-def _matrix_extras(theme_styles: List[CSSRule], *, mirror_header_to_index: bool, dashed_corner: bool, header_underline_exclude_index: bool):
+
+def _matrix_extras(
+    theme_styles: List[CSSRule],
+    *,
+    mirror_header_to_index: bool,
+    dashed_corner: bool,
+    header_underline_exclude_index: bool,
+):
     t, _, color, side_keys = _parse_theme_border(theme_styles)
     solid = f"{t} solid {color}"
     dashed = f"{t} dashed {color}"
 
     extras: List[CSSRule] = []
-    extras.append({"selector":"table","props":[("border-collapse","collapse")]})
+    extras.append({"selector": "table", "props": [("border-collapse", "collapse")]})
     if not side_keys:
         extras[-1]["props"].append(("border", solid))
 
     if header_underline_exclude_index:
-        extras.append({"selector": "thead th:not(:first-child)", "props": [("border-bottom", solid)]})
+        extras.append(
+            {
+                "selector": "thead th:not(:first-child)",
+                "props": [("border-bottom", solid)],
+            }
+        )
     else:
         extras.append({"selector": "thead th", "props": [("border-bottom", solid)]})
 
@@ -106,14 +148,20 @@ def _matrix_extras(theme_styles: List[CSSRule], *, mirror_header_to_index: bool,
             if sd.get("selector") == "th.col_heading.level0":
                 col_head = sd.get("props", [])
                 break
-        row_visual = [(k,v) for (k,v) in col_head if not k.startswith("border")]
+        row_visual = [(k, v) for (k, v) in col_head if not k.startswith("border")]
         if row_visual:
-            extras.append({"selector":"th.row_heading","props":row_visual})
+            extras.append({"selector": "th.row_heading", "props": row_visual})
 
     if dashed_corner:
-        extras.append({"selector":"thead th:first-child","props":[("border-right", dashed),("border-bottom", dashed)]})
+        extras.append(
+            {
+                "selector": "thead th:first-child",
+                "props": [("border-right", dashed), ("border-bottom", dashed)],
+            }
+        )
 
     return extras
+
 
 class TableView:
     def __init__(
@@ -146,9 +194,9 @@ class TableView:
         ur: Union[int, str] = 10,
         lr: Union[int, str] = 10,
         ll: Union[int, str] = 10,
-        table_scroll = False,
-        cell_scroll = False,
-        show_headers: bool = True
+        table_scroll=False,
+        cell_scroll=False,
+        show_headers: bool = True,
     ):
         self.columns = columns
         self.rows = rows
@@ -168,14 +216,18 @@ class TableView:
         self.secondary_panel_html = secondary_panel_html
         self.layout = layout
         self.gap_px = gap_px
-        self.side_width = f"{side_width}px" if isinstance(side_width, int) else str(side_width)
+        self.side_width = (
+            f"{side_width}px"
+            if isinstance(side_width, numbers.Integral)
+            else str(side_width)
+        )
         self.breakpoint_px = breakpoint_px
         self.container_id = container_id or f"dgcv-view-{uuid.uuid4().hex[:8]}"
         self.preface_html = preface_html
-        self.ul = f"{ul}px" if isinstance(ul, int) else str(ul)
-        self.ur = f"{ur}px" if isinstance(ur, int) else str(ur)
-        self.lr = f"{lr}px" if isinstance(lr, int) else str(lr)
-        self.ll = f"{ll}px" if isinstance(ll, int) else str(ll)
+        self.ul = f"{ul}px" if isinstance(ul, numbers.Integral) else str(ul)
+        self.ur = f"{ur}px" if isinstance(ur, numbers.Integral) else str(ur)
+        self.lr = f"{lr}px" if isinstance(lr, numbers.Integral) else str(lr)
+        self.ll = f"{ll}px" if isinstance(ll, numbers.Integral) else str(ll)
         self.table_scroll = table_scroll
         self.cell_scroll = cell_scroll
         self.show_headers = show_headers
@@ -184,7 +236,7 @@ class TableView:
             name_to_idx = {name: i for i, name in enumerate(columns)}
             _norm: Dict[int, str] = {}
             for k, v in column_align.items():
-                if isinstance(k, int) and 0 <= k < len(columns):
+                if isinstance(k, numbers.Integral) and 0 <= k < len(columns):
                     _norm[k + 1] = v
                 elif isinstance(k, str) and k in name_to_idx:
                     _norm[name_to_idx[k] + 1] = v
@@ -240,7 +292,7 @@ class TableView:
                 idx_html = _coerce_html(idx_val, html_safe=not self.escape_index)
                 tds.append(f'<th scope="row" class="row_heading">{idx_html}</th>')
             for cell in row:
-                tds.append(self._render_cell(cell, tag="td"))  
+                tds.append(self._render_cell(cell, tag="td"))
             body.append("<tr>" + "".join(tds) + "</tr>")
         return "<tbody>" + "".join(body) + "</tbody>"
 
@@ -259,12 +311,20 @@ class TableView:
         return "<tfoot>" + "".join(rows_html) + "</tfoot>"
 
     def _caption_html(self) -> str:
-        return f"<caption>{_coerce_html(self.caption, html_safe=False)}</caption>" if self.caption else ""
+        return (
+            f"<caption>{_coerce_html(self.caption, html_safe=False)}</caption>"
+            if self.caption
+            else ""
+        )
 
     def _panel_html(self) -> Optional[str]:
         if self.secondary_panel_html is None:
             return None
-        html = self.secondary_panel_html() if callable(self.secondary_panel_html) else self.secondary_panel_html
+        html = (
+            self.secondary_panel_html()
+            if callable(self.secondary_panel_html)
+            else self.secondary_panel_html
+        )
         return html or ""
 
     def _layout_css(self) -> str:
@@ -307,23 +367,27 @@ class TableView:
 
         additional_str2 = f"""
             #{cid} .dgcv-data-table td .table-cell {{
-            overflow-x: {'auto' if self.cell_scroll else 'visible'};
-            white-space: {'nowrap' if self.cell_scroll else 'normal'};
+            overflow-x: {"auto" if self.cell_scroll else "visible"};
+            white-space: {"nowrap" if self.cell_scroll else "normal"};
             }}
             """.strip()
 
         if getattr(self, "show_headers", True):
-            tl_left_sel  = "thead tr:first-child th:first-child"
+            tl_left_sel = "thead tr:first-child th:first-child"
             tl_right_sel = "thead tr:first-child th:last-child"
             flex_tr_right_sel = "thead tr:first-child th:last-child"
-            media_tl_left_sel  = "thead tr:first-child th:first-child"
+            media_tl_left_sel = "thead tr:first-child th:first-child"
             media_tl_right_sel = "thead tr:first-child th:last-child"
         else:
             has_index = self.index_labels is not None
-            tl_left_sel  = "tbody tr:first-child th.row_heading" if has_index else "tbody tr:first-child td:first-child"
+            tl_left_sel = (
+                "tbody tr:first-child th.row_heading"
+                if has_index
+                else "tbody tr:first-child td:first-child"
+            )
             tl_right_sel = "tbody tr:first-child td:last-child"
             flex_tr_right_sel = "tbody tr:first-child td:last-child"
-            media_tl_left_sel  = tl_left_sel
+            media_tl_left_sel = tl_left_sel
             media_tl_right_sel = tl_right_sel
 
         return f"""
@@ -429,7 +493,7 @@ class TableView:
         css = self._table_css()
         return (
             f"{css}"
-            f"<table class=\"dgcv-data-table\" {self.table_attrs}>"
+            f'<table class="dgcv-data-table" {self.table_attrs}>'
             f"{cap}"
             f"{thead}"
             f"{tbody}"
@@ -466,21 +530,38 @@ class TableView:
         sep = "-" * max(3, len(header))
         lines = [header, sep]
         for i, row in enumerate(self.rows):
-            cells = [_strip_tags_simple(_coerce_html(c, html_safe=not self.escape_cells)) if not isinstance(c, dict)
-                     else _strip_tags_simple(_coerce_html(c.get("html", ""), html_safe=not self.escape_cells))
-                     for c in row]
+            cells = [
+                _strip_tags_simple(_coerce_html(c, html_safe=not self.escape_cells))
+                if not isinstance(c, dict)
+                else _strip_tags_simple(
+                    _coerce_html(c.get("html", ""), html_safe=not self.escape_cells)
+                )
+                for c in row
+            ]
             if self.truncate_chars is not None:
-                cells = [c if len(c) <= self.truncate_chars else _strip_tags_simple(self.truncate_msg) for c in cells]
+                cells = [
+                    c
+                    if len(c) <= self.truncate_chars
+                    else _strip_tags_simple(self.truncate_msg)
+                    for c in cells
+                ]
             if self.index_labels is not None:
-                idx = _strip_tags_simple(_coerce_html(self.index_labels[i], html_safe=not self.escape_index))
+                idx = _strip_tags_simple(
+                    _coerce_html(self.index_labels[i], html_safe=not self.escape_index)
+                )
                 lines.append(col_sep.join([idx] + cells))
             else:
                 lines.append(col_sep.join(cells))
         # Footer rows in text mode (simple): render as extra lines
         for frow in self.footer_rows:
-            cells = [_strip_tags_simple(_coerce_html(c, html_safe=not self.escape_cells)) if not isinstance(c, dict)
-                     else _strip_tags_simple(_coerce_html(c.get("html", ""), html_safe=not self.escape_cells))
-                     for c in frow]
+            cells = [
+                _strip_tags_simple(_coerce_html(c, html_safe=not self.escape_cells))
+                if not isinstance(c, dict)
+                else _strip_tags_simple(
+                    _coerce_html(c.get("html", ""), html_safe=not self.escape_cells)
+                )
+                for c in frow
+            ]
             lines.append(col_sep.join(cells))
         return "\n".join(lines)
 
@@ -490,11 +571,21 @@ class TableView:
     def to_plain_text(self, col_sep: str = " | ") -> str:
         return self.to_text(col_sep=col_sep)
 
+
 def _sanitize_html_str(s: str) -> str:
     import re
-    s = re.sub(r"<\s*script\b[^>]*>.*?<\s*/\s*script\s*>", "", s, flags=re.IGNORECASE | re.DOTALL)
-    s = re.sub(r"\s+on[a-zA-Z]+\s*=\s*(['\"]).*?\1", "", s, flags=re.IGNORECASE | re.DOTALL)
+
+    s = re.sub(
+        r"<\s*script\b[^>]*>.*?<\s*/\s*script\s*>",
+        "",
+        s,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    s = re.sub(
+        r"\s+on[a-zA-Z]+\s*=\s*(['\"]).*?\1", "", s, flags=re.IGNORECASE | re.DOTALL
+    )
     return s
+
 
 class panel_view:
     def __init__(
@@ -525,10 +616,10 @@ class panel_view:
         self.use_latex = use_latex
         self.sanitize = sanitize
         self.container_id = container_id or f"dgcv-panel-{uuid.uuid4().hex[:8]}"
-        self.ul = f"{ul}px" if isinstance(ul, int) else str(ul)
-        self.ur = f"{ur}px" if isinstance(ur, int) else str(ur)
-        self.lr = f"{lr}px" if isinstance(lr, int) else str(lr)
-        self.ll = f"{ll}px" if isinstance(ll, int) else str(ll)
+        self.ul = f"{ul}px" if isinstance(ul, numbers.Integral) else str(ul)
+        self.ur = f"{ur}px" if isinstance(ur, numbers.Integral) else str(ur)
+        self.lr = f"{lr}px" if isinstance(lr, numbers.Integral) else str(lr)
+        self.ll = f"{ll}px" if isinstance(ll, numbers.Integral) else str(ll)
 
     def _coerce_block(self, x) -> str:
         if x is None:
@@ -589,10 +680,14 @@ class panel_view:
             return f'<div class="dgcv-panel-list"><ol>{lis}</ol></div>'
         if self.list_variant == "inline":
             lis = "".join(f"<li>{i}</li>" for i in items)
-            return f'<div class="dgcv-panel-list"><ul class="dgcv-inline">{lis}</ul></div>'
+            return (
+                f'<div class="dgcv-panel-list"><ul class="dgcv-inline">{lis}</ul></div>'
+            )
         if self.list_variant == "chips":
             lis = "".join(f'<li class="dgcv-chip">{i}</li>' for i in items)
-            return f'<div class="dgcv-panel-list"><ul class="dgcv-chips">{lis}</ul></div>'
+            return (
+                f'<div class="dgcv-panel-list"><ul class="dgcv-chips">{lis}</ul></div>'
+            )
         lis = "".join(f"<li>{i}</li>" for i in items)
         return f'<div class="dgcv-panel-list"><ul>{lis}</ul></div>'
 
@@ -612,7 +707,10 @@ class panel_view:
     def _repr_html_(self) -> str:
         return self.to_html()
 
+
+# -----------------------------------------------------------------------------
 # template builders
+# -----------------------------------------------------------------------------
 def build_plain_table(
     columns: List[str],
     rows: List[List[object]],
@@ -632,6 +730,7 @@ def build_plain_table(
         **kwargs,
     )
 
+
 def build_matrix_table(
     index_labels: List[object],
     columns: List[str],
@@ -647,12 +746,15 @@ def build_matrix_table(
 ) -> TableView:
     theme_styles = theme_styles or []
     extras = list(extra_styles or [])
-    extras = (_matrix_extras(
-        theme_styles,
-        mirror_header_to_index=mirror_header_to_index,
-        dashed_corner=dashed_corner,
-        header_underline_exclude_index=header_underline_exclude_index,
-    ) + extras)
+    extras = (
+        _matrix_extras(
+            theme_styles,
+            mirror_header_to_index=mirror_header_to_index,
+            dashed_corner=dashed_corner,
+            header_underline_exclude_index=header_underline_exclude_index,
+        )
+        + extras
+    )
     return TableView(
         columns=columns,
         rows=rows,

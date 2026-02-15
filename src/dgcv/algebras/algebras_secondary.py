@@ -1,7 +1,21 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+module: algebras/algebras_secondary
+
+Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
+
+License:
+    MIT License
+"""
+
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
+from __future__ import annotations
+
 import numbers
 import warnings
-
-import sympy as sp
+from typing import List, Optional
 
 from .._config import (
     dgcv_exception_note,
@@ -19,10 +33,24 @@ from .._safeguards import (
     validate_label,
     validate_label_list,
 )
-from ..backends._caches import _get_expr_num_types, _get_expr_types
+from ..arrays import matrix_dgcv
+from ..backends._symbolic_router import (
+    clear_denominators,
+    ratio,
+    simplify,
+    subs,
+)
+from ..backends._types_and_constants import (
+    expr_numeric_types,
+    expr_types,
+    imag_unit,
+    rational,
+    symbol,
+)
+from ..base import dgcv_class
 from ..combinatorics import carProd
 from ..dgcv_core import variableProcedure
-from ..solvers import simplify_dgcv, solve_dgcv
+from ..solvers import solve_dgcv
 from ..tensors import mergeVS, tensorProduct
 from ..vmf import clearVar, listVar
 from .algebras_aux import _validate_structure_data
@@ -36,7 +64,18 @@ from .algebras_core import (
     linear_representation,
 )
 
+__all__ = [
+    "createAlgebra",
+    "createSimpleLieAlgebra",
+    "simple_Lie_algebra",
+    "subalgebra_class",
+    "subalgebra_element",
+]
 
+
+# -----------------------------------------------------------------------------
+# algebra classes
+# -----------------------------------------------------------------------------
 class subalgebra_class(algebra_subspace_class):
     def __init__(
         self,
@@ -61,31 +100,31 @@ class subalgebra_class(algebra_subspace_class):
             simplify_basis=False,
         )
 
-        _markers['_educed_properties']=dict()
-
-
+        _markers["_educed_properties"] = dict()
 
         basis = self.filtered_basis
         self.structureData = None
-        params=set()
-        def _tuple_scan(elems,par:set):
+        params = set()
+
+        def _tuple_scan(elems, par: set):
             for elem in elems:
-                par|=getattr(elem,"free_symbols",set())
+                par |= getattr(elem, "free_symbols", set())
             return tuple(elems)
 
         if _internal_lock == retrieve_passkey():
             if _compressed_structure_data is not None:
                 self.structureData = tuple(
-                    tuple(_tuple_scan(inner,params) for inner in middle)
+                    tuple(_tuple_scan(inner, params) for inner in middle)
                     for middle in _compressed_structure_data
                 )  ###!!! optimize by always preprocessing _compressed_structure_data elsewhere
         if self.structureData is None:
             valSD = self.is_subalgebra(return_structure_data=True)["structure_data"]
             self.structureData = tuple(
-                tuple(_tuple_scan(inner,params) for inner in middle) for middle in valSD
+                tuple(_tuple_scan(inner, params) for inner in middle)
+                for middle in valSD
             )
         # self._structureData = tuple(map(tuple, self.structureData))
-        self._parameters=params
+        self._parameters = params
         self.subindices_to_ambient_dict = {
             count: elem for count, elem in enumerate(basis)
         }
@@ -101,7 +140,7 @@ class subalgebra_class(algebra_subspace_class):
         if all(elem in self.ambient for elem in basis):
             self.basis_labels = [elem.__str__() for elem in self.basis]
         else:
-            self.basis_labels = [f"_e_{j+1}" for j in range(self.dimension)]
+            self.basis_labels = [f"_e_{j + 1}" for j in range(self.dimension)]
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "subalgebra"
         self.structureDataDict = _lazy_SD(self.structureData)
@@ -112,7 +151,7 @@ class subalgebra_class(algebra_subspace_class):
             self.simplify_products_by_default = True
         else:
             self.simplify_products_by_default = simplify_products_by_default
-        self._registered=self.ambient._registered
+        self._registered = self.ambient._registered
         # cached_properties
         self._jacobi_identity_cache = None
         self._skew_symmetric_cache = None
@@ -131,24 +170,24 @@ class subalgebra_class(algebra_subspace_class):
         self._rank_approximation = None
         self._graded_components = None
         self._educed_properties = dict()
-        ep = getattr(self.ambient,'_educed_properties',dict())
-        t_message='True by inheritance: parent algebra --> subalgebra'
-        if ep.get('is_Lie_algebra',None) is not None:
-            self._educed_properties['is_Lie_algebra']=t_message
-        if ep.get('is_skew',None) is not None:
-            self._educed_properties['is_skew']=t_message
-        if ep.get('satisfies_Jacobi_ID',None) is not None:
-            self._educed_properties['satisfies_Jacobi_ID']=t_message
-        if ep.get('is_nilpotent',None) is not None:
-            self._educed_properties['is_nilpotent']=t_message
-        if ep.get('is_solvable',None) is not None:
-            self._educed_properties['is_solvable']=t_message
-        if ep.get('special_type',None) in {'abelian','solvable','nilpotent'}:
-            self._educed_properties['special_type']=ep.get('special_type',None)
+        ep = getattr(self.ambient, "_educed_properties", dict())
+        t_message = "True by inheritance: parent algebra --> subalgebra"
+        if ep.get("is_Lie_algebra", None) is not None:
+            self._educed_properties["is_Lie_algebra"] = t_message
+        if ep.get("is_skew", None) is not None:
+            self._educed_properties["is_skew"] = t_message
+        if ep.get("satisfies_Jacobi_ID", None) is not None:
+            self._educed_properties["satisfies_Jacobi_ID"] = t_message
+        if ep.get("is_nilpotent", None) is not None:
+            self._educed_properties["is_nilpotent"] = t_message
+        if ep.get("is_solvable", None) is not None:
+            self._educed_properties["is_solvable"] = t_message
+        if ep.get("special_type", None) in {"abelian", "solvable", "nilpotent"}:
+            self._educed_properties["special_type"] = ep.get("special_type", None)
 
     @property
     def zero_element(self):
-        return subalgebra_element(self,(0,)*self.dimension,1)
+        return subalgebra_element(self, (0,) * self.dimension, 1)
 
     def __contains__(self, item):
         return item in self.basis
@@ -157,7 +196,7 @@ class subalgebra_class(algebra_subspace_class):
         return iter(self.basis)
 
     def __getitem__(self, indices):
-        if isinstance(indices, int):
+        if isinstance(indices, numbers.Integral):
             return self.basis[indices]
         elif isinstance(indices, list):
             if len(indices) == 1:
@@ -234,7 +273,14 @@ class subalgebra_class(algebra_subspace_class):
             },
         )
 
-    def subalgebra(self, basis, grading=None, span_warning=False, simplify_basis=False, simplify_products_by_default=None):
+    def subalgebra(
+        self,
+        basis,
+        grading=None,
+        span_warning=False,
+        simplify_basis=False,
+        simplify_products_by_default=None,
+    ):
         elems = [
             (
                 elem.ambient_rep
@@ -243,9 +289,15 @@ class subalgebra_class(algebra_subspace_class):
             )
             for elem in basis
         ]
-        return self.ambient.subalgebra(elems, grading=grading, simplify_basis=simplify_basis, span_warning=span_warning, simplify_products_by_default=simplify_products_by_default)
+        return self.ambient.subalgebra(
+            elems,
+            grading=grading,
+            simplify_basis=simplify_basis,
+            span_warning=span_warning,
+            simplify_products_by_default=simplify_products_by_default,
+        )
 
-    def subspace(self, basis:list|tuple=[], grading=None, span_warning=True):
+    def subspace(self, basis: list | tuple = [], grading=None, span_warning=True):
         elems = [
             (
                 elem.ambient_rep
@@ -278,11 +330,19 @@ class subalgebra_class(algebra_subspace_class):
             else:
                 return False
             if item not in bas:
-                if len(bas)==0:
+                if len(bas) == 0:
                     return False
                 tempVarLabel = "T" + retrieve_public_key()
-                vars=variableProcedure(tempVarLabel, len(bas), _tempVar=retrieve_passkey(),return_created_object=True)[0]
-                genElement = sum([vars[j + 1] * elem for j, elem in enumerate(bas[1:])], vars[0] * (bas[0]))
+                vars = variableProcedure(
+                    tempVarLabel,
+                    len(bas),
+                    _tempVar=retrieve_passkey(),
+                    return_created_object=True,
+                )[0]
+                genElement = sum(
+                    [vars[j + 1] * elem for j, elem in enumerate(bas[1:])],
+                    vars[0] * (bas[0]),
+                )
                 sol = solve_dgcv(item - genElement, vars)
                 if len(sol) == 0:
                     clearVar(*listVar(temporary_only=True), report=False)
@@ -330,8 +390,8 @@ class subalgebra_class(algebra_subspace_class):
                 if isinstance(initial_basis_index, numbers.Integral)
                 else 1
             )
-            basis_labels = [f"{pref}{i+IIdx}" for i in range(self.dimension)]
-        if not isinstance(self._grading,(list,tuple)) or len(self._grading) == 0:
+            basis_labels = [f"{pref}{i + IIdx}" for i in range(self.dimension)]
+        if not isinstance(self._grading, (list, tuple)) or len(self._grading) == 0:
             grad = None
         else:
             grad = self._grading
@@ -341,7 +401,7 @@ class subalgebra_class(algebra_subspace_class):
                 label,
                 basis_labels=basis_labels,
                 grading=grad,
-                return_created_obj=True,
+                return_created_object=True,
                 simplify_products_by_default=simplify_products_by_default,
             )
         else:
@@ -368,11 +428,11 @@ class subalgebra_class(algebra_subspace_class):
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
-        if isinstance(self._educed_properties.get('is_skew',None),str):
-            t_message=self._educed_properties.get('is_skew',None)
-            self._skew_symmetric_cache = (True,None)
+        if isinstance(self._educed_properties.get("is_skew", None), str):
+            t_message = self._educed_properties.get("is_skew", None)
+            self._skew_symmetric_cache = (True, None)
         else:
-            t_message=''
+            t_message = ""
 
         if self._skew_symmetric_cache is None:
             result, failure = self._check_skew_symmetric()
@@ -421,12 +481,11 @@ class subalgebra_class(algebra_subspace_class):
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
-        if isinstance(self._educed_properties.get('satisfies_Jacobi_ID',None),str):
-            t_message=self._educed_properties.get('satisfies_Jacobi_ID',None)
-            self._jacobi_identity_cache = (True,None)
+        if isinstance(self._educed_properties.get("satisfies_Jacobi_ID", None), str):
+            t_message = self._educed_properties.get("satisfies_Jacobi_ID", None)
+            self._jacobi_identity_cache = (True, None)
         else:
-            t_message=''
-
+            t_message = ""
 
         if self._jacobi_identity_cache is None:
             result, fail_list = self._check_jacobi_identity()
@@ -439,7 +498,9 @@ class subalgebra_class(algebra_subspace_class):
                 if self.ambient.label is None:
                     print("The subalgebra satisfies the Jacobi identity.")
                 else:
-                    print(f"The subalgebra in {self.ambient.label} satisfies the Jacobi identity.")
+                    print(
+                        f"The subalgebra in {self.ambient.label} satisfies the Jacobi identity."
+                    )
             else:
                 print(f"Jacobi identity fails for the following triples: {fail_list}")
 
@@ -485,7 +546,7 @@ class subalgebra_class(algebra_subspace_class):
             UserWarning,
         )
 
-    def is_Lie_algebra(self, verbose=False, return_bool=True,_return_proof_path=False):
+    def is_Lie_algebra(self, verbose=False, return_bool=True, _return_proof_path=False):
         """
         Checks if the algebra is a Lie algebra.
         Includes a warning for unregistered instances only if verbose=True.
@@ -512,13 +573,13 @@ class subalgebra_class(algebra_subspace_class):
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
-        if isinstance(self._educed_properties.get('is_Lie_algebra',None),str):
-            t_message=self._educed_properties.get('is_Lie_algebra',None)
+        if isinstance(self._educed_properties.get("is_Lie_algebra", None), str):
+            t_message = self._educed_properties.get("is_Lie_algebra", None)
             self._lie_algebra_cache = True
             self._jacobi_identity_cache = True
             self._skew_symmetric_cache = True
         else:
-            t_message=''
+            t_message = ""
 
         if self._lie_algebra_cache is not None:
             if verbose:
@@ -580,7 +641,7 @@ class subalgebra_class(algebra_subspace_class):
                 )
 
         if self._is_simple_cache is True:
-            self._is_semisimple_cache=True
+            self._is_semisimple_cache = True
 
         if self._is_semisimple_cache is not None:
             if verbose:
@@ -592,7 +653,6 @@ class subalgebra_class(algebra_subspace_class):
             else:
                 return
 
-
         if not self.is_Lie_algebra(verbose=verbose):
             self._is_semisimple_cache = False
             if return_bool is True:
@@ -602,12 +662,12 @@ class subalgebra_class(algebra_subspace_class):
 
         if verbose is True:
             print("Progress update: computing determinant of the Killing form...")
-        det = sp.simplify(killingForm(self).det())  ###!!! Optimize, removing simplify
+        det = simplify(killingForm(self).det())  ###!!! Optimize, removing simplify
 
         if verbose:
             if det != 0:
                 self._is_semisimple_cache = True
-                self._educed_properties['special_type'] = 'semisimple'
+                self._educed_properties["special_type"] = "semisimple"
                 self._is_nilpotent_cache = False
                 self._is_solvable_cache = False
                 print("The subalgebra is semisimple.")
@@ -623,23 +683,23 @@ class subalgebra_class(algebra_subspace_class):
             self.is_semisimple(verbose=verbose)
         if self._is_simple_cache is None:
             self.compute_simple_subalgebras(verbose=verbose)
-            if self._Levi_deco_cache['LD_components'][1].dimension == 0:
+            if self._Levi_deco_cache["LD_components"][1].dimension == 0:
                 self._is_semisimple_cache = True
                 self._is_nilpotent_cache = False
                 self._is_solvable_cache = False
-                if len(self._Levi_deco_cache['simple_ideals'])==1:
+                if len(self._Levi_deco_cache["simple_ideals"]) == 1:
                     self._is_simple_cache = True
-                    self._educed_properties['special_type'] = 'simple'
+                    self._educed_properties["special_type"] = "simple"
                 else:
                     self._is_simple_cache = False
-                    self._educed_properties['special_type'] = 'semisimple'
+                    self._educed_properties["special_type"] = "semisimple"
             else:
                 self._is_semisimple_cache = False
                 self._is_simple_cache = False
-                if self._Levi_deco_cache['LD_components'][0].dimension==0:
+                if self._Levi_deco_cache["LD_components"][0].dimension == 0:
                     self._is_solvable_cache = True
-                    if self._educed_properties['special_type'] is None:
-                        self._educed_properties['special_type'] = 'solvable'
+                    if self._educed_properties["special_type"] is None:
+                        self._educed_properties["special_type"] = "solvable"
         return self._is_simple_cache
 
     def is_subspace_subalgebra(
@@ -682,6 +742,32 @@ class subalgebra_class(algebra_subspace_class):
             check_linear_independence=check_linear_independence,
         )
 
+    def filter_independent_elements(
+        self, elements, apply_light_basis_simplification=False
+    ):
+        """
+        Filters a set of elements to retain only a linearly independent subset.
+
+        Parameters
+        ----------
+        elements : list of algebra_element_class or subalgebra_element_class
+            The set of elements to filter.
+
+        Returns
+        -------
+        list
+            A subset of the input elements that are linearly independent and unique.
+        """
+        idx_list = self.ambient.filter_independent_elements(
+            [elem.ambient_rep for elem in elements],
+            apply_light_basis_simplification=apply_light_basis_simplification,
+            return_indices=True,
+        )
+        return [elements[idx] for idx in idx_list]
+
+    def is_in_span(self, element, subspace_elements):
+        return self.ambient.is_in_span(element, subspace_elements)
+
     def compute_center(self, for_associative_alg=False, assume_Lie_algebra=False):
         """
         Computes the center of the algebra as a subspace.
@@ -715,8 +801,7 @@ class subalgebra_class(algebra_subspace_class):
             ) from None
 
         temp_label = create_key(prefix="center_var")
-        variableProcedure(temp_label, self.dimension, _tempVar=retrieve_passkey())
-        temp_vars = _cached_caller_globals[temp_label]
+        temp_vars = [symbol(f"{temp_label}{i}") for i in range(self.dimension)]
 
         el = sum(
             (temp_vars[i] * self.basis[i] for i in range(self.dimension)),
@@ -733,7 +818,7 @@ class subalgebra_class(algebra_subspace_class):
         solutions = solve_dgcv(eqns, temp_vars)
         if not solutions:
             warnings.warn(
-                "The internal solver (which defaults to sympy.solve or sympy.linsolve unless running another symbolic engine) returned no solutions, indicating that this computation of the center failed, as solutions do exist. An empty list is being returned."
+                "The internal solver (which depends on which symbolic engine is defaults in dgcv settings) returned no solutions, indicating that this computation of the center failed, as solutions do exist. An empty list is being returned."
             )
             return []
 
@@ -747,8 +832,6 @@ class subalgebra_class(algebra_subspace_class):
                 [(other_var, 0) for other_var in free_variables if other_var != var]
             )
             return_list.append(basis_element)
-
-        clearVar(*listVar(temporary_only=True), report=False)
 
         return return_list  ###!!! return subalgebra instead
 
@@ -789,7 +872,7 @@ class subalgebra_class(algebra_subspace_class):
             align_nested_bases=align_nested_bases,
         )
 
-    def is_nilpotent(self,**kwargs):
+    def is_nilpotent(self, **kwargs):
         """
         Checks if the algebra is nilpotent.
 
@@ -800,17 +883,19 @@ class subalgebra_class(algebra_subspace_class):
         """
         if self._is_nilpotent_cache is None:
             series = self.lower_central_series()
-            if len(series[-1])<2: # to allow different conventions for formatting a trivial level basis
-                self._is_nilpotent_cache=True
-                self._educed_properties['special_type'] = 'nilpotent'
-                self._is_semisimple_cache=False
-                self._is_simple_cache=False
+            if (
+                len(series[-1]) < 2
+            ):  # to allow different conventions for formatting a trivial level basis
+                self._is_nilpotent_cache = True
+                self._educed_properties["special_type"] = "nilpotent"
+                self._is_semisimple_cache = False
+                self._is_simple_cache = False
             else:
-                self._is_nilpotent_cache=False
-                self._is_abelian_cache=True
+                self._is_nilpotent_cache = False
+                self._is_abelian_cache = True
         return self._is_nilpotent_cache
 
-    def is_solvable(self,**kwargs):
+    def is_solvable(self, **kwargs):
         """
         Checks if the algebra is solvable.
 
@@ -822,28 +907,32 @@ class subalgebra_class(algebra_subspace_class):
         if self._is_solvable_cache is None:
             if self._is_nilpotent_cache is None:
                 series = self.derived_series()
-                if len(series[-1])<2: # to allow different conventions for formatting a trivial level basis
-                    self._is_solvable_cache=True
-                    self._is_semisimple_cache=False
-                    self._is_simple_cache=False
-                    self._educed_properties['special_type'] = 'solvable'
+                if (
+                    len(series[-1]) < 2
+                ):  # to allow different conventions for formatting a trivial level basis
+                    self._is_solvable_cache = True
+                    self._is_semisimple_cache = False
+                    self._is_simple_cache = False
+                    self._educed_properties["special_type"] = "solvable"
                 else:
-                    self._is_solvable_cache=False
-                    self._is_abelian_cache=False
-                    self._is_nilpotent_cache=False
+                    self._is_solvable_cache = False
+                    self._is_abelian_cache = False
+                    self._is_nilpotent_cache = False
             else:
-                self._is_solvable_cache=self._is_nilpotent_cache
+                self._is_solvable_cache = self._is_nilpotent_cache
         return self._is_solvable_cache
 
-    def is_abelian(self,**kwargs):
+    def is_abelian(self, **kwargs):
         if self._is_abelian_cache is None:
-            self._is_abelian_cache = all(elem == 0 for elem in self.structureDataDict.values())
+            self._is_abelian_cache = all(
+                elem == 0 for elem in self.structureDataDict.values()
+            )
             if self._is_abelian_cache is True:
-                self._educed_properties['special_type'] = 'abelian'
-                self._is_nilpotent_cache=True
-                self._is_solvable_cache=True
-                self._is_semisimple_cache=False
-                self._is_simple_cache=False
+                self._educed_properties["special_type"] = "abelian"
+                self._is_nilpotent_cache = True
+                self._is_solvable_cache = True
+                self._is_semisimple_cache = False
+                self._is_simple_cache = False
         return self._is_abelian_cache
 
     def _require_lie_algebra(self, method_name):
@@ -861,8 +950,8 @@ class subalgebra_class(algebra_subspace_class):
 
     def killing_form_product(self, elem1, elem2, assume_Lie_algebra=False):
         kf = killingForm(self, assume_Lie_algebra=assume_Lie_algebra)
-        vec1 = sp.Matrix(elem1.coeffs)
-        vec2 = sp.Matrix(elem2.coeffs)
+        vec1 = matrix_dgcv(elem1.coeffs)
+        vec2 = matrix_dgcv(elem2.coeffs)
         return (vec2.transpose() * kf * vec1)[0]
 
     @property
@@ -872,16 +961,18 @@ class subalgebra_class(algebra_subspace_class):
             gc = {}
             for key in gradings:
                 gc[key] = self.weighted_component(key)
-            self._graded_components=gc
+            self._graded_components = gc
         return self._graded_components
 
-    def compute_graded_component_wrt_weight_index(self,idx=0):
+    def compute_graded_component_wrt_weight_index(self, idx=0):
         if idx not in range(len(self.grading)):
-            warnings.warn('The provided index is out of range. `compute_graded_component_wrt_weight_index` is using 0 instead.')
-            idx=0
+            warnings.warn(
+                "The provided index is out of range. `compute_graded_component_wrt_weight_index` is using 0 instead."
+            )
+            idx = 0
         wc = dict()
-        for idxs,comp in self.graded_components.items():
-            wc[idxs[idx]]=wc.get(idxs[idx],self.subspace([]))+comp 
+        for idxs, comp in self.graded_components.items():
+            wc[idxs[idx]] = wc.get(idxs[idx], self.subspace([])) + comp
         return wc
 
     def grading_summary(self):
@@ -900,9 +991,9 @@ class subalgebra_class(algebra_subspace_class):
             prefi = f"{pref}_"
         strings = []
         for k, v in graded_components.items():
-            inner = ''.join(str(j) for j in k)
+            inner = "".join(str(j) for j in k)
             latex = v._repr_latex_()
-            latex = latex.replace('$', '').replace('\\displaystyle', '')
+            latex = latex.replace("$", "").replace("\\displaystyle", "")
             strings.append(f" $$ {prefi}{{{inner}}} = {latex},$$")
         if len(strings) > 1:
             strings.insert(-1, "and")
@@ -922,191 +1013,290 @@ class subalgebra_class(algebra_subspace_class):
                 f"The algebra ${pref}$ has {gradPhrase} components: {' '.join(strings)}"
             )
 
-    def weighted_component(self, weights, test_weights=None, trust_test_weight_format=False, from_subalg=None):
+    def weighted_component(
+        self,
+        weights,
+        test_weights=None,
+        trust_test_weight_format=False,
+        from_subalg=None,
+    ):
         if from_subalg is None:
-            from_subalg=self
-        return self.ambient.weighted_component(weights, test_weights=test_weights, trust_test_weight_format=trust_test_weight_format, from_subalg=from_subalg)
+            from_subalg = self
+        return self.ambient.weighted_component(
+            weights,
+            test_weights=test_weights,
+            trust_test_weight_format=trust_test_weight_format,
+            from_subalg=from_subalg,
+        )
 
-    def compute_simple_subalgebras(self,verbose=False):
-        _ = self.Levi_decomposition(decompose_semisimple_fully=True,verbose=verbose)
-        return self._Levi_deco_cache['simple_ideals']
+    def compute_simple_subalgebras(self, verbose=False):
+        _ = self.Levi_decomposition(decompose_semisimple_fully=True, verbose=verbose)
+        return self._Levi_deco_cache["simple_ideals"]
 
-    def Levi_decomposition(self,        
-                           decompose_semisimple_fully = False,
-                           _bust_cache=False,
-                           assume_Lie_algebra=False,
-                           _try_multiple_times=None,
-                           verbose=False
-                           ):
-        return self.ambient.Levi_decomposition(from_subalg=self,decompose_semisimple_fully=decompose_semisimple_fully,verbose=verbose,_bust_cache=_bust_cache,assume_Lie_algebra=assume_Lie_algebra,_try_multiple_times=_try_multiple_times)
+    def Levi_decomposition(
+        self,
+        decompose_semisimple_fully=False,
+        _bust_cache=False,
+        assume_Lie_algebra=False,
+        _try_multiple_times=None,
+        verbose=False,
+    ):
+        return self.ambient.Levi_decomposition(
+            from_subalg=self,
+            decompose_semisimple_fully=decompose_semisimple_fully,
+            verbose=verbose,
+            _bust_cache=_bust_cache,
+            assume_Lie_algebra=assume_Lie_algebra,
+            _try_multiple_times=_try_multiple_times,
+        )
 
-    def approximate_rank(self,check_semisimple=False,assume_semisimple=False,_use_cache=False,**kwargs):
-        return self.ambient.approximate_rank(check_semisimple=check_semisimple,assume_semisimple=assume_semisimple,_use_cache=_use_cache,from_subalg=self)
-        # if self.dimension==0:
-        #     self._rank_approximation=0
-        #     return 0
-        # if check_semisimple is True:
-        #     ssc=self.is_semisimple()
-        #     if ssc is True:
-        #         assume_semisimple = True
-        #     elif assume_semisimple is True:
-        #         print('approximate_rank recieved parameters `check_semisimple=True` and `assume_semisimple=True`, but the semisimple check returned false. The algorithm is proceeding with the `assume_semisimple` logic applied, but this is likely not wanted, and should be prevented by setting those parameters differently. Note, just setting `check_semisimple=True` is enough to use optimized algorithms in the event that the semisimple check returns true, whereas `assume_semisimple` should only be used in applications where forgoing the semisimple check entirely is wanted.')
-        # if _use_cache and self._rank_approximation is not None:
-        #     return self._rank_approximation
-        # power=1 if (assume_semisimple or self._is_semisimple_cache is True) else self.dimension
-        # elem = sp.Matrix(self.structureData[0])    # test element
-        # bound=min(100,10*self.dimension)
-        # for elem2 in self.structureData[1:]:
-        #     elem+=random.randint(0,bound)*sp.Matrix(elem2)
-        # rank = self.dimension-(elem**power).rank()
-        # if not isinstance(self._rank_approximation,numbers.Integral) or self._rank_approximation>rank:
-        #     self._rank_approximation=rank
-        # return self._rank_approximation
+    def approximate_rank(
+        self,
+        check_semisimple=False,
+        assume_semisimple=False,
+        _use_cache=False,
+        **kwargs,
+    ):
+        return self.ambient.approximate_rank(
+            check_semisimple=check_semisimple,
+            assume_semisimple=assume_semisimple,
+            _use_cache=_use_cache,
+            from_subalg=self,
+        )
 
-    def direct_sum(self,other,grading=None,label=None,basis_labels=None,register_in_vmf=False,initial_basis_index=None,simplify_products_by_default=None,build_all_gradings=False):
-        if get_dgcv_category(other) in {'algebra','vectorspace','subalgebra','algebra_subspace','vector_subspace'}:
-            _markers={'sum':True,'lockKey':retrieve_passkey()}
+    def direct_sum(
+        self,
+        other,
+        grading=None,
+        label=None,
+        basis_labels=None,
+        register_in_vmf=False,
+        initial_basis_index=None,
+        simplify_products_by_default=None,
+        build_all_gradings=False,
+    ):
+        if get_dgcv_category(other) in {
+            "algebra",
+            "vectorspace",
+            "subalgebra",
+            "algebra_subspace",
+            "vector_subspace",
+        }:
+            _markers = {"sum": True, "lockKey": retrieve_passkey()}
             if build_all_gradings is not True:
-                grad1 = self.grading[:1] or [[0]*self.dimension]
-                grad2 = other.grading[:1] or [[0]*other.dimension]
+                grad1 = self.grading[:1] or [[0] * self.dimension]
+                grad2 = other.grading[:1] or [[0] * other.dimension]
             else:
-                grad1 = self.grading or [[0]*self.dimension]
-                grad2 = other.grading or [[0]*other.dimension]
-            builtG=[]
+                grad1 = self.grading or [[0] * self.dimension]
+                grad2 = other.grading or [[0] * other.dimension]
+            builtG = []
             for gl1 in grad1:
                 for gl2 in grad2:
-                    builtG.append(list(gl1)+list(gl2))
-            if not isinstance(grading,(list,tuple)):
-                grading=[]
-            if isinstance(grading, (list,tuple)):
-                if all(isinstance(elem,(list,tuple)) for elem in grading):
-                    grading = [list(elem) for elem in grading]+builtG
-                elif all(isinstance(elem,_get_expr_num_types()) for elem in grading):
-                    grading = [list(grading)]+builtG
+                    builtG.append(list(gl1) + list(gl2))
+            if not isinstance(grading, (list, tuple)):
+                grading = []
+            if isinstance(grading, (list, tuple)):
+                if all(isinstance(elem, (list, tuple)) for elem in grading):
+                    grading = [list(elem) for elem in grading] + builtG
+                elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
+                    grading = [list(grading)] + builtG
                 elif grading is not None:
-                    warnings.warn('The supplied grading data format is incompatible, and was ignored.')
-                    grading=builtG
+                    warnings.warn(
+                        "The supplied grading data format is incompatible, and was ignored."
+                    )
+                    grading = builtG
                 else:
-                    grading=builtG
-
+                    grading = builtG
 
             if label is None:
-                label = f'{self.label}_plus_{other.label}'
-                _markers['_tex_label']=f'{self._repr_latex_(raw=True,abbrev=True)}\\oplus {other._repr_latex_(raw=True,abbrev=True)}'
+                label = f"{self.label}_plus_{other.label}"
+                _markers["_tex_label"] = (
+                    f"{self._repr_latex_(raw=True, abbrev=True)}\\oplus {other._repr_latex_(raw=True, abbrev=True)}"
+                )
             if basis_labels is None:
-                basis_labels = [elem.__repr__() for elem in self.basis]+[elem.__repr__() for elem in other.basis]
-                _markers['_tex_basis_labels']=[elem._repr_latex_(raw=True) for elem in self.basis]+[elem._repr_latex_(raw=True) for elem in other.basis]
+                basis_labels = [elem.__repr__() for elem in self.basis] + [
+                    elem.__repr__() for elem in other.basis
+                ]
+                _markers["_tex_basis_labels"] = [
+                    elem._repr_latex_(raw=True) for elem in self.basis
+                ] + [elem._repr_latex_(raw=True) for elem in other.basis]
 
-            return linear_representation(homomorphism(self,other.endomorphism_algebra)).semidirect_sum(grading=grading,label=label,basis_labels=basis_labels,register_in_vmf=register_in_vmf,initial_basis_index=initial_basis_index,simplify_products_by_default=simplify_products_by_default,_markers=_markers)
-        else: 
+            return linear_representation(
+                homomorphism(self, other.endomorphism_algebra)
+            ).semidirect_sum(
+                grading=grading,
+                label=label,
+                basis_labels=basis_labels,
+                register_in_vmf=register_in_vmf,
+                initial_basis_index=initial_basis_index,
+                simplify_products_by_default=simplify_products_by_default,
+                _markers=_markers,
+            )
+        else:
             return NotImplemented
 
-    def __add__(self,other):
-        if other==0 or getattr(other,'is_zero',False):
+    def __add__(self, other):
+        if other == 0 or getattr(other, "is_zero", False):
             return self
-        if get_dgcv_category(other) in {'algebra','vectorspace','subalgebra','algebra_subspace','vector_subspace'}:
+        if get_dgcv_category(other) in {
+            "algebra",
+            "vectorspace",
+            "subalgebra",
+            "algebra_subspace",
+            "vector_subspace",
+        }:
             return self.direct_sum(other)
         return NotImplemented
 
-    def __radd__(self,other):
-        if other==0 or getattr(other,'is_zero',False):
+    def __radd__(self, other):
+        if other == 0 or getattr(other, "is_zero", False):
             return self
         return NotImplemented
 
-    def tensor_product(self,other,grading=None,label=None,basis_labels=None,register_in_vmf=False,initial_basis_index=None,simplify_products_by_default=None,build_all_gradings=False):
-        if get_dgcv_category(other) in {'algebra','vectorspace','subalgebra','algebra_subspace','vector_subspace'}: 
+    def tensor_product(
+        self,
+        other,
+        grading=None,
+        label=None,
+        basis_labels=None,
+        register_in_vmf=False,
+        initial_basis_index=None,
+        simplify_products_by_default=None,
+        build_all_gradings=False,
+    ):
+        if get_dgcv_category(other) in {
+            "algebra",
+            "vectorspace",
+            "subalgebra",
+            "algebra_subspace",
+            "vector_subspace",
+        }:
             if simplify_products_by_default is None:
-                simplify_products_by_default = getattr(self,'simplify_products_by_default',False)
+                simplify_products_by_default = getattr(
+                    self, "simplify_products_by_default", False
+                )
             if build_all_gradings is not True:
-                grad1 = self.grading[:1] or [[0]*self.dimension]
-                grad2 = other.grading[:1] or [[0]*other.dimension]
+                grad1 = self.grading[:1] or [[0] * self.dimension]
+                grad2 = other.grading[:1] or [[0] * other.dimension]
             else:
-                grad1 = self.grading or [[0]*self.dimension]
-                grad2 = other.grading or [[0]*other.dimension]
-            builtG=[]
+                grad1 = self.grading or [[0] * self.dimension]
+                grad2 = other.grading or [[0] * other.dimension]
+            builtG = []
             for gl1 in grad1:
                 for gl2 in grad2:
-                    builtG.append([w1+w2 for w1 in gl1 for w2 in gl2])
-            if not isinstance(grading,(list,tuple)):
-                grading=[]
-            if isinstance(grading, (list,tuple)):
-                if all(isinstance(elem,(list,tuple)) for elem in grading):
-                    grading = [list(elem) for elem in grading]+builtG
-                elif all(isinstance(elem,_get_expr_num_types()) for elem in grading):
-                    grading = [list(grading)]+builtG
+                    builtG.append([w1 + w2 for w1 in gl1 for w2 in gl2])
+            if not isinstance(grading, (list, tuple)):
+                grading = []
+            if isinstance(grading, (list, tuple)):
+                if all(isinstance(elem, (list, tuple)) for elem in grading):
+                    grading = [list(elem) for elem in grading] + builtG
+                elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
+                    grading = [list(grading)] + builtG
                 elif grading is not None:
-                    warnings.warn('The supplied grading data format is incompatible, and was ignored.')
-                    grading=builtG
+                    warnings.warn(
+                        "The supplied grading data format is incompatible, and was ignored."
+                    )
+                    grading = builtG
                 else:
-                    grading=builtG
+                    grading = builtG
 
             if isinstance(basis_labels, (tuple, list)):
                 if (
                     not all(isinstance(elem, str) for elem in basis_labels)
-                    or len(basis_labels) != self.dimension*other.dimension
+                    or len(basis_labels) != self.dimension * other.dimension
                 ):
                     warnings.warn(
                         f"`basis_labels` is in an unsupported format and was ignored. Recieved {basis_labels}, types: {[type(lab) for lab in basis_labels]}, target length {self.dimension}*{other.dimension}"
                     )
                     basis_labels = None
-            _markers={'prod':True,'lockKey':retrieve_passkey(),'tensor_decomposition':(self,other)}
+            _markers = {
+                "prod": True,
+                "lockKey": retrieve_passkey(),
+                "tensor_decomposition": (self, other),
+            }
             if label is None:
-                label = f'{self.label}_tensor_{other.label}'
-                _markers['_tex_label']=f'{self._repr_latex_(raw=True,abbrev=True)}\\otimes {other._repr_latex_(raw=True,abbrev=True)}'
-            if basis_labels is None or not isinstance(basis_labels,str):
-                basis_labels = [f'{elem1.__repr__()}_tensor_{elem2.__repr__()}' for elem1 in self.basis for elem2 in other.basis]
-                _markers['_tex_basis_labels']=[f'{elem1._repr_latex_(raw=True)}\\otimes {elem2._repr_latex_(raw=True)}' for elem1 in self.basis for elem2 in other.basis]
-            if isinstance(basis_labels,str):
+                label = f"{self.label}_tensor_{other.label}"
+                _markers["_tex_label"] = (
+                    f"{self._repr_latex_(raw=True, abbrev=True)}\\otimes {other._repr_latex_(raw=True, abbrev=True)}"
+                )
+            if basis_labels is None or not isinstance(basis_labels, str):
+                basis_labels = [
+                    f"{elem1.__repr__()}_tensor_{elem2.__repr__()}"
+                    for elem1 in self.basis
+                    for elem2 in other.basis
+                ]
+                _markers["_tex_basis_labels"] = [
+                    f"{elem1._repr_latex_(raw=True)}\\otimes {elem2._repr_latex_(raw=True)}"
+                    for elem1 in self.basis
+                    for elem2 in other.basis
+                ]
+            if isinstance(basis_labels, str):
                 pref = basis_labels
                 IIdx = (
                     initial_basis_index
                     if isinstance(initial_basis_index, numbers.Integral)
                     else 1
                 )
-                basis_labels = [f"{pref}{i+IIdx}" for i in range(self.dimension*other.dimension)]
+                basis_labels = [
+                    f"{pref}{i + IIdx}" for i in range(self.dimension * other.dimension)
+                ]
             if not isinstance(label, str) or label == "":
                 label = "Alg_" + create_key()
 
             if register_in_vmf is True:
                 from .algebras_secondary import createAlgebra
+
                 return createAlgebra(
-                    self.dimension*other.dimension,
+                    self.dimension * other.dimension,
                     label,
                     basis_labels=basis_labels,
                     grading=grading,
-                    return_created_obj=True,
+                    return_created_object=True,
                     simplify_products_by_default=simplify_products_by_default,
-                    _markers=_markers
+                    _markers=_markers,
                 )
             else:
-                _markers['registered'] = False
+                _markers["registered"] = False
                 return algebra_class(
-                    self.dimension*other.dimension,
+                    self.dimension * other.dimension,
                     grading=grading,
                     simplify_products_by_default=simplify_products_by_default,
                     _label=label,
                     _basis_labels=basis_labels,
                     _calledFromCreator=retrieve_passkey(),
-                    _markers=_markers
+                    _markers=_markers,
                 )
-        elif isinstance(other,_get_expr_num_types()):
+        elif isinstance(other, expr_numeric_types()):
             return self._convert_to_tp().__matmul__(other)
         else:
             return NotImplemented
 
-    def __matmul__(self,other):
-        if get_dgcv_category(other) in {'algebra','vectorspace','subalgebra','algebra_subspace','vector_subspace'}:
+    def __matmul__(self, other):
+        if get_dgcv_category(other) in {
+            "algebra",
+            "vectorspace",
+            "subalgebra",
+            "algebra_subspace",
+            "vector_subspace",
+        }:
             return self.tensor_product(other)
         return NotImplemented
 
-    def __rmatmul__(self,other):
-        if isinstance(other,_get_expr_num_types()):
+    def __rmatmul__(self, other):
+        if isinstance(other, expr_numeric_types()):
             return self._convert_to_tp().__rmatmul__(other)
 
     def summary(self, generate_full_report=False, style=None, use_latex=None):
-        return self.ambient.summary(generate_full_report=generate_full_report, style=style, use_latex=use_latex, _from_subalg=self, _IL=retrieve_passkey())
+        return self.ambient.summary(
+            generate_full_report=generate_full_report,
+            style=style,
+            use_latex=use_latex,
+            _from_subalg=self,
+            _IL=retrieve_passkey(),
+        )
 
-class subalgebra_element:
+
+class subalgebra_element(dgcv_class):
     def __init__(self, alg, coeffs, valence, ambient_rep=None, _internalLock=None):
         self.algebra = alg
         self.vectorSpace = alg
@@ -1125,8 +1315,8 @@ class subalgebra_element:
             self._ambient_rep = None
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "subalgebra_element"
-        self.dgcv_vs_id=self.vectorSpace.dgcv_vs_id
-        self._natural_weight=None
+        self.dgcv_vs_id = self.vectorSpace.dgcv_vs_id
+        self._natural_weight = None
 
     @property
     def ambient_rep(self):
@@ -1156,19 +1346,13 @@ class subalgebra_element:
         return self.ambient_rep.__str__()
 
     def _repr_latex_(self, verbose=False, raw=False):
-        return self.ambient_rep._repr_latex_(verbose=verbose,raw=raw)
+        return self.ambient_rep._repr_latex_(verbose=verbose, raw=raw)
 
-    def _latex(self, printer=None):
-        return self._repr_latex_()
-
-    def _sympystr(self):
-        return self.ambient_rep._sympystr()
+    def _latex(self, printer=None, raw=True, **kwargs):
+        return self._repr_latex_(raw=raw)
 
     def _latex_verbose(self, printer=None):
         return self.ambient_rep._latex_verbose(printer=printer)
-
-    def __repr__(self):
-        return self.ambient_rep.__repr__()
 
     @property
     def label(self):
@@ -1177,23 +1361,23 @@ class subalgebra_element:
     @property
     def is_zero(self):
         for j in self.coeffs:
-            if sp.simplify(j) != 0:
+            if simplify(j) != 0:
                 return False
         else:
             return True
 
     def _si_wrap(self, obj):
         if self.algebra.simplify_products_by_default is True:
-            return simplify_dgcv(obj)
+            return simplify(obj)
         else:
             return obj
 
-    def _eval_simplify(self,*args,**kwargs):
-        newCoeffs = [simplify_dgcv(j) for j in self.coeffs]
+    def _eval_simplify(self, *args, **kwargs):
+        newCoeffs = [simplify(j) for j in self.coeffs]
         return subalgebra_element(self.algebra, newCoeffs, self.valence)
 
     def subs(self, subsData):
-        newCoeffs = [sp.sympify(j).subs(subsData) for j in self.coeffs]
+        newCoeffs = [subs(j, subsData) for j in self.coeffs]
         return subalgebra_element(self.algebra, newCoeffs, self.valence)
 
     def dual(self):
@@ -1202,7 +1386,10 @@ class subalgebra_element:
     def _convert_to_tp(self):
         return tensorProduct(
             tuple([self.dgcv_vs_id]),
-            {(j, self.valence,self.dgcv_vs_id): self.coeffs[j] for j in range(self.algebra.dimension)},
+            {
+                (j, self.valence, self.dgcv_vs_id): self.coeffs[j]
+                for j in range(self.algebra.dimension)
+            },
         )
 
     def _recursion_contract_hom(self, other):
@@ -1224,31 +1411,32 @@ class subalgebra_element:
         )
 
     def __add__(self, other):
-        if getattr(other, "is_zero", False) or other==0:
+        if getattr(other, "is_zero", False) or other == 0:
             return self
-        if get_dgcv_category(other)=='subalgebra_element':
+        if get_dgcv_category(other) == "subalgebra_element":
             if self.algebra == other.algebra and self.valence == other.valence:
                 coeffs = [a + b for a, b in zip(self.coeffs, other.coeffs)]
-                return subalgebra_element(
-                    self.algebra,
-                    coeffs,
-                    self.valence
-                )
-            elif other.algebra.ambient==self.algebra.ambient:
-                return self.ambient_rep+self.ambient_rep
+                return subalgebra_element(self.algebra, coeffs, self.valence)
+            elif other.algebra.ambient == self.algebra.ambient:
+                return self.ambient_rep + other.ambient_rep
             else:
                 other = other._convert_to_tp()
-        if get_dgcv_category(other) in {'algebra_element','vector_space_element','tensorProduct'} or isinstance(other,_get_expr_num_types()):
-            if self.algebra.ambient==getattr(other,'algebra',None):
-                return self.ambient_rep+other
-            return self._convert_to_tp()+other
-        if get_dgcv_category(other)=='fastTensorProduct':
-            return other+self
+        if get_dgcv_category(other) in {
+            "algebra_element",
+            "vector_space_element",
+            "tensorProduct",
+        } or isinstance(other, expr_numeric_types()):
+            if self.algebra.ambient == getattr(other, "algebra", None):
+                return self.ambient_rep + other
+            return self._convert_to_tp() + other
+        if get_dgcv_category(other) == "fastTensorProduct":
+            return other + self
         return self.ambient_rep.__add__(other)
+
     def __radd__(self, other):
-        if getattr(other, "is_zero", False) or other==0:
+        if getattr(other, "is_zero", False) or other == 0:
             return self
-        if isinstance(other,_get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             return self._convert_to_tp().__radd__(other)
         return NotImplemented
 
@@ -1259,7 +1447,7 @@ class subalgebra_element:
         return (-self).__radd__(other)
 
     def __mul__(self, other):
-        if get_dgcv_category(other)== 'subalgebra_element':
+        if get_dgcv_category(other) == "subalgebra_element":
             if self.algebra == other.algebra and self.valence == other.valence:
                 sign = 1 if self.valence == 1 else -1
                 alg = self.algebra
@@ -1287,27 +1475,28 @@ class subalgebra_element:
                 else:
                     result_coeffs = raw_result
                 return subalgebra_element(self.algebra, result_coeffs, self.valence)
-            elif other.algebra.ambient==self.algebra.ambient:
-                return self.ambient_rep*other.ambient_rep
+            elif other.algebra.ambient == self.algebra.ambient:
+                return self.ambient_rep * other.ambient_rep
             else:
                 return self._convert_to_tp().__mul__(other)
-        elif isinstance(other, _get_expr_num_types()):
+        elif isinstance(other, expr_numeric_types()):
             new_coeffs = [self._si_wrap(coeff * other) for coeff in self.coeffs]
             return subalgebra_element(self.algebra, new_coeffs, self.valence)
-        elif get_dgcv_category(other)=='algebra_element':
-            return self.ambient_rep*other
-        elif get_dgcv_category(other) in {'vector_space_element','tensorProduct'}:
+        elif get_dgcv_category(other) == "algebra_element":
+            return self.ambient_rep * other
+        elif get_dgcv_category(other) in {"vector_space_element", "tensorProduct"}:
             return self._convert_to_tp().__mul__(other)
         return NotImplemented
 
     def __rmul__(self, other):
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             return self * other
         return NotImplemented
+
     def __truediv__(self, other):
         if isinstance(other, numbers.Number):
-            return self._si_wrap(sp.Rational(1, other) * self)
-        elif isinstance(other, _get_expr_types()):
+            return self._si_wrap(ratio(1, other) * self)
+        elif isinstance(other, expr_types()):
             return self._si_wrap((1 / other) * self)
         else:
             raise TypeError(
@@ -1316,22 +1505,36 @@ class subalgebra_element:
 
     def __matmul__(self, other):
         """Overload @ operator for tensor product."""
-        if get_dgcv_category(other)=='tensorProduct':
+        if get_dgcv_category(other) == "tensorProduct":
             return self._convert_to_tp() @ other
-        if isinstance(other,_get_expr_num_types()):
-            return other*self
-        if get_dgcv_category(other) not in {'algebra_element','subalgebra_element','vector_space_element'}:
+        if isinstance(other, expr_numeric_types()):
+            return other * self
+        if get_dgcv_category(other) not in {
+            "algebra_element",
+            "subalgebra_element",
+            "vector_space_element",
+        }:
             return self._convert_to_tp().__matmul__(other)
         new_dict = {
-            (j, k, self.valence, other.valence, self.dgcv_vs_id, other.dgcv_vs_id): self.coeffs[j] * other.coeffs[k]
+            (
+                j,
+                k,
+                self.valence,
+                other.valence,
+                self.dgcv_vs_id,
+                other.dgcv_vs_id,
+            ): self.coeffs[j] * other.coeffs[k]
             for j in range(self.algebra.dimension)
             for k in range(other.algebra.dimension)
         }
-        return self._si_wrap(tensorProduct(mergeVS([self.dgcv_vs_id],[other.dgcv_vs_id]), new_dict))
-    def __rmatmul__(self,other):
-        if isinstance(other,_get_expr_num_types()):
-            return other*self
-        return self._convert_to_tp().__rmatmul__(other) 
+        return self._si_wrap(
+            tensorProduct(mergeVS([self.dgcv_vs_id], [other.dgcv_vs_id]), new_dict)
+        )
+
+    def __rmatmul__(self, other):
+        if isinstance(other, expr_numeric_types()):
+            return other * self
+        return self._convert_to_tp().__rmatmul__(other)
 
     def __xor__(self, other):
         if other == "":
@@ -1349,6 +1552,11 @@ class subalgebra_element:
             return sum([j * k for j, k in zip(self.coeffs, other.coeffs)])
         else:
             return self.ambient_rep(other)
+
+    def compute_weight(self, test_weights=None, flatten_weights=False):
+        return self.check_element_weight(
+            test_weights=test_weights, flatten_weights=flatten_weights
+        )
 
     def check_element_weight(self, test_weights=None, flatten_weights=False):
         """
@@ -1386,16 +1594,17 @@ class subalgebra_element:
 
     def terms(self):
         if self._terms is None:
-            terms=[]
-            for idx,c in enumerate(self.coeffs):
-                if c==0:
+            terms = []
+            for idx, c in enumerate(self.coeffs):
+                if c == 0:
                     continue
-                terms.append(c*self.algebra.basis[idx])
-            self._terms=[self] if len(terms)<2 else terms
+                terms.append(c * self.algebra.basis[idx])
+            self._terms = [self] if len(terms) < 2 else terms
         return self._terms
 
-    def dual_pairing(self,other):
+    def dual_pairing(self, other):
         return self._convert_to_tp().dual_pairing(other)
+
 
 class simple_Lie_algebra(algebra_class):
     def __init__(
@@ -1413,13 +1622,13 @@ class simple_Lie_algebra(algebra_class):
         _child_print_warning=None,
         _exclude_from_VMF=None,
         _simple_data=None,
-        _basis_labels_parent=None
+        _basis_labels_parent=None,
     ):
         if _calledFromCreator != retrieve_passkey():
             raise RuntimeError(
                 "`simple_Lie_algebra` class instances can only be initialized by internal `dgcv` functions indirectly. To instantiate a simple Lie algebra, use dgcv `creator` functions"
             ) from None
-        t_message='True by construction: instantiated from `simple_Lie_algebra` class constructor'
+        t_message = "True by construction: instantiated from `simple_Lie_algebra` class constructor"
         super().__init__(
             structure_data,
             grading=grading,
@@ -1434,7 +1643,17 @@ class simple_Lie_algebra(algebra_class):
             _child_print_warning=_child_print_warning,
             _exclude_from_VMF=_exclude_from_VMF,
             _basis_labels_parent=_basis_labels_parent,
-            _markers={'simple':True,'_educed_properties':{'is_simple':t_message,'is_Lie_algebra':t_message,'is_semisimple':t_message,'special_type':'simple','is_skew':t_message,'satisfies_Jacobi_ID':t_message}}
+            _markers={
+                "simple": True,
+                "_educed_properties": {
+                    "is_simple": t_message,
+                    "is_Lie_algebra": t_message,
+                    "is_semisimple": t_message,
+                    "special_type": "simple",
+                    "is_skew": t_message,
+                    "satisfies_Jacobi_ID": t_message,
+                },
+            },
         )
 
         self.roots = []
@@ -1495,7 +1714,7 @@ class simple_Lie_algebra(algebra_class):
                 lines = []
                 horiz = "   "
                 if n > 7:
-                    mid_nodes = ["r_1 r_2", f"r_{n-4}", f"r_{n-3}", f"r_{n-2}"]
+                    mid_nodes = ["r_1 r_2", f"r_{n - 4}", f"r_{n - 3}", f"r_{n - 2}"]
                     latter_rules = [
                         " ◯───◯─" + " ┅ ─",
                         "─" * (len(mid_nodes[1])),
@@ -1504,20 +1723,20 @@ class simple_Lie_algebra(algebra_class):
                         "",
                     ]
                     horiz += "◯".join(latter_rules)
-                    top_labels = f"{' '*4}{mid_nodes[0]}{' '*3}{mid_nodes[1]} {mid_nodes[2]} {mid_nodes[3]}"
+                    top_labels = f"{' ' * 4}{mid_nodes[0]}{' ' * 3}{mid_nodes[1]} {mid_nodes[2]} {mid_nodes[3]}"
                     fork_pos = 16 + len(latter_rules[1]) + len(latter_rules[2])
                 elif n > 1:
                     horiz += "───".join("◯" for _ in range(n - 2))
-                    top_labels = "   " + " ".join([f"r_{i+1}" for i in range(n - 2)])
+                    top_labels = "   " + " ".join([f"r_{i + 1}" for i in range(n - 2)])
                     horiz += "───◯"
                     fork_pos = 4 * (n - 2) - 1
                 else:
                     horiz += "───".join("◯" for _ in range(n - 2))
-                    top_labels = "   " + " ".join([f"r_{i+1}" for i in range(n - 2)])
+                    top_labels = "   " + " ".join([f"r_{i + 1}" for i in range(n - 2)])
                     horiz += "───◯"
                     fork_pos = 4 * (n - 2) - 1
 
-                top_labels += " " + f"r_{n-1}"
+                top_labels += " " + f"r_{n - 1}"
 
                 # Final node
                 final_line = " " * fork_pos + "│"
@@ -1549,7 +1768,7 @@ class simple_Lie_algebra(algebra_class):
             lines = []
             horiz = "   "
             if n > 7:
-                mid_nodes = ["r_1 r_2", f"r_{n-3}", f"r_{n-2}", f"r_{n-1}"]
+                mid_nodes = ["r_1 r_2", f"r_{n - 3}", f"r_{n - 2}", f"r_{n - 1}"]
                 latter_rules = [
                     " ◯───◯─" + " ⋯ ─",
                     "─" * (len(mid_nodes[1])),
@@ -1558,10 +1777,10 @@ class simple_Lie_algebra(algebra_class):
                     "",
                 ]
                 horiz += "◯".join(latter_rules)
-                top_labels = f"{' '*4}{mid_nodes[0]}{' '*3}{mid_nodes[1]} {mid_nodes[2]} {mid_nodes[3]}"
+                top_labels = f"{' ' * 4}{mid_nodes[0]}{' ' * 3}{mid_nodes[1]} {mid_nodes[2]} {mid_nodes[3]}"
             else:
                 horiz += "───".join("◯" for _ in range(n - 1))
-                top_labels = "   " + " ".join([f"r_{i+1}" for i in range(n - 1)])
+                top_labels = "   " + " ".join([f"r_{i + 1}" for i in range(n - 1)])
                 horiz += "══>◯"
             top_labels += " " + f"r_{n}"
 
@@ -1587,7 +1806,7 @@ class simple_Lie_algebra(algebra_class):
             lines = []
             horiz = "   "
             if n > 7:
-                mid_nodes = ["r_1 r_2", f"r_{n-3}", f"r_{n-2}", f"r_{n-1}"]
+                mid_nodes = ["r_1 r_2", f"r_{n - 3}", f"r_{n - 2}", f"r_{n - 1}"]
                 latter_rules = [
                     " ◯───◯─" + " ⋯ ─",
                     "─" * (len(mid_nodes[1])),
@@ -1596,10 +1815,10 @@ class simple_Lie_algebra(algebra_class):
                     "",
                 ]
                 horiz += "◯".join(latter_rules)
-                top_labels = f"{' '*4}{mid_nodes[0]}{' '*3}{mid_nodes[1]} {mid_nodes[2]} {mid_nodes[3]}"
+                top_labels = f"{' ' * 4}{mid_nodes[0]}{' ' * 3}{mid_nodes[1]} {mid_nodes[2]} {mid_nodes[3]}"
             else:
                 horiz += "───".join("◯" for _ in range(n - 1))
-                top_labels = "   " + " ".join([f"r_{i+1}" for i in range(n - 1)])
+                top_labels = "   " + " ".join([f"r_{i + 1}" for i in range(n - 1)])
                 horiz += "══>◯"
             top_labels += " " + f"r_{n}"
 
@@ -1625,7 +1844,7 @@ class simple_Lie_algebra(algebra_class):
             lines = []
             horiz = "   "
             if n > 7:
-                mid_nodes = ["r_1 r_2", f"r_{n-3}", f"r_{n-2}", f"r_{n-1}"]
+                mid_nodes = ["r_1 r_2", f"r_{n - 3}", f"r_{n - 2}", f"r_{n - 1}"]
                 latter_rules = [
                     " ◯───◯─" + " ⋯ ─",
                     "─" * (len(mid_nodes[1])),
@@ -1634,10 +1853,10 @@ class simple_Lie_algebra(algebra_class):
                     "",
                 ]
                 horiz += "◯".join(latter_rules)
-                top_labels = f"{' '*4}{mid_nodes[0]}{' '*3}{mid_nodes[1]} {mid_nodes[2]} {mid_nodes[3]}"
+                top_labels = f"{' ' * 4}{mid_nodes[0]}{' ' * 3}{mid_nodes[1]} {mid_nodes[2]} {mid_nodes[3]}"
             else:
                 horiz += "───".join("◯" for _ in range(n - 1))
-                top_labels = "   " + " ".join([f"r_{i+1}" for i in range(n - 1)])
+                top_labels = "   " + " ".join([f"r_{i + 1}" for i in range(n - 1)])
                 horiz += "───◯"
             top_labels += " " + f"r_{n}"
 
@@ -1662,7 +1881,7 @@ class simple_Lie_algebra(algebra_class):
     def parabolic_grading(self, roots=None):
         if roots is None:
             roots = []
-        if isinstance(roots, int):
+        if isinstance(roots, numbers.Integral):
             roots = [roots]
         elif not isinstance(roots, (list, tuple)):
             raise TypeError(
@@ -1672,35 +1891,36 @@ class simple_Lie_algebra(algebra_class):
             sum([self.grading[idx - 1][j] for idx in roots])
             for j in range(self.dimension)
         ]
-        denom = 1
-        for weight in gradingVector:
-            if isinstance(weight, sp.Rational):
-                if denom < weight.denominator:
-                    denom = weight.denominator
-        if denom > 1:
-            gradingVector = [denom * weight for weight in gradingVector]
+        gradingVector = clear_denominators(gradingVector)
         return gradingVector
 
     def parabolic_subalgebra(
         self,
-        roots=None,
-        label=None,
-        basis_labels=None,
-        register_in_vmf=None,
-        return_created_obj=False,
-        use_non_positive_weights=False,
-        format_as_subalgebra_class=False,
+        roots: Optional[List[int]] = None,
+        label: Optional[str] = None,
+        basis_labels: Optional[str | List[str]] = None,
+        register_in_vmf: Optional[bool] = None,
+        return_created_object: bool = False,
+        use_non_positive_weights: bool = False,
+        format_as_subalgebra_class: bool = False,
+        **kwargs,
     ):
+        return_created_object = kwargs.get("return_created_obj", return_created_object)
         if roots is None:
             roots = []
-        if isinstance(roots, int):
+        if isinstance(roots, numbers.Integral):
             roots = [roots]
-        if not isinstance(roots, (list, tuple)) or not all(root-1 in range(self.rank) for root in roots):
+        if not isinstance(roots, (list, tuple)) or not all(
+            root - 1 in range(self.rank) for root in roots
+        ):
             raise TypeError(
                 f"The `roots` parameter in `simple_Lie_algebra.parabolic_subalgebra(roots)` should be either `None`, an `int`, or a list of integers in the range (1,...,{self.rank}) representing indices of simple roots as enumerated in the algebras Dynkin diagram (see `simple_Lie_algebra.root_space_summary()` for a summary of this indexing)."
             ) from None
         marked = set(roots)
-        newGrading = [sum([self.grading[idx - 1][j] for idx in marked]) for j in range(self.dimension)]
+        newGrading = [
+            sum([self.grading[idx - 1][j] for idx in marked])
+            for j in range(self.dimension)
+        ]
         if format_as_subalgebra_class is True:
             parabolic = []
         subIndices = []
@@ -1716,20 +1936,16 @@ class simple_Lie_algebra(algebra_class):
                     parabolic.append(self.basis[count])
                 subIndices.append(count)
                 filtered_grading.append(weight)
-        denom = 1
-        for weight in filtered_grading:
-            if isinstance(weight, sp.Rational):
-                if denom < weight.denominator:
-                    denom = weight.denominator
-        if denom > 1:
-            filtered_grading = [denom * weight for weight in filtered_grading]
+        filtered_grading = clear_denominators(filtered_grading)
 
         def truncateBySubInd(li):
             return [li[j] for j in subIndices]
 
         structureData = truncateBySubInd(self.structureData)
         structureData = [truncateBySubInd(plane) for plane in structureData]
-        structureData = [[truncateBySubInd(li) for li in plane] for plane in structureData]
+        structureData = [
+            [truncateBySubInd(li) for li in plane] for plane in structureData
+        ]
         if format_as_subalgebra_class is True:
             ignoredList = []
             if label is not None:
@@ -1757,7 +1973,7 @@ class simple_Lie_algebra(algebra_class):
                 # _compressed_structure_data=structureData,
                 # _internal_lock=retrieve_passkey(),
             )
-        if isinstance(label, str) or isinstance(basis_labels, (list, tuple, str)):
+        if isinstance(basis_labels, (list, tuple, str)):
             register_in_vmf = True
         if register_in_vmf is True:
             if label is None:
@@ -1771,28 +1987,32 @@ class simple_Lie_algebra(algebra_class):
                 raise TypeError(
                     "If supplying the optional parameter `basis_labels` to `simple_Lie_algebra.parabolic_subalgebra` then it should be either a string or list of strings"
                 ) from None
-            createAlgebra(
+            return createAlgebra(
                 structureData,
                 label=label,
                 basis_labels=basis_labels,
                 grading=filtered_grading,
+                return_created_object=return_created_object,
             )
-            if return_created_obj is True:
-                return _cached_caller_globals[label]
-        if return_created_obj is True:
+        if return_created_object is True:
             return algebra_class(structureData, grading=[filtered_grading])
         elif register_in_vmf is not True:
             warnings.warn(
-                "Optional keywords for the `parabolic_subalgebra` method indicate that nothing should be return returned or registered in the vmf. Probably that is not intended, in which case at least one keyword `label`, `basis_labels`, `register_in_vmf`, `return_created_obj`, or `format_as_subalgebra_class` should be set differently."
+                "Optional keywords for the `parabolic_subalgebra` method indicate that nothing should be return returned or registered in the vmf. Probably that is not intended, in which case at least one keyword `label`, `basis_labels`, `register_in_vmf`, `return_created_object`, or `format_as_subalgebra_class` should be set differently."
             )
 
+
+# -----------------------------------------------------------------------------
+# algebra creator functions
+# -----------------------------------------------------------------------------
 def createSimpleLieAlgebra(
     series: str,
     label: str = None,
     basis_labels: list = None,
     build_standard_mat_rep=False,
-    return_created_obj=False,
-    forgo_vmf_registry=False
+    return_created_object=False,
+    forgo_vmf_registry=False,
+    **kwargs,
 ):
     """
     Creates a simple (with 2 exceptions) complex Lie algebra specified from the classical
@@ -1838,6 +2058,8 @@ def createSimpleLieAlgebra(
         raise ValueError(
             f"Sequence index must be a positive integer, but got: {rank}."
         ) from None
+    if kwargs.get("return_created_obj"):  # old keyword support
+        return_created_object = kwargs.get("return_created_object")
 
     def _generate_A_series_structure_data(n):
         matrix_dim = n + 1
@@ -1870,9 +2092,9 @@ def createSimpleLieAlgebra(
                     M = [row[:] for row in repMatrix]
                     for idx in range(n + 1):
                         if idx > j:
-                            M[idx][idx] = -sp.Rational(j+1,n+1)
+                            M[idx][idx] = -rational(j + 1, n + 1)
                         else:
-                            M[idx][idx] = 1-sp.Rational(j+1,n+1)
+                            M[idx][idx] = 1 - rational(j + 1, n + 1)
                     hBasis["elems"][(j, k, 0)] = M
                     hBasis["grading"][(j, k, 0)] = [0] * n
                 elif j != k:
@@ -1903,35 +2125,43 @@ def createSimpleLieAlgebra(
                 reSign = 1
             p10, p11, p12 = indexingKey[idx1]
             p20, p21, p22 = indexingKey[idx2]
-            if p12 == 0:    # implies p10 = p11
+            if p12 == 0:  # implies p10 = p11
                 if p22 == 1:
-                    if p20<=p10 and p21>p10:
+                    if p20 <= p10 and p21 > p10:
                         coeffs[idx2] = reSign
-                    elif p21<=p10 and p20>p10:
+                    elif p21 <= p10 and p20 > p10:
                         coeffs[idx2] = -reSign
             elif p12 == 1:
                 if p22 == 1:
                     if p11 == p20:
                         if p10 == p21:
                             if p10 < p11:
-                                if 0<p10:
-                                    coeffs[indexingKeyRev[(p10-1, p10-1, 0)]] = -reSign
-                                if p10==p11-1:
-                                    coeffs[indexingKeyRev[(p10, p10, 0)]] = 2*reSign
+                                if 0 < p10:
+                                    coeffs[
+                                        indexingKeyRev[(p10 - 1, p10 - 1, 0)]
+                                    ] = -reSign
+                                if p10 == p11 - 1:
+                                    coeffs[indexingKeyRev[(p10, p10, 0)]] = 2 * reSign
                                 else:
                                     coeffs[indexingKeyRev[(p10, p10, 0)]] = reSign
-                                    coeffs[indexingKeyRev[(p11-1, p11-1, 0)]] = reSign
-                                if p11<n:
+                                    coeffs[indexingKeyRev[(p11 - 1, p11 - 1, 0)]] = (
+                                        reSign
+                                    )
+                                if p11 < n:
                                     coeffs[indexingKeyRev[(p11, p11, 0)]] = -reSign
                             else:
-                                if 0<p11:
-                                    coeffs[indexingKeyRev[(p11-1, p11-1, 0)]] = reSign
-                                if p11==p10-1:
-                                    coeffs[indexingKeyRev[(p11, p11, 0)]] = -2*reSign
+                                if 0 < p11:
+                                    coeffs[indexingKeyRev[(p11 - 1, p11 - 1, 0)]] = (
+                                        reSign
+                                    )
+                                if p11 == p10 - 1:
+                                    coeffs[indexingKeyRev[(p11, p11, 0)]] = -2 * reSign
                                 else:
                                     coeffs[indexingKeyRev[(p11, p11, 0)]] = -reSign
-                                    coeffs[indexingKeyRev[(p10-1, p10-1, 0)]] = -reSign
-                                if p10<n:
+                                    coeffs[
+                                        indexingKeyRev[(p10 - 1, p10 - 1, 0)]
+                                    ] = -reSign
+                                if p10 < n:
                                     coeffs[indexingKeyRev[(p10, p10, 0)]] = reSign
                         else:
                             coeffs[indexingKeyRev[(p10, p21, 1)]] = reSign
@@ -1939,7 +2169,10 @@ def createSimpleLieAlgebra(
                         coeffs[indexingKeyRev[(p20, p11, 1)]] = -reSign
             return coeffs
 
-        _structure_data = [[_structureCoeffs(k, j) for j in range(LADimension)] for k in range(LADimension)]
+        _structure_data = [
+            [_structureCoeffs(k, j) for j in range(LADimension)]
+            for k in range(LADimension)
+        ]
         CartanSubalg = list(hBasis["elems"].values())
         matrixBasis = CartanSubalg + list(offDiag["elems"].values())
         gradingVecs = list(hBasis["grading"].values()) + list(
@@ -1976,19 +2209,19 @@ def createSimpleLieAlgebra(
             sign = 1 if idx2 < idx1 else -1
             for idx in range(n - 1):
                 if idx1 <= idx and idx2 <= idx:
-                    if idx==0:
+                    if idx == 0:
                         wVec.append(sign)
                     else:
-                        wVec.append(2*sign)
+                        wVec.append(2 * sign)
                 elif idx1 > idx and idx2 > idx:
                     wVec.append(0)
-                elif idx1<=idx:
+                elif idx1 <= idx:
                     wVec.append(-1)
-                elif idx2<=idx:
+                elif idx2 <= idx:
                     wVec.append(1)
-                else:   # should never trigger
+                else:  # should never trigger
                     wVec.append(0)
-            wVec.append(2*sign)
+            wVec.append(2 * sign)
             return wVec
 
         def DWeights(idx1, sign):
@@ -2006,16 +2239,16 @@ def createSimpleLieAlgebra(
             if j == k and j < n - 1:
                 M = [row[:] for row in skew_symmetric]
                 for idx in range(n):
-                    if idx < j+1:
-                        M[2 * idx][2 * idx + 1] = sp.I
-                        M[2 * idx + 1][2 * idx] = -sp.I
+                    if idx < j + 1:
+                        M[2 * idx][2 * idx + 1] = imag_unit()
+                        M[2 * idx + 1][2 * idx] = -imag_unit()
                 hBasis["elems"][(j, k, 0)] = M
                 hBasis["grading"][(j, k, 0)] = [0] * n
                 if j + 2 == n:
                     M = [row[:] for row in skew_symmetric]
                     for idx in range(n):
-                        M[2*idx][2*idx+1] = sp.I
-                        M[2*idx+1][2*idx] = -sp.I
+                        M[2 * idx][2 * idx + 1] = imag_unit()
+                        M[2 * idx + 1][2 * idx] = -imag_unit()
                     hBasis["elems"][(j + 1, k + 1, 0)] = M
                     hBasis["grading"][(j + 1, k + 1, 0)] = [0] * n
             elif j != k:
@@ -2025,10 +2258,10 @@ def createSimpleLieAlgebra(
                 MPlus[2 * k][2 * j] = -1
                 MPlus[2 * j + 1][2 * k + 1] = 1
                 MPlus[2 * k + 1][2 * j + 1] = -1
-                MPlus[2 * j][2 * k + 1] = sp.I
-                MPlus[2 * k + 1][2 * j] = -sp.I
-                MPlus[2 * j + 1][2 * k] = -sp.I
-                MPlus[2 * k][2 * j + 1] = sp.I
+                MPlus[2 * j][2 * k + 1] = imag_unit()
+                MPlus[2 * k + 1][2 * j] = -imag_unit()
+                MPlus[2 * j + 1][2 * k] = -imag_unit()
+                MPlus[2 * k][2 * j + 1] = imag_unit()
                 GPlus["elems"][(j, k, 1)] = MPlus
                 GPlus["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
@@ -2039,10 +2272,10 @@ def createSimpleLieAlgebra(
                     MMinus[2 * k][2 * j] = -1
                     MMinus[2 * j + 1][2 * k + 1] = -1
                     MMinus[2 * k + 1][2 * j + 1] = 1
-                    MMinus[2 * j][2 * k + 1] = sp.I
-                    MMinus[2 * k + 1][2 * j] = -sp.I
-                    MMinus[2 * j + 1][2 * k] = sp.I
-                    MMinus[2 * k][2 * j + 1] = -sp.I
+                    MMinus[2 * j][2 * k + 1] = imag_unit()
+                    MMinus[2 * k + 1][2 * j] = -imag_unit()
+                    MMinus[2 * j + 1][2 * k] = imag_unit()
+                    MMinus[2 * k][2 * j + 1] = -imag_unit()
                     GMinus["elems"][(j, k, -1)] = MMinus
                     GMinus["grading"][(j, k, -1)] = gMinusWeights(j, k)
                 else:  # k<j
@@ -2051,10 +2284,10 @@ def createSimpleLieAlgebra(
                     MMinus[2 * j][2 * k] = -1
                     MMinus[2 * k + 1][2 * j + 1] = -1
                     MMinus[2 * j + 1][2 * k + 1] = 1
-                    MMinus[2 * k][2 * j + 1] = -sp.I
-                    MMinus[2 * j + 1][2 * k] = sp.I
-                    MMinus[2 * k + 1][2 * j] = -sp.I
-                    MMinus[2 * j][2 * k + 1] = sp.I
+                    MMinus[2 * k][2 * j + 1] = -imag_unit()
+                    MMinus[2 * j + 1][2 * k] = imag_unit()
+                    MMinus[2 * k + 1][2 * j] = -imag_unit()
+                    MMinus[2 * j][2 * k + 1] = imag_unit()
                     GMinus["elems"][(j, k, -1)] = MMinus
                     GMinus["grading"][(j, k, -1)] = gMinusWeights(j, k)
         for j in range(n):
@@ -2062,12 +2295,12 @@ def createSimpleLieAlgebra(
             MMinus = [row[:] for row in skew_symmetric]
             MPlus[2 * j][2 * n] = 1
             MPlus[2 * n][2 * j] = -1
-            MPlus[2 * j + 1][2 * n] = sp.I
-            MPlus[2 * n][2 * j + 1] = -sp.I
+            MPlus[2 * j + 1][2 * n] = imag_unit()
+            MPlus[2 * n][2 * j + 1] = -imag_unit()
             MMinus[2 * j][2 * n] = 1
             MMinus[2 * n][2 * j] = -1
-            MMinus[2 * j + 1][2 * n] = -sp.I
-            MMinus[2 * n][2 * j + 1] = sp.I
+            MMinus[2 * j + 1][2 * n] = -imag_unit()
+            MMinus[2 * n][2 * j + 1] = imag_unit()
             DPlus["elems"][(j, 2 * n, 2)] = MPlus
             DPlus["grading"][(j, 2 * n, 2)] = DWeights(j, 1)
             DMinus["elems"][(j, 2 * n, -2)] = MMinus
@@ -2085,12 +2318,11 @@ def createSimpleLieAlgebra(
         indexingKeyRev = {j: k for k, j in indexingKey.items()}
         LADimension = len(indexingKey)
         CSDict = {
-            idx: {0: 1} if idx == 0 else {idx: 1, idx - 1: -1}
-            for idx in range(n)
+            idx: {0: 1} if idx == 0 else {idx: 1, idx - 1: -1} for idx in range(n)
         }  # Cartan subalgebra basis transform indexing
         CSDictInv = {
             idx: {j: 0 if j > idx else 1 for j in range(n)} for idx in range(n - 1)
-        } | {n - 1: {j:1 for j in range(n)}}
+        } | {n - 1: {j: 1 for j in range(n)}}
 
         def _structureCoeffs(idx1, idx2):
             coeffs = [0] * LADimension
@@ -2107,22 +2339,17 @@ def createSimpleLieAlgebra(
                 for term, scale in CSDictInv[p10].items():
                     if p22 == 1:
                         coeffs[idx2] += (
-                            scale
-                            * reSign
-                            * (int(term == p20) - int(term == p21))
+                            scale * reSign * (int(term == p20) - int(term == p21))
                         )
                     elif p22 == -1:
                         sign = -reSign if p20 < p21 else reSign
-                        coeffs[idx2] += (scale * sign * (int(term == p20) + int(term == p21))
+                        coeffs[idx2] += (
+                            scale * sign * (int(term == p20) + int(term == p21))
                         )
                     elif p22 == 2:
-                        coeffs[idx2] += (
-                            -scale * (int(term == p20)) * reSign
-                        )
+                        coeffs[idx2] += -scale * (int(term == p20)) * reSign
                     elif p22 == -2:
-                        coeffs[idx2] += (
-                            scale * (int(term == p20)) * reSign
-                        )
+                        coeffs[idx2] += scale * (int(term == p20)) * reSign
             elif p12 == 1:
                 if p22 == 1:
                     if p11 == p20:
@@ -2283,9 +2510,9 @@ def createSimpleLieAlgebra(
             wVec = []
             for idx in range(idx1):
                 wVec.append(0)
-            for idx in range(idx1,idx2):
+            for idx in range(idx1, idx2):
                 wVec.append(1)
-            for idx in range(idx2,n-1):
+            for idx in range(idx2, n - 1):
                 wVec.append(2)
             wVec.append(1)
             return wVec
@@ -2294,83 +2521,80 @@ def createSimpleLieAlgebra(
             wVec = []
             for idx in range(idx1):
                 wVec.append(0)
-            for idx in range(idx1,idx2):
+            for idx in range(idx1, idx2):
                 wVec.append(-1)
-            for idx in range(idx2,n-1):
+            for idx in range(idx2, n - 1):
                 wVec.append(-2)
             wVec.append(-1)
             return wVec
 
-
         def GLWeights(idx1, idx2):
-            if idx1<idx2:
-                wVec=[1 if idx1<=idx and idx<idx2 else 0 for idx in range(n)]
+            if idx1 < idx2:
+                wVec = [1 if idx1 <= idx and idx < idx2 else 0 for idx in range(n)]
             else:
-                wVec=[-1 if idx2<=idx and idx<idx1 else 0 for idx in range(n)]
+                wVec = [-1 if idx2 <= idx and idx < idx1 else 0 for idx in range(n)]
             return wVec
 
         for j in range(n):
-            for k in range(j,n):
+            for k in range(j, n):
                 if j == k:
                     M = [row[:] for row in symplectic]
-                    if j<n-1:
-                        for idx in range(j+1):
+                    if j < n - 1:
+                        for idx in range(j + 1):
                             M[idx][idx] = 1
-                            M[n+idx][n+idx] = -1
+                            M[n + idx][n + idx] = -1
                     else:
                         for idx in range(n):
-                            M[idx][idx] = sp.Rational(1,2)
-                            M[n+idx][n+idx] = -sp.Rational(1,2)
+                            M[idx][idx] = rational(1, 2)
+                            M[n + idx][n + idx] = -rational(1, 2)
                     hBasis["elems"][(j, k, 0)] = M
                     hBasis["grading"][(j, k, 0)] = [0] * n
 
                     M = [row[:] for row in symplectic]
-                    M[j][n+j] = 1
+                    M[j][n + j] = 1
                     offDiag["elems"][(j, k, 1)] = M
                     offDiag["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
                     M = [row[:] for row in symplectic]
-                    M[n+j][j] = 1
+                    M[n + j][j] = 1
                     offDiag["elems"][(j, k, -1)] = M
                     offDiag["grading"][(j, k, -1)] = gMinusWeights(j, k)
                 else:
                     M = [row[:] for row in symplectic]
                     M[j][k] = 1
-                    M[n+k][n+j] = -1
+                    M[n + k][n + j] = -1
                     offDiag["elems"][(j, k, 2)] = M
                     offDiag["grading"][(j, k, 2)] = GLWeights(j, k)
 
                     M = [row[:] for row in symplectic]
                     M[k][j] = 1
-                    M[n+j][n+k] = -1
+                    M[n + j][n + k] = -1
                     offDiag["elems"][(k, j, 2)] = M
                     offDiag["grading"][(k, j, 2)] = GLWeights(k, j)
 
                     M = [row[:] for row in symplectic]
-                    M[j][n+k] = 1
-                    M[k][n+j] = 1
+                    M[j][n + k] = 1
+                    M[k][n + j] = 1
                     offDiag["elems"][(j, k, 1)] = M
                     offDiag["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
                     M = [row[:] for row in symplectic]
-                    M[n+j][k] = 1
-                    M[n+k][j] = 1
+                    M[n + j][k] = 1
+                    M[n + k][j] = 1
                     offDiag["elems"][(j, k, -1)] = M
                     offDiag["grading"][(j, k, -1)] = gMinusWeights(j, k)
 
         indexingKey = dict(
-            enumerate(
-                list(hBasis["grading"].keys())
-                + list(offDiag["grading"].keys())
-            )
+            enumerate(list(hBasis["grading"].keys()) + list(offDiag["grading"].keys()))
         )
         indexingKeyRev = {j: k for k, j in indexingKey.items()}
         LADimension = len(indexingKey)
 
-        def minmaxtuple(id1,id2,id3):
-            if id1<id2:
-                return (id1,id2,id3)
-            return (id2,id1,id3)
+        def minmaxtuple(id1, id2, id3):
+            if id1 < id2:
+                return (id1, id2, id3)
+            return (id2, id1, id3)
+
         def _structureCoeffs(idx1, idx2):
             coeffs = [0] * LADimension
             if idx2 == idx1:
@@ -2392,75 +2616,96 @@ def createSimpleLieAlgebra(
             elif p12 == 1:
                 if p22 == -1:
                     if p11 == p20:
-                        coeffs[indexingKeyRev[(p10,p21,2*int(p10!=p21))]] += reSign
+                        coeffs[indexingKeyRev[(p10, p21, 2 * int(p10 != p21))]] += (
+                            reSign
+                        )
                     elif p11 == p21:
-                        coeffs[indexingKeyRev[(p10,p20,2*int(p10!=p20))]] += reSign
-                    if p11!=p10:
+                        coeffs[indexingKeyRev[(p10, p20, 2 * int(p10 != p20))]] += (
+                            reSign
+                        )
+                    if p11 != p10:
                         if p10 == p20:
-                            coeffs[indexingKeyRev[(p11,p21,2*int(p11!=p21))]] += reSign
+                            coeffs[indexingKeyRev[(p11, p21, 2 * int(p11 != p21))]] += (
+                                reSign
+                            )
                         elif p10 == p21:
-                            coeffs[indexingKeyRev[(p11,p20,2*int(p11!=p20))]] += reSign
+                            coeffs[indexingKeyRev[(p11, p20, 2 * int(p11 != p20))]] += (
+                                reSign
+                            )
                 elif p22 == 2:
-                    if p11 == p21 and p10==p20:     ###!!! check second condition
-                        coeffs[indexingKeyRev[minmaxtuple(p10,p20,1)]] += -reSign
+                    if p11 == p21 and p10 == p20:  ###!!! check second condition
+                        coeffs[indexingKeyRev[minmaxtuple(p10, p20, 1)]] += -reSign
                     if p10 == p21:
-                        coeffs[indexingKeyRev[minmaxtuple(p11,p20,1)]] += -reSign
-                    if p11!=p10:
-                        if p10 == p21 and p11==p20: ###!!! check second condition
-                            coeffs[indexingKeyRev[minmaxtuple(p11,p20,1)]] += -reSign
+                        coeffs[indexingKeyRev[minmaxtuple(p11, p20, 1)]] += -reSign
+                    if p11 != p10:
+                        if p10 == p21 and p11 == p20:  ###!!! check second condition
+                            coeffs[indexingKeyRev[minmaxtuple(p11, p20, 1)]] += -reSign
                         if p11 == p21:
-                            coeffs[indexingKeyRev[minmaxtuple(p10,p20,1)]] += -reSign
+                            coeffs[indexingKeyRev[minmaxtuple(p10, p20, 1)]] += -reSign
 
             elif p12 == -1:
                 if p22 == 1:
                     if p11 == p20:
-                        coeffs[indexingKeyRev[(p21,p10,2*int(p10!=p21))]] += -reSign
+                        coeffs[
+                            indexingKeyRev[(p21, p10, 2 * int(p10 != p21))]
+                        ] += -reSign
                     elif p11 == p21:
-                        coeffs[indexingKeyRev[(p20,p10,2*int(p10!=p20))]] += -reSign
-                    if p11!=p10:
+                        coeffs[
+                            indexingKeyRev[(p20, p10, 2 * int(p10 != p20))]
+                        ] += -reSign
+                    if p11 != p10:
                         if p10 == p20:
-                            coeffs[indexingKeyRev[(p21,p11,2*int(p11!=p21))]] += -reSign
+                            coeffs[
+                                indexingKeyRev[(p21, p11, 2 * int(p11 != p21))]
+                            ] += -reSign
                         elif p10 == p21:
-                            coeffs[indexingKeyRev[(p20,p11,2*int(p11!=p20))]] += -reSign
+                            coeffs[
+                                indexingKeyRev[(p20, p11, 2 * int(p11 != p20))]
+                            ] += -reSign
                 elif p22 == 2:
-                    if p11 == p20 and p10==p21:     ###!!! check second condition
-                        coeffs[indexingKeyRev[minmaxtuple(p10,p21,-1)]] += reSign
+                    if p11 == p20 and p10 == p21:  ###!!! check second condition
+                        coeffs[indexingKeyRev[minmaxtuple(p10, p21, -1)]] += reSign
                     if p10 == p20:
-                        coeffs[indexingKeyRev[minmaxtuple(p11,p21,-1)]] += reSign
-                    if p11!=p10:
-                        if p10 == p20 and p11 == p21:   ###!!! check second condition
-                            coeffs[indexingKeyRev[minmaxtuple(p11,p21,-1)]] += reSign
+                        coeffs[indexingKeyRev[minmaxtuple(p11, p21, -1)]] += reSign
+                    if p11 != p10:
+                        if p10 == p20 and p11 == p21:  ###!!! check second condition
+                            coeffs[indexingKeyRev[minmaxtuple(p11, p21, -1)]] += reSign
                         if p11 == p20:
-                            coeffs[indexingKeyRev[minmaxtuple(p10,p21,-1)]] += reSign
+                            coeffs[indexingKeyRev[minmaxtuple(p10, p21, -1)]] += reSign
 
             elif p12 == 2:
                 if p22 == 1:
-                    if p21 == p11 and p20==p10:     ###!!! check second condition
-                        coeffs[indexingKeyRev[minmaxtuple(p20,p10,1)]] += reSign
+                    if p21 == p11 and p20 == p10:  ###!!! check second condition
+                        coeffs[indexingKeyRev[minmaxtuple(p20, p10, 1)]] += reSign
                     if p20 == p11:
-                        coeffs[indexingKeyRev[minmaxtuple(p21,p10,1)]] += reSign
-                    if p20!=p21:
-                        if p20 == p11 and p21==p10: ###!!! check second condition
-                            coeffs[indexingKeyRev[minmaxtuple(p21,p10,1)]] += reSign
+                        coeffs[indexingKeyRev[minmaxtuple(p21, p10, 1)]] += reSign
+                    if p20 != p21:
+                        if p20 == p11 and p21 == p10:  ###!!! check second condition
+                            coeffs[indexingKeyRev[minmaxtuple(p21, p10, 1)]] += reSign
                         if p21 == p11:
-                            coeffs[indexingKeyRev[minmaxtuple(p20,p10,1)]] += reSign
+                            coeffs[indexingKeyRev[minmaxtuple(p20, p10, 1)]] += reSign
                 elif p22 == -1:
-                    if p21 == p10 and p20==p11:     ###!!! check second condition
-                        coeffs[indexingKeyRev[minmaxtuple(p20,p11,-1)]] += -reSign
+                    if p21 == p10 and p20 == p11:  ###!!! check second condition
+                        coeffs[indexingKeyRev[minmaxtuple(p20, p11, -1)]] += -reSign
                     if p20 == p10:
-                        coeffs[indexingKeyRev[minmaxtuple(p21,p11,-1)]] += -reSign
-                    if p20!=p21:
-                        if p20 == p10 and p21==p11:  ###!!! check second condition
-                            coeffs[indexingKeyRev[minmaxtuple(p21,p11,-1)]] += -reSign
+                        coeffs[indexingKeyRev[minmaxtuple(p21, p11, -1)]] += -reSign
+                    if p20 != p21:
+                        if p20 == p10 and p21 == p11:  ###!!! check second condition
+                            coeffs[indexingKeyRev[minmaxtuple(p21, p11, -1)]] += -reSign
                         if p21 == p10:
-                            coeffs[indexingKeyRev[minmaxtuple(p20,p11,-1)]] += -reSign
+                            coeffs[indexingKeyRev[minmaxtuple(p20, p11, -1)]] += -reSign
 
                 elif p22 == 2:
                     if p11 == p20:
-                        coeffs[indexingKeyRev[(p10,p21,2*int(p10!=p21))]] += reSign
+                        coeffs[indexingKeyRev[(p10, p21, 2 * int(p10 != p21))]] += (
+                            reSign
+                        )
                     if p10 == p21:
-                        coeffs[indexingKeyRev[(p20,p11,2*int(p20!=p11))]] += -reSign
+                        coeffs[
+                            indexingKeyRev[(p20, p11, 2 * int(p20 != p11))]
+                        ] += -reSign
             return coeffs
+
         _structure_data = [
             [_structureCoeffs(k, j) for j in range(LADimension)]
             for k in range(LADimension)
@@ -2491,7 +2736,7 @@ def createSimpleLieAlgebra(
                     wVec.append(1)
                 else:
                     wVec.append(-1)
-            if (idx1 < n - 1 and idx2 < n-1) or (idx1 > n - 2 and idx2 > n - 2):
+            if (idx1 < n - 1 and idx2 < n - 1) or (idx1 > n - 2 and idx2 > n - 2):
                 wVec.append(0)
             elif idx1 < n - 1:
                 wVec.append(1)
@@ -2505,7 +2750,7 @@ def createSimpleLieAlgebra(
             sign = 1 if idx2 < idx1 else -1
             for idx in range(n - 2):
                 if idx1 <= idx and idx2 <= idx:
-                    wVec.append(2*sign)
+                    wVec.append(2 * sign)
                 elif idx1 > idx and idx2 > idx:
                     wVec.append(0)
                 else:
@@ -2523,26 +2768,26 @@ def createSimpleLieAlgebra(
             # Diagonal (Cartan) element
             if j == k and j < n - 1:
                 M = [row[:] for row in skew_symmetric]
-                if j<n-2:
-                    for idx in range(j+1):
-                        M[2 * idx][2 * idx + 1] = sp.I
-                        M[2 * idx + 1][2 * idx] = -sp.I
+                if j < n - 2:
+                    for idx in range(j + 1):
+                        M[2 * idx][2 * idx + 1] = imag_unit()
+                        M[2 * idx + 1][2 * idx] = -imag_unit()
                     hBasis["elems"][(j, k, 0)] = M
                     hBasis["grading"][(j, k, 0)] = [0] * n
                 else:
                     for idx in range(n):
                         if idx > j:
-                            M[2 * idx][2 * idx + 1] = -sp.I / 2
-                            M[2 * idx + 1][2 * idx] = sp.I / 2
+                            M[2 * idx][2 * idx + 1] = -imag_unit() / 2
+                            M[2 * idx + 1][2 * idx] = imag_unit() / 2
                         else:
-                            M[2 * idx][2 * idx + 1] = sp.I / 2
-                            M[2 * idx + 1][2 * idx] = -sp.I / 2
+                            M[2 * idx][2 * idx + 1] = imag_unit() / 2
+                            M[2 * idx + 1][2 * idx] = -imag_unit() / 2
                     hBasis["elems"][(j, k, 0)] = M
                     hBasis["grading"][(j, k, 0)] = [0] * n
                     M = [row[:] for row in skew_symmetric]
                     for idx in range(n):
-                        M[2 * idx][2 * idx + 1] = sp.I / 2
-                        M[2 * idx + 1][2 * idx] = -sp.I / 2
+                        M[2 * idx][2 * idx + 1] = imag_unit() / 2
+                        M[2 * idx + 1][2 * idx] = -imag_unit() / 2
                     hBasis["elems"][(j + 1, k + 1, 0)] = M
                     hBasis["grading"][(j + 1, k + 1, 0)] = [0] * n
             elif j != k:
@@ -2552,10 +2797,10 @@ def createSimpleLieAlgebra(
                 MPlus[2 * k][2 * j] = -1
                 MPlus[2 * j + 1][2 * k + 1] = 1
                 MPlus[2 * k + 1][2 * j + 1] = -1
-                MPlus[2 * j][2 * k + 1] = sp.I
-                MPlus[2 * k + 1][2 * j] = -sp.I
-                MPlus[2 * j + 1][2 * k] = -sp.I
-                MPlus[2 * k][2 * j + 1] = sp.I
+                MPlus[2 * j][2 * k + 1] = imag_unit()
+                MPlus[2 * k + 1][2 * j] = -imag_unit()
+                MPlus[2 * j + 1][2 * k] = -imag_unit()
+                MPlus[2 * k][2 * j + 1] = imag_unit()
                 GPlus["elems"][(j, k, 1)] = MPlus
                 GPlus["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
@@ -2566,10 +2811,10 @@ def createSimpleLieAlgebra(
                     MMinus[2 * k][2 * j] = -1
                     MMinus[2 * j + 1][2 * k + 1] = -1
                     MMinus[2 * k + 1][2 * j + 1] = 1
-                    MMinus[2 * j][2 * k + 1] = sp.I
-                    MMinus[2 * k + 1][2 * j] = -sp.I
-                    MMinus[2 * j + 1][2 * k] = sp.I
-                    MMinus[2 * k][2 * j + 1] = -sp.I
+                    MMinus[2 * j][2 * k + 1] = imag_unit()
+                    MMinus[2 * k + 1][2 * j] = -imag_unit()
+                    MMinus[2 * j + 1][2 * k] = imag_unit()
+                    MMinus[2 * k][2 * j + 1] = -imag_unit()
                     GMinus["elems"][(j, k, -1)] = MMinus
                     GMinus["grading"][(j, k, -1)] = gMinusWeights(j, k)
                 else:  # k<j
@@ -2578,10 +2823,10 @@ def createSimpleLieAlgebra(
                     MMinus[2 * j][2 * k] = -1
                     MMinus[2 * k + 1][2 * j + 1] = -1
                     MMinus[2 * j + 1][2 * k + 1] = 1
-                    MMinus[2 * k][2 * j + 1] = -sp.I
-                    MMinus[2 * j + 1][2 * k] = sp.I
-                    MMinus[2 * k + 1][2 * j] = -sp.I
-                    MMinus[2 * j][2 * k + 1] = sp.I
+                    MMinus[2 * k][2 * j + 1] = -imag_unit()
+                    MMinus[2 * j + 1][2 * k] = imag_unit()
+                    MMinus[2 * k + 1][2 * j] = -imag_unit()
+                    MMinus[2 * j][2 * k + 1] = imag_unit()
                     GMinus["elems"][(j, k, -1)] = MMinus
                     GMinus["grading"][(j, k, -1)] = gMinusWeights(j, k)
 
@@ -2594,18 +2839,25 @@ def createSimpleLieAlgebra(
         )
         indexingKeyRev = {j: k for k, j in indexingKey.items()}
         LADimension = len(indexingKey)
-        if n==1:
-            CSDict = {0:{0:2}}  # Cartan subalgebra basis transform indexing
-        elif n==2:
-            CSDict = {0:{0:1,1:1},1:{0:-1,1:1}}
+        if n == 1:
+            CSDict = {0: {0: 2}}  # Cartan subalgebra basis transform indexing
+        elif n == 2:
+            CSDict = {0: {0: 1, 1: 1}, 1: {0: -1, 1: 1}}
         else:
-            CSDict = {idx: {0: 1} if idx == 0 else {idx: 1, idx - 1: -1}
-                for idx in range(n-2)} | {n-2:{n-2:1,n-1:1,n-3:-1},n-1:{n-2:-1,n-1:1}}
+            CSDict = {
+                idx: {0: 1} if idx == 0 else {idx: 1, idx - 1: -1}
+                for idx in range(n - 2)
+            } | {n - 2: {n - 2: 1, n - 1: 1, n - 3: -1}, n - 1: {n - 2: -1, n - 1: 1}}
         CSDictInv = {
             idx: {j: 0 if j > idx else 1 for j in range(n)} for idx in range(n - 2)
-        } | {n - 1: {j: sp.Rational(1, 2) for j in range(n)}}
-        if n>2:
-            CSDictInv|={n-2:{j: sp.Rational(-1, 2) if j > n-2 else sp.Rational(1, 2) for j in range(n)}}
+        } | {n - 1: {j: rational(1, 2) for j in range(n)}}
+        if n > 2:
+            CSDictInv |= {
+                n - 2: {
+                    j: rational(-1, 2) if j > n - 2 else rational(1, 2)
+                    for j in range(n)
+                }
+            }
 
         def _structureCoeffs(idx1, idx2):
             coeffs = [0] * LADimension
@@ -2622,26 +2874,22 @@ def createSimpleLieAlgebra(
                 for term, scale in CSDictInv[p10].items():
                     if p22 == 1:
                         coeffs[idx2] += (
-                            scale
-                            * reSign
-                            * (int(term == p20) - int(term == p21))
+                            scale * reSign * (int(term == p20) - int(term == p21))
                         )
                     elif p22 == -1:
-                        if p20<p21:
-                            if p21<=p10:
-                                sign=-2
+                        if p20 < p21:
+                            if p21 <= p10:
+                                sign = -2
                             else:
-                                sign=-1
+                                sign = -1
                         else:
-                            if p21<=p10:
-                                sign=-2
+                            if p21 <= p10:
+                                sign = -2
                             else:
-                                sign=2
+                                sign = 2
                         sign = -reSign if p20 < p21 else reSign
                         coeffs[idx2] += (
-                            scale
-                            * sign
-                            * (int(term == p20) + int(term == p21))
+                            scale * sign * (int(term == p20) + int(term == p21))
                         )
             elif p12 == 1:
                 if p22 == 1:
@@ -2743,7 +2991,9 @@ def createSimpleLieAlgebra(
 
     if series_type == "A":
         default_label = f"sl{rank + 1}" if label is None else label
-        structure_data, grading, CartanSubalgebra, matrixBasis = _generate_A_series_structure_data(rank)
+        structure_data, grading, CartanSubalgebra, matrixBasis = (
+            _generate_A_series_structure_data(rank)
+        )
         passkey = retrieve_passkey()
         if build_standard_mat_rep is True:
             return createAlgebra(
@@ -2758,8 +3008,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
-                return_created_obj=return_created_obj,
-                forgo_vmf_registry=forgo_vmf_registry
+                return_created_object=return_created_object,
+                forgo_vmf_registry=forgo_vmf_registry,
             )
         else:
             return createAlgebra(
@@ -2773,12 +3023,12 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
-                return_created_obj=return_created_obj,
-                forgo_vmf_registry=forgo_vmf_registry
+                return_created_object=return_created_object,
+                forgo_vmf_registry=forgo_vmf_registry,
             )
 
     elif series_type == "B":
-        default_label = f"so{2*rank + 1}" if label is None else label
+        default_label = f"so{2 * rank + 1}" if label is None else label
         structure_data, grading, CartanSubalgebra, matrixBasis = (
             _generate_B_series_structure_data(rank)
         )
@@ -2796,8 +3046,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
-                return_created_obj=return_created_obj,
-                forgo_vmf_registry=forgo_vmf_registry
+                return_created_object=return_created_object,
+                forgo_vmf_registry=forgo_vmf_registry,
             )
         else:
             return createAlgebra(
@@ -2811,8 +3061,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
-                return_created_obj=return_created_obj,
-                forgo_vmf_registry=forgo_vmf_registry
+                return_created_object=return_created_object,
+                forgo_vmf_registry=forgo_vmf_registry,
             )
 
     elif series_type == "C":
@@ -2834,8 +3084,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
-                return_created_obj=return_created_obj,
-                forgo_vmf_registry=forgo_vmf_registry
+                return_created_object=return_created_object,
+                forgo_vmf_registry=forgo_vmf_registry,
             )
         else:
             return createAlgebra(
@@ -2849,12 +3099,12 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
-                return_created_obj=return_created_obj,
-                forgo_vmf_registry=forgo_vmf_registry
+                return_created_object=return_created_object,
+                forgo_vmf_registry=forgo_vmf_registry,
             )
 
     elif series_type == "D":
-        default_label = f"so{2*rank}" if label is None else label
+        default_label = f"so{2 * rank}" if label is None else label
         structure_data, grading, CartanSubalgebra, matrixBasis = (
             _generate_D_series_structure_data(rank)
         )
@@ -2872,8 +3122,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
-                return_created_obj=return_created_obj,
-                forgo_vmf_registry=forgo_vmf_registry
+                return_created_object=return_created_object,
+                forgo_vmf_registry=forgo_vmf_registry,
             )
         else:
             return createAlgebra(
@@ -2887,8 +3137,8 @@ def createSimpleLieAlgebra(
                     "CartanSubalgebra": CartanSubalgebra,
                     "type": [series_type, rank],
                 },
-                return_created_obj=return_created_obj,
-                forgo_vmf_registry=forgo_vmf_registry
+                return_created_object=return_created_object,
+                forgo_vmf_registry=forgo_vmf_registry,
             )
 
     elif series_type + str(rank) in {"G2", "F4", "E6", "E7", "E8"}:
@@ -2915,6 +3165,7 @@ def createFiniteAlg(
     assume_Lie_alg=False,
     basis_order_for_supplied_str_eqns=None,
     _simple=None,
+    **kwargs,
 ):
     warnings.warn(
         "`createFiniteAlg` has been deprecated as it is being replaced with a more genera function. "
@@ -2937,6 +3188,7 @@ def createFiniteAlg(
         _simple=_simple,
     )
 
+
 def createAlgebra(
     obj,
     label,
@@ -2945,20 +3197,21 @@ def createAlgebra(
     format_sparse=False,
     process_matrix_rep=False,
     preferred_representation=None,
-    matrix_representation = None,
-    tensor_representation = None,
+    matrix_representation=None,
+    tensor_representation=None,
     verbose=False,
     assume_skew=False,
     assume_Lie_alg=False,
     basis_order_for_supplied_str_eqns=None,
     _simple=None,
-    return_created_obj=False,
+    return_created_object=False,
     forgo_vmf_registry=False,
     simplify_products_by_default=None,
     initial_basis_index=1,
-    allow_natural_basis_reordering:bool|None=None,
+    allow_natural_basis_reordering: bool | None = None,
     _basis_labels_parent=None,
-    _markers={}
+    _markers={},
+    **kwargs,
 ):
     """
     Registers an algebra object and its basis elements in the caller's global namespace,
@@ -2983,34 +3236,48 @@ def createAlgebra(
     verbose : bool, optional
         If True, provides information during the creation process.
     """
-    notes={}
-    _markers['_educed_properties']=dict()
+    if kwargs.get("return_created_obj"):  # old keyword support
+        return_created_object = kwargs.get("return_created_object")
+    notes = {}
+    _markers["_educed_properties"] = dict()
     if get_dgcv_category(obj) == "Tanaka_symbol":
-        t_message='True by construction: data --> `Tanaka_symbol` --> `createAlgebra`'
-        _markers['_educed_properties']['is_Lie_algebra']=t_message
-        _markers['_educed_properties']['is_skew']=t_message
-        _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
+        t_message = "True by construction: data --> `Tanaka_symbol` --> `createAlgebra`"
+        _markers["_educed_properties"]["is_Lie_algebra"] = t_message
+        _markers["_educed_properties"]["is_skew"] = t_message
+        _markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
         if grading is not None:
             warnings.warn(
                 "When processing a `Tanaka_symbol` object, `createAlgebra` uses the symbol's internally defined grading rather than a manually supplied grading. You are getting this warning because an additional grading was manually supplied. To apply the custom grading instead, extract the symbol object's structure data using `Tanaka_symbol.export_algebra_data()`, and then pass that to `createAlgebra` -- create the algebra first and extract the data from the created `algebra_class` attributes."
             )
         if allow_natural_basis_reordering is None:
-            allow_natural_basis_reordering=False
+            allow_natural_basis_reordering = False
         preserve_negative_part_basis = not allow_natural_basis_reordering
-        symbolData = obj.export_algebra_data(_internal_call_lock=retrieve_passkey(),preserve_negative_part_basis=preserve_negative_part_basis)
+        symbolData = obj.export_algebra_data(
+            _internal_call_lock=retrieve_passkey(),
+            preserve_negative_part_basis=preserve_negative_part_basis,
+        )
         if isinstance(symbolData, str):
-            raise TypeError(symbolData + " So no `createAlgebra` did not instantiate a new algebra.") from None
+            raise TypeError(
+                symbolData + " So no `createAlgebra` did not instantiate a new algebra."
+            ) from None
         obj = symbolData["structure_data"]
         grading = symbolData["grading"]
 
     passkey = retrieve_passkey()
-    if (_markers.get('sum', False) or _markers.get('prod', False)) and _markers.get('lockKey', None) == passkey:
-        incoming_tex_label = _markers.get('_tex_label', None)
+    if (_markers.get("sum", False) or _markers.get("prod", False)) and _markers.get(
+        "lockKey", None
+    ) == passkey:
+        incoming_tex_label = _markers.get("_tex_label", None)
         if incoming_tex_label is None:
             label = unique_label(label)
         else:
-            label, _markers['_tex_label'] = unique_label(label, tex_label=incoming_tex_label)
-    if (label in listVar(algebras_only=True) and get_dgcv_settings_registry()["forgo_warnings"] is not True):
+            label, _markers["_tex_label"] = unique_label(
+                label, tex_label=incoming_tex_label
+            )
+    if (
+        label in listVar(algebras_only=True)
+        and get_dgcv_settings_registry()["forgo_warnings"] is not True
+    ):
         if isinstance(_simple, dict) and _simple.get("lockKey", None) == passkey:
             callFunction = "createSimpleLieAlgebra"
         else:
@@ -3020,7 +3287,7 @@ def createAlgebra(
         )
         clearVar(label)
 
-    def extract_structure_from_elements(elements,markers):
+    def extract_structure_from_elements(elements, markers):
         """
         Computes structure constants and validates linear independence from a list of algebra_element_class.
 
@@ -3040,27 +3307,44 @@ def createAlgebra(
             If the elements are not linearly independent or not closed under the algebra product.
         """
         if isinstance(elements, (list, tuple)):
-            elements = [(elem.ambient_rep if get_dgcv_category(elem) == "subalgebra_element" else elem) for elem in elements]
-        if not elements or not all(isinstance(el, algebra_element_class) for el in elements):
+            elements = [
+                (
+                    elem.ambient_rep
+                    if get_dgcv_category(elem) == "subalgebra_element"
+                    else elem
+                )
+                for elem in elements
+            ]
+        if not elements or not all(
+            isinstance(el, algebra_element_class) for el in elements
+        ):
             raise ValueError(
                 "Invalid input: All elements must be instances of algebra_element_class."
             ) from None
         parent_algebra = elements[0].algebra
         if parent_algebra._lie_algebra_cache is True:
-            t_message='True by inheritance: subalgebra of Lie algebra'
-            markers['_educed_properties']['is_Lie_algebra']=t_message
-            markers['_educed_properties']['is_skew']=t_message
-            markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
+            t_message = "True by inheritance: subalgebra of Lie algebra"
+            markers["_educed_properties"]["is_Lie_algebra"] = t_message
+            markers["_educed_properties"]["is_skew"] = t_message
+            markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
         else:
             if parent_algebra._jacobi_identity_cache is True:
-                markers['_educed_properties']['satisfies_Jacobi_ID']='True by inheritance: subalgebra of Jacobi satisfying algebra'
+                markers["_educed_properties"]["satisfies_Jacobi_ID"] = (
+                    "True by inheritance: subalgebra of Jacobi satisfying algebra"
+                )
             if parent_algebra._skew_symmetric_cache is True:
-                markers['_educed_properties']['is_skew']='True by inheritance: subalgebra of a skew symmetric algebra'
+                markers["_educed_properties"]["is_skew"] = (
+                    "True by inheritance: subalgebra of a skew symmetric algebra"
+                )
 
         if not all(el.algebra == parent_algebra for el in elements):
-            raise ValueError("All algebra_element_class instances must share the same parent algebra.") from None
+            raise ValueError(
+                "All algebra_element_class instances must share the same parent algebra."
+            ) from None
         try:
-            result = parent_algebra.is_subspace_subalgebra(elements, return_structure_data=True)
+            result = parent_algebra.is_subspace_subalgebra(
+                elements, return_structure_data=True
+            )
         except ValueError as e:
             raise ValueError(
                 "Error during subalgebra validation. "
@@ -3068,52 +3352,76 @@ def createAlgebra(
                 f"Original error: {e}"
             ) from e
         if not result["linearly_independent"]:
-            raise ValueError("The input elements are not linearly independent. ") from None
+            raise ValueError(
+                "The input elements are not linearly independent. "
+            ) from None
         if not result["closed_under_product"]:
-            raise ValueError("The input elements are not closed under the algebra product. ") from None
+            raise ValueError(
+                "The input elements are not closed under the algebra product. "
+            ) from None
         return result["structure_data"]
 
-    if get_dgcv_category(obj) == 'algebra_subspace':
+    if get_dgcv_category(obj) == "algebra_subspace":
         try:
-            obj=obj.ambient.subalgebra(obj)
+            obj = obj.ambient.subalgebra(obj)
         except dgcv_exception_note as e:
-           raise SystemExit(e)
+            raise SystemExit(e)
 
-    if isinstance(obj,numbers.Integral) and obj>=0:
-        obj=(((0,)*obj,)*obj,)*obj
-        t_message='True by construction: abelian data --> `createAlgebra`'
-        _markers['_educed_properties']['is_Lie_algebra']=t_message
-        _markers['_educed_properties']['is_skew']=t_message
-        _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
-        _markers['_educed_properties']['is_nilpotent']=t_message
-        _markers['_educed_properties']['is_solvable']=t_message
-        _markers['_educed_properties']['special_type']='abelian'
-    if get_dgcv_category(obj) in {'algebra','subalgebra'}:
+    def _branch_inference(elems):
+        gate = False
+        types = {"algebra_element", "subalgebra_element", "vector_space_element"}
+        for elem in elems:
+            if get_dgcv_category(elem) == "tensorProduct":
+                gate = True
+            elif get_dgcv_category(elem) not in types:
+                return False
+        return gate
+
+    if isinstance(obj, numbers.Integral) and obj >= 0:
+        obj = (((0,) * obj,) * obj,) * obj
+        t_message = "True by construction: abelian data --> `createAlgebra`"
+        _markers["_educed_properties"]["is_Lie_algebra"] = t_message
+        _markers["_educed_properties"]["is_skew"] = t_message
+        _markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
+        _markers["_educed_properties"]["is_nilpotent"] = t_message
+        _markers["_educed_properties"]["is_solvable"] = t_message
+        _markers["_educed_properties"]["special_type"] = "abelian"
+    if get_dgcv_category(obj) in {"algebra", "subalgebra"}:
         if verbose:
             print(f"Using existing algebra instance: {label}")
-        _markers['_educed_properties']=getattr(obj,'_educed_properties',dict())
+        _markers["_educed_properties"] = getattr(obj, "_educed_properties", dict())
         structure_data = obj.structureData
         dimension = obj.dimension
         if grading is None:
-            grading = getattr(obj,'grading',None)
-    elif isinstance(obj, (list, tuple)) and len(obj)==0:
-        structure_data=tuple()
-        dimension=0
-    elif isinstance(obj, (list, tuple)) and all(get_dgcv_category(el) in {'algebra_element_class','subalgebra_element_class'} for el in obj):
+            grading = getattr(obj, "grading", None)
+    elif isinstance(obj, (list, tuple)) and len(obj) == 0:
+        structure_data = tuple()
+        dimension = 0
+    elif isinstance(obj, (list, tuple)) and all(
+        get_dgcv_category(el) in {"algebra_element", "subalgebra_element"} for el in obj
+    ):
         if verbose:
             print("Creating algebra from list of algebra_element_class instances.")
-        structure_data = extract_structure_from_elements(obj,_markers)
+        structure_data = extract_structure_from_elements(obj, _markers)
         dimension = len(obj)
-    elif (isinstance(obj, (list, tuple)) and all(get_dgcv_category(el) == 'tensorProduct' for el in obj)):
-        notes['process_tensor_rep']=True
+    elif isinstance(obj, (list, tuple)) and _branch_inference(obj):
+        notes["process_tensor_rep"] = True
         if verbose:
             print("Creating algebra from list of tensorProduct instances.")
         try:
-            vsd = _validate_structure_data(obj,process_matrix_rep=False,assume_skew=assume_skew,assume_Lie_alg=assume_Lie_alg,basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,process_tensor_rep=True
+            vsd = _validate_structure_data(
+                [el._convert_to_tp() for el in obj],
+                process_matrix_rep=False,
+                assume_skew=assume_skew,
+                assume_Lie_alg=assume_Lie_alg,
+                basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,
+                process_tensor_rep=True,
             )
             if tensor_representation is not None:
-                warnings.warn('The primary object given to `createAlgebra` was a list of tensorProduct instances, but a secondary value fo `tensor_representation` representation was given. The latter was ignored.')
-            structure_data,tensor_representation = vsd[0][0],vsd[0][1]
+                warnings.warn(
+                    "The primary object given to `createAlgebra` was a list of tensorProduct instances, but a secondary value fo `tensor_representation` representation was given. The latter was ignored."
+                )
+            structure_data, tensor_representation = vsd[0][0], vsd[0][1]
 
         except dgcv_exception_note as e:
             raise SystemExit(e)
@@ -3129,48 +3437,70 @@ def createAlgebra(
                 assume_Lie_alg=assume_Lie_alg,
                 basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,
             )
-            if vsd[-1]=='matrix':
-                t_message='True by construction: list of matrices --> `createAlgebra`'
-                _markers['_educed_properties']['is_Lie_algebra']=t_message
-                _markers['_educed_properties']['is_skew']=t_message
-                _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
-                _markers['parameters']=vsd[0][2]
-                structure_data,matrix_representation = vsd[0][0],vsd[0][1]
-            elif vsd[-1]=='tensor':
-                notes['process_tensor_rep']=True
-                _markers['parameters']=vsd[0][2]
+            if vsd[-1] == "matrix":
+                t_message = "True by construction: list of matrices --> `createAlgebra`"
+                _markers["_educed_properties"]["is_Lie_algebra"] = t_message
+                _markers["_educed_properties"]["is_skew"] = t_message
+                _markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
+                _markers["parameters"] = vsd[0][2]
+                structure_data, matrix_representation = vsd[0][0], vsd[0][1]
+            elif vsd[-1] == "tensor":
+                notes["process_tensor_rep"] = True
+                _markers["parameters"] = vsd[0][2]
                 structure_data, tensor_representation = vsd[0][0], vsd[0][1]
             else:
-                if isinstance(obj,(list,tuple)) and len(obj)>1 and query_dgcv_categories(obj[-1],'vector_field'):
-                    t_message='True by construction: list of vector fields --> `createAlgebra`'
-                    _markers['_educed_properties']['is_Lie_algebra']=t_message
-                    _markers['_educed_properties']['is_skew']=t_message
-                    _markers['_educed_properties']['satisfies_Jacobi_ID']=t_message
-                structure_data=vsd[0]
-                _markers['parameters']=vsd[1]
+                if (
+                    isinstance(obj, (list, tuple))
+                    and len(obj) > 1
+                    and query_dgcv_categories(obj[-1], "vector_field")
+                ):
+                    t_message = "True by construction: list of vector fields --> `createAlgebra`"
+                    _markers["_educed_properties"]["is_Lie_algebra"] = t_message
+                    _markers["_educed_properties"]["is_skew"] = t_message
+                    _markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
+                structure_data = vsd[0]
+                _markers["parameters"] = vsd[1]
 
         except dgcv_exception_note as e:
             raise SystemExit(e)
         dimension = len(structure_data)
 
-    if (_markers.get('sum', False) or _markers.get('prod', False)) and _markers.get('lockKey', None) == passkey:
+    if (_markers.get("sum", False) or _markers.get("prod", False)) and _markers.get(
+        "lockKey", None
+    ) == passkey:
         if basis_labels is None:
-            initial_names = [f"{label}_{i+1}" for i in range(dimension)]
+            needs_sep = str(label)[-1].isdigit()
+            initial_names = [
+                f"{label}_{i + 1}" if needs_sep else f"{label}{i + 1}"
+                for i in range(dimension)
+            ]
             _basis_labels_parent = True
         elif isinstance(basis_labels, str):
-            initial_names = [f"{basis_labels}_{i+initial_basis_index}" for i in range(dimension)]
+            needs_sep = str(basis_labels)[-1].isdigit()
+            initial_names = [
+                f"{basis_labels}_{i + initial_basis_index}"
+                if needs_sep
+                else f"{basis_labels}{i + initial_basis_index}"
+                for i in range(dimension)
+            ]
         else:
             initial_names = list(basis_labels)
 
-        incoming_tex_basis = list(_markers.get('_tex_basis_labels', []) or [])
-        have_tex_basis = len(incoming_tex_basis) == len(initial_names) and len(initial_names) > 0
+        incoming_tex_basis = list(_markers.get("_tex_basis_labels", []) or [])
+        have_tex_basis = (
+            len(incoming_tex_basis) == len(initial_names) and len(initial_names) > 0
+        )
 
         batch_protected = {label}
         new_basis = []
         new_tex_basis = [] if have_tex_basis else None
         for idx, base_lbl in enumerate(initial_names):
             if have_tex_basis:
-                bl, tl = unique_label(base_lbl, tex_label=incoming_tex_basis[idx], protected=batch_protected)
+                bl, tl = unique_label(
+                    base_lbl,
+                    tex_label=incoming_tex_basis[idx],
+                    protected=batch_protected,
+                )
                 new_basis.append(bl)
                 new_tex_basis.append(tl)
                 batch_protected.add(bl)
@@ -3181,42 +3511,54 @@ def createAlgebra(
 
         basis_labels = new_basis
         if have_tex_basis:
-            _markers['_tex_basis_labels'] = new_tex_basis
-    else:# check for redundancy here
+            _markers["_tex_basis_labels"] = new_tex_basis
+    else:  # check for redundancy here
         if basis_labels is None:
-            basis_labels = [validate_label(f"{label}_{i+1}") for i in range(dimension)]
+            needs_sep = str(label)[-1].isdigit()
+            basis_labels = [
+                validate_label(f"{label}_{i + 1}" if needs_sep else f"{label}{i + 1}")
+                for i in range(dimension)
+            ]
             _basis_labels_parent = True
         elif isinstance(basis_labels, str):
-            basis_labels = [validate_label(f"{basis_labels}_{i+initial_basis_index}") for i in range(dimension)]
+            needs_sep = str(basis_labels)[-1].isdigit()
+            basis_labels = [
+                validate_label(
+                    f"{basis_labels}_{i + initial_basis_index}"
+                    if needs_sep
+                    else f"{basis_labels}{i + initial_basis_index}"
+                )
+                for i in range(dimension)
+            ]
         else:
             validate_label_list(basis_labels)
 
     if grading is None:
-        if notes.get('process_tensor_rep',False) is True:
-            w=None
-            changed=None
-            weights=[]
+        if notes.get("process_tensor_rep", False) is True:
+            w = None
+            changed = None
+            weights = []
             for elem in tensor_representation:
-                wts=elem.compute_weight()
-                if isinstance(wts,str):
-                    changed='break'
+                wts = elem.compute_weight()
+                if isinstance(wts, str):
+                    changed = "break"
                     break
                 weights.append(wts)
                 if w is None:
-                    w=len(wts)
-                    changed=False
-                elif len(wts)<w:
-                    w=len(wts)
+                    w = len(wts)
+                    changed = False
+                elif len(wts) < w:
+                    w = len(wts)
                     if changed is False:
                         changed = True
-            if changed!='break':
+            if changed != "break":
                 if changed is True:
-                    weights=[elem[:w] for elem in weights]
+                    weights = [elem[:w] for elem in weights]
                 grading = list(zip(*weights))
         else:
             grading = [tuple([0] * dimension)]
     elif isinstance(grading, (list, tuple)) and all(
-        isinstance(w, _get_expr_num_types()) for w in grading
+        isinstance(w, expr_numeric_types()) for w in grading
     ):
         if len(grading) != dimension:
             raise ValueError(
@@ -3248,15 +3590,18 @@ def createAlgebra(
             _basis_labels=basis_labels,
             _calledFromCreator=passkey,
             _simple_data=_simple,
-            _basis_labels_parent=_basis_labels_parent
+            _basis_labels_parent=_basis_labels_parent,
         )
     else:
         if _markers.get("lockKey", None) == passkey:
-            _markers = {k:v for k,v in _markers.items() if k!="lockKey"}  
-        elif '_educed_properties' in _markers: 
-            _markers={'_educed_properties':_markers['_educed_properties'],'parameters':_markers.get('parameters',set())}
+            _markers = {k: v for k, v in _markers.items() if k != "lockKey"}
+        elif "_educed_properties" in _markers:
+            _markers = {
+                "_educed_properties": _markers["_educed_properties"],
+                "parameters": _markers.get("parameters", set()),
+            }
         else:
-            _markers={'parameters':_markers.get('parameters',set())}
+            _markers = {"parameters": _markers.get("parameters", set())}
         algebra_obj = algebra_class(
             structure_data=structure_data,
             grading=grading,
@@ -3264,13 +3609,13 @@ def createAlgebra(
             process_matrix_rep=process_matrix_rep,
             preferred_representation=preferred_representation,
             simplify_products_by_default=simplify_products_by_default,
-            matrix_representation = matrix_representation,
-            tensor_representation = tensor_representation,
+            matrix_representation=matrix_representation,
+            tensor_representation=tensor_representation,
             _label=label,
             _basis_labels=basis_labels,
             _calledFromCreator=passkey,
             _basis_labels_parent=_basis_labels_parent,
-            _markers=_markers
+            _markers=_markers,
         )
 
     if forgo_vmf_registry is False:
@@ -3278,6 +3623,12 @@ def createAlgebra(
         _cached_caller_globals.update(zip(basis_labels, algebra_obj.basis))
 
         variable_registry = get_variable_registry()
+        paths = variable_registry.get("paths", None)
+        paths[label] = {
+            "kind": "finite_algebra_systems",
+            "path": ("finite_algebra_systems", label),
+        }
+
         variable_registry["finite_algebra_systems"][label] = {
             "family_type": "algebra",
             "family_names": tuple(basis_labels),
@@ -3298,5 +3649,5 @@ def createAlgebra(
         print(
             f"Created an algebra with the following properties. Dimension: {dimension}, Grading: {grading}, Basis Labels: {basis_labels}"
         )
-    if return_created_obj is True:
+    if return_created_object is True:
         return algebra_obj
