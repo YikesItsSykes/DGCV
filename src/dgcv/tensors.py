@@ -31,7 +31,6 @@ from ._safeguards import (
     validate_label,
     validate_label_list,
 )
-from .backends._caches import expr_numeric_types
 from .backends._symbolic_router import get_free_symbols, simplify, subs
 from .backends._types_and_constants import expr_numeric_types, rational
 from .base import dgcv_class
