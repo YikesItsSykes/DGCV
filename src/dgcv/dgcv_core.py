@@ -6065,7 +6065,7 @@ def complexVarProc(
     variable_registry = get_variable_registry()
     conv = variable_registry["conversion_dictionaries"]
     find_parents = conv["find_parents"]
-    protected_vars = variable_registry["protected_variables"]
+    # protected_vars = variable_registry["protected_variables"]
 
     conj_updates = {}
     holToReal_updates = {}
@@ -6178,7 +6178,7 @@ def complexVarProc(
         def _multiindex_names(base, idxs):
             return [f"{base}_{'_'.join(map(str, idx))}" for idx in idxs]
 
-        protected_vars.update({labelLoc2, labelLoc3})
+        # protected_vars.update({labelLoc2, labelLoc3})
 
         # Multi-index System Case
         if number_of_variables is None and _valid_multiindex_shape(multiindex_shape):

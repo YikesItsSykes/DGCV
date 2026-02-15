@@ -43,10 +43,9 @@ from .._tables import build_matrix_table, panel_view
 from ..arrays import _as_matrix_dgcv, matrix_dgcv
 from ..backends._display import latex
 from ..backends._display_engine import is_rich_displaying_available
-from ..backends._polynomials import poly_linear_roots_from_factorization
+from ..backends._engine import engine_kind, engine_module
 from ..backends._symbolic_router import (
     _scalar_is_zero,
-    factor,
     get_free_symbols,
     ratio,
     simplify,
@@ -524,6 +523,7 @@ class algebra_class(dgcv_class):
         new_basis_labels: Optional[str | List[str]] = None,
         abreviate_for_skew_struct: bool = True,
         initial_index: int = 1,
+        list_symbols_as_strings: bool = False,
     ):
         if new_basis_labels is not None:
             if (
@@ -542,6 +542,8 @@ class algebra_class(dgcv_class):
         else:
             atoms = [symbol(str(lab)) for lab in self.basis]
         str_eqns = dict()
+        if list_symbols_as_strings:
+            atoms = [str(atom) for atom in atoms]
 
         for i in range(self.dimension):
             start = i + 1 if abreviate_for_skew_struct and self.is_skew_symmetric else 0
@@ -3402,7 +3404,7 @@ class algebra_class(dgcv_class):
             _summary_warm_caches(
                 refAlg,
                 subAlg=subAlg,
-                reporting_threshold_s=float(1.0),
+                reporting_threshold_s=float(7.0),
                 progress_message=None,
                 _on_timed_update=_on_update,
             )
@@ -3638,7 +3640,7 @@ def _summary_warm_caches(
 ):
     thr = float(reporting_threshold_s)
 
-    refAlg.is_Lie_algebra(
+    is_lie = refAlg.is_Lie_algebra(
         verbose=False,
         _timed_reporting=True,
         _reporting_threshold_s=thr,
@@ -3646,35 +3648,51 @@ def _summary_warm_caches(
         _on_timed_update=_on_timed_update,
     )
 
+    if not is_lie:
+        return
+
     if subAlg:
         print(
             "Levi decomposition is currently omitted for subalgebras in this report. "
             "Suggestion: convert to an algebra_class via the subalgebra copy method."
         )
     else:
-        refAlg.Levi_decomposition(
-            decompose_semisimple_fully=True,
-            verbose=False,
-            _timed_reporting=True,
-            _reporting_threshold_s=thr,
-            _progress_message=progress_message,
-            _on_timed_update=_on_timed_update,
-        )
+        try:
+            refAlg.Levi_decomposition(
+                decompose_semisimple_fully=True,
+                verbose=False,
+                _timed_reporting=True,
+                _reporting_threshold_s=thr,
+                _progress_message=progress_message,
+                _on_timed_update=_on_timed_update,
+            )
+        except Exception:
+            print(
+                "A decomposition subroutine failed; proceeding with a partial report."
+            )
 
+        rad = None
         try:
             ld = getattr(refAlg, "_Levi_deco_cache", None)
             comps = ld.get("LD_components", None) if isinstance(ld, dict) else None
-            rad = (
-                comps[1]
-                if isinstance(comps, (list, tuple)) and len(comps) > 1
-                else None
-            )
+            if isinstance(comps, (list, tuple)) and len(comps) > 1:
+                rad = comps[1]
+        except Exception:
+            rad = None
+
+        if rad is None:
+            try:
+                rad = getattr(refAlg, "_radical_cache", None)
+            except Exception:
+                rad = None
+
+        try:
             if rad is not None and getattr(rad, "dimension", 0) != 0:
                 _timed_progress_call(
                     lambda: rad.derived_series(),
                     timed=True,
                     threshold_s=thr,
-                    step_desc="computing the derived series of the maximal solvable ideal",
+                    step_desc="computing the maximal solvable ideal's derived series",
                     continue_desc=progress_message,
                     progress_message=None,
                     _on_timed_update=_on_timed_update,
@@ -3683,7 +3701,7 @@ def _summary_warm_caches(
                     lambda: rad.lower_central_series(),
                     timed=True,
                     threshold_s=thr,
-                    step_desc="computing the lower central series of the maximal solvable ideal",
+                    step_desc="computing the maximal solvable ideal's lower central series",
                     continue_desc=progress_message,
                     progress_message=None,
                     _on_timed_update=_on_timed_update,
@@ -3691,35 +3709,55 @@ def _summary_warm_caches(
         except Exception:
             pass
 
-    if not refAlg.is_abelian():
-        if refAlg.is_semisimple(
-            verbose=False,
-            _timed_reporting=True,
-            _reporting_threshold_s=thr,
-            _progress_message=progress_message,
-            _on_timed_update=_on_timed_update,
-        ):
-            refAlg.is_simple(
-                verbose=False,
-                _timed_reporting=True,
-                _reporting_threshold_s=thr,
-                _progress_message=progress_message,
-                _on_timed_update=_on_timed_update,
-            )
-        elif refAlg.is_solvable(
-            verbose=False,
-            _timed_reporting=True,
-            _reporting_threshold_s=thr,
-            _progress_message=progress_message,
-            _on_timed_update=_on_timed_update,
-        ):
-            refAlg.is_nilpotent(
-                verbose=False,
-                _timed_reporting=True,
-                _reporting_threshold_s=thr,
-                _progress_message=progress_message,
-                _on_timed_update=_on_timed_update,
-            )
+    try:
+        if not refAlg.is_abelian():
+            try:
+                is_ss = refAlg.is_semisimple(
+                    verbose=False,
+                    _timed_reporting=True,
+                    _reporting_threshold_s=thr,
+                    _progress_message=progress_message,
+                    _on_timed_update=_on_timed_update,
+                )
+            except Exception:
+                is_ss = False
+
+            if is_ss:
+                try:
+                    refAlg.is_simple(
+                        verbose=False,
+                        _timed_reporting=True,
+                        _reporting_threshold_s=thr,
+                        _progress_message=progress_message,
+                        _on_timed_update=_on_timed_update,
+                    )
+                except Exception:
+                    pass
+            else:
+                try:
+                    is_sol = refAlg.is_solvable(
+                        verbose=False,
+                        _timed_reporting=True,
+                        _reporting_threshold_s=thr,
+                        _progress_message=progress_message,
+                        _on_timed_update=_on_timed_update,
+                    )
+                except Exception:
+                    is_sol = False
+
+                if is_sol:
+                    try:
+                        refAlg.is_nilpotent(
+                            verbose=False,
+                            _timed_reporting=True,
+                            _reporting_threshold_s=thr,
+                            _progress_message=progress_message,
+                            _on_timed_update=_on_timed_update,
+                        )
+                    except Exception:
+                        pass
+    except Exception:
+        pass
 
 
 def _summary_render_plain(
@@ -3731,9 +3769,9 @@ def _summary_render_plain(
     algebra_name_cap: str,
 ) -> str:
     nm = _alg_name_plain(parentAlg)
-    dim = getattr(refAlg, "dimension", None)
+    alg_dim = getattr(refAlg, "dimension", None)
 
-    lines = [f"=== Algebra Summary: {nm} ({dim} dimensional) ==="]
+    lines = [f"=== Algebra Summary: {nm} ({alg_dim} dimensional) ==="]
 
     if getattr(refAlg, "dimension", None) == 0:
         if subAlg:
@@ -3756,11 +3794,17 @@ def _summary_render_plain(
 
     ld = getattr(refAlg, "_Levi_deco_cache", None)
     if getattr(refAlg, "_lie_algebra_cache", None) is True and isinstance(ld, dict):
+        comps = ld.get("LD_components", None)
+        Levi_component = (
+            comps[0] if isinstance(comps, (list, tuple)) and len(comps) > 0 else None
+        )
+        rad = comps[1] if isinstance(comps, (list, tuple)) and len(comps) > 1 else None
+        simples = ld.get("simple_ideals", None)
+
         lines.append("Levi decomposition:")
         if refAlg.is_solvable():
             lines.append("  - The algebra equals its own maximal solvable ideal.")
         elif refAlg.is_semisimple():
-            simples = ld.get("simple_ideals", None)
             if simples is None:
                 lines.append(
                     "  - The algebra is semisimple; the simple-ideal decomposition is not yet evaluated."
@@ -3771,20 +3815,49 @@ def _summary_render_plain(
                 lines.append(
                     "  - The algebra is a direct sum of the following simple ideals:"
                 )
-                for alg in simples:
-                    lines.append(
-                        f"      - {_alg_name_plain(alg)} ({getattr(alg, 'dimension', '?')} dimensional)"
-                    )
+                for idx, alg in enumerate(simples, start=1):
+                    adim = getattr(alg, "dimension", None)
+
+                    try:
+                        rank = alg.approximate_rank(
+                            _use_cache=True, assume_semisimple=True
+                        )
+                    except Exception:
+                        rank = "?"
+
+                    typ = _classify_simple_by_dim_rank(adim, rank)
+                    if typ is not None:
+                        lines.append(f"      - Ideal {idx}: Type {typ}")
+                    else:
+                        lines.append(f"      - Ideal {idx}: dim={adim}, rank={rank}")
         else:
-            comps = ld.get("LD_components", None) or []
-            ss_dim = getattr(comps[0], "dimension", "?") if len(comps) > 0 else "?"
-            rad_dim = getattr(comps[1], "dimension", "?") if len(comps) > 1 else "?"
+            ss_dim = (
+                getattr(Levi_component, "dimension", "?") if Levi_component else "?"
+            )
+            rad_dim = getattr(rad, "dimension", "?") if rad else "?"
             lines.append("  - Semidirect sum of semisimple and solvable components:")
             lines.append(f"      - semisimple part: {ss_dim} dimensional")
             lines.append(f"      - max. solvable ideal: {rad_dim} dimensional")
 
-        comps = ld.get("LD_components", None)
-        rad = comps[1] if isinstance(comps, (list, tuple)) and len(comps) > 1 else None
+        if (
+            Levi_component is not None
+            and getattr(Levi_component, "dimension", 0) != 0
+            and simples is not None
+            and len(simples) >= 2
+        ):
+            lines.append("Simple ideals in semisimple complement:")
+            for idx, alg in enumerate(simples, start=1):
+                adim = getattr(alg, "dimension", None)
+                try:
+                    rank = alg.approximate_rank(_use_cache=True, assume_semisimple=True)
+                except Exception:
+                    rank = "?"
+                typ = _classify_simple_by_dim_rank(adim, rank)
+                if typ is not None:
+                    lines.append(f"  - Ideal {idx}: Type {typ}")
+                else:
+                    lines.append(f"  - Ideal {idx}: dim={adim}, rank={rank}")
+
         if rad is not None and getattr(rad, "dimension", 0) != 0:
             ds = getattr(rad, "_derived_series_cache", None)
             if ds is not None:
@@ -3817,6 +3890,7 @@ def _summary_render_plain(
                         lines.append(
                             f"  - Level {idx}: {_fmt_angle_list(level, max_items=12)}"
                         )
+
     return "\n".join(lines).rstrip()
 
 
@@ -3904,6 +3978,7 @@ margin: 0;
                     break
         if border_val:
             break
+
     parts = (border_val or "1px solid #ccc").split()
     thickness = parts[0] if parts else "1px"
     border_color = parts[-1] if parts else "#ccc"
@@ -4055,6 +4130,40 @@ margin: 0;
             return {"ur": 0, "ul": 0}
         return {"ur": 0, "ul": 0, "lr": 0, "ll": 0}
 
+    def _fmt_bool_cache(v):
+        return "true" if v is True else ("false" if v is False else "not yet evaluated")
+
+    empty_tok = r"$\varnothing$" if use_latex else "empty"
+
+    def _is_trivial_level(level) -> bool:
+        if not level:
+            return True
+        if isinstance(level, (list, tuple)) and len(level) == 1:
+            z = level[0]
+            return bool(getattr(z, "is_zero", False))
+        return False
+
+    def _fmt_basis_list(elems):
+        if _is_trivial_level(elems):
+            return empty_tok
+        if use_latex:
+            out = []
+            for elem in elems:
+                try:
+                    out.append(f"${elem._repr_latex_(raw=True)}$")
+                except Exception:
+                    out.append(repr(elem))
+            return ", ".join(out)
+        return ", ".join(repr(elem) for elem in elems)
+
+    def _level_dim(elems):
+        if _is_trivial_level(elems):
+            return 0
+        try:
+            return len(elems)
+        except Exception:
+            return 0
+
     items = (
         [f"Subalgebra contained in {algebra_name}", f"Dimension: {refAlg.dimension}"]
         if subAlg
@@ -4079,10 +4188,10 @@ margin: 0;
     elif lie is False:
         items.append("Lie algebra: false")
         items.append(
-            f"Skew symmetric: {_fmt_bool_cache(getattr(refAlg, '_skew_symmetric_cache', 'not yet evaluated'))}"
+            f"Skew symmetric: {_fmt_bool_cache(getattr(refAlg, '_skew_symmetric_cache', None))}"
         )
         items.append(
-            f"Jacobi identity satisfied: {_fmt_bool_cache(getattr(refAlg, '_jacobi_identity_cache', 'not yet evaluated'))}"
+            f"Jacobi identity satisfied: {_fmt_bool_cache(getattr(refAlg, '_jacobi_identity_cache', None))}"
         )
     else:
         items.append("Lie algebra: not yet evaluated")
@@ -4105,7 +4214,7 @@ margin: 0;
             apply_VSCode_workarounds=apply_vscode_workarounds,
         )
 
-    basis_elems = getattr(refAlg, "basis", ())
+    basis_elems = getattr(refAlg, "basis", ()) or ()
     if use_latex:
         try:
             basis_labels = [f"${b._repr_latex_(raw=True)}$" for b in basis_elems]
@@ -4123,8 +4232,7 @@ margin: 0;
     def _fmt_weight(x):
         if use_latex and hasattr(x, "_repr_latex_"):
             try:
-                s = x._repr_latex_()
-                s = str(s)
+                s = str(x._repr_latex_())
                 if s.startswith("$") and s.endswith("$"):
                     s = s[1:-1]
                 s = (
@@ -4144,6 +4252,7 @@ margin: 0;
                 grad_index_labels.append(f"Grading {gi}")
             else:
                 warn_msgs.append(f"grading {gi} invalid or length mismatch")
+
     if len(basis_labels) != refAlg.dimension:
         warn_msgs.append(
             f"dimension {refAlg.dimension} does not match basis length {len(basis_labels)}"
@@ -4200,21 +4309,25 @@ margin: 0;
 
     sections.append(("panel", _build_basis_panel))
 
-    if (
-        getattr(refAlg, "_lie_algebra_cache", None) is True
-        and getattr(refAlg, "_Levi_deco_cache", None) is not None
-    ):
-        simples = refAlg._Levi_deco_cache.get("simple_ideals", None)
+    ld = getattr(refAlg, "_Levi_deco_cache", None)
+    if getattr(refAlg, "_lie_algebra_cache", None) is True and isinstance(ld, dict):
+        simples = ld.get("simple_ideals", None)
+        Levi_component, rad = ld.get("LD_components", (None, None))
 
         def _LD_panel(corner_kwargs):
             IT = []
-            if refAlg.is_solvable():
+
+            solv = getattr(refAlg, "_is_solvable_cache", None)
+            semi = getattr(refAlg, "_is_semisimple_cache", None)
+
+            if solv is True:
                 PT = (
                     "The subalgebra equals its own maximal solvable ideal."
                     if subAlg
                     else f"{algebra_name_cap} equals its own maximal solvable ideal."
                 )
-            elif refAlg.is_semisimple():
+
+            elif semi is True:
                 if simples is None:
                     PT = (
                         "The subalgebra is semisimple and the number of simple ideals has not been evaluated yet."
@@ -4233,26 +4346,28 @@ margin: 0;
                         if subAlg
                         else f"{algebra_name_cap} is a direct sum of the following simple ideals:"
                     )
-                    for alg in simples:
+                    for a in simples:
                         label = (
-                            f"${alg._repr_latex_(raw=True, abbrev=True)}$"
+                            f"${a._repr_latex_(raw=True, abbrev=True)}$"
                             if use_latex
-                            else alg.__repr__()
+                            else a.__repr__()
                         )
                         IT.append(label)
+
             else:
                 PT = (
                     "The subalgebra is a semidirect sum of the following (respectively) semisimple and solvable subalgebras:"
                     if subAlg
                     else f"{algebra_name_cap} is a semidirect sum of the following (respectively) semisimple and solvable subalgebras:"
                 )
-                for alg in refAlg._Levi_deco_cache["LD_components"]:
-                    label = (
-                        f"${alg._repr_latex_(raw=True, abbrev=True)}$"
-                        if use_latex
-                        else alg.__repr__()
-                    )
-                    IT.append(label)
+                if isinstance(ld.get("LD_components", None), (list, tuple)):
+                    for a in ld["LD_components"]:
+                        label = (
+                            f"${a._repr_latex_(raw=True, abbrev=True)}$"
+                            if use_latex
+                            else a.__repr__()
+                        )
+                        IT.append(label)
 
             return panel_view(
                 header="Levi decomposition of the subalgebra"
@@ -4267,121 +4382,157 @@ margin: 0;
 
         sections.append(("panel", _LD_panel))
 
-    def _fmt_empty_basis() -> str:
-        return r"$\varnothing$" if use_latex else "empty"
+        if (
+            Levi_component is not None
+            and getattr(Levi_component, "dimension", 0) != 0
+            and simples is not None
+        ):
 
-    def _is_trivial_level(level) -> bool:
-        if not level:
-            return True
-        if isinstance(level, (list, tuple)) and len(level) == 1:
-            z = level[0]
-            return bool(getattr(z, "is_zero", False))
-        return False
+            def _ss_compl_panel(corner_kwargs):
+                cols = ["Ideal #", "Dimension", "Rank", "Iso. Class", "Basis"]
+                rows2 = []
 
-    def _fmt_basis_list(level):
-        if _is_trivial_level(level):
-            return _fmt_empty_basis()
-        if use_latex:
-            try:
-                return ", ".join([f"${elem._repr_latex_(raw=True)}$" for elem in level])
-            except Exception:
-                return ", ".join([repr(elem) for elem in level])
-        return ", ".join([repr(elem) for elem in level])
+                for idx, a in enumerate(simples):
+                    dim = getattr(a, "dimension", None)
 
-    def _radical_component():
-        ld = getattr(refAlg, "_Levi_deco_cache", None)
-        if not isinstance(ld, dict):
-            return None
-        comps = ld.get("LD_components", None)
-        if not isinstance(comps, (list, tuple)) or len(comps) < 2:
-            return None
-        return comps[1]
+                    rank = "?"
+                    try:
+                        rank = a.approximate_rank(
+                            _use_cache=True, assume_semisimple=True
+                        )
+                    except Exception:
+                        pass
 
-    rad = _radical_component()
+                    IC = _simple_iso_label(dim, rank, use_latex=use_latex) or "?"
+                    BL = _fmt_basis_list(getattr(a, "basis", ()) or ())
+                    rows2.append([f"subalgebra {idx + 1}", f"{dim}", f"{rank}", IC, BL])
 
-    if (
-        rad is not None
-        and getattr(rad, "dimension", 0) != 0
-        and getattr(rad, "_derived_series_cache", None) is not None
-    ):
+                table_view = build_matrix_table(
+                    index_labels=None,
+                    columns=cols,
+                    rows=rows2,
+                    caption="",
+                    theme_styles=loc_style,
+                    extra_styles=_table_extra(),
+                    footer_rows=None,
+                    table_attrs='style="table-layout:auto;"',
+                    cell_align=None,
+                    escape_cells=False,
+                    escape_headers=True,
+                    nowrap=False,
+                    dashed_corner=False,
+                    truncate_chars=None,
+                )
 
-        def _ds_panel(corner_kwargs):
-            cols = ["Filtration Level (1 = top)", "Dimension", "Basis"]
-            seq = rad._derived_series_cache[0]
-            rows2 = []
-            for idx, level in enumerate(seq):
-                dim2 = 0 if _is_trivial_level(level) else len(level)
-                rows2.append([f"Level {idx + 1}", f"{dim2}", _fmt_basis_list(level)])
+                return panel_view(
+                    header="Simple ideals in semisimple complement to the max. solvable ideal.",
+                    primary_text=table_view,
+                    itemized_text=None,
+                    theme_styles=loc_style,
+                    extra_styles=_panel_extra(),
+                    **corner_kwargs,
+                ).to_html()
 
-            table_view = build_matrix_table(
-                index_labels=None,
-                columns=cols,
-                rows=rows2,
-                caption="",
-                theme_styles=loc_style,
-                extra_styles=_table_extra(),
-                footer_rows=None,
-                table_attrs='style="table-layout:auto;"',
-                cell_align=None,
-                escape_cells=False,
-                escape_headers=True,
-                nowrap=False,
-                dashed_corner=False,
-                truncate_chars=None,
-            )
+            sections.append(("panel", _ss_compl_panel))
 
-            return panel_view(
-                header="Derived series of the maximal solvable ideal.",
-                primary_text=table_view,
-                itemized_text=None,
-                theme_styles=loc_style,
-                extra_styles=_panel_extra(),
-                **corner_kwargs,
-            ).to_html()
+        if rad is not None and getattr(rad, "dimension", 0) != 0:
+            lcs_cache = getattr(rad, "_lower_central_series_cache", None)
+            if (
+                isinstance(lcs_cache, (list, tuple))
+                and lcs_cache
+                and lcs_cache[0] is not None
+            ):
 
-        sections.append(("panel", _ds_panel))
+                def _lcs_panel(corner_kwargs):
+                    cols = ["Filtration Level (1 = top)", "Dimension", "Basis"]
+                    rows2 = []
+                    for idx, lvl in enumerate(lcs_cache[0]):
+                        lvl_basis = getattr(lvl, "basis", lvl)
+                        lvl_basis = list(lvl_basis) if lvl_basis is not None else []
+                        rows2.append(
+                            [
+                                f"Level {idx + 1}",
+                                f"{_level_dim(lvl_basis)}",
+                                _fmt_basis_list(lvl_basis),
+                            ]
+                        )
 
-    if (
-        rad is not None
-        and getattr(rad, "dimension", 0) != 0
-        and getattr(rad, "_lower_central_series_cache", None) is not None
-    ):
+                    table_view = build_matrix_table(
+                        index_labels=None,
+                        columns=cols,
+                        rows=rows2,
+                        caption="",
+                        theme_styles=loc_style,
+                        extra_styles=_table_extra(),
+                        footer_rows=None,
+                        table_attrs='style="table-layout:auto;"',
+                        cell_align=None,
+                        escape_cells=False,
+                        escape_headers=True,
+                        nowrap=False,
+                        dashed_corner=False,
+                        truncate_chars=None,
+                    )
 
-        def _lcs_panel(corner_kwargs):
-            cols = ["Filtration Level (1 = top)", "Dimension", "Basis"]
-            seq = rad._lower_central_series_cache[0]
-            rows2 = []
-            for idx, level in enumerate(seq):
-                dim2 = 0 if _is_trivial_level(level) else len(level)
-                rows2.append([f"Level {idx + 1}", f"{dim2}", _fmt_basis_list(level)])
+                    return panel_view(
+                        header="Lower central series in the maximal solvable ideal.",
+                        primary_text=table_view,
+                        itemized_text=None,
+                        theme_styles=loc_style,
+                        extra_styles=_panel_extra(),
+                        **corner_kwargs,
+                    ).to_html()
 
-            table_view = build_matrix_table(
-                index_labels=None,
-                columns=cols,
-                rows=rows2,
-                caption="",
-                theme_styles=loc_style,
-                extra_styles=_table_extra(),
-                footer_rows=None,
-                table_attrs='style="table-layout:auto;"',
-                cell_align=None,
-                escape_cells=False,
-                escape_headers=True,
-                nowrap=False,
-                dashed_corner=False,
-                truncate_chars=None,
-            )
+                sections.append(("panel", _lcs_panel))
 
-            return panel_view(
-                header="Lower central series of the maximal solvable ideal.",
-                primary_text=table_view,
-                itemized_text=None,
-                theme_styles=loc_style,
-                extra_styles=_panel_extra(),
-                **corner_kwargs,
-            ).to_html()
+            ds_cache = getattr(rad, "_derived_series_cache", None)
+            if (
+                isinstance(ds_cache, (list, tuple))
+                and ds_cache
+                and ds_cache[0] is not None
+            ):
 
-        sections.append(("panel", _lcs_panel))
+                def _ds_panel(corner_kwargs):
+                    cols = ["Filtration Level (1 = top)", "Dimension", "Basis"]
+                    rows2 = []
+                    for idx, lvl in enumerate(ds_cache[0]):
+                        lvl_basis = getattr(lvl, "basis", lvl)
+                        lvl_basis = list(lvl_basis) if lvl_basis is not None else []
+                        rows2.append(
+                            [
+                                f"Level {idx + 1}",
+                                f"{_level_dim(lvl_basis)}",
+                                _fmt_basis_list(lvl_basis),
+                            ]
+                        )
+
+                    table_view = build_matrix_table(
+                        index_labels=None,
+                        columns=cols,
+                        rows=rows2,
+                        caption="",
+                        theme_styles=loc_style,
+                        extra_styles=_table_extra(),
+                        footer_rows=None,
+                        table_attrs='style="table-layout:auto;"',
+                        cell_align=None,
+                        escape_cells=False,
+                        escape_headers=True,
+                        nowrap=False,
+                        dashed_corner=False,
+                        truncate_chars=None,
+                    )
+
+                    return panel_view(
+                        header="Derived series in the maximal solvable ideal.",
+                        primary_text=table_view,
+                        itemized_text=None,
+                        theme_styles=loc_style,
+                        extra_styles=_panel_extra(),
+                        **corner_kwargs,
+                    ).to_html()
+
+                sections.append(("panel", _ds_panel))
 
     built_blocks = []
     total = len(sections)
@@ -4392,6 +4543,63 @@ margin: 0;
         _HTMLWrapper(_stack_many(built_blocks)),
         apply_VSCode_workarounds=apply_vscode_workarounds,
     )
+
+
+def _classify_simple_by_dim_rank(dim, rank):
+    """
+    Return a Dynkin-type tag like 'A1', 'D4', 'G2', or 'B3 or C3', else None.
+    """
+    try:
+        d = int(dim)
+        r = int(rank)
+    except Exception:
+        return None
+
+    if (r + 1) ** 2 - 1 == d:
+        return f"A{r}"
+    if (2 * r + 1) * r == d:
+        return f"B{r} or C{r}"
+    if (2 * r - 1) * r == d:
+        return f"D{r}"
+
+    if r == 2 and d == 14:
+        return "G2"
+    if r == 4 and d == 52:
+        return "F4"
+    if r == 6 and d == 78:
+        return "E6"
+    if r == 7 and d == 133:
+        return "E7"
+    if r == 8 and d == 248:
+        return "E8"
+
+    return None
+
+
+def _simple_iso_label(dim, rank, *, use_latex: bool):
+    typ = _classify_simple_by_dim_rank(dim, rank)
+    if typ is None:
+        return None
+
+    if not use_latex:
+        return typ
+
+    if typ.startswith("A") and " or " not in typ:
+        r = int(typ[1:])
+        return rf"$\mathfrak{{sl}}_{{{r + 1}}}$"
+
+    if typ.startswith("D") and " or " not in typ:
+        r = int(typ[1:])
+        return rf"$\mathfrak{{so}}_{{{2 * r}}}$"
+
+    if " or " in typ and typ.startswith("B"):
+        r = int(typ.split()[0][1:])
+        return rf"$\mathfrak{{so}}_{{{2 * r + 1}}}$ or $\mathfrak{{sp}}_{{{2 * r}}}$"
+
+    if typ in {"G2", "F4", "E6", "E7", "E8"}:
+        return rf"$\operatorname{{Lie}}({typ})$"
+
+    return rf"${typ}$"
 
 
 class algebra_dual(dgcv_class):
@@ -5311,7 +5519,7 @@ class algebra_subspace_class(dgcv_class):
             raise TypeError(
                 "algebra_subspace_class expects second argument to be an algebra instance or algebra subspace or subalgebra."
             ) from None
-        # Filter independent elements
+
         filtered_basis = parent_alg.filter_independent_elements(
             basis, apply_light_basis_simplification=simplify_basis
         )
@@ -5327,12 +5535,12 @@ class algebra_subspace_class(dgcv_class):
                     "The given list for `basis` was not linearly independent, so the algebra_subspace_class initializer computed a basis for its span to use instead."
                     + wmessage
                 )
-        # Assign to self
+
         self.filtered_basis = tuple(filtered_basis)
         self.basis = tuple(filtered_basis)
         self.dimension = len(filtered_basis)
         self.ambient = parent_alg
-        # Compute grading for subspace
+
         grading_per_elem = []
         if (
             _internal_lock == retrieve_passkey()
@@ -5611,8 +5819,6 @@ def _commutant_eigenspace_vectors(
     if bound is None:
         bound = max(100, 10 * n)
 
-    lam = symbol(create_key(prefix="lam"))
-
     last_err = None
 
     for _ in range(max(1, int(tries))):
@@ -5621,106 +5827,53 @@ def _commutant_eigenspace_vectors(
             M = subs(solMat, spec)
         else:
             M = solMat
+
         try:
-            Id = matrix_dgcv.identity(n)
+            if engine_kind() == "sympy":
+                sp = engine_module()
+                lam = sp.Symbol(create_key(prefix="lam"))
+                Id = matrix_dgcv.identity(n)
 
-            charpoly = simplify((M - lam * Id).det())
-            fpoly = factor(charpoly)
+                try:
+                    cp = sp.Matrix(M.to_list()).charpoly(lam).as_poly(lam)
+                except Exception:
+                    cp = sp.Poly(simplify((M - lam * Id).det()), lam)
 
-            evals = poly_linear_roots_from_factorization(fpoly, lam)
-            if len(evals) < 2:
-                continue
+                try:
+                    evals = list(cp.all_roots())
+                except Exception:
+                    evals = []
 
-            eigvecs = []
-            for r in evals:
-                ns = (M - r * Id).nullspace()
-                if ns:
-                    eigvecs.append((r, ns))
+                evals = [r for r in evals if r is not None]
+                evals_u = []
+                for r in evals:
+                    if r not in evals_u:
+                        evals_u.append(r)
+                if len(evals_u) < 2:
+                    continue
 
-            if not eigvecs:
-                continue
+                eigspaces = []
+                for r in evals_u:
+                    ns = (M - r * Id).nullspace()
+                    if ns:
+                        eigspaces.append((r, ns))
+
+                if len(eigspaces) < 2:
+                    continue
+
+            else:
+                eigdata = M._eigenvects_by_engine()
+                eigspaces = [(lam, vecs) for (lam, _mult, vecs) in eigdata if vecs]
+                if len(eigspaces) < 2:
+                    continue
 
             cols = []
-            for _, vecs in eigvecs:
+            for _, vecs in eigspaces:
                 for v in vecs:
                     if isinstance(v, matrix_dgcv):
                         cols.append([v[i, 0] for i in range(v.nrows)])
                     else:
                         cols.append(list(v))
-
-            basis_cols = []
-
-            for c in cols:
-                if not basis_cols:
-                    basis_cols.append(c)
-                    if len(basis_cols) == n:
-                        break
-                    continue
-
-                M_current = matrix_dgcv.from_cols(basis_cols)
-                rank_before = M_current.rank()
-
-                M_test = matrix_dgcv.from_cols(basis_cols + [c])
-                rank_after = M_test.rank()
-
-                if rank_after > rank_before:
-                    basis_cols.append(c)
-
-                if len(basis_cols) == n:
-                    break
-
-            if len(basis_cols) != n:
-                continue
-
-            return M, [r for r, _ in eigvecs], eigvecs
-
-        except Exception as e:
-            last_err = e
-            continue
-
-    raise RuntimeError(
-        "Unable to obtain a commutant specialization whose characteristic polynomial splits linearly."
-    ) from last_err
-
-
-def _commutant_eigenspace_vectors_dispatched(
-    solMat,
-    *,
-    tries=30,
-    bound=None,
-):
-    n = solMat.nrows
-
-    free_vars = set()
-    for v in solMat._data.values():
-        if v is None:
-            continue
-        free_vars |= get_free_symbols(v)
-    free_vars = list(free_vars)
-
-    if bound is None:
-        bound = max(100, 10 * n)
-
-    last_err = None
-
-    for _ in range(max(1, int(tries))):
-        if free_vars:
-            spec = {var: random.randint(1, bound) for var in free_vars}
-            M = subs(solMat, spec)
-        else:
-            M = solMat
-
-        try:
-            eigdata = M._eigenvects_by_engine()
-            eigspaces = [(lam, vecs) for (lam, _mult, vecs) in eigdata if vecs]
-
-            if len(eigspaces) < 2:
-                continue
-
-            cols = []
-            for _, vecs in eigspaces:
-                for v in vecs:
-                    cols.append([v[i, 0] for i in range(v.nrows)])
 
             basis_cols = []
             for c in cols:
@@ -5748,7 +5901,7 @@ def _commutant_eigenspace_vectors_dispatched(
             continue
 
     raise RuntimeError(
-        "Unable to obtain a commutant specialization whose characteristic polynomial splits linearly."
+        "Unable to obtain a commutant specialization yielding >= 2 eigenspaces and a full spanning set of eigenvectors."
     ) from last_err
 
 
