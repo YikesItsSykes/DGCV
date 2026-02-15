@@ -263,7 +263,7 @@ dgcv_settings_registry = {
     "conjugation_prefix": "BAR",
     "preferred_variable_format": "complex",
     "pass_solve_requests_to_symbolic_engine": True,
-    "apply_awkward_workarounds_to_fix_VSCode_display_issues": environment_inference(),
+    "extra_support_for_math_in_tables": environment_inference(),
     "use_numeric_methods": False,
     "default_numeric_engine": "numpy",
     "numeric_error_thresholds": {
@@ -367,10 +367,7 @@ def _try_wrap_html(s: str):
 
 
 def latex_in_html(html_string, apply_VSCode_workarounds=False):
-    if (
-        dgcv_settings_registry["apply_awkward_workarounds_to_fix_VSCode_display_issues"]
-        is True
-    ):
+    if dgcv_settings_registry["extra_support_for_math_in_tables"] is True:
         apply_VSCode_workarounds = True
 
     if apply_VSCode_workarounds is True:

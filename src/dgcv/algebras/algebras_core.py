@@ -16,7 +16,6 @@ from __future__ import annotations
 import numbers
 import random
 import re
-import time
 import warnings
 from collections.abc import Mapping
 from functools import lru_cache
@@ -984,6 +983,7 @@ class algebra_class(dgcv_class):
         _timed_reporting: bool | None = None,
         _reporting_threshold_s: float = 10,
         _progress_message: str | None = None,
+        _on_timed_update=None,
     ):
         if not self._registered and verbose:
             if self._callLock == retrieve_passkey() and isinstance(
@@ -1022,12 +1022,14 @@ class algebra_class(dgcv_class):
                 kwargs.setdefault("_timed_reporting", True)
                 kwargs.setdefault("_reporting_threshold_s", threshold)
                 kwargs.setdefault("_progress_message", _progress_message)
+                kwargs.setdefault("_on_timed_update", _on_timed_update)
             try:
                 return fn(**kwargs)
             except TypeError:
                 kwargs.pop("_timed_reporting", None)
                 kwargs.pop("_reporting_threshold_s", None)
                 kwargs.pop("_progress_message", None)
+                kwargs.pop("_on_timed_update", None)
                 return fn(**kwargs)
 
         ok_skew = _call_with_optional_timing(
@@ -1098,6 +1100,7 @@ class algebra_class(dgcv_class):
         _timed_reporting: bool | None = None,
         _reporting_threshold_s: float = 10,
         _progress_message: str | None = None,
+        _on_timed_update=None,
     ):
         if not self._registered and verbose:
             if self._callLock == retrieve_passkey() and isinstance(
@@ -1169,9 +1172,15 @@ class algebra_class(dgcv_class):
                 _timed_reporting=timed,
                 _reporting_threshold_s=threshold,
                 _progress_message=_progress_message,
+                _on_timed_update=_on_timed_update,
             )
         except TypeError:
-            ok_lie = self.is_Lie_algebra(verbose=verbose)
+            ok_lie = self.is_Lie_algebra(
+                verbose=verbose,
+                _timed_reporting=timed,
+                _reporting_threshold_s=threshold,
+                _progress_message=_progress_message,
+            )
 
         if not ok_lie:
             self._is_semisimple_cache = False
@@ -1183,21 +1192,15 @@ class algebra_class(dgcv_class):
                 return "not a Lie algebra"
             return
 
-        if timed:
-            import time as _time
-
-            t0 = _time.monotonic()
-            det = simplify(killingForm(self).det())
-            dt = _time.monotonic() - t0
-
-            if verbose and dt >= threshold:
-                print("Computing determinant of the Killing form.")
-                if _progress_message:
-                    print(_progress_message)
-        else:
-            if verbose is True:
-                print("Progress update: computing determinant of the Killing form...")
-            det = simplify(killingForm(self).det())
+        det = _timed_progress_call(
+            lambda: simplify(killingForm(self).det()),
+            timed=timed,
+            threshold_s=threshold,
+            step_desc="computing determinant of the Killing form",
+            continue_desc=_progress_message,
+            progress_message=None,
+            _on_timed_update=_on_timed_update,
+        )
 
         iz = getattr(det, "is_zero", None)
         if iz is True:
@@ -1253,6 +1256,7 @@ class algebra_class(dgcv_class):
         _timed_reporting: bool | None = None,
         _reporting_threshold_s: float = 10,
         _progress_message: str | None = None,
+        _on_timed_update=None,
     ):
         if isinstance(self._educed_properties.get("is_simple", None), str):
             t_message = self._educed_properties.get("is_simple", None)
@@ -1274,31 +1278,44 @@ class algebra_class(dgcv_class):
                     _timed_reporting=timed,
                     _reporting_threshold_s=threshold,
                     _progress_message=_progress_message,
+                    _on_timed_update=_on_timed_update,
                 )
             except TypeError:
-                self.is_semisimple(verbose=verbose)
+                self.is_semisimple(
+                    verbose=verbose,
+                    _timed_reporting=timed,
+                    _reporting_threshold_s=threshold,
+                    _progress_message=_progress_message,
+                )
 
         if self._is_simple_cache is None:
-            if timed:
-                import time as _time
 
-                t0 = _time.monotonic()
+            def _do():
                 try:
-                    self.compute_simple_subalgebras(
+                    return self.compute_simple_subalgebras(
                         verbose=verbose,
-                        _timed_reporting=True,
+                        _timed_reporting=timed,
+                        _reporting_threshold_s=threshold,
+                        _progress_message=_progress_message,
+                        _on_timed_update=_on_timed_update,
+                    )
+                except TypeError:
+                    return self.compute_simple_subalgebras(
+                        verbose=verbose,
+                        _timed_reporting=timed,
                         _reporting_threshold_s=threshold,
                         _progress_message=_progress_message,
                     )
-                except TypeError:
-                    self.compute_simple_subalgebras(verbose=verbose)
-                dt = _time.monotonic() - t0
-                if verbose and dt >= threshold:
-                    print("Decomposing semisimple subalgebra into simple subalgebras.")
-                    if _progress_message:
-                        print(_progress_message)
-            else:
-                self.compute_simple_subalgebras(verbose=verbose)
+
+            _timed_progress_call(
+                _do,
+                timed=timed,
+                threshold_s=threshold,
+                step_desc="decomposing semisimple subalgebra into simple subalgebras",
+                continue_desc=_progress_message,
+                progress_message=None,
+                _on_timed_update=_on_timed_update,
+            )
 
             if self._Levi_deco_cache["LD_components"][1].dimension == 0:
                 self._is_semisimple_cache = True
@@ -2572,13 +2589,17 @@ class algebra_class(dgcv_class):
         _timed_reporting: bool | None = None,
         _reporting_threshold_s: float = 10,
         _progress_message: str | None = None,
+        _on_timed_update=None,
     ):
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+        threshold = float(_reporting_threshold_s)
         self.Levi_decomposition(
             decompose_semisimple_fully=True,
             verbose=verbose,
-            _timed_reporting=_timed_reporting,
-            _reporting_threshold_s=_reporting_threshold_s,
+            _timed_reporting=timed,
+            _reporting_threshold_s=threshold,
             _progress_message=_progress_message,
+            _on_timed_update=_on_timed_update,
         )
         return self._Levi_deco_cache["simple_ideals"]
 
@@ -2593,36 +2614,22 @@ class algebra_class(dgcv_class):
         _timed_reporting: bool | None = None,
         _reporting_threshold_s: float = 10,
         _progress_message: str | None = None,
+        _on_timed_update=None,
     ):
-        import time
 
-        timed = bool(_timed_reporting)
-
-        def _maybe_report(step_desc: str, elapsed_s: float, continue_desc: str | None):
-            if not timed:
-                return
-            try:
-                thr = float(_reporting_threshold_s)
-            except Exception:
-                thr = 10.0
-            if thr < 0:
-                thr = 0.0
-            if elapsed_s <= thr:
-                return
-
-            t = f"{elapsed_s:.1f}s"
-            print(f"Update: {step_desc} (took {t}).")
-            if continue_desc:
-                print(f"Continuing to {continue_desc}.")
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+        threshold = float(_reporting_threshold_s)
 
         def _time_call(fn, step_desc: str, continue_desc: str | None):
-            if not timed:
-                return fn()
-            t0 = time.monotonic()
-            out = fn()
-            dt = time.monotonic() - t0
-            _maybe_report(step_desc, dt, continue_desc)
-            return out
+            return _timed_progress_call(
+                fn,
+                timed=timed,
+                threshold_s=threshold,
+                step_desc=step_desc,
+                continue_desc=continue_desc,
+                progress_message=None,
+                _on_timed_update=_on_timed_update,
+            )
 
         if (
             isinstance(_try_multiple_times, numbers.Integral)
@@ -2680,8 +2687,8 @@ class algebra_class(dgcv_class):
                             lambda: refAlg.radical(
                                 assume_Lie_algebra=assume_Lie_algebra
                             ),
-                            "derived (or retrieved) the maximal solvable ideal",
-                            "compute the derived series of the maximal solvable ideal",
+                            "deriving the maximal solvable ideal",
+                            "compute the max. solvable ideal's derived series",
                         )
 
                         if len(rad.basis) > 0:
@@ -2692,7 +2699,7 @@ class algebra_class(dgcv_class):
 
                             rad_seq = _time_call(
                                 lambda: rad.derived_series(align_nested_bases=True),
-                                "computed the derived series of the maximal solvable ideal",
+                                "computing the max. solvable ideal's derived series",
                                 "compute a semisimple complement to the maximal solvable ideal",
                             )
 
@@ -2841,7 +2848,7 @@ class algebra_class(dgcv_class):
 
                             Levi_component = _time_call(
                                 _compute_complement,
-                                "computed a semisimple complement to the maximal solvable ideal",
+                                "computing a semisimple complement to the max. solvable ideal",
                                 "decompose the semisimple component into simple ideals"
                                 if decompose_semisimple_fully
                                 else _progress_message,
@@ -2884,14 +2891,11 @@ class algebra_class(dgcv_class):
 
                     new_Levi, simple_ideals = _time_call(
                         _decompose_semisimple,
-                        "decomposed the semisimple component into simple ideals",
+                        "decomposing algebra into simple ideals",
                         _progress_message,
                     )
                     refAlg._Levi_deco_cache["LD_components"] = (new_Levi, rad)
                     refAlg._Levi_deco_cache["simple_ideals"] = simple_ideals
-
-                if timed and _progress_message:
-                    print(_progress_message)
 
                 return refAlg._Levi_deco_cache.get("LD_components", None)
 
@@ -3363,9 +3367,7 @@ class algebra_class(dgcv_class):
         if (plain_text is False) and (not is_rich_displaying_available()):
             plain_text = True
 
-        apply_vscode = bool(
-            dgcvSR.get("apply_awkward_workarounds_to_fix_VSCode_display_issues")
-        )
+        apply_vscode = bool(dgcvSR.get("extra_support_for_math_in_tables"))
 
         subAlg = bool(
             get_dgcv_category(_from_subalg) == "subalgebra"
@@ -3385,14 +3387,27 @@ class algebra_class(dgcv_class):
             )
 
         if generate_full_report:
+            updates_printed = 0
+
+            def _count_update():
+                nonlocal updates_printed
+                updates_printed += 1
+
+            def _on_update():
+                try:
+                    _count_update()
+                except Exception:
+                    return
+
             _summary_warm_caches(
                 refAlg,
                 subAlg=subAlg,
-                reporting_threshold_s=float(
-                    dgcvSR.get("reporting_threshold_s", 10.0) or 10.0
-                ),
+                reporting_threshold_s=float(1.0),
                 progress_message=None,
+                _on_timed_update=_on_update,
             )
+            if updates_printed:
+                print()
 
         if plain_text:
             out = _summary_render_plain(
@@ -3505,14 +3520,111 @@ def _basic_items_plain(refAlg, *, subAlg: bool, algebra_name: str) -> list[str]:
     return items
 
 
-def _timed_call(fn, *, step_desc: str, next_desc: str | None, threshold_s: float):
-    t0 = time.monotonic()
-    out = fn()
-    dt = time.monotonic() - t0
-    if dt > threshold_s:
-        print(f"Update: {step_desc} (took {dt:.1f}s).")
-        if next_desc:
-            print(f"Continuing to {next_desc}.")
+def _timed_progress_call(
+    fn,
+    *,
+    timed: bool,
+    threshold_s: float,
+    step_desc: str,
+    continue_desc: str | None,
+    progress_message: str | None,
+    _on_timed_update=None,
+):
+    if not timed:
+        return fn()
+
+    fired = {"v": False}
+    timer = {"obj": None}
+    use_signal = False
+
+    try:
+        import threading as _threading
+
+        use_signal = _threading.current_thread() is _threading.main_thread()
+    except Exception:
+        use_signal = False
+
+    def _emit_update():
+        if fired["v"]:
+            return
+        fired["v"] = True
+        if callable(_on_timed_update):
+            try:
+                _on_timed_update()
+            except Exception:
+                pass
+        print(f"Update: {step_desc}.")
+        if progress_message:
+            print(progress_message)
+
+    if use_signal:
+        prev_handler = None
+        prev_itimer = None
+
+        def _handler(signum, frame):
+            _emit_update()
+
+        try:
+            import signal
+
+            prev_handler = signal.getsignal(signal.SIGALRM)
+            prev_itimer = signal.getitimer(signal.ITIMER_REAL)
+        except Exception:
+            prev_handler = None
+            prev_itimer = None
+
+        try:
+            import signal
+
+            signal.signal(signal.SIGALRM, _handler)
+            signal.setitimer(signal.ITIMER_REAL, max(0.0, float(threshold_s)))
+        except Exception:
+            use_signal = False
+            try:
+                import signal
+
+                if prev_handler is not None:
+                    signal.signal(signal.SIGALRM, prev_handler)
+                if prev_itimer is not None:
+                    signal.setitimer(signal.ITIMER_REAL, prev_itimer[0], prev_itimer[1])
+            except Exception:
+                pass
+
+    if not use_signal:
+        try:
+            import threading
+
+            t = threading.Timer(max(0.0, float(threshold_s)), _emit_update)
+            timer["obj"] = t
+            t.daemon = True
+            t.start()
+        except Exception:
+            timer["obj"] = None
+
+    try:
+        out = fn()
+    finally:
+        if use_signal:
+            try:
+                import signal
+
+                signal.setitimer(signal.ITIMER_REAL, 0.0)
+                if prev_handler is not None:
+                    signal.signal(signal.SIGALRM, prev_handler)
+                if prev_itimer is not None:
+                    signal.setitimer(signal.ITIMER_REAL, prev_itimer[0], prev_itimer[1])
+            except Exception:
+                pass
+        else:
+            try:
+                t = timer["obj"]
+                if t is not None:
+                    t.cancel()
+            except Exception:
+                pass
+
+    if fired["v"] and continue_desc:
+        print(f"Continuing to {continue_desc}.")
     return out
 
 
@@ -3522,10 +3634,17 @@ def _summary_warm_caches(
     subAlg: bool,
     reporting_threshold_s: float = 10.0,
     progress_message: str | None = None,
+    _on_timed_update=None,
 ):
-    # print("Full report introspection was requested (generate_full_report=True).")
+    thr = float(reporting_threshold_s)
 
-    refAlg.is_Lie_algebra(verbose=False)
+    refAlg.is_Lie_algebra(
+        verbose=False,
+        _timed_reporting=True,
+        _reporting_threshold_s=thr,
+        _progress_message=progress_message,
+        _on_timed_update=_on_timed_update,
+    )
 
     if subAlg:
         print(
@@ -3537,15 +3656,70 @@ def _summary_warm_caches(
             decompose_semisimple_fully=True,
             verbose=False,
             _timed_reporting=True,
-            _reporting_threshold_s=float(reporting_threshold_s),
+            _reporting_threshold_s=thr,
             _progress_message=progress_message,
+            _on_timed_update=_on_timed_update,
         )
 
+        try:
+            ld = getattr(refAlg, "_Levi_deco_cache", None)
+            comps = ld.get("LD_components", None) if isinstance(ld, dict) else None
+            rad = (
+                comps[1]
+                if isinstance(comps, (list, tuple)) and len(comps) > 1
+                else None
+            )
+            if rad is not None and getattr(rad, "dimension", 0) != 0:
+                _timed_progress_call(
+                    lambda: rad.derived_series(),
+                    timed=True,
+                    threshold_s=thr,
+                    step_desc="computing the derived series of the maximal solvable ideal",
+                    continue_desc=progress_message,
+                    progress_message=None,
+                    _on_timed_update=_on_timed_update,
+                )
+                _timed_progress_call(
+                    lambda: rad.lower_central_series(),
+                    timed=True,
+                    threshold_s=thr,
+                    step_desc="computing the lower central series of the maximal solvable ideal",
+                    continue_desc=progress_message,
+                    progress_message=None,
+                    _on_timed_update=_on_timed_update,
+                )
+        except Exception:
+            pass
+
     if not refAlg.is_abelian():
-        if refAlg.is_semisimple(verbose=False):
-            refAlg.is_simple(verbose=False)
-        elif refAlg.is_solvable(verbose=False):
-            refAlg.is_nilpotent(verbose=False)
+        if refAlg.is_semisimple(
+            verbose=False,
+            _timed_reporting=True,
+            _reporting_threshold_s=thr,
+            _progress_message=progress_message,
+            _on_timed_update=_on_timed_update,
+        ):
+            refAlg.is_simple(
+                verbose=False,
+                _timed_reporting=True,
+                _reporting_threshold_s=thr,
+                _progress_message=progress_message,
+                _on_timed_update=_on_timed_update,
+            )
+        elif refAlg.is_solvable(
+            verbose=False,
+            _timed_reporting=True,
+            _reporting_threshold_s=thr,
+            _progress_message=progress_message,
+            _on_timed_update=_on_timed_update,
+        ):
+            refAlg.is_nilpotent(
+                verbose=False,
+                _timed_reporting=True,
+                _reporting_threshold_s=thr,
+                _progress_message=progress_message,
+                _on_timed_update=_on_timed_update,
+            )
 
 
 def _summary_render_plain(
@@ -3580,15 +3754,13 @@ def _summary_render_plain(
     grad = getattr(refAlg, "grading", None)
     lines.append(f"  - grading: {_fmt_grading_plain(grad, max_items=12)}")
 
-    if (
-        getattr(refAlg, "_lie_algebra_cache", None) is True
-        and getattr(refAlg, "_Levi_deco_cache", None) is not None
-    ):
+    ld = getattr(refAlg, "_Levi_deco_cache", None)
+    if getattr(refAlg, "_lie_algebra_cache", None) is True and isinstance(ld, dict):
         lines.append("Levi decomposition:")
         if refAlg.is_solvable():
             lines.append("  - The algebra equals its own maximal solvable ideal.")
         elif refAlg.is_semisimple():
-            simples = refAlg._Levi_deco_cache.get("simple_ideals", None)
+            simples = ld.get("simple_ideals", None)
             if simples is None:
                 lines.append(
                     "  - The algebra is semisimple; the simple-ideal decomposition is not yet evaluated."
@@ -3604,13 +3776,47 @@ def _summary_render_plain(
                         f"      - {_alg_name_plain(alg)} ({getattr(alg, 'dimension', '?')} dimensional)"
                     )
         else:
-            LD = refAlg._Levi_deco_cache.get("LD_components", None) or []
+            comps = ld.get("LD_components", None) or []
+            ss_dim = getattr(comps[0], "dimension", "?") if len(comps) > 0 else "?"
+            rad_dim = getattr(comps[1], "dimension", "?") if len(comps) > 1 else "?"
             lines.append("  - Semidirect sum of semisimple and solvable components:")
-            for alg in LD:
-                lines.append(
-                    f"      - {_alg_name_plain(alg)} ({getattr(alg, 'dimension', '?')} dimensional)"
-                )
+            lines.append(f"      - semisimple part: {ss_dim} dimensional")
+            lines.append(f"      - max. solvable ideal: {rad_dim} dimensional")
 
+        comps = ld.get("LD_components", None)
+        rad = comps[1] if isinstance(comps, (list, tuple)) and len(comps) > 1 else None
+        if rad is not None and getattr(rad, "dimension", 0) != 0:
+            ds = getattr(rad, "_derived_series_cache", None)
+            if ds is not None:
+                lines.append("Derived series of the maximal solvable ideal:")
+                seq = ds[0]
+                for idx, level in enumerate(seq, start=1):
+                    if not level or (
+                        isinstance(level, (list, tuple))
+                        and len(level) == 1
+                        and bool(getattr(level[0], "is_zero", False))
+                    ):
+                        lines.append(f"  - Level {idx}: empty")
+                    else:
+                        lines.append(
+                            f"  - Level {idx}: {_fmt_angle_list(level, max_items=12)}"
+                        )
+
+            lcs = getattr(rad, "_lower_central_series_cache", None)
+            if lcs is not None:
+                lines.append("Lower central series of the maximal solvable ideal:")
+                seq = lcs[0]
+                for idx, level in enumerate(seq, start=1):
+                    if not level or (
+                        isinstance(level, (list, tuple))
+                        and len(level) == 1
+                        and bool(getattr(level[0], "is_zero", False))
+                    ):
+                        lines.append(f"  - Level {idx}: empty")
+                    else:
+                        lines.append(
+                            f"  - Level {idx}: {_fmt_angle_list(level, max_items=12)}"
+                        )
     return "\n".join(lines).rstrip()
 
 
@@ -4060,6 +4266,122 @@ margin: 0;
             ).to_html()
 
         sections.append(("panel", _LD_panel))
+
+    def _fmt_empty_basis() -> str:
+        return r"$\varnothing$" if use_latex else "empty"
+
+    def _is_trivial_level(level) -> bool:
+        if not level:
+            return True
+        if isinstance(level, (list, tuple)) and len(level) == 1:
+            z = level[0]
+            return bool(getattr(z, "is_zero", False))
+        return False
+
+    def _fmt_basis_list(level):
+        if _is_trivial_level(level):
+            return _fmt_empty_basis()
+        if use_latex:
+            try:
+                return ", ".join([f"${elem._repr_latex_(raw=True)}$" for elem in level])
+            except Exception:
+                return ", ".join([repr(elem) for elem in level])
+        return ", ".join([repr(elem) for elem in level])
+
+    def _radical_component():
+        ld = getattr(refAlg, "_Levi_deco_cache", None)
+        if not isinstance(ld, dict):
+            return None
+        comps = ld.get("LD_components", None)
+        if not isinstance(comps, (list, tuple)) or len(comps) < 2:
+            return None
+        return comps[1]
+
+    rad = _radical_component()
+
+    if (
+        rad is not None
+        and getattr(rad, "dimension", 0) != 0
+        and getattr(rad, "_derived_series_cache", None) is not None
+    ):
+
+        def _ds_panel(corner_kwargs):
+            cols = ["Filtration Level (1 = top)", "Dimension", "Basis"]
+            seq = rad._derived_series_cache[0]
+            rows2 = []
+            for idx, level in enumerate(seq):
+                dim2 = 0 if _is_trivial_level(level) else len(level)
+                rows2.append([f"Level {idx + 1}", f"{dim2}", _fmt_basis_list(level)])
+
+            table_view = build_matrix_table(
+                index_labels=None,
+                columns=cols,
+                rows=rows2,
+                caption="",
+                theme_styles=loc_style,
+                extra_styles=_table_extra(),
+                footer_rows=None,
+                table_attrs='style="table-layout:auto;"',
+                cell_align=None,
+                escape_cells=False,
+                escape_headers=True,
+                nowrap=False,
+                dashed_corner=False,
+                truncate_chars=None,
+            )
+
+            return panel_view(
+                header="Derived series of the maximal solvable ideal.",
+                primary_text=table_view,
+                itemized_text=None,
+                theme_styles=loc_style,
+                extra_styles=_panel_extra(),
+                **corner_kwargs,
+            ).to_html()
+
+        sections.append(("panel", _ds_panel))
+
+    if (
+        rad is not None
+        and getattr(rad, "dimension", 0) != 0
+        and getattr(rad, "_lower_central_series_cache", None) is not None
+    ):
+
+        def _lcs_panel(corner_kwargs):
+            cols = ["Filtration Level (1 = top)", "Dimension", "Basis"]
+            seq = rad._lower_central_series_cache[0]
+            rows2 = []
+            for idx, level in enumerate(seq):
+                dim2 = 0 if _is_trivial_level(level) else len(level)
+                rows2.append([f"Level {idx + 1}", f"{dim2}", _fmt_basis_list(level)])
+
+            table_view = build_matrix_table(
+                index_labels=None,
+                columns=cols,
+                rows=rows2,
+                caption="",
+                theme_styles=loc_style,
+                extra_styles=_table_extra(),
+                footer_rows=None,
+                table_attrs='style="table-layout:auto;"',
+                cell_align=None,
+                escape_cells=False,
+                escape_headers=True,
+                nowrap=False,
+                dashed_corner=False,
+                truncate_chars=None,
+            )
+
+            return panel_view(
+                header="Lower central series of the maximal solvable ideal.",
+                primary_text=table_view,
+                itemized_text=None,
+                theme_styles=loc_style,
+                extra_styles=_panel_extra(),
+                **corner_kwargs,
+            ).to_html()
+
+        sections.append(("panel", _lcs_panel))
 
     built_blocks = []
     total = len(sections)

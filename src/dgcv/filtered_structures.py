@@ -1316,7 +1316,7 @@ class Tanaka_symbol:
     ):
         dgcvSR = get_dgcv_settings_registry()
         _apply_VScode_display_workaround_with_JS_deliver = bool(
-            dgcvSR.get("apply_awkward_workarounds_to_fix_VSCode_display_issues") is True
+            dgcvSR.get("extra_support_for_math_in_tables") is True
         )
 
         if use_latex is None:

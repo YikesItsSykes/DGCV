@@ -65,22 +65,35 @@ def _infer_vscode_jupyter():
 
 def set_dgcv_settings(
     theme: Optional[str] = None,
-    format_displays: Optional[bool] = None,
-    use_latex: Optional[bool] = None,
+    format_displays: bool | None = None,
+    use_latex: bool | None = None,
     print_style: Optional[Literal["readable", "literal"]] = None,
     version_specific_defaults: Optional[str] = None,
-    ask_before_overwriting_objects_in_vmf: Optional[bool] = None,
-    forgo_warnings: Optional[bool] = None,
+    ask_before_overwriting_objects_in_vmf: bool | None = None,
+    forgo_warnings: bool | None = None,
     default_engine: Optional[Literal["sage", "sympy", "dgcv_custom"]] = None,
-    verbose_label_printing: Optional[bool] = None,
-    pass_solve_requests_to_symbolic_engine: Optional[bool] = None,
-    DEBUG: Optional[bool] = None,
-    apply_awkward_workarounds_to_fix_VSCode_display_issues: Optional[bool] = None,
+    verbose_label_printing: bool | None = None,
+    pass_solve_requests_to_symbolic_engine: bool | None = None,
+    DEBUG: bool | None = None,
+    extra_support_for_math_in_tables: bool | None = None,
     preferred_variable_format: Optional[Literal["complex", "real"]] = None,
-    use_numeric_methods: Optional[bool] = None,
+    use_numeric_methods: bool | None = None,
     force_rich_display: bool | None = None,
+    **kwargs,
 ):
     dgcvSR = get_dgcv_settings_registry()
+
+    # depricated_keywords
+    _depr_kw = "apply_awkward_workarounds_to_fix_VSCode_display_issues"
+    if _depr_kw in kwargs:
+        warnings.warn(
+            "The settings keyword `apply_awkward_workarounds_to_fix_VSCode_display_issues` is deprecated. "
+            "Use `extra_support_for_math_in_tables` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if extra_support_for_math_in_tables is None:
+            extra_support_for_math_in_tables = kwargs.get(_depr_kw)
 
     def _norm_v(v):
         if v is None:
@@ -100,7 +113,7 @@ def set_dgcv_settings(
         if v is None:
             return None
         warnings.warn(
-            "dgcv: apply_awkward_workarounds_to_fix_VSCode_display_issues should be True/False or 'infer'; "
+            "dgcv: extra_support_for_math_in_tables should be True/False or 'infer'; "
             f"coercing {v!r} to bool.",
             stacklevel=2,
         )
@@ -151,7 +164,7 @@ def set_dgcv_settings(
                 dgcv_init_printing()
             return
 
-        if k == "apply_awkward_workarounds_to_fix_VSCode_display_issues":
+        if k == "extra_support_for_math_in_tables":
             dgcvSR[k] = _resolve_vscode_patch_value(v)
             return
 
@@ -253,10 +266,10 @@ def set_dgcv_settings(
     if use_numeric_methods is not None:
         _apply_keyval("use_numeric_methods", use_numeric_methods)
 
-    if apply_awkward_workarounds_to_fix_VSCode_display_issues is not None:
+    if extra_support_for_math_in_tables is not None:
         _apply_keyval(
-            "apply_awkward_workarounds_to_fix_VSCode_display_issues",
-            apply_awkward_workarounds_to_fix_VSCode_display_issues,
+            "extra_support_for_math_in_tables",
+            extra_support_for_math_in_tables,
         )
 
     if verbose_label_printing is not None:
@@ -282,7 +295,6 @@ def view_dgcv_settings():
         "VLP",
         "numeric_error_thresholds",
         "default_numeric_engine",
-        "apply_awkward_workarounds_to_fix_VSCode_display_issues",
         "DEBUG",
     }
     items = [(k, settings[k]) for k in settings.keys() if k not in hidden]
@@ -304,13 +316,6 @@ def view_dgcv_settings():
             (
                 "numeric_error_thresholds.policy",
                 settings.get("numeric_error_thresholds", {}).get("policy"),
-            )
-        )
-    if settings.get("apply_awkward_workarounds_to_fix_VSCode_display_issues", False):
-        items.append(
-            (
-                "apply_awkward_workarounds_to_fix_VSCode_display_issues",
-                settings.get("apply_awkward_workarounds_to_fix_VSCode_display_issues"),
             )
         )
     if not items:
@@ -351,7 +356,7 @@ def reset_dgcv_settings():
             "conjugation_prefix": "BAR",
             "preferred_variable_format": "complex",
             "pass_solve_requests_to_symbolic_engine": True,
-            "apply_awkward_workarounds_to_fix_VSCode_display_issues": _vscodepatch,
+            "extra_support_for_math_in_tables": _vscodepatch,
             "use_numeric_methods": False,
             "default_numeric_engine": "numpy",
             "numeric_error_thresholds": {

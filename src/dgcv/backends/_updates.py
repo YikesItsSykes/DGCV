@@ -30,7 +30,7 @@ baseline_defaults: Dict[str, Any] = {
     "default_symbolic_engine": "sympy",
     "verbose_label_printing": True,
     "VLP": None,
-    "apply_awkward_workarounds_to_fix_VSCode_display_issues": False,
+    "extra_support_for_math_in_tables": False,
 }
 
 
@@ -42,7 +42,7 @@ changes: Tuple[Tuple[str, Dict[str, Any]], ...] = (
         {
             "use_latex": True,
             "format_displays": True,
-            "apply_awkward_workarounds_to_fix_VSCode_display_issues": "infer",
+            "extra_support_for_math_in_tables": "infer",
         },
     ),
 )
