@@ -14,11 +14,11 @@ License:
 from __future__ import annotations
 
 import warnings
-from typing import Literal, Optional
+from typing import Literal
 
 from dgcv import __version__
 
-from ._config import get_dgcv_settings_registry, vlp
+from ._config import get_dgcv_settings_registry, get_variable_registry, vlp
 from .backends._cls_coercion import attach_sympy_hook, detach_sympy_hook
 from .backends._engine import (
     invalidate_engine_cache,
@@ -64,21 +64,23 @@ def _infer_vscode_jupyter():
 
 
 def set_dgcv_settings(
-    theme: Optional[str] = None,
+    theme: str | None = None,
     format_displays: bool | None = None,
     use_latex: bool | None = None,
-    print_style: Optional[Literal["readable", "literal"]] = None,
-    version_specific_defaults: Optional[str] = None,
+    print_style: Literal["readable", "literal"] | None = None,
+    version_specific_defaults: str | None = None,
     ask_before_overwriting_objects_in_vmf: bool | None = None,
     forgo_warnings: bool | None = None,
-    default_engine: Optional[Literal["sage", "sympy", "dgcv_custom"]] = None,
+    default_engine: Literal["sage", "sympy", "dgcv_custom"] | None = None,
     verbose_label_printing: bool | None = None,
     pass_solve_requests_to_symbolic_engine: bool | None = None,
     DEBUG: bool | None = None,
     extra_support_for_math_in_tables: bool | None = None,
-    preferred_variable_format: Optional[Literal["complex", "real"]] = None,
+    preferred_variable_format: Literal["complex", "real"] | None = None,
     use_numeric_methods: bool | None = None,
     force_rich_display: bool | None = None,
+    conjugation_prefix: str | None = None,
+    fallback_conjugate_prefix: str | None = None,
     **kwargs,
 ):
     dgcvSR = get_dgcv_settings_registry()
@@ -163,6 +165,41 @@ def set_dgcv_settings(
 
                 dgcv_init_printing()
             return
+
+        if k == "conjugation_prefix":
+            if len(get_variable_registry().get("complex_variable_systems", {})) > 0:
+                warnings.warn(
+                    "The default `conjugation_prefix` cannot be changed while complex"
+                    "coordinate systems exist in the VMF. Clear such systems from the"
+                    "VMF first. Recommend usage: set `conjugation_prefix` only once at"
+                    "the start of a session with dgcv."
+                )
+                return
+            if v == get_dgcv_settings_registry().get("fallback_conjugate_prefix"):
+                newfallback = "anti_" if v != "anti_" else "BAR"
+                warnings.warn(
+                    "The requested `conjugation_prefix` is already assigned to `fallback_conjugate_prefix`."
+                    f"To free the assignement, `fallback_conjugate_prefix` has been changed to {newfallback}."
+                )
+                dgcvSR["fallback_conjugate_prefix"] = newfallback
+            dgcvSR[k] = v
+        if k == "fallback_conjugate_prefix":
+            if len(get_variable_registry().get("complex_variable_systems", {})) > 0:
+                warnings.warn(
+                    "The default `fallback_conjugate_prefix` cannot be changed while complex"
+                    "coordinate systems exist in the VMF. Clear such systems from the"
+                    "VMF first. Recommend usage: set `fallback_conjugate_prefix` only once"
+                    "at the start of a session with dgcv."
+                )
+                return
+            if v == get_dgcv_settings_registry.get("conjugate_prefix"):
+                newfallback = "BAR" if v != "BAR" else "Banti_R"
+                warnings.warn(
+                    "The requested `fallback_conjugate_prefix` is already assigned to `conjugate_prefix`."
+                    f"To free the assignement, `conjugate_prefix` has been changed to {newfallback}."
+                )
+                dgcvSR["conjugate_prefix"] = newfallback
+            dgcvSR[k] = v
 
         if k == "extra_support_for_math_in_tables":
             dgcvSR[k] = _resolve_vscode_patch_value(v)
@@ -296,6 +333,7 @@ def view_dgcv_settings():
         "numeric_error_thresholds",
         "default_numeric_engine",
         "DEBUG",
+        "fallback_conjugate_prefix",
     }
     items = [(k, settings[k]) for k in settings.keys() if k not in hidden]
     if settings.get("use_numeric_methods", False):
@@ -318,6 +356,11 @@ def view_dgcv_settings():
                 settings.get("numeric_error_thresholds", {}).get("policy"),
             )
         )
+    if settings.get("fallback_conjugate_prefix", False):
+        if settings.get("fallback_conjugate_prefix") != "anti_":
+            items.append(
+                ("fallback_conjugate_prefix", settings.get("fallback_conjugate_prefix"))
+            )
     if not items:
         print("dgcv settings registry is empty.")
         return
@@ -354,6 +397,7 @@ def reset_dgcv_settings():
             "verbose_label_printing": False,
             "VLP": vlp,
             "conjugation_prefix": "BAR",
+            "fallback_conjugate_prefix": "anti_",
             "preferred_variable_format": "complex",
             "pass_solve_requests_to_symbolic_engine": True,
             "extra_support_for_math_in_tables": _vscodepatch,

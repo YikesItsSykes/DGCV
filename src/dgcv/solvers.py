@@ -522,7 +522,7 @@ def solve_dgcv(
             return x
 
     def _expr_reformatting(expr):
-        if isinstance(expr, expr_numeric_types()) or not hasattr(expr, "subs"):
+        if not hasattr(expr, "subs"):
             return expr
 
         dgcv_var_dict = {v[1][0]: v[0] for _, v in variables_dict.items()}
@@ -531,7 +531,7 @@ def solve_dgcv(
             try:
                 return expr.subs(dgcv_var_dict)
             except Exception:
-                return expr
+                return abstract_ZF(_sympy_to_abstract_ZF(expr, dgcv_var_dict))
 
         regular_var_dict = {k: v for k, v in dgcv_var_dict.items() if is_atomic(k)}
 
@@ -549,7 +549,7 @@ def solve_dgcv(
         try:
             return expr.subs(regular_var_dict)
         except Exception:
-            return expr
+            return abstract_ZF(_sympy_to_abstract_ZF(expr, regular_var_dict))
 
     def _extract_reformatting(var):
         s = str(var)

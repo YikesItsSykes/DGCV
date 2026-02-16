@@ -1170,8 +1170,9 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
     def latex_symbol_with_overline_if_needed(
         name: str, index: int | None = None
     ) -> str:
-        is_bar = isinstance(name, str) and name.startswith("BAR")
-        base = name[3:] if is_bar else name
+        pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+        is_bar = isinstance(name, str) and name.startswith(pref)
+        base = name[len(pref) :] if is_bar else name
         if index is None:
             inner = format_latex_subscripts(
                 base

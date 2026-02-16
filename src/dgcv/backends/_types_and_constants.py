@@ -414,3 +414,131 @@ def verify_conjugates_free(expr) -> bool:
             return False
 
     return False
+
+
+_sympy_re_head = None
+_sympy_im_head = None
+
+
+def _get_sympy_re_head():
+    global _sympy_re_head
+    if _sympy_re_head is not None:
+        return _sympy_re_head
+    if not is_sympy_available():
+        _sympy_re_head = None
+        return None
+    try:
+        sp = _get_sympy_module()
+        probe = sp.Symbol("_dgcv_re_probe")
+        _sympy_re_head = sp.re(probe).func
+    except Exception:
+        _sympy_re_head = None
+    return _sympy_re_head
+
+
+def _get_sympy_im_head():
+    global _sympy_im_head
+    if _sympy_im_head is not None:
+        return _sympy_im_head
+    if not is_sympy_available():
+        _sympy_im_head = None
+        return None
+    try:
+        sp = _get_sympy_module()
+        probe = sp.Symbol("_dgcv_im_probe")
+        _sympy_im_head = sp.im(probe).func
+    except Exception:
+        _sympy_im_head = None
+    return _sympy_im_head
+
+
+def verify_conjugate_re_im_free(expr) -> bool:
+    """
+    Return True iff `expr` appears free of conjugation / re / im operators
+    in the active symbolic engine.
+    """
+    kind = engine_kind()
+
+    if kind == "sympy":
+        h = getattr(expr, "has", None)
+        if not callable(h):
+            return False
+
+        heads = []
+        c = _get_sympy_conj_head()
+        if c is not None:
+            heads.append(c)
+        r = _get_sympy_re_head()
+        if r is not None:
+            heads.append(r)
+        i = _get_sympy_im_head()
+        if i is not None:
+            heads.append(i)
+
+        if not heads:
+            return False
+
+        try:
+            return not any(bool(h(head)) for head in heads)
+        except Exception:
+            return False
+
+    if kind == "sage":
+        try:
+            sage = _get_sage_module()
+            conj = getattr(sage, "conjugate", None)
+
+            seen = set()
+
+            def _has_bad_op(e) -> bool:
+                oid = id(e)
+                if oid in seen:
+                    return False
+                seen.add(oid)
+
+                op = getattr(e, "operator", None)
+                if callable(op):
+                    try:
+                        o = op()
+                        if conj is not None and o == conj:
+                            return True
+                    except Exception:
+                        pass
+
+                operands = getattr(e, "operands", None)
+                if callable(operands):
+                    try:
+                        for a in operands():
+                            if _has_bad_op(a):
+                                return True
+                    except Exception:
+                        pass
+
+                args = getattr(e, "args", None)
+                if args is not None:
+                    try:
+                        for a in args:
+                            if _has_bad_op(a):
+                                return True
+                    except Exception:
+                        pass
+
+                return False
+
+            if _has_bad_op(expr):
+                return False
+
+            s = str(expr)
+            if "conjugate(" in s or "Conjugate(" in s:
+                return False
+            if "real(" in s or "RealPart(" in s or ".real()" in s:
+                return False
+            if "imag(" in s or "ImagPart(" in s or ".imag()" in s:
+                return False
+
+            return True
+
+        except Exception:
+            return False
+
+    return False

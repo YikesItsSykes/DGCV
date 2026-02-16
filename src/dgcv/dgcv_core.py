@@ -33,7 +33,6 @@ from ._safeguards import (
     check_dgcv_category,
     create_key,
     get_dgcv_category,
-    protected_caller_globals,
     query_dgcv_categories,
     retrieve_passkey,
     retrieve_public_key,
@@ -75,7 +74,7 @@ from .backends._types_and_constants import (
     one,
     rational,
     symbol,
-    verify_conjugates_free,
+    verify_conjugate_re_im_free,
     zero,
 )
 from .base import dgcv_class
@@ -3158,7 +3157,7 @@ class vector_field_class(tensor_field_class):
                 out += c * diff_local(other, v)
             return out
 
-        has_conj = not verify_conjugates_free(other)
+        has_conj = not verify_conjugate_re_im_free(other)
         a = allToSym(other) if has_conj else other
 
         out = 0
@@ -3880,7 +3879,7 @@ class polynomial_dgcv(dgcv_class):
             if conjugate_free
             else (
                 polyExpr
-                if verify_conjugates_free(polyExpr)
+                if verify_conjugate_re_im_free(polyExpr)
                 else allToSym(polyExpr, skipVar=hard_filter)
             )
         )
@@ -6115,30 +6114,16 @@ def complexVarProc(
                         "path": base + (member_label, "variable_value"),
                     }
 
-    def validate_variable_labels(*labels):
-        """
-        Checks if provided labels start with 'BAR', reformats them,
-        prevents duplicates, and checks for protected globals.
-        """
+    def validate_variable_labels(*labels, remove_guardrails=False):
         reformatted_labels = []
         seen_labels = set()
-        protectedGlobals = protected_caller_globals()
         for label in labels:
-            if label in protectedGlobals:
-                raise ValueError(
-                    f"dgcv recognizes label '{label}' as a protected global name and recommends not using it as a variable name. "
-                    "Set remove_guardrails=True in the variable creation functions to force it."
-                )
-            if label.startswith("BAR"):
-                reformatted_label = "anti_" + label[3:]
-                warnings.warn(
-                    f"Label '{label}' starts with 'BAR', which has special meaning in dgcv. It has been automatically reformatted to '{reformatted_label}'."
-                )
-            else:
-                reformatted_label = label
+            reformatted_label = validate_label(
+                label, remove_guardrails=remove_guardrails
+            )
             if reformatted_label in seen_labels:
                 raise ValueError(
-                    f"Duplicate label found: '{reformatted_label}'. Each label must be unique."
+                    f"Duplicate label found while formatting '{labels}'. Each label must be unique."
                 )
             seen_labels.add(reformatted_label)
             reformatted_labels.append(reformatted_label)
@@ -6151,6 +6136,7 @@ def complexVarProc(
 
     rco = [] if return_created_object is True else None
 
+    pref = get_dgcv_settings_registry().get("conjugation_prefix", "BAR")
     for j in range(len(holom_label)):
         if remove_guardrails:
             labelLoc1 = holom_label[j]
@@ -6160,7 +6146,7 @@ def complexVarProc(
             labelLoc1, labelLoc2, labelLoc3 = validate_variable_labels(
                 holom_label[j], real_label[j], im_label[j]
             )
-        labelLocBAR = f"BAR{labelLoc1}"
+        labelLocBAR = f"{pref}{labelLoc1}"
 
         clearVar(labelLoc1, report=False)
         clearVar(labelLoc2, report=False)

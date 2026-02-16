@@ -20,7 +20,7 @@ from ._config import (
     get_dgcv_settings_registry,
     get_variable_registry,
 )
-from .vmf import clearVar
+from .vmf import clearVar, vmf_lookup
 
 _passkey = "".join(random.choices(string.ascii_letters + string.digits, k=16))
 public_key = "".join(random.choices(string.ascii_letters + string.digits, k=8))
@@ -274,20 +274,12 @@ def validate_label_list(basis_labels):
 
 
 def protect_variable_relatives():
-    variable_registry = get_variable_registry()
-    return sum(
-        [
-            variable_registry["complex_variable_systems"][k]["family_names"][j]
-            for k in variable_registry["complex_variable_systems"]
-            for j in [2, 3]
-        ],
-        (),
-    )
+    return get_variable_registry().get("protected_variables", {})
 
 
 def validate_label(label, remove_guardrails=False):
     """
-    Checks if the provided variable label starts with 'BAR', and reformats it to 'anti_' if necessary.
+    Checks if the provided variable label starts with dgcv's designated prefix for complex variables, and reformats it to a safe fallback if necessary.
     Also checks if the label is a protected global or in 'protected_variables', unless remove_guardrails is True.
 
     Parameters
@@ -301,71 +293,44 @@ def validate_label(label, remove_guardrails=False):
     -------
     str
         The reformatted label.
-
-    Raises
-    ------
-    ValueError
-        If the label is a protected global name or is in 'protected_variables', unless remove_guardrails is True.
     """
-    variable_registry = get_variable_registry()
-
-    # Check if the label is a protected global, unless guardrails are removed
     if not remove_guardrails:
         if label in protected_caller_globals():
             raise ValueError(
                 f"dgcv recognizes label '{label}' as a protected global name and recommends not using it as a variable name. Set remove_guardrails=True to force it."
             )
-
-        # Check if the label is a child of a parent in 'protected_variables' in the variable_registry
         if label in protect_variable_relatives():
-            # If protected, search through complex_variable_systems for the parent label
-            if "complex_variable_systems" in variable_registry:
-                for parent_label, parent_data in variable_registry[
-                    "complex_variable_systems"
-                ].items():
-                    if (
-                        "variable_relatives" in parent_data
-                        and label in parent_data["variable_relatives"]
-                    ):
-                        # Found the parent label associated with the protected variable
-                        raise ValueError(
-                            f"Label '{label}' is protected within the current dgcv Variable Management Framework, "
-                            f"as it is associated with the complex variable system '{parent_label}'.\n"
-                            f"It is recommended to use the dgcv function `clearVar('{parent_label}')` to clear the protected variable "
-                            f"from the dgcv Variable Management Framework (VMF) before reassigning this label.\n"
-                            f"Or set remove_guardrails=True in the relevant dgcv object creator to force the use of this label, "
-                            f"but note this can limit available features from the VMF."
-                        )
+            info = vmf_lookup(label, path=True)
+            system_type = info.get("type", "unregistered")
+            path = info.get("path", ["", "unknown"])
+            system_label = (
+                path[1]
+                if isinstance(path, (list, tuple)) and len(path) > 1
+                else "unknown"
+            )
+            if system_type == "unregistered":
+                raise ValueError(
+                    f"The label {label} is currently protected from reassignment in the VMF"
+                    "but it is not associated with any system of objects in the VMF. This is"
+                    "likely a bug in `dgcv`. Please report it to dgcv maintainers."
+                )
+            raise ValueError(
+                f"The label {label} is currently protected from reassignment in the VMF"
+                f"It's associated system is: {system_label}"
+                f"It's associated system type is: {system_type}"
+            )
 
-        # Check if the label is in 'protected_variables' in the variable_registry
-        if (
-            "protected_variables" in variable_registry
-            and label in variable_registry["protected_variables"]
-        ):
-            # If protected, search through complex_variable_systems for the parent label
-            if "complex_variable_systems" in variable_registry:
-                for parent_label, parent_data in variable_registry[
-                    "complex_variable_systems"
-                ].items():
-                    if (
-                        "family_houses" in parent_data
-                        and label in parent_data["family_houses"]
-                    ):
-                        # Found the parent label associated with the protected variable
-                        raise ValueError(
-                            f"Label '{label}' is protected within the current dgcv Variable Management Framework, "
-                            f"as it is associated with the complex variable system '{parent_label}'.\n"
-                            f"It is recommended to use the dgcv function `clearVar('{parent_label}')` to clear the protected variable "
-                            f"from the dgcv Variable Management Framework (VMF) before reassigning this label.\n"
-                            f"Or set remove_guardrails=True in the relevant dgcv object creator to force the use of this label, "
-                            f"but note this can limit available features from the VMF."
-                        )
-
-    # Check if the label starts with "BAR" and reformat if necessary
-    if label.startswith("BAR"):
-        reformatted_label = "anti_" + label[3:]
+    dgcvSR = get_dgcv_settings_registry()
+    pref, fallback = (
+        dgcvSR.get("conjugate_prefix", "_c_"),
+        dgcvSR.get("fallback_conjugate_prefix", "anti_"),
+    )
+    if label.startswith(pref):
+        reformatted_label = fallback + label[len(pref) :]
         warnings.warn(
-            f"Label '{label}' starts with 'BAR', which has special meaning in dgcv. It has been automatically reformatted to '{reformatted_label}'."
+            f"Label '{label}' starts with {pref}, which is reserved by the `conjugate_prefix`"
+            "value currently set in dgcv settings. It has been automatically reformatted to "
+            f"'{reformatted_label}'."
         )
     else:
         reformatted_label = label

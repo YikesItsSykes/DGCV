@@ -729,6 +729,68 @@ def decompose(
     assume_basis: bool = False,
     register_parameters: bool = False,
 ):
+    """
+    Decomposes a vector field or differential form as a linear combination of a given `basis` list.
+
+    This function attempts to express the input `obj` (a VFClass or DFClass object) as a linear combination
+    of the elements in the provided `basis` list. The `basis` list does not need to be linearly independent,
+    and if the decomposition is not unique, the function will parameterize the solution space. Any parameters
+    needed are automatically initialized and registered in dgcv's variable management framework (VMF).
+
+    The function carefully handles variable types based on the `dgcvType` attribute of the objects. For objects
+    with `dgcvType='complex'`, it dynamically selects whether to perform real coordinate computations or complex
+    coordinate computations, depending on the input data. If a canonical variable formatting decision cannot be
+    made naturally from the input, the function will return warnings with explanations.
+
+    Parameters
+    ----------
+    obj : VFClass or DFClass
+        The vector field or differential form to decompose.
+    basis : list of VFClass or DFClass
+        A list of objects (vector fields or differential forms) to decompose `obj` with respect to.
+        The class of objects in the `basis` list must match the class of `obj`.
+    return_parameters : bool, optional
+        If True, the function will return the parameterized solution when the decomposition is not unique
+        (default is False). Parameters are initialized with labels registered within the VMF.
+    new_parameters_label : str or None, optional
+        If `return_parameters` is True and the decomposition is not unique, this label will be used
+        to name the new parameter variables. If None, obscure labels will be generated automatically (default is None).
+    _pass_error_report : optional
+        Internal use parameter for handling error reports in certain edge cases (default is None).
+
+    Returns
+    -------
+    list
+        The coefficients of the linear combination that expresses `obj` in terms of the `basis` list.
+        If the decomposition is parameterized, the returned list contains the parameterized solution.
+
+    Raises
+    ------
+    TypeError
+        If the class of `obj` does not match the class of elements in the `basis` list (i.e., both must
+        be either VFClass or DFClass), or if objects in the `basis` list have inconsistent `dgcvType` attributes.
+
+    Warnings
+    --------
+    - A warning is issued if `obj` is not in the span of the provided `basis` list.
+    - If the `basis` list is not linearly independent, the decomposition is not unique, and a parameterized
+    solution will be returned. The initialized parameters are registered as 'standard variables' in the VMF.
+
+    Remarks
+    -------
+    - The function dynamically handles objects based on their `dgcvType` attribute. For `dgcvType='complex'`,
+    it distinguishes between real and complex coordinate computations, converting the input as needed
+    to ensure consistency in formatting. If this decision cannot be determined from the input data,
+    the function issues warnings explaining the necessary canonical formatting.
+
+    Example
+    -------
+    # Decompose a vector field 'vf' as a linear combination of two basis vector fields 'vf1' and 'vf2'
+    coeffs, basis_used = decompose(vf, [vf1, vf2])
+
+    # Decompose a differential form 'df' with a parameterized solution due to non-uniqueness
+    coeffs, basis_used = decompose(df, [df1, df2, df3], return_parameters=True, new_parameters_label='p')
+    """
     basis = list(basis)
     original_length = len(basis)
 
@@ -947,6 +1009,88 @@ def annihilator(
     parameters_label: str | None = None,
     coherent_coordinates_checked: bool = False,
 ):
+    """
+    Finds annihilators for a given list of vector fields or differential forms.
+
+    This function computes objects that "annihilate" the provided list of vector fields or differential forms.
+    An annihilator is either the span of differential forms that evaluate to zero on each vector field in the list,
+    or vector fields whose interior product annihilates each differential form in the list. `annihilator` dynamically
+    handles both real and holomorphic coordinate systems and can convert between them as needed. Additionally,
+    solutions can be constrained to a given control distribution by using the `control_distribution` keyword.
+
+    Parameters
+    ----------
+    objList : list of VFClass or DFClass
+        A list of vector fields or differential forms for which the annihilator will be computed. All objects
+        in the list must be of the same class (either all vector fields or all differential forms) and have
+        consistent `dgcvType` attributes (i.e., 'standard' or 'complex').
+    coordinate_Space : list, tuple, or set
+        A collection of variables that define the coordinate system in which the annihilator is to be computed.
+    allow_div_by_zero : bool, optional
+        If True, allows the annihilator to be returned without scaling to avoid division by zero (default is False).
+        Scaling to avoid division has more computational overhead but typically simplifies output.
+    _pass_error_report : optional
+        Internal use parameter for handling error reports in certain edge cases (default is None).
+
+    Returns
+    -------
+    list
+        A list of differential forms (if vector fields were provided) or vector fields (if differential forms were
+        provided) that annihilate the objects in `objList`.
+
+    Raises
+    ------
+    TypeError
+        If the objects in `objList` are not all of the same type (i.e., all vector fields or all differential forms),
+        or if the `coordinate_Space` is not a valid list, tuple, or set.
+
+    Warnings
+    --------
+    - If the objects in `objList` are defined with inconsistent coordinate system types (real vs. holomorphic), the
+    function converts them to a consistent coordinate system and issues a warning.
+
+    Example
+    -------
+    >>> from dgcv import createVariables, annihilator, exteriorDerivative, complex_struct_op, Del, DelBar, allToReal
+    >>> createVariables('z', 'x', 'y', 4, initialIndex=0)
+    >>> rho = (x1*x2 + x1**2*x3 - x0)  # A defining equation for a real hypersurface M in C^4
+    >>> d_rho = exteriorDerivative(rho)  # Its differential will annihilate TM
+    >>> print(d_rho)
+
+    (2*x1*x3 + x2)*d_x1 + x1*d_x2 + x1**2*d_x3 - 1*d_x0
+
+    >>> dfList = [d_rho]
+    >>> TMbasis = annihilator(dfList, x+y)  # Use annihilator to compute the tangent bundle TM
+    >>> TMbasis
+
+    [(16*x1*x3 + 8*x2)*D_x0 + 8*D_x1, 8*x1*D_x0 + 8*D_x2, 8*x1**2*D_x0 + 8*D_x3, 8*D_y0, 8*D_y1, 8*D_y2, 8*D_y3]
+
+    >>> J_of_TMbasis = [complex_struct_op(vf) for vf in TMbasis]  # Get the image of TM under the complex structure operator.
+    >>> J_of_TMbasis
+
+    [(16*x1*x3 + 8*x2)*D_y0 + 8*D_y1, 8*x1*D_y0 + 8*D_y2, 8*x1**2*D_y0 + 8*D_y3, -8*D_x0, -8*D_x1, -8*D_x2, -8*D_x3]
+
+    >>> CR_distribution = annihilator(annihilator(J_of_TMbasis, x+y) + annihilator(TMbasis, x+y), x+y)
+    >>> CR_distribution  # Use annihilator to get the CR distribution, which is the intersection of TM with CTM
+
+    [(16*x1*x3 + 8*x2)*D_x0 + 8*D_x1, 8*x1*D_x0 + 8*D_x2, 8*x1**2*D_x0 + 8*D_x3,
+    (16*x1*x3 + 8*x2)*D_y0 + 8*D_y1, 8*x1*D_y0 + 8*D_y2, 8*x1**2*D_y0 + 8*D_y3]
+
+    >>> LeviForm = allToReal(Del(DelBar(rho)))  # Apply Dolbeault operators to represent the Levi form
+    >>> print(LeviForm._repr_latex_())
+
+    # Output: <LeviForm in LaTeX formatted plain text>
+
+    >>> Levi_kernel = annihilator([LeviForm], x+y, control_distribution=CR_distribution)
+    >>> Levi_kernel  # annihilator reveals that the Levi form has a real 2-d. kernel
+
+    [-64*x1**2*D_x0 - 128*x1*D_x2 + 64*D_x3, -64*x1**2*D_y0 - 128*x1*D_y2 + 64*D_y3]
+
+    >>> not_the_Levi_kernel = annihilator([LeviForm], x+y)
+    >>> not_the_Levi_kernel  # Without constraining annihilator to the CR distribution, it finds a kernel that is too large.
+
+    [8*D_x0, -16*x1*D_x2 + 8*D_x3, 8*D_y0, -16*x1*D_y2 + 8*D_y3]
+    """
     objList = list(objList)
     if not objList:
         return []

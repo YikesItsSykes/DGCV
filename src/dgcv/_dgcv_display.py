@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import numbers
 import warnings
+from collections.abc import Mapping
 from typing import Any
 
 from ._safeguards import check_dgcv_category, get_dgcv_category
@@ -86,6 +87,13 @@ def LaTeX(obj: Any, removeBARs: bool = False) -> str:
             return r"\left( " + ", ".join(elems) + r" \right)"
         if isinstance(x, set):
             elems = [_strip_display_dollars(_latex_of(e)) for e in x]
+            return r"\left\{ " + ", ".join(elems) + r" \right\}"
+        if isinstance(x, Mapping):
+            elems = [
+                f"{_strip_display_dollars(_latex_of(k))} : "
+                f"{_strip_display_dollars(_latex_of(v))}"
+                for k, v in x.items()
+            ]
             return r"\left\{ " + ", ".join(elems) + r" \right\}"
 
         if _is_tensorish_dgcv(x):

@@ -15,7 +15,7 @@ License:
 # -----------------------------------------------------------------------------
 import re
 
-from ._config import get_variable_registry, greek_letters
+from ._config import get_dgcv_settings_registry, get_variable_registry, greek_letters
 
 
 def collect_variable_data(variable_registry, use_latex):
@@ -202,12 +202,13 @@ def format_algebra_name(var_name, algebra_family_names, use_latex=False):
 def build_object_string_for_complex(
     obj_type, part_names, family_names, start_index, use_latex=False
 ):
+    pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
     parts = []
     for part_name, part in zip(part_names, family_names):
         if use_latex:
             base_var = (
-                convert_to_greek(part_name.replace("BAR", "", 1))
-                if part_name.startswith("BAR")
+                convert_to_greek(part_name.replace(pref, "", 1))
+                if part_name.startswith(pref)
                 else convert_to_greek(part_name)
             )
             if len(part) > 1:
@@ -215,7 +216,7 @@ def build_object_string_for_complex(
             else:
                 part_str = (
                     f"\\overline{{{base_var}}}"
-                    if part_name.startswith("BAR")
+                    if part_name.startswith(pref)
                     else base_var
                 )
             parts.append(

@@ -8,7 +8,11 @@ from math import prod  # requires python >=3.8
 
 import sympy as sp
 
-from .._config import _cached_caller_globals, get_variable_registry
+from .._config import (
+    _cached_caller_globals,
+    get_dgcv_settings_registry,
+    get_variable_registry,
+)
 from .._safeguards import (
     create_key,
     get_dgcv_category,
@@ -16,7 +20,7 @@ from .._safeguards import (
     validate_label,
 )
 from ..backends._caches import _get_expr_num_types, _get_expr_types
-from ..backends._symbolic_router import get_free_symbols
+from ..backends._symbolic_router import get_free_symbols, ratio
 from ..combinatorics import carProd, weightedPermSign
 from ..dgcv_formatter import process_basis_label
 from ..vmf import clearVar
@@ -56,6 +60,8 @@ class barSortedStr:
             self.str = None
 
     def __lt__(self, other):
+        pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+        prefL = len(pref)
         if self.str is None:
             return True
         if other is None:
@@ -66,13 +72,13 @@ class barSortedStr:
                 return False
         if not isinstance(other, str):
             return NotImplemented
-        if self.str[0:3] == "BAR":
-            if other[0:3] == "BAR":
+        if self.str[0:prefL] == pref:
+            if other[0:prefL] == pref:
                 return self.str < other
             else:
                 return False
         else:
-            if other[0:3] == "BAR":
+            if other[0:prefL] == pref:
                 return True
             else:
                 return self.str < other
@@ -251,12 +257,14 @@ class zeroFormAtom(sp.Basic):
         """
         Define how `sympy.conjugate()` should behave for zeroFormAtom instances.
         """
+        pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+        prefL = len(pref)
         if "real" in self._markers:
             conjugated_label = self.label
-        elif self.label.startswith("BAR"):
-            conjugated_label = self.label[3:]  # Remove "BAR" prefix
+        elif self.label.startswith(pref):
+            conjugated_label = self.label[prefL:]  # Remove conjugate prefix
         else:
-            conjugated_label = f"BAR{self.label}"  # Add "BAR" prefix
+            conjugated_label = f"{pref}{self.label}"  # Add conjugate prefix
 
         newCD = []
         for elem in self.coframe_derivatives:
@@ -566,8 +574,10 @@ class zeroFormAtom(sp.Basic):
 
         base_label = self.label
         conjugated = False
-        if base_label.startswith("BAR"):
-            base_label = base_label[3:]
+        pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+        prefL = len(pref)
+        if base_label.startswith(pref):
+            base_label = base_label[prefL:]
             conjugated = True
 
         index_start = None
@@ -890,7 +900,8 @@ def _zeroFormFactory(
     for name, instance in zip(family_names, family_values):
         _cached_caller_globals[name] = instance  # Add each instance separately
     if assumeReal is not True:
-        _cached_caller_globals[f"BAR{label}"] = tuple(conjugates.values())
+        pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+        _cached_caller_globals[f"{pref}{label}"] = tuple(conjugates.values())
     for k, v in conjugates.items():
         _cached_caller_globals[k] = v
 
@@ -913,16 +924,16 @@ class abstract_ZF(sp.Basic):
         if isinstance(base, abstDFAtom) and base.degree == 0:  ###!!!
             base = base.coeff
         if isinstance(base, tuple):
-            op, *args = base  # Extract operator and operands
+            op, *args = base
             new_args = []
             for arg in args:
                 if isinstance(arg, abstDFAtom) and arg.degree == 0:  ###!!!
-                    new_args += [arg.coeff]
-                if isinstance(arg, abstract_ZF):
-                    new_args += [arg.base]
+                    new_args.append(arg.coeff)
+                elif isinstance(arg, abstract_ZF):
+                    new_args.append(arg.base)
                 else:
-                    new_args += [arg]
-            args = new_args
+                    new_args.append(arg)
+            base = (op, *new_args)
 
         # Define sorting hierarchy: lower index = lower precedence
         type_hierarchy = {
@@ -973,7 +984,7 @@ class abstract_ZF(sp.Basic):
                     base = args[0]
             elif op == "div":
                 if all(isinstance(j, _get_expr_num_types()) for j in args):
-                    base = sp.Rational(args[0], args[1])
+                    base = ratio(args[0], args[1])
                 elif args[0] == args[1] and (not abstract_ZF(args[0]).is_zero):
                     base = 1
                 elif abstract_ZF(args[0]).is_zero:
@@ -1859,12 +1870,14 @@ class abstDFAtom(sp.Basic):
 
     def _eval_conjugate(self):
         if self.label:
+            pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+            prefL = len(pref)
             if "real" in self._markers:
                 label = self.label
-            elif self.label[0:3] == "BAR":
-                label = self.label[3:]
+            elif self.label[0:prefL] == pref:
+                label = self.label[prefL:]
             else:
-                label = f"BAR{self.label}"
+                label = f"{pref}{self.label}"
         else:
             label = None
 
@@ -1935,8 +1948,10 @@ class abstDFAtom(sp.Basic):
                 return string
 
         def bar_labeling(label):
-            if label[0:3] == "BAR":
-                to_print = process_basis_label(label[3:])
+            pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+            prefL = len(pref)
+            if label[0:prefL] == pref:
+                to_print = process_basis_label(label[prefL:])
                 if "_" in to_print:
                     return f"\\overline{{{to_print}".replace("_", "}^", 1)
                 else:
@@ -2417,6 +2432,7 @@ def _DFFactory(
     - _doNotUpdateVar (None, optional): If set, prevents clearing/replacing existing instances.
     - remove_guardrails (None, optional): If set, bypasses safeguards for label validation.
     """
+    pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
     variable_registry = get_variable_registry()
     eds_atoms = variable_registry["eds"]["atoms"]
     passkey = retrieve_passkey()
@@ -2495,7 +2511,7 @@ def _DFFactory(
     for name, instance in zip(family_names, family_values):
         _cached_caller_globals[name] = instance  # Add each instance separately
     if assumeReal is not True:
-        _cached_caller_globals[f"BAR{label}"] = tuple(conjugates.values())
+        _cached_caller_globals[f"{pref}{label}"] = tuple(conjugates.values())
     for k, v in conjugates.items():
         _cached_caller_globals[k] = v
     if return_obj:
@@ -3464,18 +3480,20 @@ def createCoframe(
             complete_to_complex_cf[count] == "holomorphic"
             or complete_to_complex_cf[count] == "antiholomorphic"
         ):
-            if coframe_label[0:3] == "BAR":
+            pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+            prefL = len(pref)
+            if coframe_label[0:prefL] == pref:
                 paired_label = validate_label(
-                    coframe_label[3:], remove_guardrails=remove_guardrails
+                    coframe_label[prefL:], remove_guardrails=remove_guardrails
                 )
                 _DFFactory(paired_label, 1)
-                coframe_label = f"BAR{paired_label}"
+                coframe_label = f"{pref}{paired_label}"
             else:
                 coframe_label = validate_label(
                     coframe_label, remove_guardrails=remove_guardrails
                 )
                 _DFFactory(coframe_label, 1)
-                paired_label = f"BAR{coframe_label}"
+                paired_label = f"{pref}{coframe_label}"
             elem = _cached_caller_globals[coframe_label]
             cElem = _cached_caller_globals[paired_label]
             elem_list.append(elem)
@@ -3577,15 +3595,6 @@ def createCoframe(
             ]._eval_conjugate()
 
     _cached_caller_globals[label].update_structure_equations(replace_eqns=update_dict)
-
-    # if init_dimension<len(coframe_labels):
-    #     BAR_str_eqns_labels = str_eqns_labels[3:] if str_eqns_labels[:3]=='BAR' else 'BAR'+str_eqns_labels
-    #     barVars = []
-    #     for j in _cached_caller_globals[str_eqns_labels]:
-    #         conj_j = _custom_conj(j)
-    #         _cached_caller_globals[conj_j.label]=conj_j
-    #         barVars += [conj_j]
-    #     _cached_caller_globals[BAR_str_eqns_labels]=tuple(barVars)
 
     # Add the labels to the variable registry
     vr = get_variable_registry()
