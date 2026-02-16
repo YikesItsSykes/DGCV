@@ -95,7 +95,7 @@ from .algebras.algebras_secondary import (
     subalgebra_class,
     subalgebra_element,
 )
-from .arrays import array_dgcv, matrix_dgcv
+from .arrays import array_dgcv, assemble_block_matrix, matrix_dgcv
 from .backends import (
     expand_dgcv,
     factor_dgcv,
@@ -262,6 +262,7 @@ __all__ = [
     # From arrays
     "array_dgcv",  # light-weight array representation
     "matrix_dgcv",  # light-weight matrix representation
+    "assemble_block_matrix",
     # From backends
     "expand_dgcv",
     "factor_dgcv",

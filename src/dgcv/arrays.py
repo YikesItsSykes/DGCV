@@ -13,7 +13,12 @@ License:
 # -----------------------------------------------------------------------------
 from numbers import Integral
 
-from ._safeguards import check_dgcv_category, create_key, retrieve_passkey
+from ._safeguards import (
+    check_dgcv_category,
+    create_key,
+    query_dgcv_categories,
+    retrieve_passkey,
+)
 from .backends._engine import engine_kind, engine_module
 from .backends._exact_arith import exact_reciprocal
 from .backends._symbolic_router import (
@@ -22,11 +27,11 @@ from .backends._symbolic_router import (
     get_free_symbols,
     simplify,
 )
-from .backends._types_and_constants import fast_scalar_types, symbol
+from .backends._types_and_constants import expr_numeric_types, fast_scalar_types, symbol
 from .base import dgcv_class
 from .printing import array_latex_helper, array_VS_printer
 
-__all__ = ["array_dgcv", "matrix_dgcv"]
+__all__ = ["array_dgcv", "matrix_dgcv", "assemble_block_matrix"]
 
 
 # -----------------------------------------------------------------------------
@@ -54,32 +59,95 @@ class array_dgcv(dgcv_class):
 
     def __init__(self, array_data, *, shape=None):
         if shape is not None:
-            if not isinstance(shape, tuple) or not all(
-                isinstance(s, Integral) and s >= 0 for s in shape
-            ):
-                raise TypeError("shape must be a tuple of non-negative ints")
+            if isinstance(shape, (list, tuple)):
+                shape = tuple(shape)
+            else:
+                raise TypeError(
+                    "shape must be tuple-like (list/tuple) of non-negative ints"
+                )
+
+            if not all(isinstance(s, Integral) and s >= 0 for s in shape):
+                raise TypeError(
+                    "shape must be tuple-like (list/tuple) of non-negative ints"
+                )
+
             self.shape = shape
 
         self._data, self.shape = self._normalize(array_data)
         self.ndim = len(self.shape)
         self._dgcv_class_check = retrieve_passkey()
 
-    def __str__(self):
-        return array_VS_printer(self)
-
-    def _latex(self, printer=None, raw=True, **kwargs):
-        s = array_latex_helper(self, **kwargs)
-        return s if raw else f"$\\displaystyle {s}$"
-
-    def _repr_latex_(self, raw=False, **kwargs):
-        return self._latex(**kwargs)
-
     def _normalize(self, array_data):
         if isinstance(array_data, dict):
             shp = getattr(self, "shape", None)
             if not isinstance(shp, tuple):
                 raise TypeError("dict input requires shape=... in array_dgcv(...)")
-            return dict(array_data), tuple(shp)
+
+            flat = {}
+            for k, v in array_data.items():
+                if isinstance(k, tuple):
+                    idx = _spool(k, shp)
+                else:
+                    idx = k
+
+                if v is None:
+                    flat[idx] = None
+                    continue
+                try:
+                    if _scalar_is_zero(v):
+                        continue
+                except Exception:
+                    pass
+
+                flat[idx] = v
+
+            return flat, tuple(shp)
+        if callable(array_data):
+            shp = getattr(self, "shape", None)
+            if not isinstance(shp, tuple):
+                raise TypeError(
+                    "callable entry rule requires shape=... in array_dgcv(...)"
+                )
+            flat = {}
+            if not shp:
+                v = array_data()
+                if v is None:
+                    flat[0] = None
+                else:
+                    try:
+                        if not _scalar_is_zero(v):
+                            flat[0] = v
+                    except Exception:
+                        flat[0] = v
+                return flat, tuple(shp)
+
+            def _walk(prefix, rest):
+                if not rest:
+                    try:
+                        v = array_data(*prefix)
+                    except TypeError:
+                        v = array_data(prefix)
+
+                    idx = _spool(prefix, shp)
+
+                    if v is None:
+                        flat[idx] = None
+                        return
+
+                    try:
+                        if _scalar_is_zero(v):
+                            return
+                    except Exception:
+                        pass
+
+                    flat[idx] = v
+                    return
+
+                for i in range(rest[0]):
+                    _walk(prefix + (i,), rest[1:])
+
+            _walk((), shp)
+            return flat, tuple(shp)
 
         if isinstance(array_data, (list, tuple)):
             shape = self._infer_shape(array_data)
@@ -100,6 +168,7 @@ class array_dgcv(dgcv_class):
                 for j in range(cols):
                     flat[base + j] = array_data[i, j]
             return flat, shape
+
         nrows = getattr(array_data, "nrows", None)
         ncols = getattr(array_data, "ncols", None)
         if callable(nrows) and callable(ncols):
@@ -114,6 +183,16 @@ class array_dgcv(dgcv_class):
             return flat, shape
 
         raise TypeError("Unsupported array_data type")
+
+    def __str__(self):
+        return array_VS_printer(self)
+
+    def _latex(self, printer=None, raw=True, **kwargs):
+        s = array_latex_helper(self, **kwargs)
+        return s if raw else f"$\\displaystyle {s}$"
+
+    def _repr_latex_(self, raw=False, **kwargs):
+        return self._latex(**kwargs)
 
     def _infer_shape(self, data):
         shape = []
@@ -269,8 +348,9 @@ class matrix_dgcv(array_dgcv):
 
     _dgcv_categories = {"matrix"}
 
-    def __init__(self, array_data):
-        super().__init__(array_data)
+    def __init__(self, array_data, *, shape=None):
+        super().__init__(array_data, shape=shape)
+
         if self.ndim == 1:
             n = self.shape[0]
             new_data = {}
@@ -282,8 +362,10 @@ class matrix_dgcv(array_dgcv):
             self._data = new_data
             self.shape = (n, 1)
             self.ndim = 2
+
         if self.ndim != 2:
             raise ValueError("matrix_dgcv requires 2-dimensional data")
+
         self._dgcv_categories = {"matrix"}
         self._engine_representation = dict()
 
@@ -339,6 +421,26 @@ class matrix_dgcv(array_dgcv):
         out._data = {}
         for i in range(n):
             out._data[_spool((i, i), out.shape)] = one
+        return out
+
+    @classmethod
+    def padded_identity(cls, nrows, ncols, one=1, zero=0):
+        _validate_pos_int(nrows, "nrows")
+        _validate_pos_int(ncols, "ncols")
+
+        out = cls.__new__(cls)
+        out._dgcv_class_check = retrieve_passkey()
+        out._dgcv_categories = {"matrix"}
+        out.shape = (int(nrows), int(ncols))
+        out.ndim = 2
+        out._data = {}
+
+        d = min(out.shape[0], out.shape[1])
+        if one != zero:
+            for i in range(d):
+                out._data[_spool((i, i), out.shape)] = one
+
+        out._engine_representation = dict()
         return out
 
     def transpose(self):
@@ -1179,6 +1281,111 @@ class matrix_dgcv(array_dgcv):
                 vv.append(matrix_dgcv(v))
             out.append((lam, int(mult), vv))
         return out
+
+
+def assemble_block_matrix(blocks):
+    B = _as_seq(blocks, "blocks")
+    if B is None:
+        B = []
+
+    rows = []
+    max_cols = 0
+    for r in B:
+        rr = _as_seq(r, "block row")
+        if rr is None:
+            rr = []
+        rr = list(rr)
+        rows.append(rr)
+        if len(rr) > max_cols:
+            max_cols = len(rr)
+
+    for rr in rows:
+        if len(rr) < max_cols:
+            rr.extend([0] * (max_cols - len(rr)))
+
+    n_block_rows = len(rows)
+    n_block_cols = max_cols
+
+    def _is_matrix(x):
+        try:
+            return bool(query_dgcv_categories(x, {"matrix"}))
+        except Exception:
+            return False
+
+    def _is_scalar(x):
+        try:
+            return isinstance(x, expr_numeric_types())
+        except Exception:
+            return False
+
+    row_heights = [None] * n_block_rows
+    col_widths = [None] * n_block_cols
+
+    for i in range(n_block_rows):
+        for j in range(n_block_cols):
+            x = rows[i][j]
+
+            if _is_matrix(x):
+                m = int(getattr(x, "nrows"))
+                n = int(getattr(x, "ncols"))
+
+                rh = row_heights[i]
+                if rh is None:
+                    row_heights[i] = m
+                elif rh != m:
+                    raise ValueError(
+                        f"Incompatible block-row heights in row {i}: got {rh} and {m}."
+                    )
+
+                cw = col_widths[j]
+                if cw is None:
+                    col_widths[j] = n
+                elif cw != n:
+                    raise ValueError(
+                        f"Incompatible block-column widths in col {j}: got {cw} and {n}."
+                    )
+
+            elif _is_scalar(x):
+                continue
+            else:
+                raise TypeError(
+                    "Block entries must satisfy "
+                    "isinstance(x, expr_numeric_types()) or query_dgcv_categories(x, {'matrix'})."
+                )
+
+    for i in range(n_block_rows):
+        if row_heights[i] is None:
+            row_heights[i] = 1
+    for j in range(n_block_cols):
+        if col_widths[j] is None:
+            col_widths[j] = 1
+
+    for i in range(n_block_rows):
+        for j in range(n_block_cols):
+            x = rows[i][j]
+            if _is_matrix(x):
+                continue
+            m = row_heights[i]
+            n = col_widths[j]
+            rows[i][j] = x * matrix_dgcv.padded_identity(m, n)
+
+    total_m = sum(row_heights)
+    total_n = sum(col_widths)
+
+    out_data = {}
+    row_off = 0
+    for i in range(n_block_rows):
+        col_off = 0
+        for j in range(n_block_cols):
+            blk = rows[i][j]
+            for (ii, jj), v in blk.iter_nonzero_items(
+                include_zeros=False, include_none=False
+            ):
+                out_data[(row_off + ii, col_off + jj)] = v
+            col_off += col_widths[j]
+        row_off += row_heights[i]
+
+    return matrix_dgcv(out_data, shape=(total_m, total_n))
 
 
 def _validate_pos_int(n, name="n"):
