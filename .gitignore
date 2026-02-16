@@ -7,3 +7,4 @@ dist/
 pyrightconfig.json
 requirements*.txt
 tests/notebooks/local/
+tutorials/**/*.html
