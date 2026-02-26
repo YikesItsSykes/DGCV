@@ -266,13 +266,21 @@ def as_numer_denom(expr):
     """
     kind = engine_kind()
 
-    if kind == "sympy":
-        f = getattr(expr, "as_numer_denom", None)
-        if f is None:
-            sp = engine_module()
-            expr = sp.sympify(expr)
-            return expr.as_numer_denom()
+    f = getattr(expr, "as_numer_denom", None)
+    if callable(f):
         return f()
+    if kind == "sympy":
+        if f is None:
+            try:
+                sp = engine_module()
+                expr = sp.sympify(expr)
+                return expr.as_numer_denom()
+            except Exception:
+                pass
+        elif callable(f):
+            return f()
+        else:
+            return expr, one()
 
     if kind == "sage":
         f = getattr(expr, "numerator", None)
@@ -288,10 +296,20 @@ def as_numer_denom(expr):
         except Exception:
             return expr, one()
 
-    f = getattr(expr, "as_numer_denom", None)
-    if callable(f):
-        return f()
     return expr, one()
+
+
+def common_multiple(*exprs):
+    kind = engine_kind()
+    if kind == "sympy":
+        sp = engine_module()
+        if len(exprs) == 0:
+            return
+        if len(exprs) == 1:
+            return exprs[0]
+        return common_multiple(sp.lcm(exprs[0], exprs[1]), *exprs[2:])
+    else:
+        return math.prod(*exprs)
 
 
 def ilcm(*ints):

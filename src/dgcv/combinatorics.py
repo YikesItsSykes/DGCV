@@ -175,7 +175,7 @@ def carProdWithOrderWithoutRepl(*args):
     Examples
     --------
     >>> list(carProdWithOrderWithoutRepl([1, 2], [2, 3]))
-    [(1, 2), (1, 3)]
+    [(1, 2), (1, 3), (2,3)]
 
     Notes
     -----
@@ -248,11 +248,11 @@ def chooseOp(
     TypeError
         If the arguments are not in the correct format.
     """
-    if arg2 == 0:
+    if arg2 == 0 or (withoutReplacement and arg2 > len(arg1)):
         return (0 for _ in range(0))
+    if withoutReplacement and withOrder and arg2 == len(arg1):
+        return (arg1 for _ in range(1))
     arg1 = [list(arg1)]
-
-    # Determine which Cartesian product function to use
     if withOrder:
         if withoutReplacement:
             resultLoc = carProdWithOrderWithoutRepl(*arg2 * arg1)
@@ -263,8 +263,6 @@ def chooseOp(
             resultLoc = carProdWithoutRepl(*arg2 * arg1)
         else:
             resultLoc = carProd(*arg2 * arg1)
-
-    # Apply homogeneity filter if needed
     if isinstance(restrictHomogeneity, numbers.Integral):
         return (j for j in resultLoc if sum(j) == restrictHomogeneity)
     else:

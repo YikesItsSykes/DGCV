@@ -52,6 +52,7 @@ from ._safeguards import (
 from .backends._numeric_router import zeroish
 from .backends._symbolic_router import _scalar_is_zero, get_free_symbols, simplify, subs
 from .backends._types_and_constants import expr_numeric_types, symbol
+from .combinatorics import chooseOp
 from .conversions import allToReal
 from .dgcv_core import (
     VF_bracket,
@@ -1000,7 +1001,8 @@ def get_coframe(
 def annihilator(
     objList: Sequence[Any],
     coordinate_space: Sequence[Any] | None = None,
-    control_distribution: Optional[Sequence[Any]] = None,
+    control_distribution: Sequence[Any] | None = None,
+    polynomial_bases: bool = False,
     _pass_error_report=None,
     allow_div_by_zero: bool = False,
     *,
@@ -1026,6 +1028,8 @@ def annihilator(
         consistent `dgcvType` attributes (i.e., 'standard' or 'complex').
     coordinate_Space : list, tuple, or set
         A collection of variables that define the coordinate system in which the annihilator is to be computed.
+    polynomial_bases: bool (optional)
+        Attempt to scale computed basis elements so that they have polynomial coefficients before returning the list. Can still produce non-nonpolynomial expressions when factoring is not possible.
     allow_div_by_zero : bool, optional
         If True, allows the annihilator to be returned without scaling to avoid division by zero (default is False).
         Scaling to avoid division has more computational overhead but typically simplifies output.
@@ -1099,30 +1103,52 @@ def annihilator(
         raise TypeError("`annihilator` expects tensor_field objects.")
 
     is_vf_case = all(query_dgcv_categories(o, {"vector_field"}) for o in objList)
-    is_df_case = all(query_dgcv_categories(o, {"differential_form"}) for o in objList)
+    control_needed, expensive_path_needed = control_distribution is not None, False
+    if is_vf_case is True:
+        is_df_case = False
+    else:
+        is_df_case = True
+        for o in objList:
+            if not query_dgcv_categories(o, {"differential_form"}):
+                is_df_case = False
+                break
+            md, mmd = o.min_degree, o.max_degree
+            if control_needed and mmd > 1:
+                expensive_path_needed = True
+                if md != mmd:
+                    raise TypeError(
+                        "`annihilator` does not support restriction to control distributions when the objects to annihilate are mixed deree differential forms."
+                    )
     if not is_vf_case and not is_df_case:
         raise TypeError(
             "`annihilator` expects a list of all vector fields or all differential forms."
         )
-
-    if control_distribution is not None:
-        control_distribution = list(control_distribution)
+    if control_needed:
         if is_vf_case:
-            if not all(
-                query_dgcv_categories(o, {"differential_form"})
-                for o in control_distribution
-            ):
-                raise TypeError(
-                    "`annihilator` control_distribution must be differential forms in the VF case."
-                )
+            if get_dgcv_category(control_distribution) == "distribution":
+                control_distribution = control_distribution.df_basis
+            else:
+                control_distribution = list(control_distribution)
+                if not all(
+                    query_dgcv_categories(o, {"differential_form"})
+                    for o in control_distribution
+                ):
+                    raise TypeError(
+                        "`annihilator` control_distribution must be differential forms if given objects to annihilate are VF."
+                    )
             basis_elems = control_distribution
         else:
-            if not all(
-                query_dgcv_categories(o, {"vector_field"}) for o in control_distribution
-            ):
-                raise TypeError(
-                    "`annihilator` control_distribution must be vector fields in the DF case."
-                )
+            if get_dgcv_category(control_distribution) == "distribution":
+                control_distribution = control_distribution.vf_basis
+            else:
+                control_distribution = list(control_distribution)
+                if not all(
+                    query_dgcv_categories(o, {"vector_field"})
+                    for o in control_distribution
+                ):
+                    raise TypeError(
+                        "`annihilator` control_distribution must be vector fields if the given objects to annihilater are DF."
+                    )
             basis_elems = control_distribution
 
     elif coordinate_space is not None:
@@ -1136,7 +1162,7 @@ def annihilator(
             ds = vmf_lookup(a, differential_system=True).get("differential_system")
             if ds is None:
                 raise TypeError(
-                    "`annihilator` requires coordinates to be registered in the dgcv VMF with differential objects. "
+                    "`annihilator` requires manually provided coordinates to be registered in the dgcv VMF with differential objects. "
                     "Suggestion: initialize coordinates with `createVariables(..., withVF=True)` (or `createVariables(..., complex=True)` as appropriate)."
                 )
 
@@ -1183,14 +1209,31 @@ def annihilator(
     label = create_key(prefix="var")
     vars_list = [symbol(f"{label}{i}") for i in range(n)]
 
-    general = 0
-    for u, e in zip(vars_list, basis_elems):
-        general = general + u * e
+    general = sum(u * e for u, e in zip(vars_list, basis_elems))
 
     if is_vf_case:
         eqns = [general(vf) for vf in objList]
     else:
-        eqns = [df(general) for df in objList]
+        if expensive_path_needed:
+            eqns = []
+            combos = dict()
+            for df in objList:
+                deg = df.max_degree
+                if deg == 0:
+                    eqns.append(df)
+                else:
+                    if deg not in combos:
+                        combos[deg] = chooseOp(
+                            range(n),
+                            deg - 1,
+                            withOrder=True,
+                            withoutReplacement=True,
+                        )
+                    for tail in combos[deg]:
+                        trailing = [basis_elems[idx] for idx in tail]
+                        eqns += [df(general, *trailing) for df in objList]
+        else:
+            eqns = [df(general) for df in objList]
 
     scalar_eqns = []
     for e in eqns:
@@ -1207,21 +1250,27 @@ def annihilator(
 
     sol = sols[0]
 
-    def _apply_sol(expr, sol_dict):
-        return subs(expr, sol_dict) if isinstance(sol_dict, dict) else expr
+    def _apply_sol(expr, sol_dict, scale=False):
+        sol = subs(expr, sol_dict) if isinstance(sol_dict, dict) else expr
+        if scale:
+            f = getattr(sol, "scale_to_polynomial_attempt", None)
+            sol = f() if callable(f) else sol
+        return sol
 
     general_solution = _apply_sol(general, sol)
 
     free_vars = [u for u in vars_list if sol.get(u, u) == u]
 
     if not free_vars:
+        if polynomial_bases:
+            f = getattr(general_solution, "scale_to_polynomial_attempt", None)
+            general_solution = f() if callable(f) else general_solution
         return [general_solution]
 
     out = []
     for v in free_vars:
         assign = {u: 0 for u in free_vars}
         assign[v] = 1
-        out.append(_apply_sol(general_solution, assign))
-
+        out.append(_apply_sol(general_solution, assign, scale=polynomial_bases))
     out = [elem for elem in out if not _scalar_is_zero(elem)]
     return out

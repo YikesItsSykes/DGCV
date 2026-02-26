@@ -11,6 +11,7 @@ License:
 # -----------------------------------------------------------------------------
 # imports and broadcasting
 # -----------------------------------------------------------------------------
+import warnings
 from numbers import Integral
 
 from ._safeguards import (
@@ -383,6 +384,26 @@ class matrix_dgcv(array_dgcv):
     def col(self, j):
         return [self[i, j] for i in range(self.nrows)]
 
+    def columnspace(self, as_plain_lists=False):
+        """
+        Use `as_plain_lists=True` in hot loops to avoid class coersion costs
+        """
+        return (
+            [self.col(j) for j in range(self.ncols)]
+            if as_plain_lists
+            else [matrix_dgcv(self.col(j)) for j in range(self.ncols)]
+        )
+
+    def rowspace(self, as_plain_lists=False):
+        """
+        Use `as_plain_lists=True` in hot loops to avoid class coersion costs
+        """
+        return (
+            [self.row(j) for j in range(self.nrows)]
+            if as_plain_lists
+            else [matrix_dgcv([self.row(j)]) for j in range(self.nrows)]
+        )
+
     def __getitem__(self, key):
         v = super().__getitem__(key)
         return 0 if v is None else v
@@ -513,6 +534,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = self.shape
         out.ndim = 2
         out._data = {}
+        out._engine_representation = dict()
 
         keys = set(self._data) | set(other._data)
         for k in keys:
@@ -546,6 +568,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = self.shape
         out.ndim = 2
         out._data = {}
+        out._engine_representation = dict()
         for k, v in self._data.items():
             out._data[k] = v * other
         return out
@@ -557,6 +580,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = self.shape
         out.ndim = 2
         out._data = {}
+        out._engine_representation = dict()
         for k, v in self._data.items():
             if v is not None:
                 out._data[k] = other * v
@@ -578,6 +602,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = (self.nrows, other_m.ncols)
         out.ndim = 2
         out._data = {}
+        out._engine_representation = dict()
 
         for i in range(self.nrows):
             for k in range(self.ncols):
@@ -1281,6 +1306,30 @@ class matrix_dgcv(array_dgcv):
                 vv.append(matrix_dgcv(v))
             out.append((lam, int(mult), vv))
         return out
+
+    def symbolic_engine_method(self, method: str, return_anything: bool = False):
+        """
+        Accepts a method name for matrix classes from whichever symbolic engine is active (set in the dgcv settings registry). Attempts to apply that method and if the result is matrix-like then it is converted back into a `matrix_dgcv` class, which is returned. Will return unaltered matrix if the attempt fails, along with a warning that this happened.
+
+        Setting `return_anything` to True will return exactly what the method evaluates to rather than trying to coerce results into dgcv classes. If the given name points to an attribute or property rather than a method, then the result is infered from that property value.
+
+        As dgcv is compatible with multiple symbolic engines, of which each have their respective names for matrix class methods, supported method names is fully reliant on whichever symbolic engine is selected via dgcv settings (use `set_dgcv_settings()` to change it).
+        """
+        value = getattr(self._to_engine_matrix(), method)
+        if callable(value):
+            value = value()
+        if return_anything:
+            return value
+        try:
+            return matrix_dgcv(value)
+        except Exception:
+            warnings.warn(
+                "Requested method name either does not exist for the current symbolic engine's matrix class or it does not return a matrix-like value."
+            )
+            return self
+
+    def to_symbolic_engine_class(self):
+        return self._to_engine_matrix()
 
 
 def assemble_block_matrix(blocks):

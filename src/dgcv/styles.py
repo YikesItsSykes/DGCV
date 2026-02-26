@@ -128,8 +128,8 @@ style_guide = {
             "props": [("background-color", "#333333"), ("color", "#f5f5f5")]
         },
         "row": {"props": [("background-color", "#2c2c2c"), ("color", "#f5f5f5")]},
-        "alt_row": {"props": [("background-color", "#3a3a3a")]},
-        "hover": {"props": [("background-color", "#484848")]},
+        "alt_row": {"props": [("background-color", "#3a3a3a"), ("color", "#e6e6e6")]},
+        "hover": {"props": [("background-color", "#484848"), ("color", "#7fdbff")]},
         "border": {"props": [("border", "1px solid #444444")]},
     },
     "dark_high_contrast": {

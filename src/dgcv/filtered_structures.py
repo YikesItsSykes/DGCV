@@ -20,8 +20,6 @@ from collections.abc import Iterable
 from html import escape as _esc
 from typing import Any, Literal, Sequence, Tuple
 
-import sympy as sp
-
 from ._config import (
     _cached_caller_globals,  # DEBUG
     get_dgcv_settings_registry,
@@ -45,8 +43,14 @@ from .algebras.algebras_secondary import createAlgebra, subalgebra_class
 from .backends._caches import _get_expr_num_types
 from .backends._display_engine import is_rich_displaying_available
 from .backends._numeric_router import zeroish
-from .backends._symbolic_router import get_free_symbols, simplify, subs
+from .backends._symbolic_router import (
+    clear_denominators,
+    get_free_symbols,
+    simplify,
+    subs,
+)
 from .backends._types_and_constants import rational, symbol
+from .base import dgcv_class
 from .conversions import allToReal, allToSym
 from .dgcv_core import variableProcedure, wedge
 from .solvers import solve_dgcv
@@ -64,7 +68,7 @@ __all__ = ["Tanaka_symbol", "distribution"]
 # -----------------------------------------------------------------------------
 # distributions
 # -----------------------------------------------------------------------------
-class Tanaka_symbol:
+class Tanaka_symbol(dgcv_class):
     """
     dgcv class representing a symbol-like object for Tanaka prolongation.
 
@@ -377,7 +381,7 @@ class Tanaka_symbol:
                         for k, v in subSLevels.items():
                             rich_dict[k] = dict()
                             rich_dict[k]["vars"] = [
-                                sp.Symbol(f"{var_pre}{j}") for j in range(len(v))
+                                symbol(f"{var_pre}{j}") for j in range(len(v))
                             ]
                             terms_list = [
                                 var * elem for var, elem in zip(rich_dict[k]["vars"], v)
@@ -389,7 +393,7 @@ class Tanaka_symbol:
                         var_pre = create_key(prefix="var")
                         rich_dict = dict()
                         rich_dict["vars"] = [
-                            sp.Symbol(f"{var_pre}{j}") for j in range(len(DSList))
+                            symbol(f"{var_pre}{j}") for j in range(len(DSList))
                         ]
                         terms_list = [
                             var * elem for var, elem in zip(rich_dict["vars"], DSList)
@@ -669,7 +673,7 @@ class Tanaka_symbol:
                 if len(ambient_basis) == 0:
                     break
                 vLab = create_key(prefix="vLab")
-                ambVars = [sp.Symbol(f"{vLab}{j}") for j in range(len(ambient_basis))]
+                ambVars = [symbol(f"{vLab}{j}") for j in range(len(ambient_basis))]
                 ds_terms = [var * elem for var, elem in zip(ambVars, ambient_basis)]
                 ambGE = sum(ds_terms)
                 for w, level in subSData.items():
@@ -680,8 +684,7 @@ class Tanaka_symbol:
                         esVars = ambVars.copy()
                         for count, elem in enumerate(level["spanners"]):
                             newVars = [
-                                sp.Symbol(f"_{count}{vLab}{j}")
-                                for j in range(len(dsVars))
+                                symbol(f"_{count}{vLab}{j}") for j in range(len(dsVars))
                             ]
                             esVars += newVars
                             eqn = ambGE * elem + (dsGE.subs(dict(zip(dsVars, newVars))))
@@ -705,7 +708,7 @@ class Tanaka_symbol:
                 ambient_basis = [0 * self.basis[0]]
 
             varLabel = create_key(prefix="center_var")  # label for temparary variables
-            tVars = [sp.Symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))]
+            tVars = [symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))]
             general_elem = sum([tVars[j] * ambient_basis[j] for j in range(len(tVars))])
 
             eqns = []
@@ -789,7 +792,7 @@ class Tanaka_symbol:
                     ambient_basis = new_level
                     varLabel = create_key(prefix="_cv")
                     tVars = [
-                        sp.Symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))
+                        symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))
                     ]
                     solVars = list(tVars)
                     general_elem = sum(
@@ -799,8 +802,7 @@ class Tanaka_symbol:
                     for idx, dzElem in enumerate(z_level):
                         varLabel2 = varLabel + f"{idx}_"
                         vars2 = [
-                            sp.Symbol(f"{varLabel2}{j}")
-                            for j in range(len(ambient_basis))
+                            symbol(f"{varLabel2}{j}") for j in range(len(ambient_basis))
                         ]
                         solVars += vars2
                         general_elem2 = sum(
@@ -819,9 +821,9 @@ class Tanaka_symbol:
                     solution = solve_dgcv(eqns, solVars)
                     if len(solution) == 0:
                         raise RuntimeError(
-                            f"`Tanaka_symbol.prolongation` failed at a step where sympy.linsolve was being applied. The equation system was {eqns} w.r.t. {solVars}"
+                            f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {solVars}"
                         )
-                    solCoeffs = [j.subs(solution[0]) for j in tVars]
+                    solCoeffs = [subs(j, solution[0]) for j in tVars]
 
                     free_variables = tuple(
                         set.union(
@@ -832,29 +834,31 @@ class Tanaka_symbol:
                             ],
                         )
                     )
-                    new_vectors = []
+                    # new_vectors = []
+                    filtered_vectors = []
                     zeroingDict = {other_var: 0 for other_var in free_variables}
                     for var in free_variables:
                         basis_element = [
-                            j.subs({var: 1}).subs(zeroingDict) for j in solCoeffs
+                            subs(j, zeroingDict | {var: 1}) for j in solCoeffs
                         ]
-                        new_vectors.append(basis_element)
-                    columns = (sp.Matrix(new_vectors).T).columnspace()
-                    filtered_vectors = [
-                        list(sp.nsimplify(col, rational=True)) for col in columns
-                    ]
+                        filtered_vectors.append(clear_denominators(basis_element))
+                        # new_vectors.append(basis_element)
+                    # columns = (sp.Matrix(new_vectors).T).columnspace()
+                    # filtered_vectors = [
+                    #     list(sp.nsimplify(col, rational=True)) for col in columns
+                    # ]
 
-                    def reScale(vec):
-                        denom = 1
-                        for t in vec:
-                            if hasattr(t, "denominator") and denom < t.denominator:
-                                denom = t.denominator
-                        if denom == 1:
-                            return list(vec)
-                        else:
-                            return [t * denom for t in vec]
+                    # def reScale(vec):
+                    #     denom = 1
+                    #     for t in vec:
+                    #         if hasattr(t, "denominator") and denom < t.denominator:
+                    #             denom = t.denominator
+                    #     if denom == 1:
+                    #         return list(vec)
+                    #     else:
+                    #         return [t * denom for t in vec]
 
-                    filtered_vectors = [reScale(vec) for vec in filtered_vectors]
+                    # filtered_vectors = [reScale(vec) for vec in filtered_vectors]
 
                     new_basis = []
                     for coeffs in filtered_vectors:
@@ -975,7 +979,7 @@ class Tanaka_symbol:
                 if len(ambient_basis) == 0:
                     break
                 vLab = create_key(prefix="vLab")
-                ambVars = [sp.Symbol(f"{vLab}{j}") for j in range(len(ambient_basis))]
+                ambVars = [symbol(f"{vLab}{j}") for j in range(len(ambient_basis))]
                 ds_terms = [var * elem for var, elem in zip(ambVars, ambient_basis)]
                 ambGE = sum(ds_terms)
                 for w, level in subSData.items():
@@ -986,8 +990,7 @@ class Tanaka_symbol:
                         esVars = ambVars.copy()
                         for count, elem in enumerate(level["spanners"]):
                             newVars = [
-                                sp.Symbol(f"_{count}{vLab}{j}")
-                                for j in range(len(dsVars))
+                                symbol(f"_{count}{vLab}{j}") for j in range(len(dsVars))
                             ]
                             esVars += newVars
                             eqn = ambGE * elem + (dsGE.subs(dict(zip(dsVars, newVars))))
@@ -1011,7 +1014,7 @@ class Tanaka_symbol:
                 ambient_basis = [0 * self.basis[0]]
 
             varLabel = create_key(prefix="center_var")  # label for temparary variables
-            tVars = [sp.Symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))]
+            tVars = [symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))]
             general_elem = sum([tVars[j] * ambient_basis[j] for j in range(len(tVars))])
 
             eqns = []
@@ -1092,7 +1095,7 @@ class Tanaka_symbol:
                     ambient_basis = new_level
                     varLabel = create_key(prefix="_cv")
                     tVars = [
-                        sp.Symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))
+                        symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))
                     ]
                     solVars = list(tVars)
                     general_elem = sum(
@@ -1102,8 +1105,7 @@ class Tanaka_symbol:
                     for idx, dzElem in enumerate(z_level):
                         varLabel2 = varLabel + f"{idx}_"
                         vars2 = [
-                            sp.Symbol(f"{varLabel2}{j}")
-                            for j in range(len(ambient_basis))
+                            symbol(f"{varLabel2}{j}") for j in range(len(ambient_basis))
                         ]
                         solVars += vars2
                         general_elem2 = sum(
@@ -1119,7 +1121,7 @@ class Tanaka_symbol:
                     solution = solve_dgcv(eqns, solVars)
                     if len(solution) == 0:
                         raise RuntimeError(
-                            f"`Tanaka_symbol.prolongation` failed at a step where sympy.linsolve was being applied. The equation system was {eqns} w.r.t. {solVars}"
+                            f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {solVars}"
                         )
                     solCoeffs = [j.subs(solution[0]) for j in tVars]
 
@@ -1132,29 +1134,31 @@ class Tanaka_symbol:
                             ],
                         )
                     )
-                    new_vectors = []
+                    # new_vectors = []
+                    filtered_vectors = []
                     zeroingDict = {other_var: 0 for other_var in free_variables}
                     for var in free_variables:
                         basis_element = [
                             j.subs({var: 1}).subs(zeroingDict) for j in solCoeffs
                         ]
-                        new_vectors.append(basis_element)
-                    columns = (sp.Matrix(new_vectors).T).columnspace()
-                    filtered_vectors = [
-                        list(sp.nsimplify(col, rational=True)) for col in columns
-                    ]
+                        filtered_vectors.append(clear_denominators(basis_element))
+                        # new_vectors.append(basis_element)
+                    # columns = (sp.Matrix(new_vectors).T).columnspace()
+                    # filtered_vectors = [
+                    #     list(sp.nsimplify(col, rational=True)) for col in columns
+                    # ]
 
-                    def reScale(vec):
-                        denom = 1
-                        for t in vec:
-                            if hasattr(t, "denominator") and denom < t.denominator:
-                                denom = t.denominator
-                        if denom == 1:
-                            return list(vec)
-                        else:
-                            return [t * denom for t in vec]
+                    # def reScale(vec):
+                    #     denom = 1
+                    #     for t in vec:
+                    #         if hasattr(t, "denominator") and denom < t.denominator:
+                    #             denom = t.denominator
+                    #     if denom == 1:
+                    #         return list(vec)
+                    #     else:
+                    #         return [t * denom for t in vec]
 
-                    filtered_vectors = [reScale(vec) for vec in filtered_vectors]
+                    # filtered_vectors = [reScale(vec) for vec in filtered_vectors]
 
                     new_basis = []
                     for coeffs in filtered_vectors:
@@ -2114,13 +2118,11 @@ class _fast_tensor_products:
         return self.__matmul__(other)
 
     def subs(self, subs_data):
-        new_dict = {
-            k: sp.sympify(v).subs(subs_data) for k, v in self.coeff_dict.items()
-        }
+        new_dict = {k: subs(v, subs_data) for k, v in self.coeff_dict.items()}
         return _fast_tensor_products(new_dict, self.algebra, _validated=self.degree)
 
 
-class distribution:
+class distribution(dgcv_class):
     def __init__(
         self,
         spanning_vf_set=None,
@@ -2130,6 +2132,8 @@ class distribution:
         _assume_minimal_Data=None,
         *,
         coordinate_space: None | Sequence[Any] = None,
+        find_polynomial_bases=False,
+        assume_starting_objs_polynomial=False,
         formatting: None | Literal["complex", "real"] = None,
     ):
         if spanning_vf_set is not None:
@@ -2176,6 +2180,7 @@ class distribution:
             self._wderived_flag = None
             return
 
+        self._simplifying_preference = find_polynomial_bases
         if formatting not in (None, "complex", "real"):
             formatting = None
 
@@ -2184,12 +2189,22 @@ class distribution:
         vfs = (
             None
             if spanning_vf_set is None
-            else self._normalize_spanning_set(spanning_vf_set, formatting=formatting)
+            else self._normalize_spanning_set(
+                spanning_vf_set,
+                formatting=formatting,
+                scale_to_poly=find_polynomial_bases
+                and not assume_starting_objs_polynomial,
+            )
         )
         dfs = (
             None
             if spanning_df_set is None
-            else self._normalize_spanning_set(spanning_df_set, formatting=formatting)
+            else self._normalize_spanning_set(
+                spanning_df_set,
+                formatting=formatting,
+                scale_to_poly=find_polynomial_bases
+                and not assume_starting_objs_polynomial,
+            )
         )
 
         if vfs is not None and dfs is not None and assume_compatibility is False:
@@ -2238,6 +2253,8 @@ class distribution:
         self._spanning_vf_set = vfs
         self._spanning_df_set = dfs
         self.formatting = formatting
+        self._dgcv_class_check = retrieve_passkey()
+        self._dgcv_category = "distribution"
 
         if _assume_minimal_Data == retrieve_passkey():
             self._vf_basis = self._spanning_vf_set
@@ -2287,7 +2304,9 @@ class distribution:
             return allToReal(obj)
         return allToSym(obj)
 
-    def _normalize_spanning_set(self, spanning_set, *, formatting: None | str):
+    def _normalize_spanning_set(
+        self, spanning_set, *, formatting: None | str, scale_to_poly: bool = False
+    ):
         elems = tuple(spanning_set)
         if not elems:
             return tuple()
@@ -2298,16 +2317,26 @@ class distribution:
             for e in elems:
                 ef = self._validated_format_of(e)
                 if ef != target and ef in ("real", "complex"):
-                    out.append(self._convert_obj(e, target))
+                    new_e = self._convert_obj(e, target)
+                    if scale_to_poly:
+                        new_e = new_e.scale_to_polynomial_attempt()
+                    out.append(new_e)
                 else:
-                    out.append(e)
+                    if scale_to_poly:
+                        new_e = e.scale_to_polynomial_attempt()
+                    out.append(new_e)
             return tuple(out)
 
         fmts = set()
+        new_elems = []
         for e in elems:
+            if scale_to_poly:
+                e = e.scale_to_polynomial_attempt()
+            new_elems.append(e)
             ef = self._validated_format_of(e)
             if ef is not None:
                 fmts.add(ef)
+        elems = new_elems
 
         if not self._needs_mixed_conversion(fmts):
             return elems
@@ -2329,6 +2358,7 @@ class distribution:
                 self.df_basis,
                 coordinate_space=self.varSpace,
                 coherent_coordinates_checked=False,
+                polynomial_bases=self._simplifying_preference,
             )
             self._spanning_vf_set = vfs
             self._vf_basis = vfs
@@ -2357,12 +2387,18 @@ class distribution:
                 self.vf_basis,
                 coordinate_space=self.varSpace,
                 coherent_coordinates_checked=False,
+                polynomial_bases=self._simplifying_preference,
             )
             self._spanning_df_set = sdf
             self._df_basis = sdf
         return self._spanning_df_set
 
-    def derived_flag(self, max_iterations=10):
+    def derived_flag(
+        self, find_polynomial_bases=True, max_iterations=10, use_numeric_methods=False
+    ):
+        use_numeric = use_numeric_methods or bool(
+            get_dgcv_settings_registry().get("use_numeric_methods", False)
+        )
         if self._derived_flag is None:
             tiered_list = [list(self.vf_basis)]
 
@@ -2374,8 +2410,13 @@ class distribution:
                 for vf1 in flattenedTL:
                     for vf2 in topLevel:
                         nb = LieDerivative(vf1, vf2)
-                        new_obs = simplify(obstr * nb)
-                        if new_obs == 0 or getattr(new_obs, "is_zero", False):
+                        if find_polynomial_bases is True:
+                            nb = nb.scale_to_polynomial_attempt(factor=True)
+                        new_obs = obstr * nb if use_numeric else simplify(obstr * nb)
+                        if use_numeric:
+                            if zeroish(new_obs):
+                                continue
+                        elif new_obs == 0 or getattr(new_obs, "is_zero", False):
                             continue
                         obstr = new_obs
                         newTeir.append(nb)
@@ -2390,7 +2431,9 @@ class distribution:
             self._derived_flag = tiered_list
         return self._derived_flag
 
-    def weak_derived_flag(self, max_iterations=10, use_numeric_methods=False):
+    def weak_derived_flag(
+        self, find_polynomial_bases=False, max_iterations=10, use_numeric_methods=False
+    ):
         use_numeric = use_numeric_methods or bool(
             get_dgcv_settings_registry().get("use_numeric_methods", False)
         )
@@ -2406,13 +2449,14 @@ class distribution:
                 for vf1 in baseL:
                     for vf2 in topLevel:
                         nb = LieDerivative(vf1, vf2)
+                        if find_polynomial_bases is True:
+                            nb = nb.scale_to_polynomial_attempt(factor=True)
                         new_obs = obstr * nb if use_numeric else simplify(obstr * nb)
                         if use_numeric:
                             if zeroish(new_obs):
                                 continue
-                        else:
-                            if new_obs == 0 or getattr(new_obs, "is_zero", False):
-                                continue
+                        elif new_obs == 0 or getattr(new_obs, "is_zero", False):
+                            continue
                         obstr = new_obs
                         newTeir.append(nb)
                 return list(tieredList) + [newTeir], obstr

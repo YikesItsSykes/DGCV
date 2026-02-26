@@ -55,9 +55,9 @@ from .backends._symbolic_router import (
     _scalar_is_zero,
     as_numer_denom,
     cancel,
+    common_multiple,
     conjugate,
     expand,
-    factor,
     get_free_symbols,
     ilcm,
     im,
@@ -66,6 +66,7 @@ from .backends._symbolic_router import (
     simplify,
     subs,
 )
+from .backends._symbolic_router import factor as factor_dgcv
 from .backends._types_and_constants import (
     check_dgcv_scalar,
     imag_unit,
@@ -348,6 +349,8 @@ class tensor_field_class(dgcv_class):
         self._validated_format: Literal[
             "open", "standard", "complex", "real", "mixed"
         ] = "open"
+        self._num_den = None
+        self._denom_cm = None
 
         if coeff_dict == {}:
             coeff_dict = {tuple(): 0}
@@ -565,6 +568,30 @@ class tensor_field_class(dgcv_class):
                 fs |= get_free_symbols(v)
             self._coeff_free_symbols = fs
         return self._coeff_free_symbols
+
+    @property
+    def _compute_nd_decomp(self):
+        from .backends._symbolic_router import as_numer_denom
+
+        if self._num_den is None:
+            self._num_den = tuple(
+                zip(*[as_numer_denom(coef) for coef in self.coeff_dict.values()])
+            )
+        return self._num_den
+
+    @property
+    def denominators(self):
+        return self._compute_nd_decomp[1]
+
+    @property
+    def numerators(self):
+        return self._compute_nd_decomp[0]
+
+    def scale_to_polynomial_attempt(self, factor=True):
+
+        if self._denom_cm is None:
+            self._denom_cm = factor_dgcv(common_multiple(*self.denominators))
+        return factor_dgcv(self._denom_cm * self) if factor else self._denom_cm * self
 
     @property
     def homogeneous_parts(self):
@@ -4907,7 +4934,7 @@ class polynomial_dgcv(dgcv_class):
         )
 
     def factor(self, **kwargs):
-        new_expr = factor(self.polyExpr, **kwargs)
+        new_expr = factor_dgcv(self.polyExpr, **kwargs)
         return polynomial_dgcv(
             new_expr,
             varSpace=self.varSpace,
