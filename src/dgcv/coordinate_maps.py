@@ -14,7 +14,7 @@ License:
 from ._config import get_variable_registry
 from ._dgcv_display import LaTeX
 from ._safeguards import get_dgcv_category, query_dgcv_categories
-from .backends._symbolic_router import im, re, simplify
+from .backends._symbolic_router import im, re, simplify, subs
 from .complex_structures import KahlerStructure
 from .conversions import allToSym
 from .dgcv_core import (
@@ -140,13 +140,13 @@ class coordinate_map(dgcv_class):
         n = self.range_dimension
         lead, mid, tail = _trunc_indices(n)
         map_parts = [
-            f"{LaTeX(self.range[i])} \\mapsto {LaTeX(self.coordinate_formulas[i])}"
+            f"{LaTeX(self.range[i])} = {LaTeX(self.coordinate_formulas[i])}"
             for i in lead
         ]
         if mid is not None:
             map_parts.append(r"\ldots")
         map_parts.extend(
-            f"{LaTeX(self.range[i])} \\mapsto {LaTeX(self.coordinate_formulas[i])}"
+            f"{LaTeX(self.range[i])} = {LaTeX(self.coordinate_formulas[i])}"
             for i in tail
         )
         maps = ", ".join(map_parts)
@@ -303,3 +303,10 @@ class coordinate_map(dgcv_class):
         raise TypeError(
             "`coordinate_map.pull_back` received an unsupported object type."
         )
+
+    @property
+    def substitution_dict(self):
+        return {var: value for var, value in zip(self.range, self.coordinate_formulas)}
+
+    def __call__(self, other):
+        return subs(other, self.substitution_dict)

@@ -1,8 +1,9 @@
 # src/dgcv/eds/ast.py
 
-import sympy as sp
-
+from ..backends._engine import sympy_module_if_available
 from .eds import abstDFAtom, abstract_ZF
+
+sp = sympy_module_if_available()
 
 _math_functions_registry = {
     "sub": {

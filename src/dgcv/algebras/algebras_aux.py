@@ -13,9 +13,8 @@ License:
 # -----------------------------------------------------------------------------
 import numbers
 import random
-import warnings
 
-from .._config import dgcv_exception_note
+from .._config import dgcv_exception_note, dgcv_warning
 from .._safeguards import (
     create_key,
     get_dgcv_category,
@@ -81,7 +80,7 @@ def _validate_structure_data(
             except Exception as e:
                 raise dgcv_exception_note(f"{e}") from None
         elif all(get_dgcv_category(elem) == "tensorProduct" for elem in data):
-            warnings.warn(
+            dgcv_warning(
                 "`_validate_structure_data` was given a list of tensorProduct instance, but `process_matrix_rep` was also marked True. The latter was ignored."
             )
             return _validate_structure_data(
@@ -253,7 +252,7 @@ def algebraDataFromVF(
         if len(reduced) != len(vf_basis) and not get_dgcv_settings_registry().get(
             "forgo_warnings", False
         ):
-            warnings.warn(
+            dgcv_warning(
                 "algebraDataFromVF: vector field list was not linearly independent; "
                 "reduced to an extracted basis. Use assume_basis=True to bypass."
             )

@@ -14,18 +14,27 @@ License:
 import re
 from typing import Any
 
-from .._config import greek_letters
+from .._config import get_dgcv_settings_registry, greek_letters
 
 
 # -----------------------------------------------------------------------------
 # utilities
 # -----------------------------------------------------------------------------
-def _format_label_with_hi_low(label: str) -> str:
+def _format_label_with_hi_low(label: str, infer_suffix: bool = False) -> str:
     if not label:
         return label
 
+    label = str(label)
+
     decoration_cmd = None
     core = label
+
+    pref = get_dgcv_settings_registry().get("conjugation_prefix", "BAR")
+
+    is_conjugate = False
+    if pref and core.startswith(pref):
+        core = core[len(pref) :]
+        is_conjugate = True
 
     prefix_map = {
         "tilde_": r"\widetilde",
@@ -64,6 +73,7 @@ def _format_label_with_hi_low(label: str) -> str:
             if "_hi_" in lower_part:
                 lower_part, upper_part = lower_part.split("_hi_", 1)
             lower_indices = [tok for tok in lower_part.split("_") if tok]
+
         if upper_part == "" and "_hi_" in index_part:
             upper_part = index_part.split("_hi_")[1]
 
@@ -90,12 +100,32 @@ def _format_label_with_hi_low(label: str) -> str:
         if lower_indices:
             indices_str += f"_{{{','.join(lower_indices)}}}"
 
-        return base_tex + indices_str
+        out = base_tex + indices_str
+        if is_conjugate:
+            out = rf"\overline{{{out}}}"
+        return out
 
     if "__" not in core and "_" not in core:
+        if infer_suffix:
+            m = re.match(r"^(.*?)(\d+)$", core)
+            if m:
+                base_part = m.group(1)
+                suffix_part = m.group(2)
+
+                base_tex = latexify_base(base_part)
+                if decoration_cmd is not None:
+                    base_tex = f"{decoration_cmd}{{{base_tex}}}"
+
+                out = f"{base_tex}_{{{suffix_part}}}"
+                if is_conjugate:
+                    out = rf"\overline{{{out}}}"
+                return out
+
         out = latexify_base(core)
         if decoration_cmd is not None:
             out = f"{decoration_cmd}{{{out}}}"
+        if is_conjugate:
+            out = rf"\overline{{{out}}}"
         return out
 
     m0 = re.search(r"_", core)
@@ -138,7 +168,12 @@ def _format_label_with_hi_low(label: str) -> str:
     if lower_tokens:
         indices_str += f"_{{{','.join(lower_tokens)}}}"
 
-    return base_tex + indices_str
+    out = base_tex + indices_str
+
+    if is_conjugate:
+        out = rf"\overline{{{out}}}"
+
+    return out
 
 
 def latexify_base(base: str) -> str:
@@ -578,24 +613,7 @@ def coeff_needs_parens_latex(s: str) -> bool:
     return False
 
 
-def _process_var_label(var, bypass=False):
-    if bypass is True:
+def _process_var_label(var, bypass=False) -> str:
+    if bypass:
         return var
-    var_str = str(var)
-    is_conjugate = False
-
-    if var_str.startswith("BAR"):
-        var_str = var_str[3:]
-        is_conjugate = True
-
-    match = re.match(r"(.*?)(\d*)$", var_str)
-    if match:
-        label_part = match.group(1).rstrip("_")
-        number_part = match.group(2)
-        label_part = convert_to_greek(label_part)
-        formatted_label = (
-            f"{label_part}_{{{number_part}}}" if number_part else label_part
-        )
-        return f"\\overline{{{formatted_label}}}" if is_conjugate else formatted_label
-
-    return var_str
+    return _format_label_with_hi_low(str(var), infer_suffix=True)

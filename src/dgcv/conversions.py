@@ -43,7 +43,7 @@ __all__ = [
 def holToReal(
     expr,
     skipVar=None,
-    simplify_everything: bool = True,
+    simplify_everything: bool = False,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -80,7 +80,7 @@ def holToReal(
 def realToSym(
     expr,
     skipVar=None,
-    simplify_everything: bool = True,
+    simplify_everything: bool = False,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -117,7 +117,7 @@ def realToSym(
 def symToHol(
     expr,
     skipVar=None,
-    simplify_everything: bool = True,
+    simplify_everything: bool = False,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -154,7 +154,7 @@ def symToHol(
 def realToHol(
     expr,
     skipVar=None,
-    simplify_everything: bool = True,
+    simplify_everything: bool = False,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -191,7 +191,7 @@ def realToHol(
 def symToReal(
     expr,
     skipVar=None,
-    simplify_everything: bool = True,
+    simplify_everything: bool = False,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -226,7 +226,7 @@ def symToReal(
 
 
 def holToSym(
-    expr, skipVar=None, simplify_everything: bool = True, variables_scope=None
+    expr, skipVar=None, simplify_everything: bool = False, variables_scope=None
 ):
     expr = holToReal(
         expr,
@@ -244,7 +244,7 @@ def holToSym(
 
 
 def allToReal(
-    expr, skipVar=None, simplify_everything: bool = True, variables_scope=None
+    expr, skipVar=None, simplify_everything: bool = False, variables_scope=None
 ):
     return symToReal(
         expr,
@@ -255,7 +255,7 @@ def allToReal(
 
 
 def allToHol(
-    expr, skipVar=None, simplify_everything: bool = True, variables_scope=None
+    expr, skipVar=None, simplify_everything: bool = False, variables_scope=None
 ):
     ###!!! refine later
     expr = symToHol(
@@ -273,7 +273,7 @@ def allToHol(
 
 
 def allToSym(
-    expr, skipVar=None, simplify_everything: bool = True, variables_scope=None
+    expr, skipVar=None, simplify_everything: bool = False, variables_scope=None
 ):
     return holToSym(
         expr,
@@ -348,7 +348,7 @@ def _converter_hook(
     converter,
     skipVar=None,
     variables_scope=None,
-    simplify_everything: bool = True,
+    simplify_everything: bool = False,
 ):
     out = None
 

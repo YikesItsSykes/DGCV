@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import warnings
 
-from .._config import get_dgcv_settings_registry
+from .._config import dgcv_warning, get_dgcv_settings_registry
 
 _numeric_kind = None
 _numpy_module = None
@@ -61,7 +60,7 @@ def _resolve_numeric_kind():
     if requested == "numpy":
         if is_numpy_available():
             return "numpy"
-        warnings.warn(
+        dgcv_warning(
             "dgcv: default numeric engine setting is 'numpy' but NumPy is not available; "
             "numeric methods will be disabled.",
             stacklevel=2,
@@ -69,13 +68,13 @@ def _resolve_numeric_kind():
         return None
 
     if is_numpy_available():
-        warnings.warn(
+        dgcv_warning(
             f"dgcv: unrecognized numeric engine {requested!r}; falling back to 'numpy'.",
             stacklevel=2,
         )
         return "numpy"
 
-    warnings.warn(
+    dgcv_warning(
         f"dgcv: unrecognized numeric engine {requested!r}, "
         "and no supported numeric engine is available.",
         stacklevel=2,

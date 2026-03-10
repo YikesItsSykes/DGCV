@@ -26,12 +26,13 @@ from __future__ import annotations
 import collections.abc
 import inspect
 import re
+import sys
 import warnings
 from typing import List, Literal, Optional
 
 from dgcv import __version__
 
-_cached_caller_globals = None
+_globals_ = None
 
 dgcv_categories = {
     "vector_field",
@@ -101,56 +102,62 @@ __all__ = [
 # -----------------------------------------------------------------------------
 # body
 # -----------------------------------------------------------------------------
-def get_caller_globals():
+def get_globals():
     """
-    Retrieve and cache the caller's global namespace.
-
-    If not already cached, searches through the call stack to locate the global namespace of
-    the `__main__` module and caches it. Then returns the cached dict.
-
-    Returns
-    -------
-    dict or None
-        The global namespace of the `__main__` module, or None if not found.
-
-    Raises
-    ------
-    RuntimeError
-        If the `__main__` module is not found in the call stack.
+    Fetch namespace dict of the active session
     """
-    global _cached_caller_globals
-    if _cached_caller_globals is not None:
-        return _cached_caller_globals
+    global _globals_
+    if _globals_ is not None:
+        return _globals_
 
     for frame_info in inspect.stack():
         if frame_info.frame.f_globals["__name__"] == "__main__":
-            _cached_caller_globals = frame_info.frame.f_globals
-            return _cached_caller_globals
+            _globals_ = frame_info.frame.f_globals
+            return _globals_
 
     raise RuntimeError("Could not find the '__main__' module in the call stack.")
 
 
-def cache_globals():
-    """
-    Initialize the global namespace cache.
+def update_globals(update_dict):
+    namespace = get_globals()
+    namespace.update(update_dict)
 
-    This function is intended to be called at package import to initialize and cache the
-    global namespace for use with the VMF.
+
+def update_globals_k_v(key, value):
+    namespace = get_globals()
+    namespace[key] = value
+
+
+def set_up_globals():
     """
-    if _cached_caller_globals is None:
-        get_caller_globals()
+    Initialize the global namespace pointer. Intended only for dgcv backend utilities.
+    """
+    if _globals_ is None:
+        get_globals()
 
 
 def configure_warnings():
-    warnings.simplefilter("once")  # Only show each warning once
+    warnings.simplefilter("once", category=dgcvWarning)
+    warnings.showwarning = _dgcv_showwarning
 
-    # Optionally customize the format
-    def custom_format_warning(
-        message, category, filename, lineno, file=None, line=None
-    ):
-        return f"{category.__name__}: {message}\n"
 
-    warnings.formatwarning = custom_format_warning
+_original_showwarning = warnings.showwarning
+
+
+class dgcvWarning(UserWarning):
+    pass
+
+
+def _dgcv_showwarning(message, category, filename, lineno, file=None, line=None):
+    if issubclass(category, dgcvWarning):
+        stream = file if file is not None else sys.stderr
+        print(f"dgcv warning: {message}", file=stream)
+        return
+    _original_showwarning(message, category, filename, lineno, file=file, line=line)
+
+
+def dgcv_warning(message, *, stacklevel=2):
+    warnings.warn(message, dgcvWarning, stacklevel=stacklevel)
 
 
 class StringifiedSymbolsDict(collections.abc.MutableMapping):
@@ -273,6 +280,7 @@ dgcv_settings_registry = {
     },
     "DEBUG": False,
     "force_rich_display": False,
+    "__": dict(),
 }
 vs_registry = []
 
@@ -433,7 +441,7 @@ def configure_convenient_labels(
             "re": re,
         }
         new_functions = {relabeling_map.get(k, k): v for k, v in new_functions.items()}
-        _cached_caller_globals.update(new_functions)
+        _globals_.update(new_functions)
         configured_by_library["complex variables"] = sorted(
             new_functions, key=str.lower
         )
@@ -460,7 +468,7 @@ def configure_convenient_labels(
             "symbol": symbol,
         }
         new_functions = {relabeling_map.get(k, k): v for k, v in new_functions.items()}
-        _cached_caller_globals.update(new_functions)
+        _globals_.update(new_functions)
         configured_by_library["symbolic expressions"] = sorted(
             new_functions, key=str.lower
         )

@@ -13,12 +13,16 @@ License:
 # -----------------------------------------------------------------------------
 from __future__ import annotations
 
-import warnings
 from typing import Literal
 
 from dgcv import __version__
 
-from ._config import get_dgcv_settings_registry, get_variable_registry, vlp
+from ._config import (
+    dgcv_warning,
+    get_dgcv_settings_registry,
+    get_variable_registry,
+    vlp,
+)
 from .backends._cls_coercion import attach_sympy_hook, detach_sympy_hook
 from .backends._engine import (
     invalidate_engine_cache,
@@ -88,7 +92,7 @@ def set_dgcv_settings(
     # depricated_keywords
     _depr_kw = "apply_awkward_workarounds_to_fix_VSCode_display_issues"
     if _depr_kw in kwargs:
-        warnings.warn(
+        dgcv_warning(
             "The settings keyword `apply_awkward_workarounds_to_fix_VSCode_display_issues` is deprecated. "
             "Use `extra_support_for_math_in_tables` instead.",
             DeprecationWarning,
@@ -114,7 +118,7 @@ def set_dgcv_settings(
             return v
         if v is None:
             return None
-        warnings.warn(
+        dgcv_warning(
             "dgcv: extra_support_for_math_in_tables should be True/False or 'infer'; "
             f"coercing {v!r} to bool.",
             stacklevel=2,
@@ -132,7 +136,7 @@ def set_dgcv_settings(
                 if is_sage_available():
                     _set_engine_symbolic("sage")
                 else:
-                    warnings.warn(
+                    dgcv_warning(
                         "dgcv: requested default_engine='sage' but Sage is not available; "
                         "default_symbolic_engine was not changed.",
                         stacklevel=2,
@@ -141,13 +145,13 @@ def set_dgcv_settings(
                 if is_sympy_available():
                     _set_engine_symbolic("sympy")
                 else:
-                    warnings.warn(
+                    dgcv_warning(
                         "dgcv: requested default_engine='sympy' but SymPy is not available; "
                         "default_symbolic_engine was not changed.",
                         stacklevel=2,
                     )
             else:
-                warnings.warn(
+                dgcv_warning(
                     f"dgcv: unrecognized default_engine value {v!r}. "
                     "Supported options are 'sympy' and 'sage'. Default_symbolic_engine was not changed.",
                     stacklevel=2,
@@ -168,24 +172,24 @@ def set_dgcv_settings(
 
         if k == "conjugation_prefix":
             if len(get_variable_registry().get("complex_variable_systems", {})) > 0:
-                warnings.warn(
-                    "The default `conjugation_prefix` cannot be changed while complex"
-                    "coordinate systems exist in the VMF. Clear such systems from the"
-                    "VMF first. Recommend usage: set `conjugation_prefix` only once at"
-                    "the start of a session with dgcv."
+                dgcv_warning(
+                    "The default `conjugation_prefix` cannot be changed while complex "
+                    "coordinate systems exist in the VMF. Clear such systems from the "
+                    "VMF first, e.g., using `clear_vmf`. Recommend usage: set "
+                    "`conjugation_prefix` only once at the start of a session with dgcv."
                 )
                 return
             if v == get_dgcv_settings_registry().get("fallback_conjugate_prefix"):
                 newfallback = "anti_" if v != "anti_" else "BAR"
-                warnings.warn(
-                    "The requested `conjugation_prefix` is already assigned to `fallback_conjugate_prefix`."
-                    f"To free the assignement, `fallback_conjugate_prefix` has been changed to {newfallback}."
+                dgcv_warning(
+                    "The requested `conjugation_prefix` is already assigned to `fallback_conjugate_prefix`. "
+                    f"To free the assignement, `fallback_conjugate_prefix` has been changed to {newfallback}. "
                 )
                 dgcvSR["fallback_conjugate_prefix"] = newfallback
             dgcvSR[k] = v
         if k == "fallback_conjugate_prefix":
             if len(get_variable_registry().get("complex_variable_systems", {})) > 0:
-                warnings.warn(
+                dgcv_warning(
                     "The default `fallback_conjugate_prefix` cannot be changed while complex"
                     "coordinate systems exist in the VMF. Clear such systems from the"
                     "VMF first. Recommend usage: set `fallback_conjugate_prefix` only once"
@@ -194,7 +198,7 @@ def set_dgcv_settings(
                 return
             if v == get_dgcv_settings_registry.get("conjugate_prefix"):
                 newfallback = "BAR" if v != "BAR" else "Banti_R"
-                warnings.warn(
+                dgcv_warning(
                     "The requested `fallback_conjugate_prefix` is already assigned to `conjugate_prefix`."
                     f"To free the assignement, `conjugate_prefix` has been changed to {newfallback}."
                 )
@@ -280,7 +284,7 @@ def set_dgcv_settings(
         if force_rich_display:
             try:
                 if not is_ipython_available():
-                    warnings.warn(
+                    dgcv_warning(
                         "force_rich_display=True was requested, but IPython does not "
                         "appear to be available. Some outputs may render as raw "
                         "HTML or unformatted objects.",
@@ -288,7 +292,7 @@ def set_dgcv_settings(
                         stacklevel=2,
                     )
             except Exception:
-                warnings.warn(
+                dgcv_warning(
                     "force_rich_display=True was requested, but display environment "
                     "could not be verified. Some outputs may render as raw HTML "
                     "or unformatted objects.",
@@ -302,6 +306,22 @@ def set_dgcv_settings(
 
     if use_numeric_methods is not None:
         _apply_keyval("use_numeric_methods", use_numeric_methods)
+
+    if conjugation_prefix is not None:
+        if not isinstance(conjugation_prefix, str):
+            dgcv_warning(
+                "In dgcv settings, `conjugation_prefix` can only be set to a string value."
+            )
+        else:
+            _apply_keyval("conjugation_prefix", conjugation_prefix)
+
+    if fallback_conjugate_prefix is not None:
+        if not isinstance(fallback_conjugate_prefix, str):
+            dgcv_warning(
+                "In dgcv settings, `fallback_conjugate_prefix` can only be set to a string value."
+            )
+        else:
+            _apply_keyval("fallback_conjugate_prefix", fallback_conjugate_prefix)
 
     if extra_support_for_math_in_tables is not None:
         _apply_keyval(
@@ -322,20 +342,34 @@ def set_dgcv_settings(
         _apply_keyval("DEBUG", DEBUG)
 
 
-def view_dgcv_settings():
+def _toggle_or_set_verbosity(setting=None):
+    dgcvSR = get_dgcv_settings_registry()
+    if "__" not in dgcvSR:
+        dgcvSR["__"] = dict()
+    if (setting is None and "verbose" in dgcvSR["__"]) or setting == 0:
+        del dgcvSR["__"]["verbose"]
+    else:
+        dgcvSR["__"]["verbose"] = setting if setting is not None else 1
+
+
+def view_dgcv_settings(verbose=False):
     settings = get_dgcv_settings_registry()
     if not settings:
         print("dgcv settings registry is empty.")
         return
-
-    hidden = {
-        "VLP",
-        "numeric_error_thresholds",
-        "default_numeric_engine",
-        "DEBUG",
-        "fallback_conjugate_prefix",
-    }
-    items = [(k, settings[k]) for k in settings.keys() if k not in hidden]
+    hidden = {"VLP"}
+    if verbose is not True:
+        hidden = (
+            hidden
+            | {
+                "numeric_error_thresholds",
+                "default_numeric_engine",
+                "DEBUG",
+                "fallback_conjugate_prefix",
+            }
+            | {key for key in settings.keys() if str(key).startswith("_")}
+        )
+    items = [(k, v) for k, v in settings.items() if k not in hidden]
     if settings.get("use_numeric_methods", False):
         items.append(("default_numeric_engine", settings.get("default_numeric_engine")))
         items.append(
@@ -411,6 +445,7 @@ def reset_dgcv_settings():
             "DEBUG": False,
             "print_style": "readable",
             "force_rich_display": False,
+            "__": dict(),
         }
     )
 

@@ -52,16 +52,16 @@ except PackageNotFoundError:
 
 
 from ._config import (
-    cache_globals,
     configure_convenient_labels,
     configure_warnings,
     get_variable_registry,
+    set_up_globals,
 )
 
 # -----------------------------------------------------------------------------
 # Variable Management Framework (VMF) tools
 # -----------------------------------------------------------------------------
-cache_globals()
+set_up_globals()
 _ = get_variable_registry()
 
 
@@ -182,6 +182,7 @@ from .morphisms import homomorphism
 from .polynomials import (
     createBigradPolynomial,
     createPolynomial,
+    createRational,
     getWeightedTerms,
     monomialWeight,
 )
@@ -367,6 +368,7 @@ __all__ = [
     # From polynomials
     "createBigradPolynomial",  # Create bigraded polynomial
     "createPolynomial",  # Create polynomial
+    "createRational",
     "getWeightedTerms",  # Get weighted terms of a polynomial
     "monomialWeight",  # Compute monomial weights
     # From RiemannianGeometry

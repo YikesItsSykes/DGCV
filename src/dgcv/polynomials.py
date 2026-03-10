@@ -30,12 +30,12 @@ from __future__ import annotations
 import functools
 import numbers
 import operator
-import warnings
 from typing import Any, List, Optional, Sequence, Union
 
+from ._config import dgcv_warning
 from .backends._polynomials import make_poly, poly_coeffs, poly_gens, poly_monoms
 from .backends._symbolic_router import expand, simplify, subs
-from .backends._types_and_constants import zero
+from .backends._types_and_constants import symbol, zero
 from .combinatorics import chooseOp
 from .dgcv_core import polynomial_dgcv, variableProcedure
 from .vmf import clearVar
@@ -70,13 +70,14 @@ def createPolynomial(
     homogeneous: bool = False,
     weightedHomogeneity: Optional[Sequence[int]] = None,
     degreeCap: int = 0,
+    initialIndex=1,
+    register_coeffs_in_vmf=False,
     _tempVar: Optional[bool] = None,
-    returnMonomialList: bool = False,
-    assumeReal: Optional[bool] = None,
+    return_components: bool = False,
+    assumeReal: bool | None = None,
     remove_guardrails: bool = False,
-    report: bool = True,
+    report_vmf_updates: bool = False,
 ) -> Union[polynomial_dgcv, List[Any]]:
-    clearVar(coeff_label, report=report)
 
     vars_ = tuple(variables)
     n = len(vars_)
@@ -117,24 +118,32 @@ def createPolynomial(
     else:
         exponent_tuples = [e for e in chooseOp(range(deg + 1), n) if sum(e) <= deg]
 
-    created = variableProcedure(
-        coeff_label,
-        len(exponent_tuples),
-        _tempVar=_tempVar,
-        assumeReal=assumeReal,
-        remove_guardrails=remove_guardrails,
-        return_created_object=True,
-    )
-    coeffs = created[0] if created else ()
+    if register_coeffs_in_vmf:
+        clearVar(coeff_label, report=report_vmf_updates)
+        created = variableProcedure(
+            coeff_label,
+            len(exponent_tuples),
+            _tempVar=_tempVar,
+            initialIndex=initialIndex,
+            assumeReal=assumeReal,
+            remove_guardrails=remove_guardrails,
+            return_created_object=True,
+        )
+        coeffs = created[0] if created else ()
+    else:
+        coeffs = [
+            symbol(f"{coeff_label}{idx}", assumeReal=assumeReal)
+            for idx in range(initialIndex, initialIndex + len(exponent_tuples))
+        ]
 
     monomials: List[Any] = []
     for idx, exps in enumerate(exponent_tuples):
         monomials.append(coeffs[idx] * _monomial_from_exponents(vars_, exps))
 
-    if returnMonomialList:
-        return monomials
-
     expr = sum(monomials) if monomials else zero()
+    if return_components:
+        return polynomial_dgcv(expr, varSpace=vars_), monomials, coeffs
+
     return polynomial_dgcv(expr, varSpace=vars_)
 
 
@@ -144,12 +153,14 @@ def createBigradPolynomial(
     variables: Sequence[Any],
     weights_1: Sequence[int],
     weights_2: Sequence[int],
+    register_coeffs_in_vmf: bool = False,
+    initialIndex: int = 1,
     _tempVar: Optional[bool] = None,
-    returnMonomialList: bool = False,
+    return_components: bool = False,
     remove_guardrails: bool = False,
-    report: bool = True,
+    report_vmf_updates: bool = False,
+    assumeReal: bool = False,
 ) -> Union[polynomial_dgcv, List[Any]]:
-    clearVar(coeff_label, report=report)
 
     degs = tuple(degrees)
     if len(degs) != 2:
@@ -170,24 +181,31 @@ def createBigradPolynomial(
         if sum(e * ww for e, ww in zip(exps, w0)) == d0
         and sum(e * ww for e, ww in zip(exps, w1)) == d1
     ]
-
-    created = variableProcedure(
-        coeff_label,
-        len(exponent_tuples),
-        _tempVar=_tempVar,
-        remove_guardrails=remove_guardrails,
-        return_created_object=True,
-    )
-    coeffs = created[0] if created else ()
+    if register_coeffs_in_vmf:
+        clearVar(coeff_label, report=report_vmf_updates)
+        created = variableProcedure(
+            coeff_label,
+            len(exponent_tuples),
+            assumeReal=assumeReal,
+            _tempVar=_tempVar,
+            remove_guardrails=remove_guardrails,
+            return_created_object=True,
+        )
+        coeffs = created[0] if created else ()
+    else:
+        coeffs = [
+            symbol(f"{coeff_label}{idx}", assumeReal=assumeReal)
+            for idx in range(initialIndex, initialIndex + len(exponent_tuples))
+        ]
 
     monomials: List[Any] = []
     for idx, exps in enumerate(exponent_tuples):
         monomials.append(coeffs[idx] * _monomial_from_exponents(vars_, exps))
 
-    if returnMonomialList:
-        return monomials
-
     expr = sum(monomials) if monomials else zero()
+    if return_components:
+        return polynomial_dgcv(expr, varSpace=vars_), monomials, coeffs
+
     return polynomial_dgcv(expr, varSpace=vars_)
 
 
@@ -197,13 +215,14 @@ def createMultigradedPolynomial(
     vars: Sequence[Any],
     weight_systems: Union[Sequence[int], Sequence[Sequence[int]]],
     _tempVar: Optional[bool] = None,
-    returnMonomialList: bool = False,
+    return_components: bool = False,
     remove_guardrails: bool = False,
     assumeReal: bool = False,
-    report: bool = True,
+    report_vmf_updates: bool = False,
     degreeCap: int = 10,
+    register_coeffs_in_vmf: bool = False,
+    initialIndex: int = 1,
 ) -> Union[polynomial_dgcv, List[Any]]:
-    clearVar(coeff_label, report=report)
 
     degs = tuple(degrees) if isinstance(degrees, (list, tuple)) else (int(degrees),)
     ws = weight_systems
@@ -243,24 +262,29 @@ def createMultigradedPolynomial(
         )
     ]
 
-    created = variableProcedure(
-        coeff_label,
-        len(exponent_tuples),
-        _tempVar=_tempVar,
-        assumeReal=assumeReal,
-        remove_guardrails=remove_guardrails,
-        return_created_object=True,
-    )
-    coeffs = created[0] if created else ()
+    if register_coeffs_in_vmf:
+        clearVar(coeff_label, report=report_vmf_updates)
+        created = variableProcedure(
+            coeff_label,
+            len(exponent_tuples),
+            _tempVar=_tempVar,
+            assumeReal=assumeReal,
+            remove_guardrails=remove_guardrails,
+            return_created_object=True,
+        )
+        coeffs = created[0] if created else ()
+    else:
+        coeffs = [
+            symbol(f"{coeff_label}{idx}", assumeReal=assumeReal)
+            for idx in range(initialIndex, initialIndex + len(exponent_tuples))
+        ]
 
     monomials: List[Any] = []
     for idx, exps in enumerate(exponent_tuples):
         monomials.append(coeffs[idx] * _monomial_from_exponents(vars_, exps))
-
-    if returnMonomialList:
-        return monomials
-
     expr = sum(monomials) if monomials else zero()
+    if return_components:
+        return polynomial_dgcv(expr, varSpace=vars_), monomials, coeffs
     return polynomial_dgcv(expr, varSpace=vars_)
 
 
@@ -279,9 +303,9 @@ def monomialWeight(
         P = make_poly(expr, variables)
         terms = poly_monoms(P)
         if len(terms) > 1:
-            warnings.warn("Input appears to have multiple terms; proceeding anyway.")
+            dgcv_warning("Input appears to have multiple terms; proceeding anyway.")
     except Exception:
-        warnings.warn(
+        dgcv_warning(
             "Input could not be interpreted as a polynomial; proceeding anyway."
         )
 
@@ -349,3 +373,55 @@ def getWeightedTerms(
 
     expr = sum(terms) if terms else zero()
     return polynomial_dgcv(expr, varSpace=poly.varSpace, parameters=poly.parameters)
+
+
+def createRational(
+    coeff_label: str,
+    degree: int,
+    variables: Sequence[Any],
+    homogeneous: bool = False,
+    weightedHomogeneity: Optional[Sequence[int]] = None,
+    degreeCap: int = 0,
+    initialIndex=1,
+    register_coeffs_in_vmf=False,
+    _tempVar: Optional[bool] = None,
+    return_components: bool = False,
+    assumeReal: bool | None = None,
+    remove_guardrails: bool = False,
+    report_vmf_updates: bool = False,
+) -> Union[polynomial_dgcv, List[Any]]:
+    numerator, n_monoms, n_coeffs = createPolynomial(
+        coeff_label,
+        degree,
+        variables,
+        homogeneous=homogeneous,
+        weightedHomogeneity=weightedHomogeneity,
+        degreeCap=degreeCap,
+        initialIndex=initialIndex,
+        register_coeffs_in_vmf=False,
+        return_components=True,
+        assumeReal=assumeReal,
+    )
+    denominator, d_monoms, d_coeffs = createPolynomial(
+        coeff_label,
+        degree,
+        variables,
+        homogeneous=homogeneous,
+        weightedHomogeneity=weightedHomogeneity,
+        degreeCap=degreeCap,
+        initialIndex=initialIndex + len(n_coeffs),
+        register_coeffs_in_vmf=False,
+        return_components=True,
+        assumeReal=assumeReal,
+    )
+    if register_coeffs_in_vmf is True:
+        variableProcedure(
+            coeff_label,
+            len(n_coeffs) + len(d_coeffs),
+            initialIndex=initialIndex,
+            assumeReal=True,
+            remove_guardrails=remove_guardrails,
+        )
+    if return_components:
+        return numerator / denominator, [n_monoms, d_monoms], n_coeffs + d_coeffs
+    return numerator / denominator

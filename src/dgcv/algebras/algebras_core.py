@@ -16,15 +16,14 @@ from __future__ import annotations
 import numbers
 import random
 import re
-import warnings
 from collections.abc import Mapping
 from functools import lru_cache
 from html import escape as _esc
 from typing import List, Literal, Optional
 
 from .._config import (
-    _cached_caller_globals,
     dgcv_exception_note,
+    dgcv_warning,
     from_vsr,
     get_dgcv_settings_registry,
     get_vs_registry,
@@ -63,7 +62,7 @@ from ..morphisms import homomorphism
 from ..printing import lincomb_latex, lincomb_plain, space_display
 from ..solvers import solve_dgcv
 from ..styles import get_style
-from ..tensors import mergeVS, tensorProduct
+from ..tensors import tensorProduct
 from ..vmf import clearVar, listVar
 from .algebras_aux import _validate_structure_data
 
@@ -122,7 +121,7 @@ class algebra_class(dgcv_class):
                 )
                 if process_matrix_rep is True:
                     if matrix_representation is not None:
-                        warnings.warn(
+                        dgcv_warning(
                             "The `algebra_class` initializer disregarded the optional parameter value given for `matrix_representation` because `process_matrix_rep` was set to `True`, which forces automated computation of the representation."
                         )
                     validated_structure_data, matrix_representation, params = (
@@ -329,14 +328,14 @@ class algebra_class(dgcv_class):
         def validate_and_adjust_grading_vector(vector, dimension):
             vector = list(vector)
             if len(vector) < dimension:
-                warnings.warn(
+                dgcv_warning(
                     f"Grading vector is shorter than the dimension ({len(vector)} < {dimension}). "
                     f"Padding with zeros to match the dimension.",
                     UserWarning,
                 )
                 vector += [0] * (dimension - len(vector))
             elif len(vector) > dimension:
-                warnings.warn(
+                dgcv_warning(
                     f"Grading vector is longer than the dimension ({len(vector)} > {dimension}). "
                     f"Truncating to match the dimension.",
                     UserWarning,
@@ -476,19 +475,19 @@ class algebra_class(dgcv_class):
     def preferred_representation(self):
         if self._preferred_representation is None:
             if self._mat_rep is not None:
-                warnings.warn(
+                dgcv_warning(
                     "A preferred representation format for this algebra was never set up, but a cached matrix representation was found and has been set as the default for `preferred_representation`."
                 )
                 self._preferred_rep_type = "matrix"
                 self._preferred_representation = self._mat_rep
             elif self._tensor_rep is not None:
-                warnings.warn(
+                dgcv_warning(
                     "A preferred representation format for this algebra was never set up, but a cached tensor product representation was found and has been set as the default for `preferred_representation`."
                 )
                 self._preferred_rep_type = "tensor"
                 self._preferred_representation = self._tensor_rep
             else:
-                warnings.warn(
+                dgcv_warning(
                     "A preferred representation format for this algebra was not specified, so it has been set to its adjoint representation."
                 )
                 self._preferred_rep_type = "matrix"
@@ -666,9 +665,9 @@ class algebra_class(dgcv_class):
             elif self._callLock == retrieve_passkey() and isinstance(
                 self._print_warning, str
             ):
-                warnings.warn(self._print_warning, UserWarning)
+                dgcv_warning(self._print_warning, UserWarning)
             else:
-                warnings.warn(
+                dgcv_warning(
                     "This algebra instance was initialized without an assigned label. "
                     "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
                     UserWarning,
@@ -705,9 +704,9 @@ class algebra_class(dgcv_class):
             elif self._callLock == retrieve_passkey() and isinstance(
                 self._print_warning, str
             ):
-                warnings.warn(self._print_warning, UserWarning)
+                dgcv_warning(self._print_warning, UserWarning)
             else:
-                warnings.warn(
+                dgcv_warning(
                     "This algebra instance was initialized without an assigned label. "
                     "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
                     UserWarning,
@@ -786,12 +785,12 @@ class algebra_class(dgcv_class):
             elif self._callLock == retrieve_passkey() and isinstance(
                 self._print_warning, str
             ):
-                warnings.warn(
+                dgcv_warning(
                     self._print_warning,
                     UserWarning,
                 )
             else:
-                warnings.warn(
+                dgcv_warning(
                     "This algebra instance was initialized without an assigned label. "
                     "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
                     UserWarning,
@@ -960,14 +959,14 @@ class algebra_class(dgcv_class):
         - This helper method is intended for internal use.
         - Use it in methods where associativity is assumed but not explicitly verified.
         """
-        warnings.warn(
+        dgcv_warning(
             f"{method_name} assumes the algebra is associative. "
             "If it is not then unexpected results may occur.",
             UserWarning,
         )
 
     def is_lie_algebra(self, verbose=False, return_bool=True):
-        warnings.warn(
+        dgcv_warning(
             "`algebra_class.is_lie_algebra` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
             "It will be removed in 2026. Please use `algebra_class.is_Lie_algebra` instead.",
             DeprecationWarning,
@@ -1633,14 +1632,8 @@ class algebra_class(dgcv_class):
             ) from None
 
         temp_label = create_key(prefix="center_var")
-        variableProcedure(temp_label, self.dimension, _tempVar=retrieve_passkey())
-        temp_vars = _cached_caller_globals[temp_label]
-
-        el = sum(
-            (temp_vars[i] * self.basis[i] for i in range(self.dimension)),
-            self.basis[0] * 0,
-        )
-
+        temp_vars = [symbol(f"{temp_label}{idx}") for idx in range(self.dimension)]
+        el = sum(var * elem for var, elem in zip(temp_vars, self.basis))
         if for_associative_alg:
             eqns = sum(
                 [list((el * other - other * el).coeffs) for other in self.basis], []
@@ -1650,7 +1643,7 @@ class algebra_class(dgcv_class):
 
         solutions = solve_dgcv(eqns, temp_vars, method="linsolve")
         if not solutions:
-            warnings.warn(
+            dgcv_warning(
                 "The internal solver (determined by whichever symbolic engine set in defaults) returned no solutions, indicating that this computation of the center failed, as solutions do exist. An empty list is being returned."
             )
             return []
@@ -1665,8 +1658,6 @@ class algebra_class(dgcv_class):
                 [(other_var, 0) for other_var in free_variables if other_var != var]
             )
             return_list.append(basis_element)
-
-        clearVar(*listVar(temporary_only=True), report=False)
 
         return return_list  ###!!! return subalgebra instead
 
@@ -2194,8 +2185,7 @@ class algebra_class(dgcv_class):
             return True
 
         pref = create_key(prefix="span_var")
-        variableProcedure(pref, len(subspace_elements), _tempVar=retrieve_passkey())
-        vars = _cached_caller_globals[pref]
+        vars = [symbol(f"{pref}{idx}") for idx in range(len(subspace_elements))]
         combo = sum(
             (vv * el for vv, el in zip(vars, subspace_elements)),
             0 * subspace_elements[0],
@@ -2461,7 +2451,7 @@ class algebra_class(dgcv_class):
                 gradings = grading
             else:
                 if grading is not None:
-                    warnings.warn(
+                    dgcv_warning(
                         "The `gradings` keyword given to `algebra_class.subalgebra` was in an unsupported format (i.e., not list of lists), so a valid alternate gradings vector was computed instead inherited from the parent algebra."
                     )
                 gradings = [truncateBySubInd(grading) for grading in self.grading]
@@ -2555,8 +2545,7 @@ class algebra_class(dgcv_class):
         if refAlg._radical_cache is None:
             da = refAlg.compute_derived_algebra()
             pref = "v" + create_key()
-            variableProcedure(pref, refAlg.dimension, _tempVar=retrieve_passkey())
-            vars = _cached_caller_globals[pref]
+            vars = [symbol(f"{pref}{idx}") for idx in range(refAlg.dimension)]
             terms = [var * elem for var, elem in zip(vars, amb_basis)]
             genElem = sum(terms)
             eqns = []
@@ -2767,14 +2756,6 @@ class algebra_class(dgcv_class):
                                                 lb,
                                                 return_decomp_coeffs=True,
                                             )
-                                            _cached_caller_globals["DEBUG"] = [
-                                                lb_decomp,
-                                                idx,
-                                                local_rad_seq,
-                                                naiveBasis,
-                                                local_rad_seq[idx],
-                                                lb,
-                                            ]
                                             lb_decomp = lb_decomp[1][0]
                                             leading_coeffs[(idx1, idx2)] = lb_decomp[
                                                 :ss_dim
@@ -2921,7 +2902,7 @@ class algebra_class(dgcv_class):
 
     def compute_graded_component_wrt_weight_index(self, idx=0):
         if idx not in range(len(self.grading)):
-            warnings.warn(
+            dgcv_warning(
                 "The provided index is out of range. `compute_graded_component_wrt_weight_index` is using 0 instead."
             )
             idx = 0
@@ -2951,7 +2932,7 @@ class algebra_class(dgcv_class):
             grad_len = len(self.grading)
             idx_order = [j for j in index_priority_for_lex_sort if j < grad_len]
             if len(idx_order) < len(index_priority_for_lex_sort):
-                warnings.warn(
+                dgcv_warning(
                     "Some indices provided in the `index_priority_for_lex_sort` parameter were out of range, and ignored."
                 )
             if len(idx_order) == 0:
@@ -3125,7 +3106,7 @@ class algebra_class(dgcv_class):
                 elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
                     grading = [list(grading)] + builtG
                 elif grading is not None:
-                    warnings.warn(
+                    dgcv_warning(
                         "The supplied grading data format is incompatible, and was ignored."
                     )
                     grading = builtG
@@ -3217,7 +3198,7 @@ class algebra_class(dgcv_class):
                 elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
                     grading = [list(grading)] + builtG
                 elif grading is not None:
-                    warnings.warn(
+                    dgcv_warning(
                         "The supplied grading data format is incompatible, and was ignored."
                     )
                     grading = builtG
@@ -3229,7 +3210,7 @@ class algebra_class(dgcv_class):
                     not all(isinstance(elem, str) for elem in basis_labels)
                     or len(basis_labels) != self.dimension * other.dimension
                 ):
-                    warnings.warn(
+                    dgcv_warning(
                         f"`basis_labels` is in an unsupported format and was ignored. Recieved {basis_labels}, types: {[type(lab) for lab in basis_labels]}, target length {self.dimension}*{other.dimension}"
                     )
                     basis_labels = None
@@ -4720,7 +4701,7 @@ class algebra_dual(dgcv_class):
                 elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
                     grading = [list(grading)] + builtG
                 elif grading is not None:
-                    warnings.warn(
+                    dgcv_warning(
                         "The supplied grading data format is incompatible, and was ignored."
                     )
                     grading = builtG
@@ -4797,7 +4778,7 @@ class algebra_dual(dgcv_class):
                 elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
                     grading = [list(grading)] + builtG
                 elif grading is not None:
-                    warnings.warn(
+                    dgcv_warning(
                         "The supplied grading data format is incompatible, and was ignored."
                     )
                     grading = builtG
@@ -4809,7 +4790,7 @@ class algebra_dual(dgcv_class):
                     not all(isinstance(elem, str) for elem in basis_labels)
                     or len(basis_labels) != self.dimension * other.dimension
                 ):
-                    warnings.warn(
+                    dgcv_warning(
                         f"`basis_labels` is in an unsupported format and was ignored. Recieved {basis_labels}, types: {[type(lab) for lab in basis_labels]}, target length {self.dimension}*{other.dimension}"
                     )
                     basis_labels = None
@@ -4962,9 +4943,9 @@ class algebra_element_class(dgcv_class):
             elif self.algebra._callLock == retrieve_passkey() and isinstance(
                 self.algebra._child_print_warning, str
             ):
-                warnings.warn(self.algebra._child_print_warning, UserWarning)
+                dgcv_warning(self.algebra._child_print_warning, UserWarning)
             else:
-                warnings.warn(
+                dgcv_warning(
                     "This algebra_element_class's parent vector space (algebra_class) was initialized without an assigned label. "
                     "It is recommended to initialize `algebra_class` objects with dgcv creator functions like `createAlgebra` instead.",
                     UserWarning,
@@ -4991,9 +4972,9 @@ class algebra_element_class(dgcv_class):
             elif self.vectorSpace._callLock == retrieve_passkey() and isinstance(
                 self.vectorSpace._child_print_warning, str
             ):
-                warnings.warn(self.vectorSpace._child_print_warning, UserWarning)
+                dgcv_warning(self.vectorSpace._child_print_warning, UserWarning)
             else:
-                warnings.warn(
+                dgcv_warning(
                     "This algebra_element_class's parent vector space (algebra_class) was initialized without an assigned label. "
                     "It is recommended to initialize `algebra_class` objects with dgcv creator functions like `createAlgebra` instead.",
                     UserWarning,
@@ -5022,12 +5003,12 @@ class algebra_element_class(dgcv_class):
             elif self.algebra._callLock == retrieve_passkey() and isinstance(
                 self.algebra._child_print_warning, str
             ):
-                warnings.warn(
+                dgcv_warning(
                     self.algebra._child_print_warning,
                     UserWarning,
                 )
             else:
-                warnings.warn(
+                dgcv_warning(
                     "This algebra_element_class's parent vector space (an `algebra` class instance) was initialized without an assigned label. "
                     "It is recommended to initialize `algebra` class objects with dgcv creator functions like `createFiniteAlg` instead.",
                     UserWarning,
@@ -5343,7 +5324,7 @@ class algebra_element_class(dgcv_class):
             for k in range(other.algebra.dimension)
         }
         return self._si_wrap(
-            tensorProduct(mergeVS([self.dgcv_vs_id], [other.dgcv_vs_id]), new_dict)
+            tensorProduct([], new_dict)  ###!!! first keyword is deprication placeholder
         )
 
     def __rmatmul__(self, other):
@@ -5531,7 +5512,7 @@ class algebra_subspace_class(dgcv_class):
                     if test_weights is None
                     else ""
                 )
-                warnings.warn(
+                dgcv_warning(
                     "The given list for `basis` was not linearly independent, so the algebra_subspace_class initializer computed a basis for its span to use instead."
                     + wmessage
                 )
@@ -6015,7 +5996,7 @@ def killingForm(alg, list_processing=False, assume_Lie_algebra=False):
 def adjointRepresentation(alg, list_format=False, assume_Lie_algebra=False):
     if get_dgcv_category(alg) in {"algebra", "subalgebra"}:
         if assume_Lie_algebra is False and not alg.is_Lie_algebra():
-            warnings.warn(
+            dgcv_warning(
                 "Caution: The algebra passed to `adjointRepresentation` is not a Lie algebra."
             )
         if list_format:
@@ -6541,7 +6522,7 @@ class linear_representation(dgcv_class):
                 or len(basis_labels)
                 != self.domain.dimension + self.representation_space.dimension
             ):
-                warnings.warn(
+                dgcv_warning(
                     f"`basis_labels` is in an unsupported format and was ignored. Recieved {basis_labels}, types: {[type(lab) for lab in basis_labels]}, target length {self.domain.dimension}+{self.representation_space.dimension}"
                 )
                 basis_labels = None

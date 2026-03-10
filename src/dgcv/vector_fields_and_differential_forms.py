@@ -39,10 +39,9 @@ License:
 # -----------------------------------------------------------------------------
 from __future__ import annotations
 
-import warnings
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from ._config import get_dgcv_settings_registry
+from ._config import dgcv_warning, get_dgcv_settings_registry
 from ._safeguards import (
     create_key,
     get_dgcv_category,
@@ -197,7 +196,7 @@ def _warn_if_not_holo_inputs(hol_vars: Sequence[Any], *, context: str):
             bad.append((v, st))
 
     if bad:
-        warnings.warn(
+        dgcv_warning(
             f"{context}: holomorphic variables (sub_type='holo') are recommended for hol_vars. "
             f"Received non-holo coordinate atoms: {bad}. "
             "Proceeding by using VMF relatives to interpret them."

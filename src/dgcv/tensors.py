@@ -12,17 +12,18 @@ License:
 # imports and broadcasting
 # -----------------------------------------------------------------------------
 import numbers
-import warnings
 from collections import Counter
 from collections.abc import MutableMapping
 from typing import Any, Iterable, Iterator, Mapping, Optional, Tuple, Union
 
 from ._config import (
-    _cached_caller_globals,
     _vsr_inh_idx,
+    dgcv_warning,
     from_vsr,
     get_variable_registry,
     get_vs_registry,
+    update_globals,
+    update_globals_k_v,
 )
 from ._safeguards import (
     create_key,
@@ -89,14 +90,14 @@ class vector_space_class(dgcv_class):
             vector = list(vector)
 
             if len(vector) < dimension:
-                warnings.warn(
+                dgcv_warning(
                     f"Grading vector is shorter than the dimension ({len(vector)} < {dimension}). "
                     f"Padding with zeros to match the dimension.",
                     UserWarning,
                 )
                 vector += [0] * (dimension - len(vector))
             elif len(vector) > dimension:
-                warnings.warn(
+                dgcv_warning(
                     f"Grading vector is longer than the dimension ({len(vector)} > {dimension}). "
                     f"Truncating to match the dimension.",
                     UserWarning,
@@ -183,7 +184,7 @@ class vector_space_class(dgcv_class):
 
     def __str__(self):
         if not self._registered:
-            warnings.warn(
+            dgcv_warning(
                 "This vector_space_class instance was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
@@ -203,7 +204,7 @@ class vector_space_class(dgcv_class):
 
     def _repr_latex_(self, raw: bool = False, abbrev: bool = False, **kwargs):
         if not self._registered:
-            warnings.warn(
+            dgcv_warning(
                 "This vector_space_class instance was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
@@ -232,7 +233,7 @@ class vector_space_class(dgcv_class):
         Hook for dgcv-specific display customization.
         """
         if not self._registered:
-            warnings.warn(
+            dgcv_warning(
                 "This vector_space_class instance was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
@@ -258,7 +259,7 @@ class vector_space_class(dgcv_class):
         Raises a warning if the instance is unregistered.
         """
         if not self._registered:
-            warnings.warn(
+            dgcv_warning(
                 "This vector_space_class instance was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
@@ -283,7 +284,7 @@ class vector_space_class(dgcv_class):
         list of vector_space_element
             basis of subspace
         """
-        warnings.warn(
+        dgcv_warning(
             "vector_space_class not supported in current dgcv. use abelian algebra instead. subspace_basis was ignored."
         )
 
@@ -389,7 +390,7 @@ class vector_space_element:
 
     def __str__(self):
         if not self.vectorSpace._registered:
-            warnings.warn(
+            dgcv_warning(
                 "This vector_space_element's parent vector space (vector_space_class) was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
@@ -404,7 +405,7 @@ class vector_space_element:
 
     def _repr_latex_(self, raw=False, **kwargs):
         if not self.vectorSpace._registered:
-            warnings.warn(
+            dgcv_warning(
                 "This vector_space_element's parent vector space (vector_space_class) was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
@@ -429,7 +430,7 @@ class vector_space_element:
         Handles unregistered parent vector space by raising a warning.
         """
         if not self.vectorSpace._registered:
-            warnings.warn(
+            dgcv_warning(
                 "This vector_space_element's parent vector space (vector_space_class) was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
                 UserWarning,
@@ -2442,15 +2443,6 @@ class _tensor_structure_data(MutableMapping):
         return self
 
 
-def mergeVS(L1, L2):
-    return "_"
-    # filtered=[]
-    # for vs in L2:
-    #     if vs not in L1:
-    #         filtered.append(vs)
-    # return tuple(list(L1)+filtered)
-
-
 # -----------------------------------------------------------------------------
 # creator functions
 # -----------------------------------------------------------------------------
@@ -2475,12 +2467,11 @@ def createVectorSpace(obj, label, basis_labels=None, grading=None, verbose=False
     """
 
     if label in listVar(algebras_only=True):
-        warnings.warn(
+        dgcv_warning(
             "`createFiniteAlg` was called with a `label` already assigned to another algebra, so `createFiniteAlg` will overwrite the other algebra."
         )
         clearVar(label)
 
-    # Validate or create the vector_space_class object
     if isinstance(obj, vector_space_class):
         if verbose:
             print(f"Using existing vector_space_class instance: {label}")
@@ -2494,37 +2485,33 @@ def createVectorSpace(obj, label, basis_labels=None, grading=None, verbose=False
     elif isinstance(obj, numbers.Integral) and 0 <= obj:
         dimension = obj
 
-    # Create or validate basis labels
     if basis_labels is None:
         basis_labels = [validate_label(f"{label}_{i + 1}") for i in range(dimension)]
     validate_label_list(basis_labels)
 
-    # Process grading
+    # process grading
     if grading is None:
-        grading = [(0,) * dimension]  # Default grading: all zeros
+        grading = [(0,) * dimension]  # default grading
     elif isinstance(grading, (list, tuple)) and all(
         isinstance(w, expr_numeric_types()) for w in grading
     ):
-        # Single grading vector
         if len(grading) != dimension:
             raise ValueError(
                 f"Grading vector length ({len(grading)}) must match the VS dimension ({dimension})."
             )
-        grading = [tuple(grading)]  # Wrap single vector in a list
+        grading = [tuple(grading)]
     elif isinstance(grading, list) and all(
         isinstance(vec, (list, tuple)) for vec in grading
     ):
-        # List of grading vectors
         for vec in grading:
             if len(vec) != dimension:
                 raise ValueError(
                     f"Grading vector length ({len(vec)}) must match the VS dimension ({dimension})."
                 )
-        grading = [tuple(vec) for vec in grading]  # Convert each vector to Tuple
+        grading = [tuple(vec) for vec in grading]
     else:
         raise ValueError("Grading must be a single vector or a list of vectors.")
 
-    # Create the vector_space_class object
     passkey = retrieve_passkey()
 
     vs_obj = vector_space_class(
@@ -2535,14 +2522,12 @@ def createVectorSpace(obj, label, basis_labels=None, grading=None, verbose=False
         _calledFromCreator=passkey,
     )
 
-    # initialize vector space and its basis
     assert vs_obj.basis is not None, "VS object basis elements must be initialized."
 
-    # Register in _cached_caller_globals
-    _cached_caller_globals.update({label: vs_obj})
-    _cached_caller_globals.update(zip(basis_labels, vs_obj.basis))
+    update_globals_k_v(label, vs_obj)
+    update_globals(dict(zip(basis_labels, vs_obj.basis)))
 
-    # Register in the variable registry
+    # update vmf
     variable_registry = get_variable_registry()
     variable_registry["finite_algebra_systems"][label] = {
         "family_type": "algebra",

@@ -14,16 +14,16 @@ License:
 from __future__ import annotations
 
 import numbers
-import warnings
 from typing import List, Optional
 
 from .._config import (
     dgcv_exception_note,
+    dgcv_warning,
     get_dgcv_settings_registry,
     get_variable_registry,
+    update_globals,
 )
 from .._safeguards import (
-    _cached_caller_globals,
     create_key,
     get_dgcv_category,
     query_dgcv_categories,
@@ -51,7 +51,7 @@ from ..base import dgcv_class
 from ..combinatorics import carProd
 from ..dgcv_core import variableProcedure
 from ..solvers import solve_dgcv
-from ..tensors import mergeVS, tensorProduct
+from ..tensors import tensorProduct
 from ..vmf import clearVar, listVar
 from .algebras_aux import _validate_structure_data
 from .algebras_core import (
@@ -252,7 +252,7 @@ class subalgebra_class(algebra_subspace_class):
                 else:
                     newElements.append(elemTest)
             if warningMessage != 0 and len(newElements) > 0:
-                warnings.warn(warningMessage)
+                dgcv_warning(warningMessage)
             else:
                 raise TypeError(
                     "No elements from the provided `elements` list belong to the subalgebra, so a multiplication table will not be produced."
@@ -375,7 +375,7 @@ class subalgebra_class(algebra_subspace_class):
                 not all(isinstance(elem, str) for elem in basis_labels)
                 or len(basis_labels) != self.dimension
             ):
-                warnings.warn(
+                dgcv_warning(
                     "`basis_labels` is in an unsupported format and was ignored"
                 )
                 basis_labels = None
@@ -540,7 +540,7 @@ class subalgebra_class(algebra_subspace_class):
         - This helper method is intended for internal use.
         - Use it in methods where associativity is assumed but not explicitly verified.
         """
-        warnings.warn(
+        dgcv_warning(
             f"{method_name} assumes the subalgebra is associative. "
             "If it is not then unexpected results may occur.",
             UserWarning,
@@ -817,7 +817,7 @@ class subalgebra_class(algebra_subspace_class):
 
         solutions = solve_dgcv(eqns, temp_vars)
         if not solutions:
-            warnings.warn(
+            dgcv_warning(
                 "The internal solver (which depends on which symbolic engine is defaults in dgcv settings) returned no solutions, indicating that this computation of the center failed, as solutions do exist. An empty list is being returned."
             )
             return []
@@ -966,7 +966,7 @@ class subalgebra_class(algebra_subspace_class):
 
     def compute_graded_component_wrt_weight_index(self, idx=0):
         if idx not in range(len(self.grading)):
-            warnings.warn(
+            dgcv_warning(
                 "The provided index is out of range. `compute_graded_component_wrt_weight_index` is using 0 instead."
             )
             idx = 0
@@ -1101,7 +1101,7 @@ class subalgebra_class(algebra_subspace_class):
                 elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
                     grading = [list(grading)] + builtG
                 elif grading is not None:
-                    warnings.warn(
+                    dgcv_warning(
                         "The supplied grading data format is incompatible, and was ignored."
                     )
                     grading = builtG
@@ -1193,7 +1193,7 @@ class subalgebra_class(algebra_subspace_class):
                 elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
                     grading = [list(grading)] + builtG
                 elif grading is not None:
-                    warnings.warn(
+                    dgcv_warning(
                         "The supplied grading data format is incompatible, and was ignored."
                     )
                     grading = builtG
@@ -1205,7 +1205,7 @@ class subalgebra_class(algebra_subspace_class):
                     not all(isinstance(elem, str) for elem in basis_labels)
                     or len(basis_labels) != self.dimension * other.dimension
                 ):
-                    warnings.warn(
+                    dgcv_warning(
                         f"`basis_labels` is in an unsupported format and was ignored. Recieved {basis_labels}, types: {[type(lab) for lab in basis_labels]}, target length {self.dimension}*{other.dimension}"
                     )
                     basis_labels = None
@@ -1532,7 +1532,7 @@ class subalgebra_element(dgcv_class):
             for k in range(other.algebra.dimension)
         }
         return self._si_wrap(
-            tensorProduct(mergeVS([self.dgcv_vs_id], [other.dgcv_vs_id]), new_dict)
+            tensorProduct([], new_dict)  ###!!! first keyword is deprication placeholder
         )
 
     def __rmatmul__(self, other):
@@ -1959,15 +1959,15 @@ class simple_Lie_algebra(algebra_class):
             if register_in_vmf is True:
                 ignoredList.append("register_in_vmf")
             if len(ignoredList) == 1:
-                warnings.warn(
+                dgcv_warning(
                     f"A parameter value was supplied for `{ignoredList[0]}`, but `format_as_subalgebra_class=True` was set. The `subalgebra_class` is not tracked in the vmf, so this parameter value was ignored. A subalgebra_class instance was returned instead."
                 )
             elif len(ignoredList) == 2:
-                warnings.warn(
+                dgcv_warning(
                     f"Parameter values were supplied for `{ignoredList[0]}` and `{ignoredList[1]}`, but `format_as_subalgebra_class=True` was set. The `subalgebra_class` is not tracked in the vmf, so these parameter values were ignored. A subalgebra_class instance was returned instead."
                 )
             elif len(ignoredList) == 3:
-                warnings.warn(
+                dgcv_warning(
                     f"Parameter values were supplied for `{ignoredList[0]}`, `{ignoredList[1]}`, and `{ignoredList[2]}`, but `format_as_subalgebra_class=True` was set. The `subalgebra_class` is not tracked in the vmf, so these parameter values were ignored. `A subalgebra_class instance was returned instead.`"
                 )
             return subalgebra_class(
@@ -2001,7 +2001,7 @@ class simple_Lie_algebra(algebra_class):
         if return_created_object is True:
             return algebra_class(structureData, grading=[filtered_grading])
         elif register_in_vmf is not True:
-            warnings.warn(
+            dgcv_warning(
                 "Optional keywords for the `parabolic_subalgebra` method indicate that nothing should be return returned or registered in the vmf. Probably that is not intended, in which case at least one keyword `label`, `basis_labels`, `register_in_vmf`, `return_created_object`, or `format_as_subalgebra_class` should be set differently."
             )
 
@@ -3171,7 +3171,7 @@ def createFiniteAlg(
     _simple=None,
     **kwargs,
 ):
-    warnings.warn(
+    dgcv_warning(
         "`createFiniteAlg` has been deprecated as it is being replaced with a more genera function. "
         "It will be removed in 2026. Use `createAlgebra` instead.",
         DeprecationWarning,
@@ -3250,7 +3250,7 @@ def createAlgebra(
         _markers["_educed_properties"]["is_skew"] = t_message
         _markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
         if grading is not None:
-            warnings.warn(
+            dgcv_warning(
                 "When processing a `Tanaka_symbol` object, `createAlgebra` uses the symbol's internally defined grading rather than a manually supplied grading. You are getting this warning because an additional grading was manually supplied. To apply the custom grading instead, extract the symbol object's structure data using `Tanaka_symbol.export_algebra_data()`, and then pass that to `createAlgebra` -- create the algebra first and extract the data from the created `algebra_class` attributes."
             )
         if allow_natural_basis_reordering is None:
@@ -3286,7 +3286,7 @@ def createAlgebra(
             callFunction = "createSimpleLieAlgebra"
         else:
             callFunction = "createAlgebra"
-        warnings.warn(
+        dgcv_warning(
             f"`{callFunction}` was called with a `label` parameter already assigned to another algebra, so `{callFunction}` will overwrite the other algebra in the VMF and global namespace."
         )
         clearVar(label)
@@ -3422,7 +3422,7 @@ def createAlgebra(
                 process_tensor_rep=True,
             )
             if tensor_representation is not None:
-                warnings.warn(
+                dgcv_warning(
                     "The primary object given to `createAlgebra` was a list of tensorProduct instances, but a secondary value fo `tensor_representation` representation was given. The latter was ignored."
                 )
             structure_data, tensor_representation = vsd[0][0], vsd[0][1]
@@ -3628,8 +3628,8 @@ def createAlgebra(
         )
 
     if forgo_vmf_registry is False:
-        _cached_caller_globals.update({label: algebra_obj})
-        _cached_caller_globals.update(zip(basis_labels, algebra_obj.basis))
+        update_globals({label: algebra_obj})
+        update_globals(zip(basis_labels, algebra_obj.basis))
 
         variable_registry = get_variable_registry()
         paths = variable_registry.get("paths", None)

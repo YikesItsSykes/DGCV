@@ -15,13 +15,12 @@ from __future__ import annotations
 
 import copy
 import numbers
-import warnings
 from collections.abc import Iterable
 from html import escape as _esc
 from typing import Any, Literal, Sequence, Tuple
 
 from ._config import (
-    _cached_caller_globals,  # DEBUG
+    dgcv_warning,
     get_dgcv_settings_registry,
     latex_in_html,
 )
@@ -283,7 +282,7 @@ class Tanaka_symbol(dgcv_class):
                             "`Tanaka_symbol` expects `subpsace` if given to be have the subspace within its given `GLA` spanned by its negatively graded elements be closed under Lie brackets."
                         )
                     if raiseWarning is True:
-                        warnings.warn(
+                        dgcv_warning(
                             "The graded algebra `GLA` given to `Tanaka_symbol` has non-negative components, but the supplied `subspace` had some non-negative degree elements formatted has tensor products rather than elements of the provided `GLA`. This mixing of formatting results in slower prolongation algorithm, so it is recommended to instead either supply `subset` as formal elements in the `GLA` or give `GLA`  as just its negative component and then additionally supply non-negative components as tensor products via the optional `nonnegParts` parameter."
                         )
                         subspace = algebra_subspace_class(
@@ -299,7 +298,7 @@ class Tanaka_symbol(dgcv_class):
 
         if len(nonnegPartsTemp) > 0:
             if len(nonnegParts) > 0:
-                warnings.warn(
+                dgcv_warning(
                     "The `GLA` or `subspace` parameter provided to `Tanaka_symbol` has nonnegatively weighted components. If providing such `GLA` or `subspace` data then the optional `nonnegParts` cannot be manually set. So the provided manual setting for `nonnegParts` is being ignored."
                 )
             nonnegParts = nonnegPartsTemp
@@ -564,7 +563,7 @@ class Tanaka_symbol(dgcv_class):
                 and min(self._GLA_generators["generators"]) < -1
             ):
                 self.assume_FGLA = False
-                warnings.warn(
+                dgcv_warning(
                     "The parameter setting `assume_FGLA=True` has been overwritten because a diognostic has shown the symbol is not fundamental."
                 )
         return self._GLA_generators
@@ -700,7 +699,7 @@ class Tanaka_symbol(dgcv_class):
                             for var in freeVars:
                                 ambient_basis.append(solGE.subs({var: 1}).subs(zeroing))
             if len(self._slow_process_DS) > 0:
-                warnings.warn(
+                dgcv_warning(
                     "At least one of the distinguished subspaces was given by a spanning set of elements containing some element that is not weighted-homogeneous. The algorithm for preserving subspaces in such a format is not yet implemented in this version of `dgcv`, so the subspace is being disregarding."
                 )
 
@@ -1006,7 +1005,7 @@ class Tanaka_symbol(dgcv_class):
                             for var in freeVars:
                                 ambient_basis.append(solGE.subs({var: 1}).subs(zeroing))
             if len(self._slow_process_DS) > 0:
-                warnings.warn(
+                dgcv_warning(
                     "At least one of the distinguished subspaces was given by a spanning set of elements containing some element that is not weighted-homogeneous. The algorithm for preserving subspaces in such a format is not yet implemented in this version of `dgcv`, so the subspace is being disregarding."
                 )
 
@@ -1196,14 +1195,13 @@ class Tanaka_symbol(dgcv_class):
         absorb_distinguished_subspaces=False,
         _fast_algorithm=True,
     ):
-        _cached_caller_globals["PROFILE"] = []
         if absorb_distinguished_subspaces is True:
             subspace_data = [
                 copy.deepcopy(self._fast_process_DS),
                 copy.deepcopy(self._standard_process_DS),
             ]
             if len(self._slow_process_DS) > 0:
-                warnings.warn(
+                dgcv_warning(
                     "Some of the symbols distinguished subspaces (DS) were given by a spanning set of elements that are not all homogeneous. The `absorb_distinguished_subspaces` algorithm can not process such DS, so those DS will not be aborbed into the prolongation. They will still be used for reductions, however."
                 )
         else:
@@ -1767,7 +1765,7 @@ class Tanaka_symbol(dgcv_class):
                 if skew_data == "NoSol":
                     warningStr = f"due to failure to confirm if the symbol data is closed under brackets between basis elements {j} and {k}."
                     if _internal_call_lock != retrieve_passkey():
-                        warnings.warn(
+                        dgcv_warning(
                             "Unable to extract algebra structure, "
                             + warningStr
                             + " So `None` was returned by `export_algebra_data`."
@@ -2132,7 +2130,8 @@ class distribution(dgcv_class):
         _assume_minimal_Data=None,
         *,
         coordinate_space: None | Sequence[Any] = None,
-        find_polynomial_bases=False,
+        find_basis: bool = False,
+        find_polynomial_spanners=False,
         assume_starting_objs_polynomial=False,
         formatting: None | Literal["complex", "real"] = None,
     ):
@@ -2180,7 +2179,7 @@ class distribution(dgcv_class):
             self._wderived_flag = None
             return
 
-        self._simplifying_preference = find_polynomial_bases
+        self._simplifying_preference = find_polynomial_spanners
         if formatting not in (None, "complex", "real"):
             formatting = None
 
@@ -2192,7 +2191,7 @@ class distribution(dgcv_class):
             else self._normalize_spanning_set(
                 spanning_vf_set,
                 formatting=formatting,
-                scale_to_poly=find_polynomial_bases
+                scale_to_poly=find_polynomial_spanners
                 and not assume_starting_objs_polynomial,
             )
         )
@@ -2202,7 +2201,7 @@ class distribution(dgcv_class):
             else self._normalize_spanning_set(
                 spanning_df_set,
                 formatting=formatting,
-                scale_to_poly=find_polynomial_bases
+                scale_to_poly=find_polynomial_spanners
                 and not assume_starting_objs_polynomial,
             )
         )
@@ -2252,6 +2251,8 @@ class distribution(dgcv_class):
 
         self._spanning_vf_set = vfs
         self._spanning_df_set = dfs
+        self._characteristic = None
+        self._ext_power_class_cache = None
         self.formatting = formatting
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "distribution"
@@ -2265,6 +2266,10 @@ class distribution(dgcv_class):
 
         self._derived_flag = None
         self._wderived_flag = None
+
+        if find_basis is True:
+            self._spanning_vf_set = self.vf_basis
+            self._spanning_df_set = self.df_basis
 
     @staticmethod
     def _infer_minimal_vs(obj) -> Tuple[Any, ...]:
@@ -2394,7 +2399,10 @@ class distribution(dgcv_class):
         return self._spanning_df_set
 
     def derived_flag(
-        self, find_polynomial_bases=True, max_iterations=10, use_numeric_methods=False
+        self,
+        find_polynomial_spanners=True,
+        max_iterations=10,
+        use_numeric_methods=False,
     ):
         use_numeric = use_numeric_methods or bool(
             get_dgcv_settings_registry().get("use_numeric_methods", False)
@@ -2410,7 +2418,7 @@ class distribution(dgcv_class):
                 for vf1 in flattenedTL:
                     for vf2 in topLevel:
                         nb = LieDerivative(vf1, vf2)
-                        if find_polynomial_bases is True:
+                        if find_polynomial_spanners is True:
                             nb = nb.scale_to_polynomial_attempt(factor=True)
                         new_obs = obstr * nb if use_numeric else simplify(obstr * nb)
                         if use_numeric:
@@ -2432,7 +2440,10 @@ class distribution(dgcv_class):
         return self._derived_flag
 
     def weak_derived_flag(
-        self, find_polynomial_bases=False, max_iterations=10, use_numeric_methods=False
+        self,
+        find_polynomial_spanners=False,
+        max_iterations=10,
+        use_numeric_methods=False,
     ):
         use_numeric = use_numeric_methods or bool(
             get_dgcv_settings_registry().get("use_numeric_methods", False)
@@ -2449,7 +2460,7 @@ class distribution(dgcv_class):
                 for vf1 in baseL:
                     for vf2 in topLevel:
                         nb = LieDerivative(vf1, vf2)
-                        if find_polynomial_bases is True:
+                        if find_polynomial_spanners is True:
                             nb = nb.scale_to_polynomial_attempt(factor=True)
                         new_obs = obstr * nb if use_numeric else simplify(obstr * nb)
                         if use_numeric:
@@ -2464,7 +2475,6 @@ class distribution(dgcv_class):
             obstr = None
             for _ in range(max_iterations):
                 tiered_list, obstr = derive_extension(tiered_list, obstr)
-                _cached_caller_globals["DEBUG"] = tiered_list
                 if len(tiered_list[-1]) == 0:
                     tiered_list = tiered_list[:-1]
                     break
@@ -2516,7 +2526,7 @@ class distribution(dgcv_class):
 
         discrep = len(self.varSpace) - len(evaluated_basis)
         if discrep > 0:
-            warnings.warn(
+            dgcv_warning(
                 f"The distribution is not bracket generating or the expansion point is a growth-vector singularity singularity (note: currently `dgcv.distribution` methods are not intended for analysis at such singularities). A complement to its bracket-generated envelope has been assigned weight {-depth} and added to the nilpotent approximation as a component commuting with everything."
             )
         elif discrep < 0:  # old logic, never happens; refactor reminder
@@ -2571,7 +2581,7 @@ class distribution(dgcv_class):
 
         if label is None:
             if basis_labels is not None:
-                warnings.warn(
+                dgcv_warning(
                     "`basis_labels` was provided but no `label` was provided; `basis_labels` is ignored."
                 )
             printWarning = (
@@ -2602,6 +2612,67 @@ class distribution(dgcv_class):
             assume_skew=True,
             return_created_obj=return_created_object,
         )
+
+    @property
+    def _ext_power_class(self):
+        if self._ext_power_class_cache is None:
+            self._ext_power_class_cache = simplify(wedge(*self.vf_basis))
+        return self._ext_power_class_cache
+
+    @property
+    def characteristic(self):
+        if self._characteristic is None:
+            epc = self._ext_power_class
+            vfs = self.vf_basis
+            label = create_key("var")
+            vars = [symbol(f"{label}{idx}") for idx in range(len(self.vf_basis))]
+            genVF = sum(c * elem for c, elem in zip(vars, vfs))
+            eqns = []
+            for vf in vfs:
+                eqns += list(
+                    (wedge(LieDerivative(genVF, vf), epc)).__dgcv_zero_obstr__[0]
+                )
+            sol = solve_dgcv(eqns, vars)[0]
+            solution = subs(genVF, sol)
+            free_vars = set()
+            for val in sol.values():
+                free_vars |= get_free_symbols(val)
+            free_vars = set(vars) & free_vars
+            zeroing = {var: 0 for var in free_vars}
+            char_dist = []
+            for var in free_vars:
+                char_dist.append(
+                    subs(solution, zeroing | {var: 1}).scale_to_polynomial_attempt()
+                )
+            self._characteristic = char_dist
+        return self._characteristic
+
+    def __add__(self, other):
+        if get_dgcv_category(other) == "distribution":
+            return distribution(self.spanning_vf_set + other.spanning_vf_set)
+        return NotImplemented
+
+    def __mul__(self, other):
+        if get_dgcv_category(other) == "distribution":
+            lbs = [
+                LieDerivative(vf1, vf2)
+                for vf1 in self.vf_basis
+                for vf2 in other.vf_basis
+            ]
+            return distribution(
+                list(self.spanning_vf_set) + list(other.spanning_vf_set) + lbs,
+                find_polynomial_spanners=True,
+                find_basis=True,
+            )
+        return NotImplemented
+
+    def __pow__(self, other):
+        if not isinstance(other, numbers.Integral) or other >= 0:
+            return NotImplemented
+        out = distribution([])
+        for _ in range(other):
+            out *= self
+        return out
 
     def __str__(self):
         reg = get_dgcv_settings_registry()

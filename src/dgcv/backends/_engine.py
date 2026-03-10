@@ -15,9 +15,8 @@ License:
 # -----------------------------------------------------------------------------
 import importlib
 import importlib.util
-import warnings
 
-from .._config import get_dgcv_settings_registry
+from .._config import dgcv_warning, get_dgcv_settings_registry
 
 __all__ = [
     "is_sage_available",
@@ -148,13 +147,13 @@ def _resolve_engine_kind():
         if is_sage_available():
             return "sage"
         if is_sympy_available():
-            warnings.warn(
+            dgcv_warning(
                 "dgcv: default symbolic engine setting is 'sage' but Sage is not available; "
                 "falling back to 'sympy'.",
                 stacklevel=2,
             )
             return "sympy"
-        warnings.warn(
+        dgcv_warning(
             "dgcv: no symbolic engine was found, and dgcv requires one (either Sage or Sympy)",
             stacklevel=2,
         )
@@ -164,33 +163,33 @@ def _resolve_engine_kind():
         if is_sympy_available():
             return "sympy"
         if is_sage_available():
-            warnings.warn(
+            dgcv_warning(
                 "dgcv: default symbolic engine setting is 'sympy' but SymPy is not available; "
                 "falling back to 'sage'.",
                 stacklevel=2,
             )
             return "sage"
-        warnings.warn(
+        dgcv_warning(
             "dgcv: no symbolic engine was found, and dgcv requires one (either Sage or Sympy)",
             stacklevel=2,
         )
         return None
 
     if is_sympy_available():
-        warnings.warn(
+        dgcv_warning(
             f"dgcv: unrecognized symbolic engine {requested!r}; falling back to 'sympy'.",
             stacklevel=2,
         )
         return "sympy"
 
     if is_sage_available():
-        warnings.warn(
+        dgcv_warning(
             f"dgcv: unrecognized symbolic engine {requested!r}; falling back to 'sage'.",
             stacklevel=2,
         )
         return "sage"
 
-    warnings.warn(
+    dgcv_warning(
         f"dgcv: unrecognized symbolic engine {requested!r}, "
         "and no supported symbolic engine is available.",
         stacklevel=2,

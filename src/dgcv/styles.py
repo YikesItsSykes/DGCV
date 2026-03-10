@@ -12,7 +12,8 @@ License:
 # imports and broadcasting
 # -----------------------------------------------------------------------------
 import random
-import warnings
+
+from ._config import dgcv_warning
 
 __all__ = ["get_dgcv_themes"]
 
@@ -1968,7 +1969,7 @@ style_guide = {
 
 
 def get_DGCV_themes():
-    warnings.warn(
+    dgcv_warning(
         "`get_DGCV_themes` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
         "It will be removed in 2026. Please use `get_dgcv_themes` instead.",
         DeprecationWarning,

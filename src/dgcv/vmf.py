@@ -25,15 +25,15 @@ License:
 # -----------------------------------------------------------------------------
 from __future__ import annotations
 
-import warnings
 from collections.abc import Iterable, Sequence
 
 from dgcv._tables import build_plain_table
 from dgcv.backends._types_and_constants import is_atomic
 
 from ._config import (
-    _cached_caller_globals,
+    dgcv_warning,
     get_dgcv_settings_registry,
+    get_globals,
     get_variable_registry,
     greek_letters,
     latex_in_html,
@@ -41,7 +41,7 @@ from ._config import (
 from .backends._display_engine import is_rich_displaying_available
 from .styles import get_style
 
-all = ["clear_vmf", "listVar", "clearVar", "vmf_lookup", "vmf_summary"]
+__all__ = ["clear_vmf", "listVar", "clearVar", "vmf_lookup", "vmf_summary"]
 
 
 # -----------------------------------------------------------------------------
@@ -146,7 +146,7 @@ def _clearVar_single(label):
     else:
         return
     registry = get_variable_registry()
-    global_vars = _cached_caller_globals
+    global_vars = get_globals()
     cleared_info = None
 
     paths = registry.get("paths", {})
@@ -388,6 +388,9 @@ def clear_vmf(
 ):
     """
     Clear objects registered in dgcv's Variable Management Framework (VMF).
+    Parameters specify what to clear, and if no parameters are set it will
+    default to clear everything.
+
 
     Parameters
     ----------
@@ -420,7 +423,7 @@ def clear_vmf(
     None
         Removes the selected objects from the VMF and active namespace.
     """
-    if categories_to_clear is None:
+    if categories_to_clear is None and objects_to_clear is None:
         categories_to_clear = ("all",)
 
     cats = set(categories_to_clear)
@@ -722,7 +725,7 @@ def vmf_lookup(
 # displaying summaries
 # -----------------------------------------------------------------------------
 def DGCV_snapshot(style=None, use_latex=None, complete_report=None):
-    warnings.warn(
+    dgcv_warning(
         "`DGCV_snapshot` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
         "It will be removed in 2026. Please use `vmf_summary` instead.",
         DeprecationWarning,
@@ -734,7 +737,7 @@ def DGCV_snapshot(style=None, use_latex=None, complete_report=None):
 
 
 def variableSummary(*args, **kwargs):
-    warnings.warn(
+    dgcv_warning(
         "variableSummary() is deprecated and will be removed in a future version. "
         "Please use vmf_summary() instead.",
         DeprecationWarning,
@@ -1001,17 +1004,13 @@ def _vmf_plain_snapshot_algebras(vr: dict) -> str:
     if not keys:
         return ""
 
-    def _get_obj(label):
-        try:
-            return _cached_caller_globals.get(label, None)
-        except Exception:
-            return None
+    global_dict = get_globals()
 
     lines: list[str] = [f"=== Finite-dimensional Algebras ({len(keys)}) ==="]
     for label in keys:
         system = fa.get(label, {}) or {}
         family_values = system.get("family_values", ())
-        obj = _get_obj(label)
+        obj = global_dict.get(label, None)
 
         if obj is not None:
             try:
@@ -1091,28 +1090,18 @@ def _vmf_plain_snapshot_coframes(vr: dict) -> str:
     if not keys:
         return ""
 
-    def _get_obj(label):
-        try:
-            return _cached_caller_globals.get(label, None)
-        except Exception:
-            return None
-
+    global_dict = get_globals()
     lines: list[str] = [f"=== Coframes ({len(keys)}) ==="]
     for label in keys:
         system = coframes.get(label, {}) or {}
-        coframe_obj = _get_obj(label)
+        coframe_obj = global_dict.get(label, None)
 
         forms = getattr(coframe_obj, "forms", None) if coframe_obj is not None else None
         if not forms:
             children = list(system.get("children", []) or [])
             if children:
                 try:
-                    forms = [
-                        _cached_caller_globals[ch]
-                        if ch in _cached_caller_globals
-                        else ch
-                        for ch in children
-                    ]
+                    forms = [global_dict.get(ch, ch) for ch in children]
                 except Exception:
                     forms = children
             else:
@@ -1468,6 +1457,7 @@ def _snapshot_algebras_(style=None, use_latex=None, **kwargs):
 
     registry = get_variable_registry()
     finite_algebras = registry.get("finite_algebra_systems", {}) or {}
+    global_dict = get_globals()
 
     def _basis_label(x):
         if use_latex:
@@ -1490,31 +1480,21 @@ def _snapshot_algebras_(style=None, use_latex=None, **kwargs):
 
     def _format_alg_label(label):
         try:
-            if (
-                use_latex
-                and "_cached_caller_globals" in globals()
-                and label in _cached_caller_globals
-            ):
-                return _cached_caller_globals[label]._repr_latex_(abbrev=True)
+            if use_latex:
+                return global_dict[label]._repr_latex_(abbrev=True)
         except Exception:
             pass
         return label
 
     def _format_grading(label):
         try:
-            if (
-                "_cached_caller_globals" in globals()
-                and label in _cached_caller_globals
-            ):
-                alg = _cached_caller_globals[label]
-                grading = getattr(alg, "grading", None)
-                if (
-                    isinstance(grading, (list, tuple))
-                    and grading
-                    and all(isinstance(g, (list, tuple)) for g in grading)
-                    and any(g for g in grading)
-                ):
+            alg = global_dict[label]
+            grading = getattr(alg, "grading", None)
+            if isinstance(grading, (list, tuple)):
+                if all(isinstance(g, (list, tuple)) for g in grading):
                     return ", ".join(f"({', '.join(map(str, g))})" for g in grading)
+                else:
+                    return str(grading)
         except Exception:
             pass
         return "None"
@@ -1833,6 +1813,7 @@ def _snapshot_coframes_(style=None, use_latex=None, **kwargs):
 
     vr = get_variable_registry()
     coframes_registry = (vr.get("eds", {}) or {}).get("coframes", {}) or {}
+    global_dict = get_globals()
 
     def _latex_of(obj):
         try:
@@ -1865,14 +1846,14 @@ def _snapshot_coframes_(style=None, use_latex=None, **kwargs):
 
     rows = []
     for label, system in sorted(coframes_registry.items()):
-        coframe_obj = _cached_caller_globals.get(label, label)
+        coframe_obj = global_dict.get(label, label)
         coframe_label = label
 
         # Coframe 1-forms
         if isinstance(coframe_obj, str):
             children = list(system.get("children", []) or [])
-            if children and all(ch in _cached_caller_globals for ch in children):
-                forms = [_cached_caller_globals[ch] for ch in children]
+            if children and all(ch in global_dict for ch in children):
+                forms = [global_dict[ch] for ch in children]
             else:
                 forms = []
         else:

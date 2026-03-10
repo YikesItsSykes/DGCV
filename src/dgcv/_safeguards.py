@@ -13,11 +13,11 @@ License:
 # -----------------------------------------------------------------------------
 import random
 import string
-import warnings
 
 from ._config import (
-    _cached_caller_globals,
+    dgcv_warning,
     get_dgcv_settings_registry,
+    get_globals,
     get_variable_registry,
 )
 from .vmf import clearVar, vmf_lookup
@@ -65,17 +65,12 @@ def create_key(prefix=None, avoid_caller_globals=False, key_length=8):
     str
         An alphanumeric key.
     """
-    if prefix is None:
-        prefix = ""
     if not isinstance(prefix, str):
         prefix = ""
 
-    # Get the caller's globals if avoid_caller_globals is True
     caller_globals = {}
     if avoid_caller_globals:
-        caller_globals = _cached_caller_globals
-
-    # Generate a new key
+        caller_globals = get_globals()
     while True:
         key = prefix + "".join(
             random.choices(string.ascii_letters + string.digits, k=key_length)
@@ -147,18 +142,13 @@ def protected_caller_globals():
 
 def validate_label_list(basis_labels):
     """
-    Validates a list of basis labels by checking if they are already present in _cached_caller_globals.
-    If a label exists and is found in the variable_registry, provides detailed instructions for clearing it.
+    Validates a list of basis labels by checking if they are already present in active namespace.
+    If a label exists and is found in the variable_registry, provides instructions for clearing it.
 
     Parameters
     ----------
     basis_labels : list of str
         The list of basis labels to validate.
-
-    Raises
-    ------
-    ValueError
-        If any label in basis_labels is already present in _cached_caller_globals, with additional info if found in the variable_registry.
     """
     existing_labels = []
     to_clear = []
@@ -168,15 +158,11 @@ def validate_label_list(basis_labels):
     else:
         overwritePermissionGranted = False
 
-    # Loop through each label to check if it exists in _cached_caller_globals
+    namespace = get_globals()
+    variable_registry = get_variable_registry()
     for label in basis_labels:
-        if label in _cached_caller_globals:
+        if label in namespace:
             existing_labels.append(label)
-
-            # Check if the label is a parent or child variable in variable_registry
-            variable_registry = get_variable_registry()
-
-            # Check standard, complex, and finite algebra systems
             for system_type, sub_type, system_type_name, family_names_address in [
                 (
                     "standard_variable_systems",
@@ -205,7 +191,6 @@ def validate_label_list(basis_labels):
                     else:
                         innerVR = variable_registry[system_type]
                     if label in innerVR:
-                        # The label is a parent variable
                         if overwritePermissionGranted is True:
                             detailed_message += (
                                 f"\n •Label'{label}' was already assigned as the label for a {system_type_name} system.\n"
@@ -220,13 +205,11 @@ def validate_label_list(basis_labels):
                                 f"Apply the dgcv function `clearVar('{label}')` to clear the obstructing objects."
                             )
                     else:
-                        # Check if the label is a child variable
                         for parent_label, parent_data in innerVR.items():
                             if (
                                 family_names_address in parent_data
                                 and label in parent_data[family_names_address]
                             ):
-                                # The label is a child variable
                                 if overwritePermissionGranted is True:
                                     detailed_message += (
                                         f"\n • Label '{label}' was already assigned as the label for an object in a {system_type_name} system.\n"
@@ -261,7 +244,7 @@ def validate_label_list(basis_labels):
 
         if overwritePermissionGranted is True:
             if get_dgcv_settings_registry()["forgo_warnings"] is not True:
-                warnings.warn(
+                dgcv_warning(
                     warning_message
                     + "\n To suppress warnings such as this, set `set_dgcv_settings(forgo_warnings=True)`.",
                     UserWarning,
@@ -327,7 +310,7 @@ def validate_label(label, remove_guardrails=False):
     )
     if label.startswith(pref):
         reformatted_label = fallback + label[len(pref) :]
-        warnings.warn(
+        dgcv_warning(
             f"Label '{label}' starts with {pref}, which is reserved by the `conjugate_prefix`"
             "value currently set in dgcv settings. It has been automatically reformatted to "
             f"'{reformatted_label}'."
@@ -375,7 +358,7 @@ def unique_label(
     vr = get_variable_registry()
     taken = set()
 
-    taken.update(_cached_caller_globals.keys())
+    taken.update(get_globals().keys())
 
     labels_index = vr.get("_labels", {})
     taken.update(labels_index.keys())

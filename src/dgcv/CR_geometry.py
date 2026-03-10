@@ -132,7 +132,7 @@ def weightedHomogeneousVF(
                 degreeCap=degreeCap,
                 _tempVar=_tempVar,
                 assumeReal=assumeReal,
-                report=False,
+                report_vmf_updates=False,
             )
         )
 

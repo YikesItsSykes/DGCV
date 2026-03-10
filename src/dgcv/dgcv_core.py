@@ -19,15 +19,16 @@ License:
 from __future__ import annotations
 
 import itertools
-import warnings
 from math import gcd, prod
 from numbers import Integral, Number
 from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 
 from ._config import (
-    _cached_caller_globals,
+    dgcv_warning,
     get_dgcv_settings_registry,
     get_variable_registry,
+    update_globals,
+    update_globals_k_v,
 )
 from ._safeguards import (
     check_dgcv_category,
@@ -331,6 +332,7 @@ class tensor_field_class(dgcv_class):
         self._preferred_basis_element = None
         self._expanded_coeff_dict = None
         self._coeffArray = None
+        self._coeffs = None
 
         self._cd_formats = None
         self._realVarSpace = None
@@ -587,10 +589,14 @@ class tensor_field_class(dgcv_class):
     def numerators(self):
         return self._compute_nd_decomp[0]
 
-    def scale_to_polynomial_attempt(self, factor=True):
+    def scale_to_polynomial_attempt(self, factor=True, return_scale=False):
 
         if self._denom_cm is None:
             self._denom_cm = factor_dgcv(common_multiple(*self.denominators))
+        if return_scale:
+            return factor_dgcv(
+                self._denom_cm * self
+            ) if factor else self._denom_cm * self, self._denom_cm
         return factor_dgcv(self._denom_cm * self) if factor else self._denom_cm * self
 
     @property
@@ -1321,7 +1327,7 @@ class tensor_field_class(dgcv_class):
                 info_f = getattr(self, "_coordinate_format_info", None)
                 info = info_f() if callable(info_f) else None
                 if not (isinstance(info, dict) and info.get("dgcv_type") == "complex"):
-                    warnings.warn(
+                    dgcv_warning(
                         "Requested real/imaginary part of a tensor field whose variables are not registered as dgcv complex coordinate systems. "
                         "The result is only well-defined if such variables are assumed real.",
                         UserWarning,
@@ -2588,7 +2594,7 @@ class tensor_field_class(dgcv_class):
                 for k, v in self.coeff_dict.items()
             }
         else:
-            warnings.warn(f"Unsupported simplify_rule: {rule}.")
+            dgcv_warning(f"Unsupported simplify_rule: {rule}.")
             simplified = {k: simplify(v, **kwargs) for k, v in self.coeff_dict.items()}
 
         return self.__class__(
@@ -2912,11 +2918,13 @@ class vector_field_class(tensor_field_class):
 
     @property
     def coeffs(self):
-        return self._vf_view()[1]
+        if self._coeffs is None:
+            self._coeffs = list(self.coeff_dict.values())
+        return self._coeffs
 
     def simplify_format(self, format_type=None, skipVar=None):
         if format_type not in {None, "holomorphic", "real", "symbolic_conjugate"}:
-            warnings.warn(
+            dgcv_warning(
                 "simplify_format() received an unsupported first argument. Try None, 'holomorphic', 'real', or 'symbolic_conjugate'."
             )
         return self.__class__(
@@ -3398,7 +3406,7 @@ class differential_form_class(tensor_field_class):
 
     def simplify_format(self, format_type=None, skipVar=None):
         if format_type not in {None, "holomorphic", "real", "symbolic_conjugate"}:
-            warnings.warn(
+            dgcv_warning(
                 "simplify_format() received an unsupported first argument. Try None, 'holomorphic', 'real', or 'symbolic_conjugate'."
             )
         return self.__class__(
@@ -3438,7 +3446,7 @@ class differential_form_class(tensor_field_class):
                 for k, v in self.coeff_dict.items()
             }
         else:
-            warnings.warn(f"Unsupported simplify_rule: {rule}.")
+            dgcv_warning(f"Unsupported simplify_rule: {rule}.")
             new_cd = {k: simplify(v, **kwargs) for k, v in self.coeff_dict.items()}
 
         new_cd, _ = self._process_coeffs_dict_new(new_cd, "all")
@@ -3989,6 +3997,10 @@ class polynomial_dgcv(dgcv_class):
             except Exception:
                 self._degree = None
         return self._degree
+
+    @property
+    def to_sym_engine_expr(self):
+        return self.polyExpr
 
     @staticmethod
     def _vmf_coordinate_info(x: Any):
@@ -4808,6 +4820,8 @@ class polynomial_dgcv(dgcv_class):
         return NotImplemented
 
     def __truediv__(self, other):
+        if isinstance(other, polynomial_dgcv):
+            return self.polyExpr / other.polyExpr
         if check_dgcv_scalar(other):
             return ratio(1, other) * self
 
@@ -5089,7 +5103,7 @@ def _build_holo_anti_index_sets(P):
 
 
 def DGCVPolyClass(polyExpr, varSpace=None, degreeUpperBound=None):
-    warnings.warn(
+    dgcv_warning(
         "`DGCVPolyClass` has been deprecated as part of a shift toward standardized "
         "naming conventions in the `dgcv` library. It will be removed in 2026. "
         "Please use `polynomial_dgcv` instead.",
@@ -5111,7 +5125,7 @@ class dgcvPolyClass(polynomial_dgcv):
     """
 
     def __init__(self, polyExpr, varSpace=None, degreeUpperBound=None):
-        warnings.warn(
+        dgcv_warning(
             "`dgcvPolyClass` has been deprecated and will be removed in 2026. "
             "Please use `polynomial_dgcv` instead.",
             DeprecationWarning,
@@ -5298,26 +5312,26 @@ def createVariables(
     )
 
     if default_var_format is not None and not complex_requested:
-        warnings.warn(
+        dgcv_warning(
             "`default_var_format` is only relevant for complex variable systems; it was disregarded."
         )
         default_var_format = None
 
     if complex and not withVF:
-        warnings.warn(
+        dgcv_warning(
             "`createVariables` was called with `complex=True` and `withVF=False`. The latter keyword was disregarded because "
             "dgcv initializes associated differential objects whenever complex variable systems are created."
         )
 
     if complex and assumeReal:
-        warnings.warn(
+        dgcv_warning(
             "`createVariables` was called with `complex=True` and `assumeReal=True`. The latter keyword was disregarded because "
             "dgcv has fixed variable assumptions for elements in its complex variable systems."
         )
         assumeReal = None
 
     if complex is False and (real_label is not None or imaginary_label is not None):
-        warnings.warn(
+        dgcv_warning(
             "`createVariables` received `complex=False` and values for `real_label` and/or `imaginary_label`. Honoring "
             "`complex=False`, only a standard variable system was created and the latter labels were disregarded."
         )
@@ -5331,7 +5345,7 @@ def createVariables(
             and complex is not None
             and (real_label or imaginary_label)
         ):
-            warnings.warn(
+            dgcv_warning(
                 "The keyword `complex` was set to a non-bool value. Since a string value was also assigned to either "
                 "`real_label` or `imaginary_label`, `createVariables` proceeded under the assumption that it should "
                 "create a complex variable system. Set `complex=False` to force a standard variable system."
@@ -5342,20 +5356,20 @@ def createVariables(
             key_string = retrieve_public_key()
             real_label = variable_label + "REAL" + key_string
             imaginary_label = variable_label + "IM" + key_string
-            warnings.warn(
+            dgcv_warning(
                 "`createVariables` received `complex=True` and did not receive assignments for `real_label` or "
                 "`imaginary_label`, so intentionally obscure labels were created for both."
             )
         else:
             if real_label is None:
                 real_label = variable_label + "REAL" + retrieve_public_key()
-                warnings.warn(
+                dgcv_warning(
                     "`createVariables` received a value for `imaginary_label` but not `real_label`, so an intentionally "
                     "obscure label was created for the real variables."
                 )
             if imaginary_label is None:
                 imaginary_label = variable_label + "IM" + retrieve_public_key()
-                warnings.warn(
+                dgcv_warning(
                     "`createVariables` received a value for `real_label` but not `imaginary_label`, so an intentionally "
                     "obscure label was created for the imaginary variables."
                 )
@@ -5497,15 +5511,20 @@ def variableProcedure(
     _calledFromCVP=None,
     remove_guardrails=None,
     _obscure=None,
+    _return_labels=False,
+    _return_flattened=False,
 ):
     """
     Initializes one or more standard variable systems (single or tuples) and integrates them into dgcv's Variable Management Framework.
     """
-
-    globals_namespace = _cached_caller_globals
     passkey = retrieve_passkey()
     variable_registry = get_variable_registry()
     settings = get_dgcv_settings_registry()
+
+    if _return_flattened is True:
+        _return_labels = True
+    if _return_labels is True:
+        return_created_object = True
 
     if (
         settings["ask_before_overwriting_objects_in_vmf"]
@@ -5540,6 +5559,8 @@ def variableProcedure(
     )
 
     rco = [] if return_created_object is True else None
+    sl_out = [] if _return_labels is True else None
+    vvf = [] if _return_flattened is True else None
 
     paths = variable_registry.get("paths", None)
 
@@ -5560,11 +5581,9 @@ def variableProcedure(
             variable_registry["temporary_variables"].add(labelLoc)
         if obscure_flag is True:
             variable_registry["obscure_variables"].add(labelLoc)
-        _tuple_flag = False
         if isinstance(multiindex_shape, (list, tuple)) and all(
             isinstance(n, Integral) and n > 0 for n in multiindex_shape
         ):
-            _tuple_flag = True
             indices = list(
                 carProd(
                     *[range(initialIndex, initialIndex + n) for n in multiindex_shape]
@@ -5576,10 +5595,12 @@ def variableProcedure(
             ):  # CVP doesn't manage sub-parant names
                 clearVar(*var_names, report=False)
             vars = tuple(symbol(name, assumeReal=assumeReal) for name in var_names)
+            var_values_flattened = vars
 
             new_globals = dict(zip(var_names, vars))
-            new_globals[labelLoc] = build_nd_array(vars, multiindex_shape)
-            globals_namespace.update(new_globals)
+            var_values = build_nd_array(vars, multiindex_shape)
+            new_globals[labelLoc] = var_values
+            update_globals(new_globals)
 
             if enforce_real and assumeReal is True and enforced_real_dict is not None:
                 for v in vars:
@@ -5590,7 +5611,7 @@ def variableProcedure(
                     "family_type": "multi_index",
                     "family_shape": multiindex_shape,
                     "family_names": tuple(var_names),
-                    "family_values": globals_namespace[labelLoc],
+                    "family_values": var_values,
                     "differential_system": None,
                     "tempVar": temp_flag,
                     "obsVar": obscure_flag,
@@ -5626,7 +5647,10 @@ def variableProcedure(
 
         elif number_of_variables is None:
             sym = symbol(labelLoc, assumeReal=assumeReal)
-            globals_namespace[labelLoc] = sym
+            var_values = (sym,)
+            var_values_flattened = var_values
+            var_names = [labelLoc]
+            update_globals_k_v(labelLoc, sym)
 
             if enforce_real and assumeReal is True and enforced_real_dict is not None:
                 enforced_real_dict[sym.conjugate()] = sym
@@ -5635,7 +5659,7 @@ def variableProcedure(
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "single",
                     "family_names": (labelLoc,),
-                    "family_values": (globals_namespace[labelLoc],),
+                    "family_values": var_values,
                     "differential_system": None,
                     "tempVar": temp_flag,
                     "obsVar": obscure_flag,
@@ -5666,19 +5690,20 @@ def variableProcedure(
                     }
 
         elif isinstance(number_of_variables, Integral) and number_of_variables >= 0:
-            _tuple_flag = True
             lengthLoc = number_of_variables
             var_names = [
                 f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
             ]
-            vars = [symbol(name, assumeReal=assumeReal) for name in var_names]
+            vars = tuple([symbol(name, assumeReal=assumeReal) for name in var_names])
+            var_values = vars
+            var_values_flattened = vars
             if (
                 _doNotUpdateVar != passkey or _calledFromCVP == passkey
             ):  # CVP doesn't manage sub-parant names
                 clearVar(*vars, report=False)
                 new_globals = dict(zip(var_names, vars))
-                new_globals[labelLoc] = tuple(vars)
-                globals_namespace.update(new_globals)
+                new_globals[labelLoc] = vars
+                update_globals(new_globals)
 
             if enforce_real and assumeReal is True and enforced_real_dict is not None:
                 for v in vars:
@@ -5694,9 +5719,7 @@ def variableProcedure(
                 )
                 for j in range(len(vtuple))
             ]
-            globals_namespace.update(
-                dict(zip([f"D_{vn}" for vn in var_names], vf_instances))
-            )
+            update_globals(dict(zip([f"D_{vn}" for vn in var_names], vf_instances)))
 
             df_instances = [
                 differential_form_class(
@@ -5706,9 +5729,7 @@ def variableProcedure(
                 )
                 for j in range(len(vtuple))
             ]
-            globals_namespace.update(
-                dict(zip([f"d_{vn}" for vn in var_names], df_instances))
-            )
+            update_globals(dict(zip([f"d_{vn}" for vn in var_names], df_instances)))
 
             if _doNotUpdateVar != passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
@@ -5760,17 +5781,21 @@ def variableProcedure(
                             "kind": "differential_form",
                             "path": base_rel + (var_name, "DFClass"),
                         }
-
         else:
             raise ValueError(
                 "variableProcedure expected its second argument number_of_variables (optional) to be a positive integer, if provided."
             )
 
         if rco is not None:
-            if _tuple_flag:
-                rco.append(globals_namespace[labelLoc])
-            else:
-                rco.append((globals_namespace[labelLoc],))
+            rco.append(var_values)
+        if sl_out is not None:
+            sl_out.append(var_names)
+        if vvf is not None:
+            vvf.append(var_values_flattened)
+    if _return_flattened is True:
+        return rco, sl_out, vvf
+    if _return_labels:
+        return rco, sl_out
     return rco
 
 
@@ -5792,12 +5817,11 @@ def varWithVF(
     """
 
     variable_registry = get_variable_registry()
-    globals_namespace = _cached_caller_globals
     passkey = retrieve_passkey()
 
     if multiindex_shape is not None and number_of_variables is not None:
         multiindex_shape = None
-        warnings.warn(
+        dgcv_warning(
             "Provide at most one of `number_of_variables` (tuple system) and `multiindex_shape` (multi-index system). The given `multiindex_shape` was ignored."
         )
 
@@ -5832,22 +5856,18 @@ def varWithVF(
         if _doNotUpdateVar != passkey:
             clearVar(labelLoc, report=False)
 
-        _tuple_flag = False
-
         if number_of_variables is None and _valid_multiindex_shape(multiindex_shape):
-            _tuple_flag = True
             idxs = _indices_for_multiindex(multiindex_shape)
             var_names = [f"{labelLoc}_{'_'.join(map(str, idx))}" for idx in idxs]
             vars = [symbol(name, assumeReal=assumeReal) for name in var_names]
             base_vars = tuple(vars)
+            var_values = build_nd_array(base_vars, multiindex_shape)
             if (
                 _doNotUpdateVar != passkey or _calledFromCVP == passkey
             ):  # CVP doesn't manage sub-parant names
                 clearVar(*vars, report=False)
-                globals_namespace.update(dict(zip(var_names, vars)))
-                globals_namespace[labelLoc] = build_nd_array(
-                    base_vars, multiindex_shape
-                )
+                update_globals(dict(zip(var_names, vars)))
+                update_globals_k_v(labelLoc, var_values)
 
             if enforce_real and assumeReal is True and enforced_real_dict is not None:
                 for v in vars:
@@ -5873,19 +5893,15 @@ def varWithVF(
             ]
 
             if _doNotUpdateVar != passkey:
-                globals_namespace.update(
-                    dict(zip([f"D_{vn}" for vn in var_names], vf_instances))
-                )
-                globals_namespace.update(
-                    dict(zip([f"d_{vn}" for vn in var_names], df_instances))
-                )
+                update_globals(dict(zip([f"D_{vn}" for vn in var_names], vf_instances)))
+                update_globals(dict(zip([f"d_{vn}" for vn in var_names], df_instances)))
 
             if not _calledFromCVP == passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "multi_index",
                     "family_shape": tuple(multiindex_shape),
                     "family_names": tuple(var_names),
-                    "family_values": globals_namespace[labelLoc],
+                    "family_values": var_values,
                     "differential_system": True,
                     "tempVar": None,
                     "obsVar": None,
@@ -5921,7 +5937,8 @@ def varWithVF(
 
         elif number_of_variables is None:
             sym = symbol(labelLoc, assumeReal=assumeReal)
-            globals_namespace[labelLoc] = sym
+            var_values = (sym,)
+            update_globals_k_v(labelLoc, sym)
 
             if enforce_real and assumeReal is True and enforced_real_dict is not None:
                 enforced_real_dict[sym.conjugate()] = sym
@@ -5936,13 +5953,13 @@ def varWithVF(
                 dgcvType="standard",
                 variable_spaces={labelLoc: (sym,)},
             )
-            globals_namespace[f"D_{labelLoc}"] = vf_instance
-            globals_namespace[f"d_{labelLoc}"] = df_instance
+            update_globals_k_v(f"D_{labelLoc}", vf_instance)
+            update_globals_k_v(f"d_{labelLoc}", df_instance)
 
             if not _calledFromCVP == passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "single",
-                    "family_values": (sym,),
+                    "family_values": var_values,
                     "family_names": (labelLoc,),
                     "differential_system": True,
                     "tempVar": None,
@@ -5973,27 +5990,26 @@ def varWithVF(
                     }
 
         elif isinstance(number_of_variables, Integral) and number_of_variables >= 0:
-            _tuple_flag = True
             lengthLoc = number_of_variables
             var_names = [
                 f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
             ]
-            vars = [symbol(name, assumeReal=assumeReal) for name in var_names]
-            globals_namespace.update(dict(zip(var_names, vars)))
-            globals_namespace[labelLoc] = tuple(vars)
+            vars = tuple([symbol(name, assumeReal=assumeReal) for name in var_names])
+            var_values = vars
+            update_globals(dict(zip(var_names, vars)))
+            update_globals(labelLoc, tuple(vars))
 
             if enforce_real and assumeReal is True and enforced_real_dict is not None:
                 for v in vars:
                     enforced_real_dict[v.conjugate()] = v
 
-            vtuple = tuple(vars)
-            N = len(vtuple)
+            N = len(var_values)
 
             vf_instances = [
                 vector_field_class(
                     coeff_dict={(j, 1, labelLoc): 1},
                     dgcvType="standard",
-                    variable_spaces={labelLoc: vtuple},
+                    variable_spaces={labelLoc: var_values},
                 )
                 for j in range(N)
             ]
@@ -6001,22 +6017,18 @@ def varWithVF(
                 differential_form_class(
                     coeff_dict={(j, 0, labelLoc): 1},
                     dgcvType="standard",
-                    variable_spaces={labelLoc: vtuple},
+                    variable_spaces={labelLoc: var_values},
                 )
                 for j in range(N)
             ]
 
-            globals_namespace.update(
-                dict(zip([f"D_{vn}" for vn in var_names], vf_instances))
-            )
-            globals_namespace.update(
-                dict(zip([f"d_{vn}" for vn in var_names], df_instances))
-            )
+            update_globals(dict(zip([f"D_{vn}" for vn in var_names], vf_instances)))
+            update_globals(dict(zip([f"d_{vn}" for vn in var_names], df_instances)))
 
             if not _calledFromCVP == passkey:
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "tuple",
-                    "family_values": vtuple,
+                    "family_values": var_values,
                     "family_names": tuple(var_names),
                     "differential_system": True,
                     "tempVar": None,
@@ -6058,12 +6070,8 @@ def varWithVF(
             )
 
         if rco is not None:
-            if _tuple_flag:
-                rco.append(globals_namespace[labelLoc])
-            else:
-                rco.append((globals_namespace[labelLoc],))
-
-    return rco if rco is not None else None
+            var_values
+    return rco
 
 
 def complexVarProc(
@@ -6083,7 +6091,7 @@ def complexVarProc(
     """
     if default_var_format not in ("real", "complex"):
         if default_var_format is not None:
-            warnings.warn(
+            dgcv_warning(
                 "`default_var_format` was set to an unsupported value, so it was reset to the default 'complex'."
             )
         default_var_format = "complex"
@@ -6197,48 +6205,68 @@ def complexVarProc(
         if number_of_variables is None and _valid_multiindex_shape(multiindex_shape):
             idxs = _multiindex_indices(multiindex_shape)
 
-            variableProcedure(
+            var_arr1_t, var_str1_t, flat1_t = variableProcedure(
                 labelLoc1,
                 initialIndex=initialIndex,
                 multiindex_shape=multiindex_shape,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
+                _return_flattened=True,
             )
-            variableProcedure(
+            var_arrBAR_t, var_strBAR_t, flatBAR_t = variableProcedure(
                 labelLocBAR,
                 initialIndex=initialIndex,
                 multiindex_shape=multiindex_shape,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
+                return_created_object=True,
+                _return_flattened=True,
             )
-            variableProcedure(
+            var_arr2_t, var_str2_t, flat2_t = variableProcedure(
                 labelLoc2,
                 initialIndex=initialIndex,
                 multiindex_shape=multiindex_shape,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),
+                return_created_object=True,
+                _return_flattened=True,
             )
-            variableProcedure(
+            var_arr3_t, var_str3_t, flat3_t = variableProcedure(
                 labelLoc3,
                 initialIndex=initialIndex,
                 multiindex_shape=multiindex_shape,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),
+                return_created_object=True,
+                _return_flattened=True,
             )
-
-            var_arr1 = _cached_caller_globals[labelLoc1]
-            var_arrBAR = _cached_caller_globals[labelLocBAR]
-            var_arr2 = _cached_caller_globals[labelLoc2]
-            var_arr3 = _cached_caller_globals[labelLoc3]
+            var_arr1, var_arrBAR, var_arr2, var_arr3 = (
+                var_arr1_t[0],
+                var_arrBAR_t[0],
+                var_arr2_t[0],
+                var_arr3_t[0],
+            )
+            var_str1, var_strBAR, var_str2, var_str3 = (
+                var_str1_t[0],
+                var_strBAR_t[0],
+                var_str2_t[0],
+                var_str3_t[0],
+            )
+            flat1, flatBAR, flat2, flat3 = (
+                flat1_t[0],
+                flatBAR_t[0],
+                flat2_t[0],
+                flat3_t[0],
+            )
             if rco is not None:
                 rco += [var_arr1, var_arrBAR, var_arr2, var_arr3]
 
-            var_str1 = tuple(_multiindex_names(labelLoc1, idxs))
-            var_strBAR = tuple(_multiindex_names(labelLocBAR, idxs))
-            var_str2 = tuple(_multiindex_names(labelLoc2, idxs))
-            var_str3 = tuple(_multiindex_names(labelLoc3, idxs))
+            # var_str1 = tuple(_multiindex_names(labelLoc1, idxs))
+            # var_strBAR = tuple(_multiindex_names(labelLocBAR, idxs))
+            # var_str2 = tuple(_multiindex_names(labelLoc2, idxs))
+            # var_str3 = tuple(_multiindex_names(labelLoc3, idxs))
 
             complex_system_updates[labelLoc1] = {
                 "family_type": "multi_index",
@@ -6261,10 +6289,10 @@ def complexVarProc(
                 ),
             }
 
-            flat1 = [_cached_caller_globals[nm] for nm in var_str1]
-            flatBAR = [_cached_caller_globals[nm] for nm in var_strBAR]
-            flat2 = [_cached_caller_globals[nm] for nm in var_str2]
-            flat3 = [_cached_caller_globals[nm] for nm in var_str3]
+            # flat1 = [globals_namespace[nm] for nm in var_str1]
+            # flatBAR = [globals_namespace[nm] for nm in var_strBAR]
+            # flat2 = [globals_namespace[nm] for nm in var_str2]
+            # flat3 = [globals_namespace[nm] for nm in var_str3]
 
             totalVarListLoc = list(zip(flat1, flatBAR, flat2, flat3))
             for comp_var, bar_comp_var, real_var, imag_var in totalVarListLoc:
@@ -6312,38 +6340,41 @@ def complexVarProc(
 
         # Single Variable System
         elif number_of_variables is None:
-            variableProcedure(
+            var_hol_tuple = variableProcedure(
                 labelLoc1,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
-            )
-            variableProcedure(
+                return_created_object=True,
+            )[0]
+            var_bar_tuple = variableProcedure(
                 labelLocBAR,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
-            )
-            variableProcedure(
+                return_created_object=True,
+            )[0]
+            var_real_tuple = variableProcedure(
                 labelLoc2,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),
-            )
-            variableProcedure(
+                return_created_object=True,
+            )[0]
+            var_im_tuple = variableProcedure(
                 labelLoc3,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),
-            )
+                return_created_object=True,
+            )[0]
 
-            # Retrieve created variables from the caller's globals.
-            var_hol = _cached_caller_globals[labelLoc1]
-            var_bar = _cached_caller_globals[labelLocBAR]
-            var_real = _cached_caller_globals[labelLoc2]
-            var_im = _cached_caller_globals[labelLoc3]
             if rco is not None:
-                rco += [(var_hol,), (var_bar,), (var_real,), (var_im,)]
+                rco += [var_hol_tuple, var_bar_tuple, var_real_tuple, var_im_tuple]
+            var_hol = var_hol_tuple[0]
+            var_bar = var_bar_tuple[0]
+            var_real = var_real_tuple[0]
+            var_im = var_im_tuple[0]
 
-            # Accumulate conversion updates.
+            # conversion updates
             conj_updates[var_hol] = var_bar
             conj_updates[var_bar] = var_hol
             holToReal_updates[var_hol] = var_real + imag_unit() * var_im
@@ -6370,7 +6401,7 @@ def complexVarProc(
             conv["real_part"].update(real_part_updates)
             conv["im_part"].update(im_part_updates)
 
-            # Register this single variable system in the registry.
+            # update VMF
             variable_registry["complex_variable_systems"][labelLoc1] = {
                 "family_type": "single",
                 "family_names": (
@@ -6564,7 +6595,7 @@ def complexVarProc(
                     df_instance_im,
                 )
 
-            # Create differential objects for single systems.
+            # differential objects for singleton systems
             (
                 vf_instance_hol,
                 vf_instance_aHol,
@@ -6578,8 +6609,7 @@ def complexVarProc(
                 var_hol, var_bar, var_real, var_im, default_var_format
             )
 
-            # Register the differential objects
-            _cached_caller_globals.update(
+            update_globals(
                 {
                     f"D_{labelLoc1}": vf_instance_hol,
                     f"D_{labelLocBAR}": vf_instance_aHol,
@@ -6592,89 +6622,88 @@ def complexVarProc(
                 }
             )
 
-            # Update find_parents.
             find_parents[var_real] = (var_hol, var_bar)
             find_parents[var_im] = (var_hol, var_bar)
 
-            # Register VFClass and DFClass
             address = variable_registry["complex_variable_systems"][labelLoc1][
                 "variable_relatives"
             ]
             address[labelLoc1] |= {
-                "VFClass": _cached_caller_globals[f"D_{labelLoc1}"],
-                "DFClass": _cached_caller_globals[f"d_{labelLoc1}"],
+                "VFClass": vf_instance_hol,
+                "DFClass": df_instance_hol,
             }
             address[labelLocBAR] |= {
-                "VFClass": _cached_caller_globals[f"D_{labelLocBAR}"],
-                "DFClass": _cached_caller_globals[f"d_{labelLocBAR}"],
+                "VFClass": vf_instance_aHol,
+                "DFClass": df_instance_aHol,
             }
             address[labelLoc2] |= {
-                "VFClass": _cached_caller_globals[f"D_{labelLoc2}"],
-                "DFClass": _cached_caller_globals[f"d_{labelLoc2}"],
+                "VFClass": vf_instance_real,
+                "DFClass": df_instance_real,
             }
             address[labelLoc3] |= {
-                "VFClass": _cached_caller_globals[f"D_{labelLoc3}"],
-                "DFClass": _cached_caller_globals[f"d_{labelLoc3}"],
+                "VFClass": vf_instance_im,
+                "DFClass": df_instance_im,
             }
 
-        # Tuple System Case
+        # tuple system case
         elif isinstance(number_of_variables, Number) and number_of_variables > 0:
             lengthLoc = number_of_variables
-            variableProcedure(
+            var_names1, var_names1_str = variableProcedure(
                 labelLoc1,
                 lengthLoc,
                 initialIndex=initialIndex,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
+                return_created_object=True,
+                _return_labels=True,
             )
-            variableProcedure(
+            var_namesBAR, var_namesBAR_str = variableProcedure(
                 labelLocBAR,
                 lengthLoc,
                 initialIndex=initialIndex,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
+                return_created_object=True,
+                _return_labels=True,
             )
-            variableProcedure(
+            var_names2, var_names2_str = variableProcedure(
                 labelLoc2,
                 lengthLoc,
                 initialIndex=initialIndex,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),
+                return_created_object=True,
+                _return_labels=True,
             )
-            variableProcedure(
+            var_names3, var_names3_str = variableProcedure(
                 labelLoc3,
                 lengthLoc,
                 initialIndex=initialIndex,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),
+                return_created_object=True,
+                _return_labels=True,
             )
-
-            # Retrieve lists of created variables from the caller's globals.
-            var_names1 = _cached_caller_globals[labelLoc1]
-            var_namesBAR = _cached_caller_globals[labelLocBAR]
-            var_names2 = _cached_caller_globals[labelLoc2]
-            var_names3 = _cached_caller_globals[labelLoc3]
+            var_names1, var_namesBAR, var_names2, var_names3 = (
+                var_names1[0],
+                var_namesBAR[0],
+                var_names2[0],
+                var_names3[0],
+            )
             if rco is not None:
                 rco += [var_names1, var_namesBAR, var_names2, var_names3]
 
             # Build string labels for registry.
-            var_str1 = tuple(
-                f"{labelLoc1}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
-            )
-            var_strBAR = tuple(
-                f"{labelLocBAR}{i}"
-                for i in range(initialIndex, lengthLoc + initialIndex)
-            )
-            var_str2 = tuple(
-                f"{labelLoc2}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
-            )
-            var_str3 = tuple(
-                f"{labelLoc3}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
+            var_str1, var_strBAR, var_str2, var_str3 = (
+                var_names1_str[0],
+                var_namesBAR_str[0],
+                var_names2_str[0],
+                var_names3_str[0],
             )
 
-            # Register the tuple system (the differential objects will be added in Phase 2).
+            # VMF update
             complex_system_updates[labelLoc1] = {
                 "family_type": "tuple",
                 "family_names": (var_str1, var_strBAR, var_str2, var_str3),
@@ -6695,7 +6724,7 @@ def complexVarProc(
                 ),
             }
 
-            # Accumulate conversion updates for each tuple element.
+            # conversion dict updates
             totalVarListLoc = list(
                 zip(var_names1, var_namesBAR, var_names2, var_names3)
             )
@@ -6724,12 +6753,10 @@ def complexVarProc(
                 im_part_updates[comp_var] = imag_var
                 im_part_updates[bar_comp_var] = -imag_var
 
-            # Save tuple system info for Phase 2.
             tuple_system_data.append(
                 (labelLoc1, var_names1, var_namesBAR, var_names2, var_names3, lengthLoc)
             )
 
-            # Batch update the conversion dictionaries.
             conv["conjugation"].update(conj_updates)
             conv["holToReal"].update(holToReal_updates)
             conv["realToSym"].update(realToSym_updates)
@@ -6745,7 +6772,7 @@ def complexVarProc(
 
     variable_registry["complex_variable_systems"].update(complex_system_updates)
 
-    # Create differential objects for tuple systems.
+    # differential objects
     for (
         labelLoc1,
         var_names1,
@@ -6759,7 +6786,7 @@ def complexVarProc(
         ]
         totalVarListLoc = list(zip(var_names1, var_namesBAR, var_names2, var_names3))
 
-        # Batch conversion dictionary updates
+        # conversion dictionary updates
         conj_updates_batch = {comp: anti for comp, anti, _, _ in totalVarListLoc}
         conj_updates_batch.update({anti: comp for comp, anti, _, _ in totalVarListLoc})
 
@@ -6797,7 +6824,7 @@ def complexVarProc(
             im_part_updates_batch[comp] = imag
             im_part_updates_batch[anti] = -imag
 
-        # Create differential objects
+        # differential objects
         for idx, (comp_var, bar_comp_var, real_var, imag_var) in enumerate(
             totalVarListLoc
         ):
@@ -6943,16 +6970,16 @@ def complexVarProc(
                 )
 
             # Register the differential objects in VMF
-            _cached_caller_globals[f"D_{comp_var}"] = D_comp
-            _cached_caller_globals[f"D_{bar_comp_var}"] = D_bar_comp
-            _cached_caller_globals[f"d_{comp_var}"] = d_comp
-            _cached_caller_globals[f"d_{bar_comp_var}"] = d_bar_comp
-            _cached_caller_globals[f"D_{real_var}"] = D_real
-            _cached_caller_globals[f"D_{imag_var}"] = D_im
-            _cached_caller_globals[f"d_{real_var}"] = d_real
-            _cached_caller_globals[f"d_{imag_var}"] = d_im
+            update_globals_k_v(f"D_{comp_var}", D_comp)
+            update_globals_k_v(f"D_{bar_comp_var}", D_bar_comp)
+            update_globals_k_v(f"d_{comp_var}", d_comp)
+            update_globals_k_v(f"d_{bar_comp_var}", d_bar_comp)
+            update_globals_k_v(f"D_{real_var}", D_real)
+            update_globals_k_v(f"D_{imag_var}", D_im)
+            update_globals_k_v(f"d_{real_var}", d_real)
+            update_globals_k_v(f"d_{imag_var}", d_im)
 
-            # Update variable_relatives in VMF
+            # update VMF
             relatives[str(comp_var)] = {
                 "complex_positioning": "holomorphic",
                 "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
@@ -6975,8 +7002,8 @@ def complexVarProc(
                 "complex_positioning": "real",
                 "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
                 "variable_value": real_var,
-                "VFClass": _cached_caller_globals[f"D_{real_var}"],
-                "DFClass": _cached_caller_globals[f"d_{real_var}"],
+                "VFClass": D_real,
+                "DFClass": d_real,
                 "assumeReal": True,
                 "system_index": idx + 2 * N,
             }
@@ -6984,8 +7011,8 @@ def complexVarProc(
                 "complex_positioning": "imaginary",
                 "complex_family": (comp_var, bar_comp_var, real_var, imag_var),
                 "variable_value": imag_var,
-                "VFClass": _cached_caller_globals[f"D_{imag_var}"],
-                "DFClass": _cached_caller_globals[f"d_{imag_var}"],
+                "VFClass": D_im,
+                "DFClass": d_im,
                 "assumeReal": True,
                 "system_index": idx + 3 * N,
             }
@@ -7147,7 +7174,7 @@ def complex_struct_op(vf):
 
 
 def conjugate_DGCV(expr):
-    warnings.warn(
+    dgcv_warning(
         "`conjugate_DGCV` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
         "It will be removed in 2026. Please use `conjugate_dgcv` instead.",
         DeprecationWarning,
@@ -7626,7 +7653,7 @@ def complexVFC(
 
 
 def conjComplex(arg):
-    warnings.warn("`conjComplex` has been deprecated. Use `conjugate_dgcv` instead")
+    dgcv_warning("`conjComplex` has been deprecated. Use `conjugate_dgcv` instead")
     return _conjComplexVFDF(arg)
 
 
@@ -7663,7 +7690,7 @@ def TFClass(
     dgcvType="standard",
     _simplifyKW=None,
 ):
-    warnings.warn(
+    dgcv_warning(
         "`TFClass` is deprecated and has been replaced by the general `tensor_field_class`. The function label remains"
         "as a dispatcher to build `tensor_field_class` objects, but this may be removed in the future"
         "Please use `tensor_field_class` or `assemble_tensor_field` instead.",
@@ -7694,7 +7721,7 @@ def tensorField(
     dgcvType="standard",
     _simplifyKW=None,
 ):
-    warnings.warn(
+    dgcv_warning(
         "`tensorField` is deprecated and has been replaced by the general `tensor_field_class`. The function label remains"
         "as a dispatcher to build `tensor_field_class` objects, but this may be removed in the future"
         "Please use `tensor_field_class` or `assemble_tensor_field` instead.",
@@ -7724,7 +7751,7 @@ def STFClass(
     dgcvType="standard",
     _simplifyKW=None,
 ):
-    warnings.warn(
+    dgcv_warning(
         "`STFClass` is deprecated and has been replaced by the general `tensor_field_class`. The function label remains"
         "as a dispatcher to build `tensor_field_class` objects, but this may be removed in the future"
         "Please use `tensor_field_class` or `assemble_tensor_field` instead.",
@@ -7752,7 +7779,7 @@ def VFClass(
     dgcvType="standard",
     _simplifyKW=None,
 ):
-    warnings.warn(
+    dgcv_warning(
         "`VFClass` is deprecated and has been replaced by the general `vector_field_class`. The function label remains"
         "as a dispatcher to build `vector_field_class` objects, but this may be removed in the future"
         "Please use `vector_field_class` instead.",
@@ -7785,7 +7812,7 @@ def DFClass(
     dgcvType="standard",
     _simplifyKW=None,
 ):
-    warnings.warn(
+    dgcv_warning(
         "`DFClass` is deprecated and has been replaced by the general `differential_form_class`. The function label remains"
         "as a dispatcher to build `differential_form_class` objects, but this may be removed in the future"
         "Please use `differential_form_class` instead.",

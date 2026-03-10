@@ -136,6 +136,8 @@ def conjugate(expr):
 
 
 def ratio(x, y=1):
+    y = getattr(y, "to_sym_engine_expr", y)
+
     kind = engine_kind()
 
     if kind is None:

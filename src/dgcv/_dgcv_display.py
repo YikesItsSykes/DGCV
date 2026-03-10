@@ -14,11 +14,12 @@ License:
 from __future__ import annotations
 
 import numbers
-import warnings
 from collections.abc import Mapping
 from typing import Any
 
+from ._config import dgcv_warning
 from ._safeguards import check_dgcv_category, get_dgcv_category
+from ._settings import _toggle_or_set_verbosity
 from .backends._display import latex as _backend_latex
 from .backends._display_engine import is_rich_displaying_available
 from .backends._engine import _get_sympy_module, is_sympy_available
@@ -70,10 +71,12 @@ def _has_varSpace_type(x: Any) -> bool:
     return getattr(x, "_varSpace_type", None) is not None
 
 
-def LaTeX(obj: Any, removeBARs: bool = False) -> str:
+def LaTeX(obj: Any, removeBARs: bool = False, verbose: bool = False) -> str:
     """
     Custom LaTeX function for dgcv. Attempts to produce a LaTeX-ish string for "mathy" objects.
     """
+    if verbose:
+        _toggle_or_set_verbosity(setting=1)  # enable temp verbosity
 
     def _latex_of(x: Any) -> str:
         if x is None:
@@ -172,12 +175,16 @@ def LaTeX(obj: Any, removeBARs: bool = False) -> str:
 
         return _coerce_to_str(x2)
 
-    return _strip_display_dollars(_latex_of(obj)) or ""
+    out = _strip_display_dollars(_latex_of(obj)) or ""
+    if verbose:
+        _toggle_or_set_verbosity()  # enable temp verbosity
+    return out
 
 
 def LaTeX_eqn_system(
     eqn_dict,
     math_mode="$$",
+    relation=" = ",
     left_prefix="",
     left_suffix="",
     right_prefix="",
@@ -186,7 +193,10 @@ def LaTeX_eqn_system(
     bare_latex=False,
     punctuation=None,
     add_period=False,
+    verbose: bool = False,
 ):
+    if verbose:
+        _toggle_or_set_verbosity(setting=1)  # enable temp verbosity
     if isinstance(eqn_dict, (list, tuple)):
         eqn_dict = {k: 0 for k in eqn_dict}
         list_format = True
@@ -219,14 +229,17 @@ def LaTeX_eqn_system(
 
     if list_format is True:
         kv_pairs = [
-            f"0={right_prefix}{LaTeX(k)}{right_suffix}" for k in eqn_dict.keys()
+            f"0{relation}{right_prefix}{LaTeX(k)}{right_suffix}"
+            for k in eqn_dict.keys()
         ]
     else:
         kv_pairs = [
-            f"{left_prefix}{LaTeX(k)}{left_suffix}={right_prefix}{LaTeX(v)}{right_suffix}"
+            f"{left_prefix}{LaTeX(k)}{left_suffix}{relation}{right_prefix}{LaTeX(v)}{right_suffix}"
             for k, v in eqn_dict.items()
         ]
 
+    if verbose:
+        _toggle_or_set_verbosity()  # disable temp verbosity
     if len(kv_pairs) == 0:
         return punct
     if len(kv_pairs) == 1:
@@ -292,11 +305,18 @@ def LaTeX_list(
     bare_latex=False,
     punctuation=None,
     item_labels=None,
+    verbose: bool = False,
 ):
+    if verbose:
+        _toggle_or_set_verbosity(setting=1)  # enable temp verbosity
     if not isinstance(list_to_print, (list, tuple)):
         if bare_latex is not True and (math_mode == "$" or math_mode == "$$"):
-            return f"{math_mode}{LaTeX(list_to_print)}{math_mode}"
-        return LaTeX(list_to_print)
+            out = f"{math_mode}{LaTeX(list_to_print)}{math_mode}"
+        else:
+            out = LaTeX(list_to_print)
+        if verbose:
+            _toggle_or_set_verbosity()  # disable temp verbosity
+        return out
 
     if (
         one_line is True
@@ -398,6 +418,8 @@ def LaTeX_list(
     conjuction = (
         " and " if len(formatted_chunks) > 1 and len(formatted_chunks[-1]) == 1 else ""
     )
+    if verbose:
+        _toggle_or_set_verbosity()  # disable temp verbosity
     return (
         to_print
         + conjuction
@@ -406,7 +428,7 @@ def LaTeX_list(
 
 
 def display_dgcv(*args):
-    warnings.warn(
+    dgcv_warning(
         "`display_dgcv` has been deprecated as part of a shift toward standardizing naming styles in the dgcv library."
         "`It` will be removed in 2026. Use the command `show` instead.",
         DeprecationWarning,
@@ -416,7 +438,7 @@ def display_dgcv(*args):
 
 
 def display_DGCV(*args):
-    warnings.warn(
+    dgcv_warning(
         "`display_DGCV` has been deprecated as part of a shift toward standardizing naming styles in the dgcv library."
         "`It` will be removed in 2026. Use the command `show` instead.",
         DeprecationWarning,
@@ -425,18 +447,23 @@ def display_DGCV(*args):
     return show(*args)
 
 
-def show(*args):
+def show(*args, verbose: bool = False, plain_text=False):
     """
     Display dgcv objects with IPython if available.
 
-    If IPython rich display is not available/relevant, this function falls back to:
-        print(str(obj))
+    If IPython rich display is not available/relevant, this function falls back to `print(str(obj))`
     """
-    if not is_rich_displaying_available():
+    if verbose:
+        _toggle_or_set_verbosity(setting=1)  # enable temp verbosity
+    if plain_text is True or not is_rich_displaying_available():
         print(*args)
+        if verbose:
+            _toggle_or_set_verbosity()  # disable temp verbosity
         return
     for j in args:
         _display_dgcv_single(j)
+    if verbose:
+        _toggle_or_set_verbosity()  # disable temp verbosity
 
 
 def _display_dgcv_single(arg: Any) -> None:
@@ -545,7 +572,7 @@ def dgcv_init_printing(minimal_scope: bool = False, *args, **kwargs):
 
 
 def DGCV_init_printing(*args, **kwargs):
-    warnings.warn(
+    dgcv_warning(
         "`DGCV_init_printing` has been deprecated, as its functionality has been consolidated into the `set_dgcv_settings` function."
         "`It` will be removed in 2026. Run `set_dgcv_settings(format_displays=True)` instead to apply dgcv formatting in Jupyter notebooks.",
         DeprecationWarning,

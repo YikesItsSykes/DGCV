@@ -1,8 +1,8 @@
 import numbers
 
 from .._safeguards import retrieve_passkey
-from ..backends._caches import _get_expr_num_types
 from ..backends._symbolic_router import simplify
+from ..backends._types_and_constants import expr_numeric_types
 from .eds import abst_coframe, abstract_ZF, coframe_derivative, zeroFormAtom
 
 
@@ -34,7 +34,7 @@ class abstract_VF_atom:
         return self.label
 
     def __call__(self, arg):
-        if isinstance(arg, _get_expr_num_types()):
+        if isinstance(arg, expr_numeric_types()):
             return 0
         if isinstance(arg, (abstract_ZF, zeroFormAtom)):
             return coframe_derivative(arg, self.dual_coframe, self.dual_coframe_index)
@@ -84,7 +84,7 @@ class abstract_VF:
     Nodes are tuples with first entry an operator tag among:
       - ('atom', <abstract_VF_atom>)
       - ('sum', <vf_1>, <vf_2>, ... , <vf_k>)   # k >= 2 after normalization, flattened
-      - ('scale', <scalar>, <vf>)               # scalar in _get_expr_num_types()
+      - ('scale', <scalar>, <vf>)               # scalar in expr_numeric_types()
       - ('bracket', <vf_left>, <vf_right>)
       - ('zero',)
       - ('ad', X, Y, n)
@@ -153,7 +153,7 @@ class abstract_VF:
     # --------- basic predicates & coercions ---------
     @staticmethod
     def _is_scalar(x):
-        return isinstance(x, _get_expr_num_types() + (abstract_ZF, zeroFormAtom))
+        return isinstance(x, expr_numeric_types() + (abstract_ZF, zeroFormAtom))
 
     @staticmethod
     def _is_function_scalar(x):
@@ -218,7 +218,7 @@ class abstract_VF:
             c, v = node[1], node[2]
             if not self._is_scalar(c):
                 raise TypeError(
-                    "Scale coefficient must be numeric/scalar by _get_expr_num_types()"
+                    "Scale coefficient must be numeric/scalar by expr_numeric_types()"
                 )
             v_node = self._VFify(v)._node
             # If the child is zero, the whole product is zero
@@ -259,7 +259,7 @@ class abstract_VF:
             def split_numeric_scale(n):
                 if isinstance(n, tuple) and n and n[0] == "scale":
                     c, core = n[1], n[2]
-                    if isinstance(c, _get_expr_num_types()):
+                    if isinstance(c, expr_numeric_types()):
                         return c, core
                 return 1, n
 
@@ -598,17 +598,17 @@ class abstract_VF:
           • bracket:          [X, Y](f) = X(Y(f)) - Y(X(f))
 
         Notes:
-          • If `arg` is a pure number (in _get_expr_num_types()), return 0.
+          • If `arg` is a pure number (in expr_numeric_types()), return 0.
           • If `arg` is abstract_ZF or zeroFormAtom, we rely on their own arithmetic
             (e.g., product rule) via `coframe_derivative` in leaf evaluation.
         """
         # Constant functions are killed by vector fields.
-        if isinstance(arg, _get_expr_num_types()):
+        if isinstance(arg, expr_numeric_types()):
             return 0
 
         # Accept abstract_ZF or zeroFormAtom (and potentially SymPy Expr) as inputs.
         if not isinstance(arg, (abstract_ZF, zeroFormAtom)) and not isinstance(
-            arg, _get_expr_num_types()
+            arg, expr_numeric_types()
         ):
             raise TypeError(
                 f"Unsupported argument for vector field action: {type(arg)!r}"
@@ -897,7 +897,7 @@ def VF_factor(vf: abstract_VF, aggressive: bool = False) -> abstract_VF:
         return abstract_VF(node, favor_factoring=False)
 
     # ---- Helper predicates ----
-    NumT = _get_expr_num_types()
+    NumT = expr_numeric_types()
 
     def is_numeric(x):
         return isinstance(x, NumT)

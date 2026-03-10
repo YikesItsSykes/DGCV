@@ -11,9 +11,9 @@ License:
 # -----------------------------------------------------------------------------
 # imports and broadcasting
 # -----------------------------------------------------------------------------
-import warnings
 from numbers import Integral
 
+from ._config import dgcv_warning
 from ._safeguards import (
     check_dgcv_category,
     create_key,
@@ -1323,7 +1323,7 @@ class matrix_dgcv(array_dgcv):
         try:
             return matrix_dgcv(value)
         except Exception:
-            warnings.warn(
+            dgcv_warning(
                 "Requested method name either does not exist for the current symbolic engine's matrix class or it does not return a matrix-like value."
             )
             return self
