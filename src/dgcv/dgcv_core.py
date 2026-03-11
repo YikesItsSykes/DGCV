@@ -5999,7 +5999,7 @@ def varWithVF(
             vars = tuple([symbol(name, assumeReal=assumeReal) for name in var_names])
             var_values = vars
             update_globals(dict(zip(var_names, vars)))
-            update_globals(labelLoc, tuple(vars))
+            update_globals_k_v(labelLoc, tuple(vars))
 
             if enforce_real and assumeReal is True and enforced_real_dict is not None:
                 for v in vars:

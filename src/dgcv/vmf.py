@@ -27,9 +27,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from dgcv._tables import build_plain_table
-from dgcv.backends._types_and_constants import is_atomic
-
 from ._config import (
     dgcv_warning,
     get_dgcv_settings_registry,
@@ -38,7 +35,9 @@ from ._config import (
     greek_letters,
     latex_in_html,
 )
+from ._tables import build_plain_table
 from .backends._display_engine import is_rich_displaying_available
+from .backends._types_and_constants import is_atomic
 from .styles import get_style
 
 __all__ = ["clear_vmf", "listVar", "clearVar", "vmf_lookup", "vmf_summary"]
@@ -1216,9 +1215,11 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
     def build_object_string(
         obj_type, var_name, start_index, tuple_len, system_type, use_latex=False
     ):
+        from .printing._string_processing import _process_var_label
+
         if tuple_len == 1:
             if use_latex:
-                sym = latex_symbol_with_overline_if_needed(var_name)
+                sym = _process_var_label(var_name)
                 return (
                     f"$\\frac{{\\partial}}{{\\partial {sym}}}$"
                     if obj_type == "D"
@@ -1227,10 +1228,8 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
             return f"{obj_type}_{var_name}"
         else:
             if use_latex:
-                left = latex_symbol_with_overline_if_needed(var_name, start_index)
-                right = latex_symbol_with_overline_if_needed(
-                    var_name, start_index + tuple_len - 1
-                )
+                left = _process_var_label(f"{var_name}_{start_index}")
+                right = _process_var_label(f"{var_name}_{start_index + tuple_len - 1}")
                 if obj_type == "D":
                     s = f"\\frac{{\\partial}}{{\\partial {left}}}, \\ldots, \\frac{{\\partial}}{{\\partial {right}}}"
                 else:
@@ -1241,15 +1240,17 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
     def build_object_string_for_complex(
         obj_type, family_houses, family_names, start_index, use_latex=False
     ):
+        from .printing._string_processing import _process_var_label
+
         parts = []
         if isinstance(family_names, (list, tuple)) and len(family_names) == 4:
             for i, part in enumerate(family_houses):
                 part_names = family_names[i]
                 if isinstance(part_names, (list, tuple)) and len(part_names) > 1:
                     if use_latex:
-                        left = latex_symbol_with_overline_if_needed(part, start_index)
-                        right = latex_symbol_with_overline_if_needed(
-                            part, start_index + len(part_names) - 1
+                        left = _process_var_label(f"{part}_{start_index}")
+                        right = _process_var_label(
+                            f"{part}_{start_index + len(part_names) - 1}"
                         )
                         if obj_type == "D":
                             core = (
@@ -1268,18 +1269,16 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
                         )
                 else:
                     if use_latex:
-                        sym = latex_symbol_with_overline_if_needed(part)
+                        sym = _process_var_label(part)
                         parts.append(f"${obj_type}_{sym}$")
                     else:
                         parts.append(f"{obj_type}_{part}")
         else:
             if isinstance(family_names, (list, tuple)) and len(family_names) > 1:
                 if use_latex:
-                    left = latex_symbol_with_overline_if_needed(
-                        family_houses[0], start_index
-                    )
-                    right = latex_symbol_with_overline_if_needed(
-                        family_houses[0], start_index + len(family_names) - 1
+                    left = _process_var_label(f"{family_houses[0]}_{start_index}")
+                    right = _process_var_label(
+                        f"{family_houses[0]}_{start_index + len(family_names) - 1}"
                     )
                     parts.append(
                         f"$\\frac{{\\partial}}{{\\partial {left}}}$, "
@@ -1294,7 +1293,7 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
                     )
             else:
                 if use_latex:
-                    sym = latex_symbol_with_overline_if_needed(family_houses[0])
+                    sym = _process_var_label(family_houses[0])
                     parts.append(f"${obj_type}_{sym}$")
                 else:
                     parts.append(f"{obj_type}_{family_houses[0]}")
