@@ -196,13 +196,13 @@ def set_dgcv_settings(
                     "at the start of a session with dgcv."
                 )
                 return
-            if v == get_dgcv_settings_registry.get("conjugate_prefix"):
+            if v == get_dgcv_settings_registry.get("conjugation_prefix"):
                 newfallback = "BAR" if v != "BAR" else "Banti_R"
                 dgcv_warning(
-                    "The requested `fallback_conjugate_prefix` is already assigned to `conjugate_prefix`."
-                    f"To free the assignement, `conjugate_prefix` has been changed to {newfallback}."
+                    "The requested `fallback_conjugate_prefix` is already assigned to `conjugation_prefix`."
+                    f"To free the assignement, `conjugation_prefix` has been changed to {newfallback}."
                 )
-                dgcvSR["conjugate_prefix"] = newfallback
+                dgcvSR["conjugation_prefix"] = newfallback
             dgcvSR[k] = v
 
         if k == "extra_support_for_math_in_tables":

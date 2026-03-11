@@ -5418,7 +5418,8 @@ def createVariables(
         multiindex_shape=multiindex_shape,
         _tempVar=tv,
         _doNotUpdateVar=None,
-        _calledFromCVP=pk,
+        _calledFromCVP=None,
+        _calledFromFactory=pk,
         remove_guardrails=remove_guardrails,
         return_created_object=return_created_object,
     )
@@ -5509,6 +5510,7 @@ def variableProcedure(
     _tempVar=None,
     _doNotUpdateVar=None,
     _calledFromCVP=None,
+    _calledFromFactory=None,
     remove_guardrails=None,
     _obscure=None,
     _return_labels=False,
@@ -5526,9 +5528,8 @@ def variableProcedure(
     if _return_labels is True:
         return_created_object = True
 
-    if (
-        settings["ask_before_overwriting_objects_in_vmf"]
-        and not _calledFromCVP == passkey
+    if settings["ask_before_overwriting_objects_in_vmf"] and not (
+        _calledFromCVP == passkey or _calledFromFactory == passkey
     ):
         labels_iter = (
             tuple(variables_label)
@@ -5566,8 +5567,8 @@ def variableProcedure(
 
     for j in labels:
         labelLoc = (
-            validate_label(j)
-            if (not _calledFromCVP == passkey and not remove_guardrails)
+            validate_label(j, remove_guardrails=remove_guardrails)
+            if (not _calledFromCVP == passkey)
             else j
         )
 
@@ -5590,8 +5591,8 @@ def variableProcedure(
                 )
             )
             var_names = [f"{labelLoc}_{'_'.join(map(str, idx))}" for idx in indices]
-            if (
-                _doNotUpdateVar != passkey or _calledFromCVP == passkey
+            if _doNotUpdateVar != passkey or (
+                _calledFromCVP == passkey or _calledFromFactory == passkey
             ):  # CVP doesn't manage sub-parant names
                 clearVar(*var_names, report=False)
             vars = tuple(symbol(name, assumeReal=assumeReal) for name in var_names)
@@ -5697,8 +5698,8 @@ def variableProcedure(
             vars = tuple([symbol(name, assumeReal=assumeReal) for name in var_names])
             var_values = vars
             var_values_flattened = vars
-            if (
-                _doNotUpdateVar != passkey or _calledFromCVP == passkey
+            if _doNotUpdateVar != passkey or (
+                _calledFromCVP == passkey or _calledFromFactory == passkey
             ):  # CVP doesn't manage sub-parant names
                 clearVar(*vars, report=False)
                 new_globals = dict(zip(var_names, vars))
@@ -5807,6 +5808,7 @@ def varWithVF(
     _doNotUpdateVar=False,
     assumeReal=None,
     _calledFromCVP=None,
+    _calledFromFactory=None,
     remove_guardrails=None,
     return_created_object=None,
 ):
@@ -5848,8 +5850,8 @@ def varWithVF(
 
     for raw_label in labels:
         labelLoc = (
-            validate_label(raw_label)
-            if (not _calledFromCVP == passkey and not remove_guardrails)
+            validate_label(raw_label, remove_guardrails=remove_guardrails)
+            if (not _calledFromCVP == passkey)
             else raw_label
         )
 
@@ -5862,8 +5864,8 @@ def varWithVF(
             vars = [symbol(name, assumeReal=assumeReal) for name in var_names]
             base_vars = tuple(vars)
             var_values = build_nd_array(base_vars, multiindex_shape)
-            if (
-                _doNotUpdateVar != passkey or _calledFromCVP == passkey
+            if _doNotUpdateVar != passkey or (
+                _calledFromCVP == passkey or _calledFromFactory == passkey
             ):  # CVP doesn't manage sub-parant names
                 clearVar(*vars, report=False)
                 update_globals(dict(zip(var_names, vars)))
@@ -5896,7 +5898,7 @@ def varWithVF(
                 update_globals(dict(zip([f"D_{vn}" for vn in var_names], vf_instances)))
                 update_globals(dict(zip([f"d_{vn}" for vn in var_names], df_instances)))
 
-            if not _calledFromCVP == passkey:
+            if not (_calledFromCVP == passkey or _calledFromFactory == passkey):
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "multi_index",
                     "family_shape": tuple(multiindex_shape),
@@ -5956,7 +5958,7 @@ def varWithVF(
             update_globals_k_v(f"D_{labelLoc}", vf_instance)
             update_globals_k_v(f"d_{labelLoc}", df_instance)
 
-            if not _calledFromCVP == passkey:
+            if not (_calledFromCVP == passkey or _calledFromFactory == passkey):
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "single",
                     "family_values": var_values,
@@ -6025,7 +6027,7 @@ def varWithVF(
             update_globals(dict(zip([f"D_{vn}" for vn in var_names], vf_instances)))
             update_globals(dict(zip([f"d_{vn}" for vn in var_names], df_instances)))
 
-            if not _calledFromCVP == passkey:
+            if not (_calledFromCVP == passkey or _calledFromFactory == passkey):
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "tuple",
                     "family_values": var_values,

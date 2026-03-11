@@ -46,7 +46,6 @@ changes: Tuple[Tuple[str, Dict[str, Any]], ...] = (
             "extra_support_for_math_in_tables": "infer",
         },
     ),
-    ("0.4.3", {"conjugation_prefix": "_c"}),
 )
 
 

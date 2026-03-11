@@ -143,7 +143,6 @@ def protected_caller_globals():
 def validate_label_list(basis_labels):
     """
     Validates a list of basis labels by checking if they are already present in active namespace.
-    If a label exists and is found in the variable_registry, provides instructions for clearing it.
 
     Parameters
     ----------
@@ -305,13 +304,13 @@ def validate_label(label, remove_guardrails=False):
 
     dgcvSR = get_dgcv_settings_registry()
     pref, fallback = (
-        dgcvSR.get("conjugate_prefix", "_c_"),
+        dgcvSR.get("conjugation_prefix", "BAR"),
         dgcvSR.get("fallback_conjugate_prefix", "anti_"),
     )
     if label.startswith(pref):
         reformatted_label = fallback + label[len(pref) :]
         dgcv_warning(
-            f"Label '{label}' starts with {pref}, which is reserved by the `conjugate_prefix`"
+            f"Label '{label}' starts with {pref}, which is reserved by the `conjugation_prefix` "
             "value currently set in dgcv settings. It has been automatically reformatted to "
             f"'{reformatted_label}'."
         )
