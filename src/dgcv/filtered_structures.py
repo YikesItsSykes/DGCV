@@ -2610,7 +2610,7 @@ class distribution(dgcv_class):
             basis_labels=basis_labels,
             grading=[grading_vec],
             assume_skew=True,
-            return_created_obj=return_created_object,
+            return_created_object=return_created_object,
         )
 
     @property

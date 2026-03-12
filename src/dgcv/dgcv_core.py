@@ -4120,7 +4120,7 @@ class polynomial_dgcv(dgcv_class):
         conv,
         *,
         skipVar=None,
-        simplify_everything=True,
+        convert_everything=True,
         conversion_dict=None,
     ):
         conv_map = {
@@ -4147,7 +4147,7 @@ class polynomial_dgcv(dgcv_class):
         else:
             fn_basis = fn_expr
 
-        kw_expr = {"skipVar": skipVar, "simplify_everything": simplify_everything}
+        kw_expr = {"skipVar": skipVar, "convert_everything": convert_everything}
         if conversion_dict is not None and conv in {
             "holToReal",
             "realToSym",
@@ -4163,7 +4163,7 @@ class polynomial_dgcv(dgcv_class):
             new_varSpace = self.varSpace
             new_params = None if self._parameters is None else self._parameters
         else:
-            kw_basis = {"skipVar": skipVar, "simplify_everything": simplify_everything}
+            kw_basis = {"skipVar": skipVar, "convert_everything": convert_everything}
 
             vs_atoms = []
             for v in self.varSpace:
@@ -4187,28 +4187,28 @@ class polynomial_dgcv(dgcv_class):
             degreeUpperBound=self.degreeUpperBound,
         )
 
-    def _complex_view(self, *, skipVar=None, simplify_everything=True):
+    def _complex_view(self, *, skipVar=None, convert_everything=True):
         expr_c = allToSym(
-            self.polyExpr, skipVar=skipVar, simplify_everything=simplify_everything
+            self.polyExpr, skipVar=skipVar, convert_everything=convert_everything
         )
 
         gens = []
         for v in self.varSpace:
-            vv = allToSym(v, skipVar=skipVar, simplify_everything=simplify_everything)
+            vv = allToSym(v, skipVar=skipVar, convert_everything=convert_everything)
             gens.extend(get_free_symbols(vv))
         gens_c = _stable_dedupe(gens)
 
         params_c = self.parameters
         return expr_c, gens_c, params_c
 
-    def _real_view(self, *, skipVar=None, simplify_everything=True):
+    def _real_view(self, *, skipVar=None, convert_everything=True):
         expr_r = allToReal(
-            self.polyExpr, skipVar=skipVar, simplify_everything=simplify_everything
+            self.polyExpr, skipVar=skipVar, convert_everything=convert_everything
         )
 
         gens = []
         for v in self.varSpace:
-            vv = allToReal(v, skipVar=skipVar, simplify_everything=simplify_everything)
+            vv = allToReal(v, skipVar=skipVar, convert_everything=convert_everything)
             gens.extend(get_free_symbols(vv))
         gens_r = _stable_dedupe(gens)
 
@@ -5013,7 +5013,7 @@ class polynomial_dgcv(dgcv_class):
 
         if not removeBARs:
             try:
-                x = symToHol(x, simplify_everything=False)
+                x = symToHol(x, convert_everything=False)
             except Exception:
                 pass
 
@@ -5184,7 +5184,7 @@ def createVariables(
         The starting index for tuple variables, allowing for flexible indexing when initializing variable systems
         as tuples (e.g., x=(x0, x1, x2) with `initialIndex=0`).
 
-    withVF : bool, optional
+    withVF : bool, optional (default True)
         If set to True, creates associated coordinate vector fields and differential forms for the variable(s) in the
         system.
 
@@ -5374,6 +5374,8 @@ def createVariables(
                     "obscure label was created for the imaginary variables."
                 )
 
+    if withVF is None:
+        withVF = True
     variable_label = reformat_string(variable_label)
     if isinstance(real_label, str):
         real_label = reformat_string(real_label)
@@ -5507,6 +5509,7 @@ def variableProcedure(
     multiindex_shape=None,
     assumeReal=None,
     return_created_object=None,
+    withVF=False,
     _tempVar=None,
     _doNotUpdateVar=None,
     _calledFromCVP=None,
@@ -5712,68 +5715,90 @@ def variableProcedure(
 
             vtuple = tuple(vars)
 
-            vf_instances = [
-                vector_field_class(
-                    coeff_dict={(j, 1, labelLoc): 1},
-                    dgcvType="standard",
-                    variable_spaces={labelLoc: vtuple},
-                )
-                for j in range(len(vtuple))
-            ]
-            update_globals(dict(zip([f"D_{vn}" for vn in var_names], vf_instances)))
-
-            df_instances = [
-                differential_form_class(
-                    coeff_dict={(j, 0, labelLoc): 1},
-                    dgcvType="standard",
-                    variable_spaces={labelLoc: vtuple},
-                )
-                for j in range(len(vtuple))
-            ]
-            update_globals(dict(zip([f"d_{vn}" for vn in var_names], df_instances)))
-
-            if _doNotUpdateVar != passkey:
-                variable_registry["standard_variable_systems"][labelLoc] = {
-                    "family_type": "tuple",
-                    "family_values": vtuple,
-                    "family_names": tuple(var_names),
-                    "differential_system": True,
-                    "tempVar": temp_flag,
-                    "initial_index": initialIndex,
-                    "obsVar": obscure_flag,
-                    "variable_relatives": {
-                        var_name: {
-                            "VFClass": vf_instances[i],
-                            "DFClass": df_instances[i],
-                            "assumeReal": assumeReal,
-                            "system_index": i,
-                        }
-                        for i, var_name in enumerate(var_names)
-                    },
-                }
-                variable_registry["_labels"][labelLoc] = {
-                    "path": ("standard_variable_systems", labelLoc),
-                    "children": set(var_names),
-                }
-
-                if paths is not None:
-                    paths[labelLoc] = {
-                        "kind": "standard_variable_system",
-                        "path": ("standard_variable_systems", labelLoc),
-                    }
-
-                    base_vals = ("standard_variable_systems", labelLoc, "family_values")
-                    base_rel = (
-                        "standard_variable_systems",
-                        labelLoc,
-                        "variable_relatives",
+            if withVF:
+                vf_instances = [
+                    vector_field_class(
+                        coeff_dict={(j, 1, labelLoc): 1},
+                        dgcvType="standard",
+                        variable_spaces={labelLoc: vtuple},
                     )
+                    for j in range(len(vtuple))
+                ]
+                update_globals(dict(zip([f"D_{vn}" for vn in var_names], vf_instances)))
 
-                    for i, var_name in enumerate(var_names):
-                        paths[var_name] = {
-                            "kind": "standard_variable",
-                            "path": base_vals + (i,),
-                        }
+                df_instances = [
+                    differential_form_class(
+                        coeff_dict={(j, 0, labelLoc): 1},
+                        dgcvType="standard",
+                        variable_spaces={labelLoc: vtuple},
+                    )
+                    for j in range(len(vtuple))
+                ]
+                update_globals(dict(zip([f"d_{vn}" for vn in var_names], df_instances)))
+
+                if _doNotUpdateVar != passkey:
+                    variable_registry["standard_variable_systems"][labelLoc] = {
+                        "family_type": "tuple",
+                        "family_values": vtuple,
+                        "family_names": tuple(var_names),
+                        "differential_system": True,
+                        "tempVar": temp_flag,
+                        "initial_index": initialIndex,
+                        "obsVar": obscure_flag,
+                        "variable_relatives": {
+                            var_name: {
+                                "VFClass": vf_instances[i],
+                                "DFClass": df_instances[i],
+                                "assumeReal": assumeReal,
+                                "system_index": i,
+                            }
+                            for i, var_name in enumerate(var_names)
+                        },
+                    }
+            else:
+                if _doNotUpdateVar != passkey:
+                    variable_registry["standard_variable_systems"][labelLoc] = {
+                        "family_type": "tuple",
+                        "family_values": vtuple,
+                        "family_names": tuple(var_names),
+                        "differential_system": False,
+                        "tempVar": temp_flag,
+                        "initial_index": initialIndex,
+                        "obsVar": obscure_flag,
+                        "variable_relatives": {
+                            var_name: {
+                                "VFClass": None,
+                                "DFClass": None,
+                                "assumeReal": assumeReal,
+                                "system_index": i,
+                            }
+                            for i, var_name in enumerate(var_names)
+                        },
+                    }
+            variable_registry["_labels"][labelLoc] = {
+                "path": ("standard_variable_systems", labelLoc),
+                "children": set(var_names),
+            }
+
+            if paths is not None:
+                paths[labelLoc] = {
+                    "kind": "standard_variable_system",
+                    "path": ("standard_variable_systems", labelLoc),
+                }
+
+                base_vals = ("standard_variable_systems", labelLoc, "family_values")
+                base_rel = (
+                    "standard_variable_systems",
+                    labelLoc,
+                    "variable_relatives",
+                )
+
+                for i, var_name in enumerate(var_names):
+                    paths[var_name] = {
+                        "kind": "standard_variable",
+                        "path": base_vals + (i,),
+                    }
+                    if withVF:
                         paths[f"D_{var_name}"] = {
                             "kind": "vector_field",
                             "path": base_rel + (var_name, "VFClass"),

@@ -330,15 +330,13 @@ class algebra_class(dgcv_class):
             if len(vector) < dimension:
                 dgcv_warning(
                     f"Grading vector is shorter than the dimension ({len(vector)} < {dimension}). "
-                    f"Padding with zeros to match the dimension.",
-                    UserWarning,
+                    f"Padding with zeros to match the dimension."
                 )
                 vector += [0] * (dimension - len(vector))
             elif len(vector) > dimension:
                 dgcv_warning(
                     f"Grading vector is longer than the dimension ({len(vector)} > {dimension}). "
                     f"Truncating to match the dimension.",
-                    UserWarning,
                 )
                 vector = vector[:dimension]
 
@@ -665,12 +663,11 @@ class algebra_class(dgcv_class):
             elif self._callLock == retrieve_passkey() and isinstance(
                 self._print_warning, str
             ):
-                dgcv_warning(self._print_warning, UserWarning)
+                dgcv_warning(self._print_warning)
             else:
                 dgcv_warning(
                     "This algebra instance was initialized without an assigned label. "
-                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
-                    UserWarning,
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method."
                 )
 
         reg = get_dgcv_settings_registry()
@@ -704,12 +701,11 @@ class algebra_class(dgcv_class):
             elif self._callLock == retrieve_passkey() and isinstance(
                 self._print_warning, str
             ):
-                dgcv_warning(self._print_warning, UserWarning)
+                dgcv_warning(self._print_warning)
             else:
                 dgcv_warning(
                     "This algebra instance was initialized without an assigned label. "
-                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
-                    UserWarning,
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method."
                 )
 
         reg = get_dgcv_settings_registry()
@@ -785,15 +781,11 @@ class algebra_class(dgcv_class):
             elif self._callLock == retrieve_passkey() and isinstance(
                 self._print_warning, str
             ):
-                dgcv_warning(
-                    self._print_warning,
-                    UserWarning,
-                )
+                dgcv_warning(self._print_warning)
             else:
                 dgcv_warning(
                     "This algebra instance was initialized without an assigned label. "
-                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method.",
-                    UserWarning,
+                    "It is recommended to initialize algebra objects with dgcv creator functions like `createFiniteAlg` instead -- or set `label` parameter if creating it via a dgcv class method."
                 )
 
         def format_algebra_label(label):
@@ -961,8 +953,7 @@ class algebra_class(dgcv_class):
         """
         dgcv_warning(
             f"{method_name} assumes the algebra is associative. "
-            "If it is not then unexpected results may occur.",
-            UserWarning,
+            "If it is not then unexpected results may occur."
         )
 
     def is_lie_algebra(self, verbose=False, return_bool=True):
@@ -4943,12 +4934,11 @@ class algebra_element_class(dgcv_class):
             elif self.algebra._callLock == retrieve_passkey() and isinstance(
                 self.algebra._child_print_warning, str
             ):
-                dgcv_warning(self.algebra._child_print_warning, UserWarning)
+                dgcv_warning(self.algebra._child_print_warning)
             else:
                 dgcv_warning(
                     "This algebra_element_class's parent vector space (algebra_class) was initialized without an assigned label. "
-                    "It is recommended to initialize `algebra_class` objects with dgcv creator functions like `createAlgebra` instead.",
-                    UserWarning,
+                    "It is recommended to initialize `algebra_class` objects with dgcv creator functions like `createAlgebra` instead."
                 )
 
         return lincomb_plain(
@@ -4972,12 +4962,11 @@ class algebra_element_class(dgcv_class):
             elif self.vectorSpace._callLock == retrieve_passkey() and isinstance(
                 self.vectorSpace._child_print_warning, str
             ):
-                dgcv_warning(self.vectorSpace._child_print_warning, UserWarning)
+                dgcv_warning(self.vectorSpace._child_print_warning)
             else:
                 dgcv_warning(
                     "This algebra_element_class's parent vector space (algebra_class) was initialized without an assigned label. "
-                    "It is recommended to initialize `algebra_class` objects with dgcv creator functions like `createAlgebra` instead.",
-                    UserWarning,
+                    "It is recommended to initialize `algebra_class` objects with dgcv creator functions like `createAlgebra` instead."
                 )
 
         return lincomb_latex(
@@ -5003,15 +4992,11 @@ class algebra_element_class(dgcv_class):
             elif self.algebra._callLock == retrieve_passkey() and isinstance(
                 self.algebra._child_print_warning, str
             ):
-                dgcv_warning(
-                    self.algebra._child_print_warning,
-                    UserWarning,
-                )
+                dgcv_warning(self.algebra._child_print_warning)
             else:
                 dgcv_warning(
                     "This algebra_element_class's parent vector space (an `algebra` class instance) was initialized without an assigned label. "
-                    "It is recommended to initialize `algebra` class objects with dgcv creator functions like `createFiniteAlg` instead.",
-                    UserWarning,
+                    "It is recommended to initialize `algebra` class objects with dgcv creator functions like `createFiniteAlg` instead."
                 )
 
         terms = []

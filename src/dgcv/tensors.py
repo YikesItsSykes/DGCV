@@ -93,14 +93,12 @@ class vector_space_class(dgcv_class):
                 dgcv_warning(
                     f"Grading vector is shorter than the dimension ({len(vector)} < {dimension}). "
                     f"Padding with zeros to match the dimension.",
-                    UserWarning,
                 )
                 vector += [0] * (dimension - len(vector))
             elif len(vector) > dimension:
                 dgcv_warning(
                     f"Grading vector is longer than the dimension ({len(vector)} > {dimension}). "
                     f"Truncating to match the dimension.",
-                    UserWarning,
                 )
                 vector = vector[:dimension]
 
@@ -187,7 +185,6 @@ class vector_space_class(dgcv_class):
             dgcv_warning(
                 "This vector_space_class instance was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
-                UserWarning,
             )
 
         return space_display(
@@ -207,7 +204,6 @@ class vector_space_class(dgcv_class):
             dgcv_warning(
                 "This vector_space_class instance was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
-                UserWarning,
             )
 
         return space_display(
@@ -236,7 +232,6 @@ class vector_space_class(dgcv_class):
             dgcv_warning(
                 "This vector_space_class instance was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
-                UserWarning,
             )
 
         def format_VS_label(label):
@@ -262,7 +257,6 @@ class vector_space_class(dgcv_class):
             dgcv_warning(
                 "This vector_space_class instance was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
-                UserWarning,
             )
 
         if self.label:
@@ -393,7 +387,6 @@ class vector_space_element:
             dgcv_warning(
                 "This vector_space_element's parent vector space (vector_space_class) was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
-                UserWarning,
             )
 
         return lincomb_plain(
@@ -408,7 +401,6 @@ class vector_space_element:
             dgcv_warning(
                 "This vector_space_element's parent vector space (vector_space_class) was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
-                UserWarning,
             )
 
         return lincomb_latex(
@@ -433,7 +425,6 @@ class vector_space_element:
             dgcv_warning(
                 "This vector_space_element's parent vector space (vector_space_class) was initialized without an assigned label. "
                 "It is recommended to initialize vector_space_class objects with dgcv creator functions like `createVectorSpace` instead.",
-                UserWarning,
             )
 
         coeffs_str = ", ".join(map(str, self.coeffs))

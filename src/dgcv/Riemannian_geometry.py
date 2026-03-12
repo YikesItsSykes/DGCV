@@ -36,7 +36,7 @@ from .backends import simplify_dgcv as simplify
 from .backends._calculus import diff
 from .backends._types_and_constants import rational
 from .base import dgcv_class
-from .conversions import allToReal, allToSym
+from .conversions import allToReal, allToSym, symToHol
 from .dgcv_core import (
     assemble_tensor_field,
     tensor_field_class,
@@ -135,6 +135,7 @@ class metricClass(dgcv_class):
         self._tracelessRicci = None
         self._Weyl = None
         self._Einstein = None
+        self._raw_latex = None
 
     @property
     def coeffArray(self) -> array_dgcv:
@@ -242,10 +243,14 @@ class metricClass(dgcv_class):
         return str(self.SymTensorField)
 
     def _repr_latex_(self, raw: bool = False, **kwargs):
-        f = getattr(self.SymTensorField, "_repr_latex_", None)
-        if callable(f):
-            return f(raw=raw, **kwargs)
-        return str(self)
+        if self._raw_latex is None:
+            f = getattr(
+                symToHol(self.SymTensorField, convert_everything=False),
+                "_repr_latex_",
+                None,
+            )
+            self._raw_latex = f(raw=raw, **kwargs)
+        return self._raw_latex if raw else f"$\\displaystyle{self._raw_latex}$"
 
     def _local_info_for_index(self, i: int) -> str:
         cache = getattr(self, "_local_systems", None)

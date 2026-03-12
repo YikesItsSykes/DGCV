@@ -43,7 +43,7 @@ __all__ = [
 def holToReal(
     expr,
     skipVar=None,
-    simplify_everything: bool = False,
+    convert_everything: bool = True,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -56,7 +56,7 @@ def holToReal(
         "holToReal",
         skipVar=skipVar,
         variables_scope=variables_scope,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         conversion_dict=conv,
     )
     if hooked is not None:
@@ -69,18 +69,18 @@ def holToReal(
             converter=holToReal,
             skipVar=skipVar,
             variables_scope=variables_scope,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
         )
         if new is not None:
             return new
 
-    return _convert_expr(expr, conv, simplify_everything=simplify_everything)
+    return _convert_expr(expr, conv, convert_everything=convert_everything)
 
 
 def realToSym(
     expr,
     skipVar=None,
-    simplify_everything: bool = False,
+    convert_everything: bool = True,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -93,7 +93,7 @@ def realToSym(
         "realToSym",
         skipVar=skipVar,
         variables_scope=variables_scope,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         conversion_dict=conv,
     )
     if hooked is not None:
@@ -106,18 +106,18 @@ def realToSym(
             converter=realToSym,
             skipVar=skipVar,
             variables_scope=variables_scope,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
         )
         if new is not None:
             return new
 
-    return _convert_expr(expr, conv, simplify_everything=simplify_everything)
+    return _convert_expr(expr, conv, convert_everything=convert_everything)
 
 
 def symToHol(
     expr,
     skipVar=None,
-    simplify_everything: bool = False,
+    convert_everything: bool = True,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -130,7 +130,7 @@ def symToHol(
         "symToHol",
         skipVar=skipVar,
         variables_scope=variables_scope,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         conversion_dict=conv,
     )
     if hooked is not None:
@@ -143,18 +143,18 @@ def symToHol(
             converter=symToHol,
             skipVar=skipVar,
             variables_scope=variables_scope,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
         )
         if new is not None:
             return new
 
-    return _convert_expr(expr, conv, simplify_everything=simplify_everything)
+    return _convert_expr(expr, conv, convert_everything=convert_everything)
 
 
 def realToHol(
     expr,
     skipVar=None,
-    simplify_everything: bool = False,
+    convert_everything: bool = True,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -167,7 +167,7 @@ def realToHol(
         "realToHol",
         skipVar=skipVar,
         variables_scope=variables_scope,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         conversion_dict=conv,
     )
     if hooked is not None:
@@ -180,18 +180,18 @@ def realToHol(
             converter=realToHol,
             skipVar=skipVar,
             variables_scope=variables_scope,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
         )
         if new is not None:
             return new
 
-    return _convert_expr(expr, conv, simplify_everything=simplify_everything)
+    return _convert_expr(expr, conv, convert_everything=convert_everything)
 
 
 def symToReal(
     expr,
     skipVar=None,
-    simplify_everything: bool = False,
+    convert_everything: bool = True,
     *,
     _conversion_dict=None,
     variables_scope=None,
@@ -204,7 +204,7 @@ def symToReal(
         "symToReal",
         skipVar=skipVar,
         variables_scope=variables_scope,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         conversion_dict=conv,
     )
     if hooked is not None:
@@ -217,77 +217,71 @@ def symToReal(
             converter=symToReal,
             skipVar=skipVar,
             variables_scope=variables_scope,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
         )
         if new is not None:
             return new
 
-    return _convert_expr(expr, conv, simplify_everything=simplify_everything)
+    return _convert_expr(expr, conv, convert_everything=convert_everything)
 
 
-def holToSym(
-    expr, skipVar=None, simplify_everything: bool = False, variables_scope=None
-):
+def holToSym(expr, skipVar=None, convert_everything: bool = True, variables_scope=None):
     expr = holToReal(
         expr,
         skipVar=skipVar,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         variables_scope=variables_scope,
     )
     expr = realToSym(
         expr,
         skipVar=skipVar,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         variables_scope=variables_scope,
     )
     return expr
 
 
 def allToReal(
-    expr, skipVar=None, simplify_everything: bool = False, variables_scope=None
+    expr, skipVar=None, convert_everything: bool = True, variables_scope=None
 ):
     return symToReal(
         expr,
         skipVar=skipVar,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         variables_scope=variables_scope,
     )
 
 
-def allToHol(
-    expr, skipVar=None, simplify_everything: bool = False, variables_scope=None
-):
+def allToHol(expr, skipVar=None, convert_everything: bool = True, variables_scope=None):
     ###!!! refine later
     expr = symToHol(
         expr,
         skipVar=skipVar,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         variables_scope=variables_scope,
     )
     return realToHol(
         expr,
         skipVar=skipVar,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         variables_scope=variables_scope,
     )
 
 
-def allToSym(
-    expr, skipVar=None, simplify_everything: bool = False, variables_scope=None
-):
+def allToSym(expr, skipVar=None, convert_everything: bool = True, variables_scope=None):
     return holToSym(
         expr,
         skipVar=skipVar,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
         variables_scope=variables_scope,
     )
 
 
 def cleanUpConjugation(arg1, skipVar=None):
     return realToSym(
-        symToReal(arg1, skipVar=skipVar, simplify_everything=False),
+        symToReal(arg1, skipVar=skipVar, convert_everything=False),
         skipVar=skipVar,
-        simplify_everything=False,
+        convert_everything=False,
     )
 
 
@@ -297,8 +291,8 @@ def cleanUpConjugation(arg1, skipVar=None):
 categories = {"vector_field", "differential_form"}
 
 
-def _maybe_to_real(expr, *, skipVar, variables_scope, simplify_everything: bool):
-    if not simplify_everything:
+def _maybe_to_real(expr, *, skipVar, variables_scope, convert_everything: bool):
+    if not convert_everything:
         return None
     f = getattr(expr, "_to_real", None)
     if not callable(f):
@@ -310,8 +304,8 @@ def _maybe_to_real(expr, *, skipVar, variables_scope, simplify_everything: bool)
         return f(plan)
 
 
-def _maybe_to_complex(expr, *, skipVar, variables_scope, simplify_everything: bool):
-    if not simplify_everything:
+def _maybe_to_complex(expr, *, skipVar, variables_scope, convert_everything: bool):
+    if not convert_everything:
         return None
     f = getattr(expr, "_to_complex", None)
     if not callable(f):
@@ -324,7 +318,7 @@ def _maybe_to_complex(expr, *, skipVar, variables_scope, simplify_everything: bo
 
 
 def _maybe_apply(
-    expr, converter, *, skipVar, variables_scope, simplify_everything: bool
+    expr, converter, *, skipVar, variables_scope, convert_everything: bool
 ):
     ap = getattr(expr, "apply", None)
     if not callable(ap):
@@ -335,7 +329,7 @@ def _maybe_apply(
             e,
             skipVar=skipVar,
             variables_scope=variables_scope,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
         )
 
     return ap(conv)
@@ -348,7 +342,7 @@ def _converter_hook(
     converter,
     skipVar=None,
     variables_scope=None,
-    simplify_everything: bool = False,
+    convert_everything: bool = True,
 ):
     out = None
 
@@ -357,14 +351,14 @@ def _converter_hook(
             expr,
             skipVar=skipVar,
             variables_scope=variables_scope,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
         )
     else:
         out = _maybe_to_complex(
             expr,
             skipVar=skipVar,
             variables_scope=variables_scope,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
         )
 
     base = out if out is not None else expr
@@ -374,7 +368,7 @@ def _converter_hook(
         converter,
         skipVar=skipVar,
         variables_scope=variables_scope,
-        simplify_everything=simplify_everything,
+        convert_everything=convert_everything,
     )
     if applied is not None:
         return applied
@@ -536,7 +530,7 @@ def _dgcv_convert_hook(
     *,
     skipVar=None,
     variables_scope=None,
-    simplify_everything=True,
+    convert_everything=True,
     conversion_dict=None,
 ):
     f = getattr(expr, "__dgcv_converter__", None)
@@ -548,14 +542,14 @@ def _dgcv_convert_hook(
             conv,
             skipVar=skipVar,
             variables_scope=variables_scope,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
             conversion_dict=conversion_dict,
         )
     except TypeError:
         return f(
             conv,
             skipVar=skipVar,
-            simplify_everything=simplify_everything,
+            convert_everything=convert_everything,
             conversion_dict=conversion_dict,
         )
 
@@ -601,7 +595,7 @@ def _filtered_subs(expr, conv) -> Optional[Dict[Any, Any]]:
     return out or None
 
 
-def _convert_expr(expr, conv, *, simplify_everything: bool):
+def _convert_expr(expr, conv, *, convert_everything: bool):
     if isinstance(expr, numbers.Number):
         return expr
 
@@ -616,12 +610,12 @@ def _convert_expr(expr, conv, *, simplify_everything: bool):
         if not fs:
             return expr
         res = subs(expr, fs)
-        return simplify(res) if simplify_everything else res
+        return simplify(res) if convert_everything else res
 
     ap = getattr(expr, "applyfunc", None)
     if callable(ap):
         return ap(
-            lambda e: _convert_expr(e, conv, simplify_everything=simplify_everything)
+            lambda e: _convert_expr(e, conv, convert_everything=convert_everything)
         )
 
     return expr

@@ -17,7 +17,7 @@ import numbers
 from collections.abc import Mapping
 from typing import Any
 
-from ._config import dgcv_warning
+from ._config import dgcv_warning, get_dgcv_settings_registry
 from ._safeguards import check_dgcv_category, get_dgcv_category
 from ._settings import _toggle_or_set_verbosity
 from .backends._display import latex as _backend_latex
@@ -48,10 +48,10 @@ def _is_engine_expr(x: Any) -> bool:
 
 
 def _try_symToHol(x: Any, removeBARs: bool) -> Any:
-    if removeBARs:
+    if not removeBARs:
         return x
     try:
-        return symToHol(x, simplify_everything=False)
+        return symToHol(x, convert_everything=False)
     except Exception:
         return x
 
@@ -71,10 +71,12 @@ def _has_varSpace_type(x: Any) -> bool:
     return getattr(x, "_varSpace_type", None) is not None
 
 
-def LaTeX(obj: Any, removeBARs: bool = False, verbose: bool = False) -> str:
+def LaTeX(obj: Any, removeBARs: bool | None = None, verbose: bool = False) -> str:
     """
     Custom LaTeX function for dgcv. Attempts to produce a LaTeX-ish string for "mathy" objects.
     """
+    if removeBARs is None:
+        removeBARs = get_dgcv_settings_registry().get("compile_latex_conjugation", True)
     if verbose:
         _toggle_or_set_verbosity(setting=1)  # enable temp verbosity
 
@@ -101,7 +103,7 @@ def LaTeX(obj: Any, removeBARs: bool = False, verbose: bool = False) -> str:
 
         if _is_tensorish_dgcv(x):
             if removeBARs:
-                x2 = x
+                x2 = symToHol(x, convert_everything=False)
             else:
                 vft = getattr(x, "_varSpace_type", None)
                 if vft == "real":
@@ -129,6 +131,8 @@ def LaTeX(obj: Any, removeBARs: bool = False, verbose: bool = False) -> str:
 
         if check_dgcv_category(x):
             if not _has_varSpace_type(x):
+                if removeBARs:
+                    x2 = symToHol(x, convert_everything=False)
                 f = getattr(x, "_repr_latex_", None)
                 if callable(f):
                     try:
@@ -513,7 +517,7 @@ def _complexDisplay(*args):
         if getattr(x, "_varSpace_type", None) in ("real", "complex"):
             try:
                 return (
-                    f"$\\displaystyle {LaTeX(symToHol(x, simplify_everything=False))}$"
+                    f"$\\displaystyle {LaTeX(symToHol(x, convert_everything=False))}$"
                 )
             except Exception:
                 return f"$\\displaystyle {LaTeX(x)}$"

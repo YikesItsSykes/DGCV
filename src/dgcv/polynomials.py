@@ -72,12 +72,16 @@ def createPolynomial(
     degreeCap: int = 0,
     initialIndex=1,
     register_coeffs_in_vmf=False,
+    register_coeffs_with_VF=False,
     _tempVar: Optional[bool] = None,
     return_components: bool = False,
     assumeReal: bool | None = None,
     remove_guardrails: bool = False,
     report_vmf_updates: bool = False,
 ) -> Union[polynomial_dgcv, List[Any]]:
+
+    if register_coeffs_with_VF is True:
+        register_coeffs_in_vmf = True
 
     vars_ = tuple(variables)
     n = len(vars_)
@@ -124,6 +128,7 @@ def createPolynomial(
             coeff_label,
             len(exponent_tuples),
             _tempVar=_tempVar,
+            withVF=register_coeffs_with_VF,
             initialIndex=initialIndex,
             assumeReal=assumeReal,
             remove_guardrails=remove_guardrails,

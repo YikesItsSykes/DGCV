@@ -268,6 +268,7 @@ dgcv_settings_registry = {
     "print_style": "readable",
     "VLP": vlp,
     "conjugation_prefix": "BAR",
+    "compile_latex_conjugation": True,
     "preferred_variable_format": "complex",
     "pass_solve_requests_to_symbolic_engine": True,
     "extra_support_for_math_in_tables": environment_inference(),

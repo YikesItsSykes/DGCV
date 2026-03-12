@@ -859,20 +859,6 @@ def _vmf_plain_fmt_dim(n) -> str:
     return f"{n} dimensional" if n is not None else "? dimensional"
 
 
-def _vmf_plain_elide(seq, *, max_items: int):
-    xs = list(seq or [])
-    n = len(xs)
-    if n <= max_items:
-        return xs
-    k = max_items // 2
-    return xs[:k] + ["..."] + xs[-k:]
-
-
-def _vmf_plain_fmt_list(xs, *, max_items: int = 10) -> str:
-    toks = [str(x) for x in _vmf_plain_elide(xs, max_items=max_items)]
-    return ", ".join(toks)
-
-
 def _vmf_plain_fmt_span(xs, *, max_items: int = 12) -> str:
     inner = _vmf_plain_fmt_list(xs, max_items=max_items)
     return f"<{inner}>" if inner else "<>"
@@ -945,12 +931,14 @@ def _vmf_plain_build_sections(vr: dict, *, force_report: bool) -> list[str]:
 
 
 def _vmf_plain_snapshot_coordinate_systems(vr: dict) -> str:
+
     c = vr.get("complex_variable_systems", {}) or {}
     s = vr.get("standard_variable_systems", {}) or {}
 
     complex_keys = sorted(c.keys())
     standard_keys = sorted(s.keys())
     total = len(complex_keys) + len(standard_keys)
+
     if total == 0:
         return ""
 
@@ -960,39 +948,60 @@ def _vmf_plain_snapshot_coordinate_systems(vr: dict) -> str:
         lines.append("Complex Systems:")
         for syslabel in complex_keys:
             system = c.get(syslabel, {}) or {}
+
             fn = system.get("family_names", ())
-            fh = system.get("family_houses", ("N/A", "N/A", "N/A", "N/A"))
-            hol = fn[0] if (isinstance(fn, (list, tuple)) and len(fn) == 4) else ()
-            dim = len(hol) if isinstance(hol, (list, tuple)) else None
-            lines.append(f"  - {syslabel} ({_vmf_plain_fmt_dim(dim)})")
+            diff = system.get("differential_system", False)
 
-            real_names = (
-                fn[2] if (isinstance(fn, (list, tuple)) and len(fn) == 4) else ()
-            )
-            imag_names = (
-                fn[3] if (isinstance(fn, (list, tuple)) and len(fn) == 4) else ()
-            )
+            if isinstance(fn, (list, tuple)) and len(fn) == 4:
+                hol_names = fn[0]
+                bar_names = fn[1]
+                real_names = fn[2]
+                imag_names = fn[3]
+            else:
+                hol_names = bar_names = real_names = imag_names = ()
+
+            dim = len(hol_names) if isinstance(hol_names, (list, tuple)) else None
 
             lines.append(
-                f"      - real: {_vmf_plain_fmt_list(real_names, max_items=10)}"
-                if real_names
-                else f"      - real: {fh[2]}"
+                f"  - {syslabel} ({_vmf_plain_fmt_dim(dim)}, with frame/coframe = {diff})"
             )
-            lines.append(
-                f"      - imag: {_vmf_plain_fmt_list(imag_names, max_items=10)}"
-                if imag_names
-                else f"      - imag: {fh[3]}"
-            )
+
+            if hol_names:
+                lines.append(
+                    f"      - holomorphic: {_vmf_plain_fmt_list(hol_names, max_items=3)}"
+                )
+
+            if bar_names:
+                lines.append(
+                    f"      - antiholomorphic: {_vmf_plain_fmt_list(bar_names, max_items=3)}"
+                )
+
+            if real_names:
+                lines.append(
+                    f"      - real: {_vmf_plain_fmt_list(real_names, max_items=3)}"
+                )
+
+            if imag_names:
+                lines.append(
+                    f"      - imaginary: {_vmf_plain_fmt_list(imag_names, max_items=3)}"
+                )
 
     if standard_keys:
         lines.append("Standard Systems:")
         for syslabel in standard_keys:
             system = s.get(syslabel, {}) or {}
+
             fn = system.get("family_names", ())
+            diff = system.get("differential_system", False)
+
             dim = len(fn) if isinstance(fn, (list, tuple)) else None
-            lines.append(f"  - {syslabel} ({_vmf_plain_fmt_dim(dim)})")
+
+            lines.append(
+                f"  - {syslabel} ({_vmf_plain_fmt_dim(dim)}, with frame/coframe = {diff})"
+            )
+
             if fn:
-                lines.append(f"      - vars: {_vmf_plain_fmt_list(fn, max_items=10)}")
+                lines.append(f"      - vars: {_vmf_plain_fmt_list(fn, max_items=3)}")
 
     return "\n".join(lines).rstrip()
 
@@ -1304,7 +1313,7 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
     data = []
     var_system_labels = []
 
-    # Complex systems
+    # complex systems
     for var_name in sorted(
         variable_registry.get("complex_variable_systems", {}).keys()
     ):
@@ -1349,15 +1358,21 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
                 if isinstance(imag_names, (list, tuple)) and len(imag_names) > 1
                 else f"{family_houses[3]}"
             )
-        vf_str = build_object_string_for_complex(
-            "D", family_houses, fn, start_index, use_latex
-        )
-        df_str = build_object_string_for_complex(
-            "d", family_houses, fn, start_index, use_latex
-        )
+
+        if system.get("differential_system", False):
+            vf_str = build_object_string_for_complex(
+                "D", family_houses, fn, start_index, use_latex
+            )
+            df_str = build_object_string_for_complex(
+                "d", family_houses, fn, start_index, use_latex
+            )
+        else:
+            vf_str = "----"
+            df_str = "----"
+
         data.append([tuple_len, real_part, imag_part, vf_str, df_str])
 
-    # Standard systems
+    # standard systems
     for var_name in sorted(
         variable_registry.get("standard_variable_systems", {}).keys()
     ):
@@ -1369,12 +1384,18 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
             var_name, "standard", use_latex=use_latex
         )
         var_system_labels.append(formatted_label)
-        vf_str = build_object_string(
-            "D", var_name, start_index, tuple_len, "standard", use_latex
-        )
-        df_str = build_object_string(
-            "d", var_name, start_index, tuple_len, "standard", use_latex
-        )
+
+        if system.get("differential_system", False):
+            vf_str = build_object_string(
+                "D", var_name, start_index, tuple_len, "standard", use_latex
+            )
+            df_str = build_object_string(
+                "d", var_name, start_index, tuple_len, "standard", use_latex
+            )
+        else:
+            vf_str = "----"
+            df_str = "----"
+
         data.append([tuple_len, "----", "----", vf_str, df_str])
 
     combined_data = [[label] + row for label, row in zip(var_system_labels, data)]

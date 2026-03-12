@@ -542,8 +542,7 @@ class subalgebra_class(algebra_subspace_class):
         """
         dgcv_warning(
             f"{method_name} assumes the subalgebra is associative. "
-            "If it is not then unexpected results may occur.",
-            UserWarning,
+            "If it is not then unexpected results may occur."
         )
 
     def is_Lie_algebra(self, verbose=False, return_bool=True, _return_proof_path=False):
@@ -3241,7 +3240,7 @@ def createAlgebra(
         If True, provides information during the creation process.
     """
     if kwargs.get("return_created_obj"):  # old keyword support
-        return_created_object = kwargs.get("return_created_object")
+        return_created_object = kwargs.get("return_created_obj")
     notes = {}
     _markers["_educed_properties"] = dict()
     if get_dgcv_category(obj) == "Tanaka_symbol":
@@ -3658,5 +3657,6 @@ def createAlgebra(
         print(
             f"Created an algebra with the following properties. Dimension: {dimension}, Grading: {grading}, Basis Labels: {basis_labels}"
         )
+
     if return_created_object is True:
         return algebra_obj

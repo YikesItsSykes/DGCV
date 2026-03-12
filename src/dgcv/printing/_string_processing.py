@@ -470,23 +470,15 @@ def coeff_needs_parens_latex(s: str) -> bool:
     if not s:
         return False
 
-    i = 0
-    n = len(s)
-
     paren_depth = 0
     bracket_depth = 0
     brace_depth = 0
-    left_depth = 0
-
-    frac_wait = 0
     seen_top_token = False
 
-    while i < n:
-        if s.startswith(r"\frac", i):
-            i += 5
-            frac_wait = 2
-            continue
+    i = 0
+    n = len(s)
 
+    while i < n:
         ch = s[i]
 
         if ch.isspace():
@@ -497,66 +489,8 @@ def coeff_needs_parens_latex(s: str) -> bool:
             j = i + 1
             while j < n and s[j].isalpha():
                 j += 1
-            macro = s[i:j]
-
-            if macro == r"\left":
-                k = j
-                while k < n and s[k].isspace():
-                    k += 1
-                if k < n:
-                    d = s[k]
-                    if d == "(":
-                        paren_depth += 1
-                        left_depth += 1
-                        i = k + 1
-                        continue
-                    if d == "[":
-                        bracket_depth += 1
-                        left_depth += 1
-                        i = k + 1
-                        continue
-                    if d == r"\\" and k + 1 < n and s[k + 1] == "{":
-                        brace_depth += 1
-                        left_depth += 1
-                        i = k + 2
-                        continue
-                    if d == "{":
-                        brace_depth += 1
-                        left_depth += 1
-                        i = k + 1
-                        continue
-                i = j
-                continue
-
-            if macro == r"\right":
-                k = j
-                while k < n and s[k].isspace():
-                    k += 1
-                if k < n:
-                    d = s[k]
-                    if d == ")":
-                        paren_depth = max(0, paren_depth - 1)
-                        left_depth = max(0, left_depth - 1)
-                        i = k + 1
-                        continue
-                    if d == "]":
-                        bracket_depth = max(0, bracket_depth - 1)
-                        left_depth = max(0, left_depth - 1)
-                        i = k + 1
-                        continue
-                    if d == r"\\" and k + 1 < n and s[k + 1] == "}":
-                        brace_depth = max(0, brace_depth - 1)
-                        left_depth = max(0, left_depth - 1)
-                        i = k + 2
-                        continue
-                    if d == "}":
-                        brace_depth = max(0, brace_depth - 1)
-                        left_depth = max(0, left_depth - 1)
-                        i = k + 1
-                        continue
-                i = j
-                continue
-
+            if paren_depth == bracket_depth == brace_depth == 0:
+                seen_top_token = True
             i = j
             continue
 
@@ -568,7 +502,6 @@ def coeff_needs_parens_latex(s: str) -> bool:
             paren_depth = max(0, paren_depth - 1)
             i += 1
             continue
-
         if ch == "[":
             bracket_depth += 1
             i += 1
@@ -577,13 +510,8 @@ def coeff_needs_parens_latex(s: str) -> bool:
             bracket_depth = max(0, bracket_depth - 1)
             i += 1
             continue
-
         if ch == "{":
-            if frac_wait > 0:
-                brace_depth += 1
-                frac_wait -= 1
-            else:
-                brace_depth += 1
+            brace_depth += 1
             i += 1
             continue
         if ch == "}":
@@ -591,12 +519,7 @@ def coeff_needs_parens_latex(s: str) -> bool:
             i += 1
             continue
 
-        top_level = (
-            (paren_depth == 0)
-            and (bracket_depth == 0)
-            and (brace_depth == 0)
-            and (left_depth == 0)
-        )
+        top_level = paren_depth == bracket_depth == brace_depth == 0
 
         if top_level:
             if ch == "+":

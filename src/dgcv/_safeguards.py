@@ -245,8 +245,7 @@ def validate_label_list(basis_labels):
             if get_dgcv_settings_registry()["forgo_warnings"] is not True:
                 dgcv_warning(
                     warning_message
-                    + "\n To suppress warnings such as this, set `set_dgcv_settings(forgo_warnings=True)`.",
-                    UserWarning,
+                    + "\n To suppress warnings such as this, set `set_dgcv_settings(forgo_warnings=True)`."
                 )
                 clearVar(*to_clear)
             else:
