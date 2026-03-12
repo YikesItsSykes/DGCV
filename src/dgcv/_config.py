@@ -156,8 +156,10 @@ def _dgcv_showwarning(message, category, filename, lineno, file=None, line=None)
     _original_showwarning(message, category, filename, lineno, file=file, line=line)
 
 
-def dgcv_warning(message, *, stacklevel=2):
-    warnings.warn(message, dgcvWarning, stacklevel=stacklevel)
+def dgcv_warning(message, warning_class=None, stacklevel=2):
+    if warning_class is None:
+        warning_class = dgcvWarning
+    warnings.warn(message, warning_class, stacklevel=stacklevel)
 
 
 class StringifiedSymbolsDict(collections.abc.MutableMapping):
