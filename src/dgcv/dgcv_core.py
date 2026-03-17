@@ -5150,6 +5150,7 @@ def createVariables(
     withVF=None,
     complex=None,
     multiindex_shape=None,
+    index_placement=None,
     assumeReal=None,
     return_created_object=None,
     remove_guardrails=None,
@@ -5277,6 +5278,7 @@ def createVariables(
         substrings = input_string.replace(",", " ").split()
         return [s for s in substrings if len(s) > 0]
 
+    # validation checks
     if not isinstance(variable_label, str):
         raise TypeError(
             "`createVariables` requires its first argument to be a string, which will be used in labels for the created variables."
@@ -5390,6 +5392,7 @@ def createVariables(
             number_of_variables=number_of_variables,
             initialIndex=initialIndex,
             multiindex_shape=multiindex_shape,
+            index_placement=index_placement,
             default_var_format=default_var_format,
             remove_guardrails=remove_guardrails,
             return_created_object=return_created_object,
@@ -5402,6 +5405,7 @@ def createVariables(
             number_of_variables=number_of_variables,
             initialIndex=initialIndex,
             multiindex_shape=multiindex_shape,
+            index_placement=index_placement,
             _doNotUpdateVar=False,
             assumeReal=assumeReal,
             _calledFromCVP=None,
@@ -5418,6 +5422,7 @@ def createVariables(
         initialIndex=initialIndex,
         assumeReal=assumeReal,
         multiindex_shape=multiindex_shape,
+        index_placement=index_placement,
         _tempVar=tv,
         _doNotUpdateVar=None,
         _calledFromCVP=None,
@@ -5502,11 +5507,27 @@ class coordinate_system(tuple):  ###!!! TO FIX
         )
 
 
+indexing_places = {
+    "hi": "__",
+    "low": "_",
+    "up": "__",
+    "down": "_",
+    "u": "__",
+    "d": "_",
+    "h": "__",
+    "l": "_",
+    "__": "__",
+    "_": "_",
+    "": "",
+}
+
+
 def variableProcedure(
     variables_label,
     number_of_variables=None,
     initialIndex=1,
     multiindex_shape=None,
+    index_placement=None,
     assumeReal=None,
     return_created_object=None,
     withVF=False,
@@ -5525,6 +5546,12 @@ def variableProcedure(
     passkey = retrieve_passkey()
     variable_registry = get_variable_registry()
     settings = get_dgcv_settings_registry()
+
+    index_placement = (
+        []
+        if index_placement is None
+        else [indexing_places.get(place, "_") for place in index_placement]
+    )
 
     if _return_flattened is True:
         _return_labels = True
@@ -5588,12 +5615,19 @@ def variableProcedure(
         if isinstance(multiindex_shape, (list, tuple)) and all(
             isinstance(n, Integral) and n > 0 for n in multiindex_shape
         ):
+            if len(multiindex_shape) > len(index_placement):
+                index_placement += ["_"] * (
+                    len(multiindex_shape) - len(index_placement)
+                )
             indices = list(
                 carProd(
                     *[range(initialIndex, initialIndex + n) for n in multiindex_shape]
                 )
             )
-            var_names = [f"{labelLoc}_{'_'.join(map(str, idx))}" for idx in indices]
+            var_names = [
+                f"{labelLoc}{''.join([a + str(b) for a, b in zip(index_placement, idx)])}"
+                for idx in indices
+            ]
             if _doNotUpdateVar != passkey or (
                 _calledFromCVP == passkey or _calledFromFactory == passkey
             ):  # CVP doesn't manage sub-parant names
@@ -5695,8 +5729,18 @@ def variableProcedure(
 
         elif isinstance(number_of_variables, Integral) and number_of_variables >= 0:
             lengthLoc = number_of_variables
+            if isinstance(index_placement, (list, tuple)):
+                if len(index_placement) > 0:
+                    index_placement = index_placement[0]
+                else:
+                    index_placement = ""
+            if index_placement is None:
+                index_placement = ""
+            else:
+                index_placement = indexing_places.get(index_placement, "_")
             var_names = [
-                f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
+                f"{labelLoc}{index_placement}{i}"
+                for i in range(initialIndex, lengthLoc + initialIndex)
             ]
             vars = tuple([symbol(name, assumeReal=assumeReal) for name in var_names])
             var_values = vars
@@ -5830,6 +5874,7 @@ def varWithVF(
     number_of_variables=None,
     initialIndex=1,
     multiindex_shape=None,
+    index_placement=None,
     _doNotUpdateVar=False,
     assumeReal=None,
     _calledFromCVP=None,
@@ -5865,6 +5910,12 @@ def varWithVF(
         else None
     )
 
+    index_placement = (
+        []
+        if index_placement is None
+        else [indexing_places.get(place, "_") for place in index_placement]
+    )
+
     def _valid_multiindex_shape(ms):
         return isinstance(ms, (list, tuple)) and all(
             isinstance(n, Integral) and n > 0 for n in ms
@@ -5884,8 +5935,15 @@ def varWithVF(
             clearVar(labelLoc, report=False)
 
         if number_of_variables is None and _valid_multiindex_shape(multiindex_shape):
+            if len(multiindex_shape) > len(index_placement):
+                index_placement += ["_"] * (
+                    len(multiindex_shape) - len(index_placement)
+                )
             idxs = _indices_for_multiindex(multiindex_shape)
-            var_names = [f"{labelLoc}_{'_'.join(map(str, idx))}" for idx in idxs]
+            var_names = [
+                f"{labelLoc}{''.join([a + str(b) for a, b in zip(index_placement, idx)])}"
+                for idx in idxs
+            ]
             vars = [symbol(name, assumeReal=assumeReal) for name in var_names]
             base_vars = tuple(vars)
             var_values = build_nd_array(base_vars, multiindex_shape)
@@ -6018,8 +6076,18 @@ def varWithVF(
 
         elif isinstance(number_of_variables, Integral) and number_of_variables >= 0:
             lengthLoc = number_of_variables
+            if isinstance(index_placement, (list, tuple)):
+                if len(index_placement) > 0:
+                    index_placement = index_placement[0]
+                else:
+                    index_placement = ""
+            if index_placement is None:
+                index_placement = ""
+            else:
+                index_placement = indexing_places.get(index_placement, "_")
             var_names = [
-                f"{labelLoc}{i}" for i in range(initialIndex, lengthLoc + initialIndex)
+                f"{labelLoc}{index_placement}{i}"
+                for i in range(initialIndex, lengthLoc + initialIndex)
             ]
             vars = tuple([symbol(name, assumeReal=assumeReal) for name in var_names])
             var_values = vars
@@ -6108,6 +6176,7 @@ def complexVarProc(
     number_of_variables=None,
     initialIndex=1,
     multiindex_shape=None,
+    index_placement=None,
     default_var_format="complex",
     remove_guardrails=None,
     return_created_object=True,
@@ -6236,6 +6305,7 @@ def complexVarProc(
                 labelLoc1,
                 initialIndex=initialIndex,
                 multiindex_shape=multiindex_shape,
+                index_placement=index_placement,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
                 _return_flattened=True,
@@ -6244,6 +6314,7 @@ def complexVarProc(
                 labelLocBAR,
                 initialIndex=initialIndex,
                 multiindex_shape=multiindex_shape,
+                index_placement=index_placement,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
                 return_created_object=True,
@@ -6253,6 +6324,7 @@ def complexVarProc(
                 labelLoc2,
                 initialIndex=initialIndex,
                 multiindex_shape=multiindex_shape,
+                index_placement=index_placement,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),
@@ -6263,6 +6335,7 @@ def complexVarProc(
                 labelLoc3,
                 initialIndex=initialIndex,
                 multiindex_shape=multiindex_shape,
+                index_placement=index_placement,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),
@@ -6679,6 +6752,7 @@ def complexVarProc(
                 labelLoc1,
                 lengthLoc,
                 initialIndex=initialIndex,
+                index_placement=index_placement,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
                 return_created_object=True,
@@ -6688,6 +6762,7 @@ def complexVarProc(
                 labelLocBAR,
                 lengthLoc,
                 initialIndex=initialIndex,
+                index_placement=index_placement,
                 _doNotUpdateVar=retrieve_passkey(),
                 _calledFromCVP=retrieve_passkey(),
                 return_created_object=True,
@@ -6697,6 +6772,7 @@ def complexVarProc(
                 labelLoc2,
                 lengthLoc,
                 initialIndex=initialIndex,
+                index_placement=index_placement,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),
@@ -6707,6 +6783,7 @@ def complexVarProc(
                 labelLoc3,
                 lengthLoc,
                 initialIndex=initialIndex,
+                index_placement=index_placement,
                 _doNotUpdateVar=retrieve_passkey(),
                 assumeReal=True,
                 _calledFromCVP=retrieve_passkey(),

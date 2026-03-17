@@ -73,23 +73,15 @@ def get_VF(*coordinates):
         info = vmf_lookup(coord, relatives=True, differential_system=True)
 
         if info.get("type") != "coordinate":
-            raise TypeError(
-                f"`get_VF` expects VMF-registered coordinate atoms. Got {coord!r}."
-            )
+            continue
 
         ds = info.get("differential_system")
         if not isinstance(ds, dict):
-            raise TypeError(
-                f"`get_VF` received {coord!r}, but it has no differential system registered. "
-                "Use `createVariables(..., withVF=True)` or `createVariables(..., complex=True)`."
-            )
+            continue
 
         vf = ds.get("vf")
         if vf is None:
-            raise TypeError(
-                f"`get_VF` could not resolve a coordinate vector field for {coord!r}. "
-                "Use `createVariables(..., withVF=True)` or `createVariables(..., complex=True)`."
-            )
+            continue
 
         out.append(vf)
 
@@ -102,27 +94,33 @@ def get_DF(*coordinates):
         info = vmf_lookup(coord, relatives=True, differential_system=True)
 
         if info.get("type") != "coordinate":
-            raise TypeError(
-                f"`get_DF` expects VMF-registered coordinate atoms. Got {coord!r}."
-            )
+            continue
 
         ds = info.get("differential_system")
         if not isinstance(ds, dict):
-            raise TypeError(
-                f"`get_DF` received {coord!r}, but it has no differential system registered. "
-                "Use `createVariables(..., withVF=True)` or `createVariables(..., complex=True)`."
-            )
+            continue
 
         df = ds.get("df")
         if df is None:
-            raise TypeError(
-                f"`get_DF` could not resolve a coordinate 1-form for {coord!r}. "
-                "Use `createVariables(..., withVF=True)` or `createVariables(..., complex=True)`."
-            )
+            continue
 
         out.append(df)
 
     return out
+
+
+def coordinate_vector_field(obj):
+    vf_list = get_VF(obj)
+    if len(vf_list) != 1:
+        return
+    return vf_list[0]
+
+
+def coordinate_differential_form(obj):
+    df_list = get_DF(obj)
+    if len(df_list) != 1:
+        return
+    return df_list[0]
 
 
 # -----------------------------------------------------------------------------

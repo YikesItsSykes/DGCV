@@ -665,7 +665,9 @@ def tensor_field_latex2(tensor, raw: bool = False) -> str:
                 var = _tf2_lookup_var(varspaces, syss[j], idxs[j])
                 lab = _process_var_label(var)
             basis_elems.append(
-                rf"\frac{{\partial}}{{\partial {lab}}}" if vals[j] == 1 else rf"d {lab}"
+                rf"\frac{{\partial}}{{\partial {lab}}}"
+                if vals[j] == 1
+                else rf"\operatorname{{d}} {lab}"
             )
 
         basis = joiner.join(basis_elems)

@@ -406,13 +406,24 @@ def latex_in_html(html_string, apply_VSCode_workarounds=False):
 
 def configure_convenient_labels(
     libraries: Optional[
-        List[Literal["all", "complex variables", "symbolic expressions"]]
-    ] = ["all"],
+        List[
+            Literal[
+                "all",
+                "most",
+                "complex variables",
+                "symbolic expressions",
+                "abbreviations",
+            ]
+        ]
+    ] = None,
     verbose: bool = False,
     safe_labeling: bool = False,
     custom_labels: Optional[dict] = None,
 ):
+    if libraries is None:
+        libraries = ["most"]
     include_all = "all" in libraries
+    include_most = include_all or "most" in libraries
     relabeling_map = (
         {
             "simplify": "simplify_dgcv",
@@ -432,7 +443,7 @@ def configure_convenient_labels(
         relabeling_map |= custom_labels
     configured_by_library: dict[str, list[str]] = {}
 
-    if include_all or "complex variables" in libraries:
+    if include_most or "complex variables" in libraries:
         from .backends import im, re
         from .backends._types_and_constants import imag_unit
         from .dgcv_core import conjugate_dgcv
@@ -449,7 +460,7 @@ def configure_convenient_labels(
             new_functions, key=str.lower
         )
 
-    if include_all or "symbolic expressions" in libraries:
+    if include_most or "symbolic expressions" in libraries:
         from dgcv.backends._types_and_constants import symbol
 
         from .backends import (
@@ -473,6 +484,21 @@ def configure_convenient_labels(
         new_functions = {relabeling_map.get(k, k): v for k, v in new_functions.items()}
         _globals_.update(new_functions)
         configured_by_library["symbolic expressions"] = sorted(
+            new_functions, key=str.lower
+        )
+    if include_all or "abbreviations" in libraries:
+        from dgcv.vector_fields_and_differential_forms import (
+            coordinate_differential_form,
+            coordinate_vector_field,
+        )
+
+        new_functions = {
+            "coor_DF": coordinate_differential_form,
+            "coor_VF": coordinate_vector_field,
+        }
+        new_functions = {relabeling_map.get(k, k): v for k, v in new_functions.items()}
+        _globals_.update(new_functions)
+        configured_by_library["miscellaneous abbreviations"] = sorted(
             new_functions, key=str.lower
         )
 

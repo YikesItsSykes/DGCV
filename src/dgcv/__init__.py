@@ -206,6 +206,8 @@ from .vector_fields_and_differential_forms import (
     assembleFromAntiholVFC,
     assembleFromCompVFC,
     assembleFromHolVFC,
+    coordinate_differential_form,
+    coordinate_vector_field,
     decompose,
     exteriorDerivative,
     get_coframe,
@@ -393,6 +395,8 @@ __all__ = [
     "assembleFromAntiholVFC",  # Assemble VF from anti-holomorphic VF coefficients
     "assembleFromCompVFC",  # Assemble VF from complex VF coefficients
     "assembleFromHolVFC",  # Assemble VF from holomorphic VF coefficients
+    "coordinate_differential_form",
+    "coordinate_vector_field",
     "decompose",  # Decompose objects into linear combinations
     "exteriorDerivative",  # Compute exterior derivative
     "get_coframe",  # Get coframe from frame
