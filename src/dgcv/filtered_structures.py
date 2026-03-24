@@ -2844,13 +2844,14 @@ class distribution(dgcv_class):
     def _latex(self, printer=None, raw: bool = True, **kwargs):
         return self._repr_latex_(raw=raw, **kwargs)
 
-    def apply(self, operator):
+    def apply(self, operator, *args, **kwds):
         return distribution(
-            [operator(vf) for vf in self.vf_basis], formatting=self.formatting
+            [operator(vf, *args, **kwds) for vf in self.vf_basis],
+            formatting=self.formatting,
         )
 
     def __dgcv_apply__(self, operator):
         return self.apply(operator)
 
-    def __dgcv_conjugate__(self):
-        return self.apply(conjugate)
+    def __dgcv_conjugate__(self, symbolic=False):
+        return self.apply(conjugate, symbolic=symbolic)

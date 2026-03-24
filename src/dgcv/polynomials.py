@@ -30,7 +30,7 @@ from __future__ import annotations
 import functools
 import numbers
 import operator
-from typing import Any, List, Optional, Sequence, Union
+from typing import Any, List, Literal, Optional, Sequence, Union
 
 from ._config import dgcv_warning
 from .backends._polynomials import make_poly, poly_coeffs, poly_gens, poly_monoms
@@ -334,22 +334,26 @@ def getWeightedTerms(
     target_degrees: Sequence[int],
     weight_systems: Sequence[Sequence[int]],
     *,
-    format: str = "unformatted",
+    formatting: Literal["unformatted", "complex", "real"] = None,
 ) -> polynomial_dgcv:
     """
     Filter terms of `poly` whose monomials satisfy weighted degree constraints.
     """
+    if formatting not in {"unformatted", "complex", "real"}:
+        formatting = "unformatted"
     if len(target_degrees) != len(weight_systems):
         raise ValueError("target_degrees and weight_systems must have the same length.")
 
-    if format == "unformatted":
+    if formatting == "unformatted":
         P = poly.poly_obj_unformatted
-    elif format == "complex":
+    elif formatting == "complex":
         P = poly.poly_obj_complex
-    elif format == "real":
+    elif formatting == "real":
         P = poly.poly_obj_real
     else:
-        raise ValueError("format must be one of: 'unformatted', 'complex', 'real'")
+        raise ValueError(
+            "`formatting` must be one of: 'unformatted', 'complex', 'real'"
+        )
 
     gens = poly_gens(P)
     monoms = poly_monoms(P)

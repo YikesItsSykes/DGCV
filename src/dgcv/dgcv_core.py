@@ -1549,9 +1549,8 @@ class tensor_field_class(dgcv_class):
             else variable_spaces,
         )
 
-    def __dgcv_conjugate__(self):
-        from .backends._symbolic_router import conjugate
-
+    def __dgcv_conjugate__(self, symbolic=False):
+        conj = conjugate if symbolic is False else conj_with_hol_coor
         new_cd = {}
         vst = self.variable_spaces_types
         cache = self._conj_key_profiles
@@ -1559,7 +1558,7 @@ class tensor_field_class(dgcv_class):
         for k, v in self.coeff_dict.items():
             if k == tuple():
                 nk = tuple()
-                nv = conjugate(v)
+                nv = conj(v)
                 new_cd[nk] = new_cd.get(nk, 0) + nv
                 continue
 
@@ -1595,7 +1594,7 @@ class tensor_field_class(dgcv_class):
 
             new_idxs = tuple(i + s for i, s in zip(idxs, shifts))
             nk = new_idxs + tail
-            nv = conjugate(v)
+            nv = conj(v)
             new_cd[nk] = new_cd.get(nk, 0) + nv
 
         return self.__class__(
@@ -3869,7 +3868,7 @@ class polynomial_dgcv(dgcv_class):
 
     Methods
     -------
-    get_monomials(min_degree=0, max_degree=None, format='unformatted', return_coeffs=False)
+    get_monomials(min_degree=0, max_degree=None, formatting='unformatted', return_coeffs=False)
         Returns the monomials (or coefficients) of the polynomial within the specified
         degree range and representation.
 
@@ -4242,10 +4241,11 @@ class polynomial_dgcv(dgcv_class):
             degreeUpperBound=self.degreeUpperBound,
         )
 
-    def __dgcv_conjugate__(self):
+    def __dgcv_conjugate__(self, symbolic=False):
+        conj = conjugate if symbolic is False else conj_with_hol_coor
         params = None if self._parameters is None else self._parameters
         return polynomial_dgcv(
-            conjugate(self.polyExpr),
+            conj(self.polyExpr),
             varSpace=self.coordinates,
             parameters=params,
             degreeUpperBound=self.degreeUpperBound,
@@ -4395,7 +4395,7 @@ class polynomial_dgcv(dgcv_class):
             return v
 
         try:
-            coeffs = self.get_monomials(format="unformatted", return_coeffs=True)
+            coeffs = self.get_monomials(formatting="unformatted", return_coeffs=True)
             nz = 0
             for c in coeffs:
                 if not _scalar_is_zero(c):
@@ -4541,12 +4541,12 @@ class polynomial_dgcv(dgcv_class):
         min_degree: int = 0,
         max_degree: Optional[int] = None,
         *,
-        format: str = "unformatted",
+        formatting: str = "unformatted",
     ):
         return self.get_monomials(
             min_degree=min_degree,
             max_degree=max_degree,
-            format=format,
+            formatting=formatting,
             return_coeffs=True,
         )
 
@@ -5105,11 +5105,13 @@ class polynomial_dgcv(dgcv_class):
     def get_degree(self):
         return self.degree
 
-    def is_homogeneous(self, *, format: str = "unformatted") -> bool:
+    def is_homogeneous(self, *, formatting: str = "unformatted") -> bool:
         P = (
             self.poly_obj_unformatted
-            if format == "unformatted"
-            else (self.poly_obj_complex if format == "complex" else self.poly_obj_real)
+            if formatting == "unformatted"
+            else (
+                self.poly_obj_complex if formatting == "complex" else self.poly_obj_real
+            )
         )
         monoms = poly_monoms(P)
         if not monoms:
@@ -5117,8 +5119,8 @@ class polynomial_dgcv(dgcv_class):
         degs = {sum(int(e) for e in m) for m in monoms}
         return len(degs) <= 1
 
-    def leading_term(self, *, format: str = "unformatted"):
-        terms = self.get_monomials(format=format, return_coeffs=False)
+    def leading_term(self, *, formatting: str = "unformatted"):
+        terms = self.get_monomials(formatting=formatting, return_coeffs=False)
         if not terms:
             return zero()
 
@@ -7525,18 +7527,18 @@ def complex_struct_op(vf):
     )
 
 
-def conjugate_DGCV(expr):
+def conjugate_DGCV(expr, symbolic=False):
     dgcv_warning(
         "`conjugate_DGCV` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library. "
         "It will be removed in 2026. Please use `conjugate_dgcv` instead.",
         DeprecationWarning,
         stacklevel=2,
     )
-    return conjugate_dgcv(expr)
+    return conjugate_dgcv(expr, symbolic=symbolic)
 
 
-def conjugate_dgcv(expr):
-    return conjugate(expr)
+def conjugate_dgcv(expr, symbolic=False):
+    return conjugate(expr, symbolic=symbolic)
 
 
 def conj_with_real_coor(expr):
@@ -7557,9 +7559,9 @@ def im_with_real_coor(expr):
 
 def conj_with_hol_coor(expr):
     vr = get_variable_registry()
-    subsDictA = vr["conversion_dictionaries"]["conjugation"]
+    subsDictA = dict(vr["conversion_dictionaries"]["conjugation"])
     subsDict = subsDictA | {imag_unit(): -imag_unit()}
-    return allToSym(expr).subs(subsDict, simultaneous=True)
+    return subs(allToSym(expr), subsDict, simultaneous=True)
 
 
 def re_with_hol_coor(expr):

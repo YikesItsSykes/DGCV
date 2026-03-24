@@ -98,13 +98,16 @@ def subs(expr, subs_data, **kwargs):
     f = getattr(expr, "subs", None)
     if f is None:
         return expr
-    return f(subs_data, **kwargs)
+    try:
+        return f(subs_data, **kwargs)
+    except Exception:
+        return f(subs_data)
 
 
-def conjugate(expr):
+def conjugate(expr, symbolic=False):
     f = getattr(expr, "__dgcv_conjugate__", None)
     if callable(f):
-        return f()
+        return f(symbolic=symbolic)
 
     kind = engine_kind()
 

@@ -104,7 +104,18 @@ class CR_structure(dgcv_class):
         default_coordinate_format: Literal["real", "complex"] = None,
         parameters: set | list | tuple = None,
         enforce_finding_real_tangent_bundle_basis: bool = False,
+        weights: list | tuple = None,
     ):
+        self._weight_map = None
+        if isinstance(weights, (list, tuple)):
+            if len(weights) != len(holomorphic_coordinates):
+                dgcv_warning(
+                    "The provided `weights` list is not the same length as the provided holomorphic coordinates list, and was ignored."
+                )
+            else:
+                self._weight_map = {
+                    v: w for v, w in zip(holomorphic_coordinates, weights)
+                }
         formatted_coordinates = []
         parameters = set() if parameters is None else set(parameters)
         seen_coordinates = set()
@@ -285,6 +296,7 @@ class CR_structure(dgcv_class):
         self._LFM = None
         self._Freeman_filtration = None
         self._real_def_eqns_cache = None
+        self._symmetries = dict()
 
         super().__init__()
 
@@ -359,7 +371,7 @@ class CR_structure(dgcv_class):
                 )
             else:
                 self._holomorphic_CR_distribution = conjugate(
-                    self._antiholomorphic_CR_dist
+                    self._antiholomorphic_CR_dist, symbolic=True
                 )
         return self._holomorphic_CR_distribution
 
@@ -379,7 +391,7 @@ class CR_structure(dgcv_class):
                 )
             else:
                 self._antiholomorphic_CR_dist = conjugate(
-                    self._holomorphic_CR_distribution
+                    self._holomorphic_CR_distribution, symbolic=True
                 )
         return self._antiholomorphic_CR_dist
 
@@ -438,8 +450,8 @@ class CR_structure(dgcv_class):
                 self.tangent_bundle
                 if self.default_coordinate_format == "real"
                 else distribution(
-                    [X + conjugate(X) for X in tangent]
-                    + [I * (conjugate(X) - X) for X in tangent],
+                    [X + conjugate(X, symbolic=True) for X in tangent]
+                    + [I * (conjugate(X, symbolic=True) - X) for X in tangent],
                     find_basis=True,
                 )
             )
@@ -538,7 +550,9 @@ class CR_structure(dgcv_class):
             imag_unit()
             / 2
             * self.Levi_form_skew_unrestricted(
-                vf1, conjugate(vf2), format_scalar_as_vector=format_scalar_as_vector
+                vf1,
+                conjugate(vf2, symbolic=True),
+                format_scalar_as_vector=format_scalar_as_vector,
             )
         )
 
@@ -661,6 +675,88 @@ class CR_structure(dgcv_class):
         if len(self.Freeman_filtration[-1].vf_basis) > 0:
             return "infinity"
         return len(self.Freeman_filtration) - 1
+
+    def compute_weighted_symmetries(
+        self,
+        target_weights,
+        coordinate_weights=None,
+        report_progress=False,
+        verbose=False,
+        degreeCap: int = 0,
+        assume_polynomial: bool = False,
+        simplify: bool = False,
+    ):
+        if not self.graph_format:
+            raise RuntimeError(
+                "`CR_structure.compute_weighted_symmetries` is only supported for `CR_structure` instances initialized in a 'graph format'. The `defining_equations` parameter given for instance initialization needs to have been in graph format, meaning as a dictionary whose keys are graphing variables and whose values are functions of other variables."
+            )
+        if isinstance(target_weights, expr_numeric_types()):
+            target_weights = [target_weights]
+        else:
+            target_weights = list(target_weights)
+        if not all(isinstance(elem, expr_numeric_types()) for elem in target_weights):
+            dgcv_warning(
+                "provided `target_weights` to compute symmetries for is not in a supported format. Should be either a simple scalar like an integer or rational or a list of them."
+            )
+            return {}
+        caching = False
+        if coordinate_weights is None:
+            caching = True
+            if self._weight_map is None:
+                raise RuntimeError(
+                    "This `CR_structure` instance was not initialized with valid coordinate weights so the optional `coordinate_weights` keyword needs to be provided instead."
+                )
+            else:
+                coordinate_weights = [
+                    self._weight_map[var]
+                    for var in self.holomorphic_coordinates
+                    if var in self.holomorphic_coordinates
+                ]
+            if len(coordinate_weights) != len(self.holomorphic_coordinates):
+                raise RuntimeError(
+                    "This `CR_structure` instance was not initialized with valid coordinate weights so the optional `coordinate_weights` keyword needs to be provided instead. A possible reason could be that the given `holomorphic_coordinates` list in the `CR_structure` initialization was incomplete, with additional variables appearing in the initialization defining equation system."
+                )
+        elif len(coordinate_weights) != len(self.holomorphic_coordinates):
+            raise RuntimeError(
+                "`coordinate_weights` must be an integer list of the same length as the CR_structure.holomorphic_coordinates list."
+            )
+        symmetries = dict()
+        if verbose:
+            print("Using variable weights:")
+            print(
+                f"{', '.join(['[' + str(var) + '] = ' + str(w) for var, w in zip(self.holomorphic_coordinates, coordinate_weights)])}"
+            )
+            print(" ")
+        for weight in target_weights:
+            if report_progress:
+                print(f"Computing symmetries of weight {weight}:")
+            if weight in self._symmetries and caching is True:
+                symmetries[weight] = self._symmetries[weight]
+            else:
+                symmetries[weight] = findWeightedCRSymmetries(
+                    self.flattened_defining_equations,
+                    holomorphic_coordinates=self.holomorphic_coordinates,
+                    coordinate_weights=coordinate_weights,
+                    symmetry_weight=weight,
+                    graph_variable=list(self.graph_equations.keys()),
+                    returnVectorFieldBasis=True,
+                    degreeCap=degreeCap,
+                    assume_polynomial=assume_polynomial,
+                    simplify=simplify,
+                    parameters=self.parameters if self.parameters else None,
+                )
+                if caching is True:
+                    self._symmetries[weight] = symmetries[weight]
+            if report_progress:
+                number_found = len(symmetries[weight])
+                grammar_detail = (
+                    ["symmetry", "was"] if number_found == 1 else ["symmetries", "were"]
+                )
+                print(
+                    f"{number_found} {grammar_detail[0]} of weight {weight} {grammar_detail[1]} found."
+                )
+                print(" ")
+        return symmetries
 
 
 class abstract_CR_structure(dgcv_class):
@@ -875,7 +971,7 @@ def findWeightedCRSymmetries(
             if query_dgcv_categories(expr, "polynomial")
             else polynomial_dgcv(expr, poly_gens_vars)
         )
-        coef_eqns.extend([allToReal(c) for c in P.get_coeffs(format="unformatted")])
+        coef_eqns.extend([allToReal(c) for c in P.get_coeffs(formatting="unformatted")])
 
     solutions = solve_dgcv(coef_eqns, unknowns_t, method="linsolve")
 
@@ -959,7 +1055,11 @@ def model2Nondegenerate(
     simplify: bool = True,
     return_CR_structure: bool = False,
     parameters: set = None,
+    coordinates_to_weights_dict=None,
 ):
+    """
+    The parameter `coordinates_to_weights_dict` is relevant only if setting `return_CR_structure=True`. In this case it may be set to a dictionary with one key/value pair. The key should be a tuple of holomorphic coordinates, and the value should be a list/tuple of corresponding weights.
+    """
     if return_CR_structure is True:
         use_symbolic_conjugates = True
 
