@@ -3341,7 +3341,9 @@ class algebra_class(dgcv_class):
         if (plain_text is False) and (not is_rich_displaying_available()):
             plain_text = True
 
-        apply_vscode = bool(dgcvSR.get("extra_support_for_math_in_tables"))
+        extra_support_for_math_in_tables = bool(
+            dgcvSR.get("extra_support_for_math_in_tables")
+        )
 
         subAlg = bool(
             get_dgcv_category(_from_subalg) == "subalgebra"
@@ -3403,7 +3405,7 @@ class algebra_class(dgcv_class):
             algebra_name_cap=algebra_name_cap,
             style=style,
             use_latex=use_latex,
-            apply_vscode_workarounds=apply_vscode,
+            extra_support_for_math_in_tables=extra_support_for_math_in_tables,
         )
         if return_displayable:
             return out
@@ -3874,7 +3876,7 @@ def _summary_render_rich(
     algebra_name_cap: str,
     style,
     use_latex: bool,
-    apply_vscode_workarounds: bool,
+    extra_support_for_math_in_tables: bool,
 ):
     loc_style = get_style(style)
 
@@ -4183,7 +4185,7 @@ margin: 0;
         ).to_html()
         return latex_in_html(
             _HTMLWrapper(_stack_many([pv0])),
-            apply_VSCode_workarounds=apply_vscode_workarounds,
+            extra_support_for_math_in_tables=extra_support_for_math_in_tables,
         )
 
     basis_elems = getattr(refAlg, "basis", ()) or ()
@@ -4513,7 +4515,7 @@ margin: 0;
 
     return latex_in_html(
         _HTMLWrapper(_stack_many(built_blocks)),
-        apply_VSCode_workarounds=apply_vscode_workarounds,
+        extra_support_for_math_in_tables=extra_support_for_math_in_tables,
     )
 
 
@@ -4982,7 +4984,7 @@ class algebra_element_class(dgcv_class):
         return self._repr_latex_(raw=raw)
 
     def _latex_verbose(self, printer=None):
-        """depricated"""
+        """deprecated"""
         if not self.algebra._registered:
             if (
                 self.algebra._exclude_from_VMF == retrieve_passkey()

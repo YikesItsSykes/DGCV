@@ -25,9 +25,19 @@ class dgcv_class:
         return self
 
     def _latex(self, printer=None, raw: bool = True, **kwargs):
+        if (
+            type(self)._latex is dgcv_class._latex
+            and type(self)._repr_latex_ is dgcv_class._repr_latex_
+        ):
+            return self.__str__()
         return self._repr_latex_(raw=raw)
 
     def _repr_latex_(self, raw: bool = False, **kwargs):
+        if (
+            type(self)._latex is dgcv_class._latex
+            and type(self)._repr_latex_ is dgcv_class._repr_latex_
+        ):
+            return self.__str__()
         s = self._latex(raw=True, **kwargs)
         return s if raw else f"$\\displaystyle {s}$"
 

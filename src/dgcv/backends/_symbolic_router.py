@@ -302,16 +302,31 @@ def as_numer_denom(expr):
 
 
 def common_multiple(*exprs):
-    kind = engine_kind()
-    if kind == "sympy":
-        sp = engine_module()
+    return lcm_routed(*exprs)
+
+
+def lcm_routed(*exprs):
+    try:
         if len(exprs) == 0:
             return
         if len(exprs) == 1:
             return exprs[0]
-        return common_multiple(sp.lcm(exprs[0], exprs[1]), *exprs[2:])
-    else:
-        return math.prod(*exprs)
+        return common_multiple(engine_module().lcm(exprs[0], exprs[1]), *exprs[2:])
+    except Exception:
+        return math.prod(exprs)
+
+
+def gcd_routed(*exprs):
+    try:
+        if len(exprs) == 0:
+            return
+        if len(exprs) == 1:
+            if exprs[0] == 0:
+                return 1
+            return exprs[0]
+        return gcd_routed(engine_module().gcd(exprs[0], exprs[1]), *exprs[2:])
+    except Exception:
+        return math.prod(exprs)
 
 
 def ilcm(*ints):
@@ -369,16 +384,25 @@ def expand(expr, **kwargs):
     """
 
     kind = engine_kind()
-    f = getattr(expr, "__dgcv_expand__", getattr(expr, "__dgcv_apply__", None))
+    f = getattr(expr, "__dgcv_expand__", None)
+    if f:
+        try:
+            return f(**kwargs)
+        except TypeError:
+            return f()
+    f = getattr(expr, "__dgcv_apply__", None)
     if f:
         try:
             return f(expand, **kwargs)
         except TypeError:
-            return f(expand)
+            return f(expand)  ###!!! remove try/excepts here
 
     if kind == "sympy":
         sp = engine_module()
-        return sp.expand(expr, **kwargs)
+        try:
+            return sp.expand(expr, **kwargs)
+        except Exception:
+            return expr
 
     if kind == "sage":
         # Sage has .expand() on symbolic expressions; if it wasn't callable above,

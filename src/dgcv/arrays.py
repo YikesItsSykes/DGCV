@@ -17,6 +17,7 @@ from ._config import dgcv_warning
 from ._safeguards import (
     check_dgcv_category,
     create_key,
+    get_variable_registry,
     query_dgcv_categories,
     retrieve_passkey,
 )
@@ -27,9 +28,16 @@ from .backends._symbolic_router import (
     conjugate,
     get_free_symbols,
     simplify,
+    subs,
 )
-from .backends._types_and_constants import expr_numeric_types, fast_scalar_types, symbol
+from .backends._types_and_constants import (
+    expr_numeric_types,
+    fast_scalar_types,
+    imag_unit,
+    symbol,
+)
 from .base import dgcv_class
+from .combinatorics import carProd
 from .printing import array_latex_helper, array_VS_printer
 
 __all__ = ["array_dgcv", "matrix_dgcv", "assemble_block_matrix"]
@@ -58,7 +66,7 @@ def _unspool(index, shape):
 class array_dgcv(dgcv_class):
     _dgcv_category = "array"
 
-    def __init__(self, array_data, *, shape=None):
+    def __init__(self, array_data=None, *, shape=None, entry_rule=None):
         if shape is not None:
             if isinstance(shape, (list, tuple)):
                 shape = tuple(shape)
@@ -73,7 +81,25 @@ class array_dgcv(dgcv_class):
                 )
 
             self.shape = shape
-
+        if array_data is None:
+            if entry_rule is None:
+                array_data = dict()
+                self.shape = (0,)
+            else:
+                try:
+                    assert shape is not None
+                    array_dict = dict()
+                    for idx in carProd(*[range(j) for j in shape]):
+                        val = entry_rule(*idx)
+                        if val != 0:
+                            array_dict[tuple(idx)] = entry_rule(*idx)
+                    array_data = array_dict
+                except Exception:
+                    dgcv_warning(
+                        "The given `entry_rule` and `shape` combination given to `array_dgcv` could not be processed. A trivial array was constructed instead."
+                    )
+                    array_data = dict()
+                    self.shape = (0,)
         self._data, self.shape = self._normalize(array_data)
         self.ndim = len(self.shape)
         self._dgcv_class_check = retrieve_passkey()
@@ -183,7 +209,7 @@ class array_dgcv(dgcv_class):
                     flat[base + j] = array_data[i, j]
             return flat, shape
 
-        raise TypeError("Unsupported array_data type")
+        raise TypeError(f"Unsupported array_data type: {type(array_data)}")
 
     def __str__(self):
         return array_VS_printer(self)
@@ -308,6 +334,9 @@ class array_dgcv(dgcv_class):
 
         return target
 
+    def __dgcv_apply__(self, func):
+        return self.apply(func)
+
     def subs(self, *args, **kwargs):
         def f(x):
             if x is None:
@@ -349,8 +378,8 @@ class matrix_dgcv(array_dgcv):
 
     _dgcv_categories = {"matrix"}
 
-    def __init__(self, array_data, *, shape=None):
-        super().__init__(array_data, shape=shape)
+    def __init__(self, array_data=None, *, shape=None, entry_rule=None):
+        super().__init__(array_data=array_data, shape=shape, entry_rule=entry_rule)
 
         if self.ndim == 1:
             n = self.shape[0]
@@ -511,11 +540,16 @@ class matrix_dgcv(array_dgcv):
 
         return out
 
-    def conjugate(self):
+    def conjugate(self, symbolic=False):
+        if symbolic is True:
+            cd = dict(
+                get_variable_registry()["conversion_dictionaries"]["conjugation"]
+            ) | {imag_unit(): -imag_unit()}
+            return subs(self, cd, simultaneous=True)
         return self.apply(conjugate)
 
-    def conjugate_transpose(self):
-        return self.apply(conjugate).transpose()
+    def conjugate_transpose(self, symbolic=False):
+        return self.conjugate(symbolic=symbolic).transpose()
 
     @property
     def T(self):
@@ -1307,7 +1341,13 @@ class matrix_dgcv(array_dgcv):
             out.append((lam, int(mult), vv))
         return out
 
-    def symbolic_engine_method(self, method: str, return_anything: bool = False):
+    def symbolic_engine_method(
+        self,
+        method: str,
+        method_arguments=None,
+        method_keywords=None,
+        return_anything: bool = False,
+    ):
         """
         Accepts a method name for matrix classes from whichever symbolic engine is active (set in the dgcv settings registry). Attempts to apply that method and if the result is matrix-like then it is converted back into a `matrix_dgcv` class, which is returned. Will return unaltered matrix if the attempt fails, along with a warning that this happened.
 
@@ -1316,15 +1356,17 @@ class matrix_dgcv(array_dgcv):
         As dgcv is compatible with multiple symbolic engines, of which each have their respective names for matrix class methods, supported method names is fully reliant on whichever symbolic engine is selected via dgcv settings (use `set_dgcv_settings()` to change it).
         """
         value = getattr(self._to_engine_matrix(), method)
+        args = [] if method_arguments is None else method_arguments
+        kwds = {} if method_keywords is None else method_keywords
         if callable(value):
-            value = value()
+            value = value(*args, **kwds)
         if return_anything:
             return value
         try:
             return matrix_dgcv(value)
         except Exception:
             dgcv_warning(
-                "Requested method name either does not exist for the current symbolic engine's matrix class or it does not return a matrix-like value."
+                "Requested method name either does not exist for the current symbolic engine's matrix class or it does not return something `dgcv` supports as a matrix-like value."
             )
             return self
 

@@ -50,18 +50,20 @@ from .backends._polynomials import (
     poly_coeffs,
     poly_gens,
     poly_monoms,
+    poly_terms,
     poly_total_degree,
 )
 from .backends._symbolic_router import (
     _scalar_is_zero,
     as_numer_denom,
     cancel,
-    common_multiple,
     conjugate,
     expand,
+    gcd_routed,
     get_free_symbols,
     ilcm,
     im,
+    lcm_routed,
     ratio,
     re,
     simplify,
@@ -93,7 +95,7 @@ from .conversions import (
     symToReal,
 )
 from .printing import _unwrap_math_delims, tensor_field_latex2, tensor_field_printer2
-from .vmf import clearVar, vmf_lookup
+from .vmf import clearVar, order_coordinates, vmf_lookup
 
 __all__ = [
     "tensor_field_class",
@@ -353,6 +355,7 @@ class tensor_field_class(dgcv_class):
         ] = "open"
         self._num_den = None
         self._denom_cm = None
+        self._num_cd = None
 
         if coeff_dict == {}:
             coeff_dict = {tuple(): 0}
@@ -360,14 +363,15 @@ class tensor_field_class(dgcv_class):
         old_mode = (varSpace is not None) or (valence is not None)
 
         if (not old_mode) and self._is_scalar_coeff_dict(coeff_dict):
-            self.varSpace = tuple() if varSpace is None else tuple(varSpace)
+            self.coordinates = tuple() if varSpace is None else tuple(varSpace)
             self.valence = tuple()
             self.coeff_dict = {tuple(): coeff_dict.get(tuple(), 0)}
             self.data_shape = "all"
             self._shape_checked = True
+            self.varSpace = self.coordinates
         else:
             if old_mode:
-                self.varSpace, self.valence, self.coeff_dict, self.data_shape = (
+                self.coordinates, self.valence, self.coeff_dict, self.data_shape = (
                     self._init_from_old_format(
                         varSpace, coeff_dict, valence, data_shape
                     )
@@ -377,7 +381,7 @@ class tensor_field_class(dgcv_class):
                     coeff_dict, self._variable_spaces
                 )
                 (
-                    self.varSpace,
+                    self.coordinates,
                     self.valence,
                     self.coeff_dict,
                     self.data_shape,
@@ -412,6 +416,8 @@ class tensor_field_class(dgcv_class):
                         )
 
                     self.coeff_dict, self._validated_format = new_cd, "complex"
+            self.coordinates = order_coordinates(self.coordinates)
+            self.varSpace = self.coordinates
             self._shape_checked = True
 
     def _set_degrees(self):
@@ -441,6 +447,10 @@ class tensor_field_class(dgcv_class):
     @property
     def total_degree(self):
         return self.max_degree
+
+    @property
+    def degree(self):
+        return self.total_degree
 
     @staticmethod
     def _is_scalar_coeff_dict(d: Dict[Any, Any]) -> bool:
@@ -573,11 +583,13 @@ class tensor_field_class(dgcv_class):
 
     @property
     def _compute_nd_decomp(self):
-        from .backends._symbolic_router import as_numer_denom
+        from .backends._symbolic_router import as_numer_denom, expand
 
         if self._num_den is None:
             self._num_den = tuple(
-                zip(*[as_numer_denom(coef) for coef in self.coeff_dict.values()])
+                zip(
+                    *[as_numer_denom(expand(coef)) for coef in self.coeff_dict.values()]
+                )
             )
         return self._num_den
 
@@ -592,12 +604,18 @@ class tensor_field_class(dgcv_class):
     def scale_to_polynomial_attempt(self, factor=True, return_scale=False):
 
         if self._denom_cm is None:
-            self._denom_cm = factor_dgcv(common_multiple(*self.denominators))
+            self._denom_cm = lcm_routed(*self.denominators)
+        if self._num_cd is None:
+            self._num_cd = gcd_routed(*self.numerators)
         if return_scale:
             return factor_dgcv(
-                self._denom_cm * self
-            ) if factor else self._denom_cm * self, self._denom_cm
-        return factor_dgcv(self._denom_cm * self) if factor else self._denom_cm * self
+                self._denom_cm * self / self._num_cd
+            ) if factor else self._denom_cm * self / self._num_cd, self._denom_cm
+        return (
+            factor_dgcv(self._denom_cm * self / self._num_cd)
+            if factor
+            else self._denom_cm * self / self._num_cd
+        )
 
     @property
     def homogeneous_parts(self):
@@ -1346,8 +1364,6 @@ class tensor_field_class(dgcv_class):
 
         obj = self
         if do_all_to_sym:
-            from .conversions import allToSym
-
             obj = allToSym(obj)
 
         new_cd = {}
@@ -2616,7 +2632,7 @@ class tensor_field_class(dgcv_class):
         if not isinstance(other, self.__class__):
             return False
         if (
-            self.varSpace != other.varSpace
+            self.coordinates != other.coordinates
             or self.valence != other.valence
             or self.dgcvType != other.dgcvType
         ):
@@ -2643,7 +2659,7 @@ class tensor_field_class(dgcv_class):
         g = self._expand_special_to_general(self.coeff_dict, self.data_shape)
         items = tuple(sorted((k, simplify(allToReal(v))) for k, v in g.items()))
         return hash(
-            (self.varSpace, self.valence, self.data_shape, self.dgcvType, items)
+            (self.coordinates, self.valence, self.data_shape, self.dgcvType, items)
         )
 
     @property
@@ -3400,10 +3416,6 @@ class differential_form_class(tensor_field_class):
             _inheritance=_inheritance,
         )
 
-    @property
-    def degree(self):
-        return self._df_degree
-
     def simplify_format(self, format_type=None, skipVar=None):
         if format_type not in {None, "holomorphic", "real", "symbolic_conjugate"}:
             dgcv_warning(
@@ -3922,14 +3934,15 @@ class polynomial_dgcv(dgcv_class):
         if varSpace is None:
             self._parameters = hard_filter
             if isinstance(polyExpr, Number) and not isinstance(polyExpr, bool):
-                self.varSpace = ()
+                self.coordinates = ()
             else:
-                self.varSpace = tuple(get_free_symbols(polyExpr))
+                self.coordinates = order_coordinates(tuple(get_free_symbols(polyExpr)))
         else:
-            self.varSpace = polynomial_dgcv._normalize_polynomial_varspace_via_vmf(
-                tuple(varSpace)
+            self.coordinates = order_coordinates(
+                polynomial_dgcv._normalize_polynomial_varspace_via_vmf(tuple(varSpace))
             )
             self._parameters = hard_filter if parameters is not None else None
+        self.varSpace = self.coordinates
 
         self.degreeUpperBound = degreeUpperBound
 
@@ -3937,10 +3950,15 @@ class polynomial_dgcv(dgcv_class):
         self._poly_obj_unformatted = None
         self._poly_obj_complex = None
         self._poly_obj_real = None
+        self._valence_sorting = None
+        self._terms = None
         self._holomorphic_part = None
         self._antiholomorphic_part = None
         self._pluriharmonic_part = None
         self._mixed_terms_part = None
+        self._holomorphic_dominated_part = None
+        self._antiholo_dominated_part = None
+        self._balanced_terms = None
         self._is_zero = None
         self._is_one = None
         self._is_minus_one = None
@@ -3955,7 +3973,7 @@ class polynomial_dgcv(dgcv_class):
         self._dgcv_categories = {"polynomial"}
 
         if src is not None:
-            same_varspace = self.varSpace == src.varSpace
+            same_varspace = self.coordinates == src.coordinates
             same_deg_ub = self.degreeUpperBound == src.degreeUpperBound
             same_params_semantics = self._parameters == src._parameters
 
@@ -3979,20 +3997,20 @@ class polynomial_dgcv(dgcv_class):
     def parameters(self) -> Tuple[Any, ...]:
         if self._parameters is None:
             fs = tuple(get_free_symbols(self.polyExpr))
-            vs = set(self.varSpace)
+            vs = set(self.coordinates)
             self._parameters = tuple(x for x in _stable_dedupe(fs) if x not in vs)
         return self._parameters
 
     @property
     def free_symbols(self) -> set:
-        return set(self.parameters) | set(self.varSpace)
+        return set(self.parameters) | set(self.coordinates)
 
     @property
     def degree(self) -> Optional[int]:
         if self._degree is None:
             try:
                 self._degree = poly_total_degree(
-                    self.polyExpr, self.varSpace, parameters=self.parameters
+                    self.polyExpr, self.coordinates, parameters=self.parameters
                 )
             except Exception:
                 self._degree = None
@@ -4160,13 +4178,13 @@ class polynomial_dgcv(dgcv_class):
         new_expr = fn_expr(self.polyExpr, **kw_expr)
 
         if fn_basis is None:
-            new_varSpace = self.varSpace
+            new_varSpace = self.coordinates
             new_params = None if self._parameters is None else self._parameters
         else:
             kw_basis = {"skipVar": skipVar, "convert_everything": convert_everything}
 
             vs_atoms = []
-            for v in self.varSpace:
+            for v in self.coordinates:
                 vv = fn_basis(v, **kw_basis)
                 vs_atoms.extend(get_free_symbols(vv))
             new_varSpace = tuple(_stable_dedupe(vs_atoms))
@@ -4193,7 +4211,7 @@ class polynomial_dgcv(dgcv_class):
         )
 
         gens = []
-        for v in self.varSpace:
+        for v in self.coordinates:
             vv = allToSym(v, skipVar=skipVar, convert_everything=convert_everything)
             gens.extend(get_free_symbols(vv))
         gens_c = _stable_dedupe(gens)
@@ -4207,7 +4225,7 @@ class polynomial_dgcv(dgcv_class):
         )
 
         gens = []
-        for v in self.varSpace:
+        for v in self.coordinates:
             vv = allToReal(v, skipVar=skipVar, convert_everything=convert_everything)
             gens.extend(get_free_symbols(vv))
         gens_r = _stable_dedupe(gens)
@@ -4219,7 +4237,7 @@ class polynomial_dgcv(dgcv_class):
         new_expr = simplify(self.polyExpr, method=method, **kwargs)
         return polynomial_dgcv(
             new_expr,
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=self._parameters if self._parameters is not None else None,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4228,7 +4246,7 @@ class polynomial_dgcv(dgcv_class):
         params = None if self._parameters is None else self._parameters
         return polynomial_dgcv(
             conjugate(self.polyExpr),
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=params,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4237,7 +4255,7 @@ class polynomial_dgcv(dgcv_class):
     def poly_obj_unformatted(self):
         if self._poly_obj_unformatted is None:
             self._poly_obj_unformatted = make_poly(
-                self.polyExpr, self.varSpace, parameters=self.parameters
+                self.polyExpr, self.coordinates, parameters=self.parameters
             )
         return self._poly_obj_unformatted
 
@@ -4300,7 +4318,7 @@ class polynomial_dgcv(dgcv_class):
             self._is_constant = all(all(int(e) == 0 for e in m) for m in poly_monoms(P))
         except Exception:
             try:
-                self._is_constant = len(self.varSpace) == 0
+                self._is_constant = len(self.coordinates) == 0
             except Exception:
                 self._is_constant = False
 
@@ -4399,44 +4417,42 @@ class polynomial_dgcv(dgcv_class):
         """
         Return (gens, monoms, coeffs) for the complex view.
         """
-        if self._complex_terms_cache is not None:
-            return self._complex_terms_cache
+        if self._complex_terms_cache is None:
+            expr_c, gens_c, params_c = self._complex_view()
 
-        expr_c, gens_c, params_c = self._complex_view()
+            gens = tuple(gens_c)
 
-        gens = tuple(gens_c)
+            _gens_out, monoms, coeffs = poly_terms(
+                expr_c,
+                gens,
+                assume_polynomial=True,
+                parameters=params_c,
+            )
 
-        from .backends._polynomials import poly_terms
-
-        _gens_out, monoms, coeffs = poly_terms(
-            expr_c,
-            gens,
-            assume_polynomial=False,
-            parameters=params_c,
-        )
-
-        self._complex_terms_cache = (tuple(_gens_out), monoms, coeffs)
+            self._complex_terms_cache = (tuple(_gens_out), monoms, coeffs)
         return self._complex_terms_cache
 
     def _complex_holo_anti_indices(self):
-        if self._complex_holo_anti_idx_cache is not None:
-            return self._complex_holo_anti_idx_cache
+        if self._complex_holo_anti_idx_cache is None:
+            gens, _monoms, _coeffs = self._complex_terms()
 
-        gens, _monoms, _coeffs = self._complex_terms()
+            holo_idx = []
+            anti_idx = []
+            standard_idx = []
+            for i, g in enumerate(gens):
+                g_info = vmf_lookup(g).get("sub_type")
+                if g_info == "anti":
+                    anti_idx.append(i)
+                elif g_info == "holo":
+                    holo_idx.append(i)
+                else:
+                    standard_idx.append(i)
 
-        holo_idx = []
-        anti_idx = []
-        conjugation_prefix = get_dgcv_settings_registry().get(
-            "conjugation_prefix", "BAR"
-        )
-        for i, g in enumerate(gens):
-            s = str(g)
-            if s.startswith(conjugation_prefix):
-                anti_idx.append(i)
-            else:
-                holo_idx.append(i)
-
-        self._complex_holo_anti_idx_cache = (tuple(holo_idx), tuple(anti_idx))
+            self._complex_holo_anti_idx_cache = (
+                tuple(holo_idx),
+                tuple(anti_idx),
+                tuple(standard_idx),
+            )
         return self._complex_holo_anti_idx_cache
 
     def get_monomials(
@@ -4444,25 +4460,28 @@ class polynomial_dgcv(dgcv_class):
         min_degree: int = 0,
         max_degree: Optional[int] = None,
         *,
-        format: str = "unformatted",
+        formatting: Literal["unformatted", "complex", "real"] = None,
         return_coeffs: bool = False,
         separate_coeffs: bool = False,
         as_dict: bool = False,
     ):
-        if format not in ("unformatted", "complex", "real"):
-            raise ValueError("format must be one of: 'unformatted', 'complex', 'real'")
-
-        if return_coeffs and (separate_coeffs or as_dict):
-            raise ValueError(
-                "return_coeffs cannot be combined with separate_coeffs or as_dict"
+        if formatting is None:
+            formatting = "unformatted"
+        elif formatting not in ("unformatted", "complex", "real"):
+            dgcv_warning(
+                "The `formatting` parameter was set to an unsupported value in `get_monomials`"
             )
+            formatting = "unformatted"
 
         if as_dict:
+            return_coeffs = False
             separate_coeffs = True
+        elif separate_coeffs:
+            return_coeffs = False
 
-        if format == "unformatted":
+        if formatting == "unformatted":
             P = self.poly_obj_unformatted
-        elif format == "complex":
+        elif formatting == "complex":
             P = self.poly_obj_complex
         else:
             P = self.poly_obj_real
@@ -4539,49 +4558,86 @@ class polynomial_dgcv(dgcv_class):
         return zero()
 
     @property
+    def _valence_sorted_parts(self):
+        if self._valence_sorting is None:
+            gens, monoms, coeffs = self._complex_terms()
+            _holo_idx, anti_idx, standard_idx = self._complex_holo_anti_indices()
+            terms = dict()
+            holo_part = 0
+            anti_part = 0
+            mixed_terms = 0
+            for m, c in zip(monoms, coeffs):
+                h_degree = sum(m[i] for i in _holo_idx) if _holo_idx else 0
+                a_degree = sum(m[i] for i in anti_idx) if anti_idx else 0
+                s_degree = sum(m[i] for i in anti_idx) if standard_idx else 0
+                key, new_term = (
+                    (h_degree, a_degree, s_degree),
+                    _term_from_monom(gens, m, c),
+                )
+                terms[key] = terms.get(key, 0) + new_term
+                if h_degree == 0:
+                    if s_degree == 0:
+                        anti_part += new_term
+                elif a_degree != 0 or s_degree != 0:
+                    mixed_terms += new_term
+                if a_degree == 0:
+                    if s_degree == 0:
+                        holo_part += new_term
+                    else:
+                        mixed_terms += new_term
+            self._antiholomorphic_part = anti_part
+            self._holomorphic_part = holo_part
+            self._mixed_terms_part = mixed_terms
+            self._valence_sorting = terms
+        return self._valence_sorting
+
+    @property
     def holomorphic_part(self):
         if self._holomorphic_part is None:
-            gens, monoms, coeffs = self._complex_terms()
-            _holo_idx, anti_idx = self._complex_holo_anti_indices()
+            _ = self._valence_sorted_parts
+            # gens, monoms, coeffs = self._complex_terms()
+            # _holo_idx, anti_idx = self._complex_holo_anti_indices()
 
-            terms = []
-            for m, c in zip(monoms, coeffs):
-                if anti_idx and any(int(m[i]) != 0 for i in anti_idx):
-                    continue
-                terms.append(_term_from_monom(gens, m, c))
+            # terms = []
+            # for m, c in zip(monoms, coeffs):
+            #     if anti_idx and any(int(m[i]) != 0 for i in anti_idx):
+            #         continue
+            #     terms.append(_term_from_monom(gens, m, c))
 
-            self._holomorphic_part = sum(terms, zero()) if terms else zero()
+            # self._holomorphic_part = sum(terms, zero()) if terms else zero()
         return self._holomorphic_part
 
     @property
     def antiholomorphic_part(self):
         if self._antiholomorphic_part is None:
-            gens, monoms, coeffs = self._complex_terms()
-            holo_idx, _anti_idx = self._complex_holo_anti_indices()
+            _ = self._valence_sorted_parts
+            # gens, monoms, coeffs = self._complex_terms()
+            # holo_idx, _anti_idx = self._complex_holo_anti_indices()
 
-            terms = []
-            for m, c in zip(monoms, coeffs):
-                if holo_idx and any(int(m[i]) != 0 for i in holo_idx):
-                    continue
-                terms.append(_term_from_monom(gens, m, c))
+            # terms = []
+            # for m, c in zip(monoms, coeffs):
+            #     if holo_idx and any(int(m[i]) != 0 for i in holo_idx):
+            #         continue
+            #     terms.append(_term_from_monom(gens, m, c))
 
-            self._antiholomorphic_part = sum(terms, zero()) if terms else zero()
+            # self._antiholomorphic_part = sum(terms, zero()) if terms else zero()
         return self._antiholomorphic_part
 
     @property
     def mixed_terms(self):
         if self._mixed_terms_part is None:
-            gens, monoms, coeffs = self._complex_terms()
-            holo_idx, anti_idx = self._complex_holo_anti_indices()
+            _ = self._valence_sorted_parts
+        #     gens, monoms, coeffs = self._complex_terms()
+        #     holo_idx, anti_idx = self._complex_holo_anti_indices()
 
-            terms = []
-            for m, c in zip(monoms, coeffs):
-                has_holo = holo_idx and any(int(m[i]) != 0 for i in holo_idx)
-                has_anti = anti_idx and any(int(m[i]) != 0 for i in anti_idx)
-                if has_holo and has_anti:
-                    terms.append(_term_from_monom(gens, m, c))
+        #     terms = []
+        #     for m, c in zip(monoms, coeffs):
+        #         has_holo = holo_idx and any(int(m[i]) != 0 for i in holo_idx)
+        #         has_anti = anti_idx and any(int(m[i]) != 0 for i in anti_idx)
+        #         if has_holo and has_anti:
+        #             terms.append(_term_from_monom(gens, m, c))
 
-            self._mixed_terms_part = sum(terms, zero()) if terms else zero()
+        #     self._mixed_terms_part = sum(terms, zero()) if terms else zero()
         return self._mixed_terms_part
 
     @property
@@ -4593,10 +4649,82 @@ class polynomial_dgcv(dgcv_class):
             )
         return self._pluriharmonic_part
 
+    @property
+    def holomorphic_dominated_part(self):
+        if self._holomorphic_dominated_part is None:
+            terms_dict = self._valence_sorted_parts
+            h_part, a_part, b_part = 0, 0, 0
+            for k, v in terms_dict.items():
+                if k[0] == k[1]:
+                    h_part += v
+                    a_part += v
+                    b_part += v
+                elif k[0] > k[1]:
+                    h_part += v
+                else:
+                    a_part += v
+            self._holomorphic_dominated_part = h_part
+            self._antiholo_dominated_part = a_part
+            self._balanced_terms = b_part
+        return self._holomorphic_dominated_part
+
+    @property
+    def antiholo_dominated_part(self):
+        if self._antiholo_dominated_part is None:
+            _ = self.holomorphic_dominated_part
+        return self._antiholo_dominated_part
+
+    @property
+    def balanced_terms(self):
+        if self._balanced_terms is None:
+            _ = self.holomorphic_dominated_part
+        return self._balanced_terms
+
+    def homogeneous_terms(
+        self,
+        degree: int = None,
+        holomorphic_degree: int = None,
+        anti_holomorphic_degree: int = None,
+    ):
+        build_needed = False
+        if holomorphic_degree is not None or anti_holomorphic_degree is not None:
+            term_dict = self._valence_sorted_parts
+        else:
+            build_needed = True
+            if degree is None:
+                degree = self.get_degree()
+            if self._terms is None:
+                _, monom_idxs, coeffs = poly_terms(self.polyExpr, self.coordinates)
+                self._terms = dict(zip(monom_idxs, coeffs))
+            term_dict = self._terms
+
+        def term_filter(idx):
+            if degree is not None and sum(idx) != degree:
+                return False
+            if holomorphic_degree is not None and idx[0] != holomorphic_degree:
+                return False
+            if (
+                anti_holomorphic_degree is not None
+                and idx[1] != anti_holomorphic_degree
+            ):
+                return False
+            return True
+
+        if build_needed:
+            out = 0
+            for idx, coeff in term_dict.items():
+                if term_filter(idx):
+                    out += _term_from_monom(self.coordinates, idx, coeff)
+            return out
+        term_dict = {
+            idxs: term for idxs, term in term_dict.items() if term_filter(idxs)
+        }
+        return sum(term_dict.values())
+
     def simplify_poly(self, method: Optional[str] = None, **kwargs):
         return polynomial_dgcv(
             simplify(self.polyExpr, method=method, **kwargs),
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=self.parameters,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4608,7 +4736,7 @@ class polynomial_dgcv(dgcv_class):
         new_expr = subs(self.polyExpr, substitutions, **kwargs)
         return polynomial_dgcv(
             new_expr,
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=self._parameters if self._parameters is not None else None,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4617,7 +4745,7 @@ class polynomial_dgcv(dgcv_class):
         new_expr = diff(self.polyExpr, *args, **kwargs)
         return polynomial_dgcv(
             new_expr,
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=self._parameters if self._parameters is not None else None,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4797,7 +4925,7 @@ class polynomial_dgcv(dgcv_class):
         if _scalar_is_zero(other):
             return self
         if isinstance(other, polynomial_dgcv):
-            new_vs = _stable_dedupe(self.varSpace + other.varSpace)
+            new_vs = _stable_dedupe(self.coordinates + other.coordinates)
             return polynomial_dgcv(
                 self.polyExpr + other.polyExpr,
                 varSpace=new_vs,
@@ -4806,14 +4934,14 @@ class polynomial_dgcv(dgcv_class):
             )
         if check_dgcv_scalar(other):
             inferred_param = self._parameters if self._parameters is not None else None
-            OIP = get_free_symbols(other) - set(self.varSpace)
+            OIP = get_free_symbols(other) - set(self.coordinates)
             if OIP:
                 inferred_param = (
                     tuple(set(inferred_param) | OIP) if inferred_param else tuple(OIP)
                 )
             return polynomial_dgcv(
                 self.polyExpr + other,
-                varSpace=self.varSpace,
+                varSpace=self.coordinates,
                 parameters=inferred_param,
                 degreeUpperBound=self.degreeUpperBound,
             )
@@ -4832,7 +4960,7 @@ class polynomial_dgcv(dgcv_class):
 
     def __sub__(self, other):
         if isinstance(other, polynomial_dgcv):
-            new_vs = _stable_dedupe(self.varSpace + other.varSpace)
+            new_vs = _stable_dedupe(self.coordinates + other.coordinates)
             return polynomial_dgcv(
                 self.polyExpr - other.polyExpr,
                 varSpace=new_vs,
@@ -4841,14 +4969,14 @@ class polynomial_dgcv(dgcv_class):
             )
         if check_dgcv_scalar(other):
             inferred_param = self._parameters if self._parameters is not None else None
-            OIP = get_free_symbols(other) - set(self.varSpace)
+            OIP = get_free_symbols(other) - set(self.coordinates)
             if OIP:
                 inferred_param = (
                     tuple(set(inferred_param) | OIP) if inferred_param else tuple(OIP)
                 )
             return polynomial_dgcv(
                 self.polyExpr - other,
-                varSpace=self.varSpace,
+                varSpace=self.coordinates,
                 parameters=inferred_param,
                 degreeUpperBound=self.degreeUpperBound,
             )
@@ -4857,14 +4985,14 @@ class polynomial_dgcv(dgcv_class):
     def __rsub__(self, other):
         if check_dgcv_scalar(other):
             inferred_param = self._parameters if self._parameters is not None else None
-            OIP = get_free_symbols(other) - set(self.varSpace)
+            OIP = get_free_symbols(other) - set(self.coordinates)
             if OIP:
                 inferred_param = (
                     tuple(set(inferred_param) | OIP) if inferred_param else tuple(OIP)
                 )
             return polynomial_dgcv(
                 other - self.polyExpr,
-                varSpace=self.varSpace,
+                varSpace=self.coordinates,
                 parameters=inferred_param,
                 degreeUpperBound=self.degreeUpperBound,
             )
@@ -4872,7 +5000,7 @@ class polynomial_dgcv(dgcv_class):
 
     def __mul__(self, other):
         if isinstance(other, polynomial_dgcv):
-            new_vs = _stable_dedupe(self.varSpace + other.varSpace)
+            new_vs = _stable_dedupe(self.coordinates + other.coordinates)
 
             if self.degreeUpperBound is None and other.degreeUpperBound is None:
                 new_bound = None
@@ -4893,14 +5021,14 @@ class polynomial_dgcv(dgcv_class):
 
         if check_dgcv_scalar(other):
             inferred_param = self._parameters if self._parameters is not None else None
-            OIP = get_free_symbols(other) - set(self.varSpace)
+            OIP = get_free_symbols(other) - set(self.coordinates)
             if OIP:
                 inferred_param = (
                     tuple(set(inferred_param) | OIP) if inferred_param else tuple(OIP)
                 )
             return polynomial_dgcv(
                 self.polyExpr * other,
-                varSpace=self.varSpace,
+                varSpace=self.coordinates,
                 parameters=inferred_param,
                 degreeUpperBound=self.degreeUpperBound,
             )
@@ -4914,15 +5042,15 @@ class polynomial_dgcv(dgcv_class):
         if engine_kind() == "sympy":
             return polynomial_dgcv(
                 make_poly(
-                    new_expr, self.varSpace, parameters=self.parameters
+                    new_expr, self.coordinates, parameters=self.parameters
                 ).as_expr(),
-                varSpace=self.varSpace,
+                varSpace=self.coordinates,
                 parameters=self._parameters,
                 degreeUpperBound=self.degreeUpperBound,
             )
         return polynomial_dgcv(
             new_expr,
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=self._parameters if self._parameters is not None else None,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4934,15 +5062,15 @@ class polynomial_dgcv(dgcv_class):
         if engine_kind() == "sympy":
             return polynomial_dgcv(
                 make_poly(
-                    self.polyExpr, self.varSpace, parameters=self.parameters
+                    self.polyExpr, self.coordinates, parameters=self.parameters
                 ).as_expr(),
-                varSpace=self.varSpace,
+                varSpace=self.coordinates,
                 parameters=self._parameters,
                 degreeUpperBound=self.degreeUpperBound,
             )
         return polynomial_dgcv(
             expand(self.polyExpr, **kwargs),
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=self._parameters if self._parameters is not None else None,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4951,7 +5079,7 @@ class polynomial_dgcv(dgcv_class):
         new_expr = factor_dgcv(self.polyExpr, **kwargs)
         return polynomial_dgcv(
             new_expr,
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=self._parameters if self._parameters is not None else None,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4960,7 +5088,7 @@ class polynomial_dgcv(dgcv_class):
         new_expr = cancel(self.polyExpr, **kwargs)
         return polynomial_dgcv(
             new_expr,
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=self._parameters if self._parameters is not None else None,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4969,7 +5097,7 @@ class polynomial_dgcv(dgcv_class):
         new_expr = integrate(self.polyExpr, *args, **kwargs)
         return polynomial_dgcv(
             new_expr,
-            varSpace=self.varSpace,
+            varSpace=self.coordinates,
             parameters=self._parameters if self._parameters is not None else None,
             degreeUpperBound=self.degreeUpperBound,
         )
@@ -4997,7 +5125,7 @@ class polynomial_dgcv(dgcv_class):
         def _deg_of_term(t):
             try:
                 p = polynomial_dgcv(
-                    t, varSpace=self.varSpace, parameters=self.parameters
+                    t, varSpace=self.coordinates, parameters=self.parameters
                 )
                 d = p.degree
                 return -1 if d is None else int(d)
@@ -5142,20 +5270,22 @@ class dgcvPolyClass(polynomial_dgcv):
 # coordinate system creation
 # -----------------------------------------------------------------------------
 def createVariables(
-    variable_label,
-    real_label=None,
-    imaginary_label=None,
-    number_of_variables=None,
-    initialIndex=1,
-    withVF=None,
-    complex=None,
-    multiindex_shape=None,
-    index_placement=None,
-    assumeReal=None,
-    return_created_object=None,
-    remove_guardrails=None,
-    default_var_format=None,
-    temporary_variables=False,
+    variable_label: str,
+    real_label: str | int | None = None,
+    imaginary_label: str | None = None,
+    number_of_variables: int | None = None,
+    initialIndex: int | None = 1,
+    withVF: bool | None = None,
+    complex: bool | None = None,
+    multiindex_shape: List[int] = None,
+    index_placement: List[
+        Literal["up", "down", "hi", "low", "h", "l", "u", "d", "__", "_"]
+    ] = None,
+    assumeReal: bool | None = None,
+    return_created_object: bool | None = None,
+    remove_guardrails: bool | None = None,
+    default_var_format: Literal["real", "complex", "mixed"] = None,
+    temporary_variables: bool | None = False,
 ):
     """
     This function serves as the default interface for creating variables within the dgcv package. It supports creating
@@ -6177,7 +6307,7 @@ def complexVarProc(
     initialIndex=1,
     multiindex_shape=None,
     index_placement=None,
-    default_var_format="complex",
+    default_var_format: Literal["complex", "real", "mixed"] = None,
     remove_guardrails=None,
     return_created_object=True,
 ):
@@ -6185,12 +6315,9 @@ def complexVarProc(
     Initializes a complex variable system, linking a holomorphic variable with its real and imaginary parts and
     a symbolic representative of its complex conjugate.
     """
-    if default_var_format not in ("real", "complex"):
-        if default_var_format is not None:
-            dgcv_warning(
-                "`default_var_format` was set to an unsupported value, so it was reset to the default 'complex'."
-            )
-        default_var_format = "complex"
+    default_var_format = {None: "mixed", "real": "real", "complex": "complex"}.get(
+        default_var_format, "mixed"
+    )
 
     variable_registry = get_variable_registry()
     conv = variable_registry["conversion_dictionaries"]
@@ -6207,8 +6334,7 @@ def complexVarProc(
     im_part_updates = {}
     complex_system_updates = {}
 
-    # For tuple systems, store data for deferred differential object creation
-    # Each entry: (labelLoc1, var_names1, var_namesBAR, var_names2, var_names3, lengthLoc)
+    # entry format: (labelLoc1, var_names1, var_namesBAR, var_names2, var_names3, lengthLoc)
     tuple_system_data = []
 
     def _register_complex_paths(system_label: str) -> None:
@@ -6628,7 +6754,7 @@ def complexVarProc(
                         variable_spaces={sys: vs},
                         _inheritance=inh_dict,
                     )
-                else:  # default_var_format == "complex"
+                elif default_var_format == "complex":
                     inh_dict = {"_validated_format": "complex"}
                     vf_instance_hol = vector_field_class(
                         coeff_dict={(0, 1, sys): 1},
@@ -6683,6 +6809,57 @@ def complexVarProc(
                         dgcvType="complex",
                         variable_spaces={sys: vs},
                         _inheritance=inh_dict,
+                    )
+                else:  # default_var_format == "mixed"
+                    inh_dict = {"_validated_format": "complex"}
+                    inh_dict_real = {"_validated_format": "real"}
+                    vf_instance_hol = vector_field_class(
+                        coeff_dict={(0, 1, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    vf_instance_aHol = vector_field_class(
+                        coeff_dict={(1, 1, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    vf_instance_real = vector_field_class(
+                        coeff_dict={(2, 1, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict_real,
+                    )
+                    vf_instance_im = vector_field_class(
+                        coeff_dict={(3, 1, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict_real,
+                    )
+                    df_instance_hol = differential_form_class(
+                        coeff_dict={(0, 0, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    df_instance_aHol = differential_form_class(
+                        coeff_dict={(1, 0, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict,
+                    )
+                    df_instance_real = differential_form_class(
+                        coeff_dict={(2, 0, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict_real,
+                    )
+                    df_instance_im = differential_form_class(
+                        coeff_dict={(3, 0, sys): 1},
+                        dgcvType="complex",
+                        variable_spaces={sys: vs},
+                        _inheritance=inh_dict_real,
                     )
                 return (
                     vf_instance_hol,
@@ -6995,12 +7172,12 @@ def complexVarProc(
                     _inheritance=inh_dict,
                 )
                 d_im = differential_form_class(
-                    coeff_dict={(i_im, 0, sys): imag_unit()},
+                    coeff_dict={(i_im, 0, sys): 1},
                     dgcvType="complex",
                     variable_spaces={sys: vs},
                     _inheritance=inh_dict,
                 )
-            else:  # default_var_format == "complex"
+            elif default_var_format == "complex":
                 sys = labelLoc1
                 N = lengthLoc
 
@@ -7071,6 +7248,72 @@ def complexVarProc(
                     dgcvType="complex",
                     variable_spaces={sys: vs},
                     _inheritance=inh_dict,
+                )
+            else:  # default_var_format == "mixed"
+                sys = labelLoc1
+                N = lengthLoc
+
+                vs = (
+                    tuple(var_names1)
+                    + tuple(var_namesBAR)
+                    + tuple(var_names2)
+                    + tuple(var_names3)
+                )
+
+                i_hol = idx
+                i_anti = idx + N
+                i_real = idx + 2 * N
+                i_im = idx + 3 * N
+                inh_dict = {"_validated_format": "complex"}
+                inh_dict_real = {"_validated_format": "real"}
+
+                D_comp = vector_field_class(
+                    coeff_dict={(i_hol, 1, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                D_bar_comp = vector_field_class(
+                    coeff_dict={(i_anti, 1, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                D_real = vector_field_class(
+                    coeff_dict={(i_real, 1, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict_real,
+                )
+                D_im = vector_field_class(
+                    coeff_dict={(i_im, 1, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict_real,
+                )
+                d_comp = differential_form_class(
+                    coeff_dict={(i_hol, 0, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                d_bar_comp = differential_form_class(
+                    coeff_dict={(i_anti, 0, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict,
+                )
+                d_real = differential_form_class(
+                    coeff_dict={(i_real, 0, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict_real,
+                )
+                d_im = differential_form_class(
+                    coeff_dict={(i_im, 0, sys): 1},
+                    dgcvType="complex",
+                    variable_spaces={sys: vs},
+                    _inheritance=inh_dict_real,
                 )
 
             # Register the differential objects in VMF
@@ -7221,8 +7464,13 @@ def _format_complex_coordinates(
 # variable format conversion
 # -----------------------------------------------------------------------------
 def complex_struct_op(vf):
+    if get_dgcv_category(vf) == "distribution":
+        return vf.apply(complex_struct_op)
+
     if not query_dgcv_categories(vf, {"vector_field"}):
-        raise TypeError("complex_struct_op expects a vector_field instance.")
+        raise TypeError(
+            "complex_struct_op expects a vector_field instance or distribution."
+        )
 
     imu = imag_unit()
     vst = vf.variable_spaces_types

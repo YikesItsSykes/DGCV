@@ -5,6 +5,10 @@ module: CR_geometry
 Description: This module provides tools specific to CR (Cauchy-Riemann) geometry within the dgcv package.
 It includes functions for constructing CR hypersurfaces and  computing symmetries.
 
+Key classes:
+    - CR_structure
+    - abstract_CR_structure
+
 Key Functions:
     - tangencyObstruction(): Computes the tangency obstruction for a holomorphic vector field's
       real part to be tangent to a CR hypersurface.
@@ -26,9 +30,14 @@ License:
 # -----------------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Any, Iterable, List, Sequence, Tuple
+from typing import Any, Iterable, List, Literal, Sequence, Tuple
 
-from ._safeguards import create_key, query_dgcv_categories, retrieve_passkey
+from ._config import dgcv_warning
+from ._safeguards import (
+    create_key,
+    query_dgcv_categories,
+    retrieve_passkey,
+)
 from .arrays import matrix_dgcv
 from .backends import simplify_dgcv
 from .backends._engine import engine_module
@@ -39,23 +48,630 @@ from .backends._symbolic_router import (
     conjugate,
     expand,
     get_free_symbols,
-    im,
     subs,
 )
-from .backends._types_and_constants import imag_unit
-from .conversions import allToReal
-from .dgcv_core import holVF_coeffs, polynomial_dgcv, realPartOfVF, variableProcedure
+from .backends._types_and_constants import (
+    expr_numeric_types,
+    imag_unit,
+    rational,
+    symbol,
+)
+from .base import dgcv_class
+from .complex_structures import Del, DelBar
+from .conversions import allToReal, allToSym, realToHol, realToSym, symToHol
+from .dgcv_core import (
+    complex_struct_op,
+    holVF_coeffs,
+    polynomial_dgcv,
+    realPartOfVF,
+    tensor_field_class,
+    variableProcedure,
+    wedge,
+)
+from .filtered_structures import distribution
 from .polynomials import createMultigradedPolynomial
 from .solvers import solve_dgcv
-from .vector_fields_and_differential_forms import get_VF
-from .vmf import clearVar, listVar, vmf_lookup
+from .vector_fields_and_differential_forms import (
+    LieDerivative,
+    annihilator,
+    exteriorDerivative,
+    get_VF,
+)
+from .vmf import clearVar, listVar, order_coordinates, vmf_lookup
 
 __all__ = [
+    "CR_structure",
+    "abstract_CR_structure",
     "tangencyObstruction",
     "weightedHomogeneousVF",
     "findWeightedCRSymmetries",
     "model2Nondegenerate",
 ]
+
+
+# -----------------------------------------------------------------------------
+# classes
+# -----------------------------------------------------------------------------
+class CR_structure(dgcv_class):
+    """
+    Represents local CR structure on a real submanifold in complex space given locally by defining equations.
+    """
+
+    def __init__(
+        self,
+        holomorphic_coordinates: list | tuple,
+        defining_equations: list | tuple | dict,
+        default_coordinate_format: Literal["real", "complex"] = None,
+        parameters: set | list | tuple = None,
+        enforce_finding_real_tangent_bundle_basis: bool = False,
+    ):
+        formatted_coordinates = []
+        parameters = set() if parameters is None else set(parameters)
+        seen_coordinates = set()
+        omitted = set()
+        for var in holomorphic_coordinates:
+            holoVar = (
+                vmf_lookup(var, relatives=True)
+                .get("relatives", dict())
+                .get("holo", None)
+            )
+            if holoVar is None:
+                omitted.add(holoVar)
+            elif holoVar not in seen_coordinates:
+                formatted_coordinates.append(holoVar)
+                seen_coordinates.add(holoVar)
+        if len(omitted) > 0:
+            dgcv_warning(
+                "Some of the elements provided in `holomorphic_coordinates` are not part of a complex coordinate system registered in the dgcv VMF. They have been omitted from the CR structure's coordinate system, and regarded as structure parameters instead."
+            )
+            parameters |= omitted
+        self.default_coordinate_format = {None: "complex", "real": "real"}.get(
+            default_coordinate_format, "complex"
+        )
+        self.graph_format = False
+
+        if isinstance(defining_equations, dict):
+            self.graph_format = True
+            eqns_data = []
+            ri_types = {"real", "imag"}
+            graph_coordinates = set()
+            added_vars = set()
+            for k, v in defining_equations.items():
+                real_k = allToReal(k)
+                key_info = vmf_lookup(real_k, relatives=True)
+                if key_info.get("type", None) != "coordinate":
+                    self.graph_format = False
+                    dgcv_warning(
+                        "Initializing a `CR_structure` with `defining_equations` in the dictionary format is intended for inputing equations in a graph format (e.g., graph coordinates equal functions of other coordinates). To process it as `graph form`, the dictionary's keys must belong to a coordinate system registered in the dgcv VMF. The given dictionary fails this condition, so preserving `graph form` has been abandoned. Tip: use `createVariables` to build such coordinate systems."
+                    )
+                    break
+                if key_info.get("sub_type", None) not in ri_types:
+                    self.graph_format = False
+                    raise (
+                        "Initializing a `CR_structure` with `defining_equations` in the dictionary format is intended for inputing equations in a graph format (e.g., graph coordinates equal functions of other coordinates). To process it as `graph form`, the dictionary's keys must be real or imaginary parts of holomorphic coordinates belonging to a coordinate system registered in the dgcv VMF. The given dictionary fails this condition, so preserving `graph form` has been abandoned."
+                    )
+                    break
+                holoVar = key_info.get("relatives", dict()).get("holo", None)
+                if holoVar not in seen_coordinates:
+                    added_vars.add(holoVar)
+                    seen_coordinates.add(holoVar)
+                    formatted_coordinates.append(holoVar)
+
+                real_v = allToReal(v)
+                v_fv = get_free_symbols(v)
+                if real_k in v_fv:
+                    self.graph_format = False
+                    dgcv_warning(
+                        "Initializing a `CR_structure` with `defining_equations` in the dictionary format is intended for inputing equations in a graph format (e.g., graph coordinates equal functions of other coordinates). The given dictionary however has an equation of the form x=f(x,y,...), so preserving `graph form` has been abandoned."
+                    )
+                    break
+                graph_coordinates.add(real_k)
+                conv_v = (
+                    real_v
+                    if self.default_coordinate_format == "real"
+                    else realToSym(real_v)
+                )
+                conv_k = (
+                    real_k
+                    if self.default_coordinate_format == "real"
+                    else realToSym(real_k)
+                )
+                eqns_data.append(
+                    {
+                        "graph_coor": real_k,
+                        "graph_function": conv_v,
+                        "conv_graph_coor": conv_k,
+                        "real_graph_fun": real_v,
+                        "fun_symbols": v_fv,
+                    }
+                )
+            if self.graph_format is True:
+                if len(added_vars) > 0:
+                    dgcv_warning(
+                        f"Some of the given graph coordinates come from holomorphic coordinates not present in the given `holomorphic_coordinates` list, so new coordinates {added_vars} have been added to it."
+                    )
+
+                def sort_key(elem):
+                    return len(
+                        [var for var in graph_coordinates if var in elem["fun_symbols"]]
+                    )
+
+                eqns_data = sorted(eqns_data, key=sort_key)
+                self.flattened_defining_equations = tuple(
+                    [
+                        eqn_data["graph_function"] - eqn_data["conv_graph_coor"]
+                        for eqn_data in eqns_data
+                    ]
+                )
+                self.graph_equations = {
+                    eqn_data["graph_coor"]: eqn_data["graph_function"]
+                    for eqn_data in eqns_data
+                }
+                param_extraction = set()
+                for eqn in eqns_data:
+                    for var in eqn["fun_symbols"]:
+                        holoVar = (
+                            vmf_lookup(var, relatives=True)
+                            .get("relatives", dict())
+                            .get("holo", None)
+                        )
+                        if holoVar not in seen_coordinates:
+                            if var not in parameters:
+                                param_extraction.add(var)
+                                parameters.add(var)
+                if len(param_extraction) > 0:
+                    dgcv_warning(
+                        f"The given equations include the variables {param_extraction}, which are not present in the given coordinate or parameter sets. They have been added to the structure parameters."
+                    )
+                self.parameters = parameters
+                self.holomorphic_coordinates = tuple(
+                    order_coordinates(formatted_coordinates)
+                )
+            else:
+                try:
+                    defining_equations = [v - k for k, v in defining_equations.items()]
+                except Exception:
+                    raise (
+                        "Given `defining_equations` parameter is in an unsuported format."
+                    )
+        if self.graph_format is False:
+            if isinstance(defining_equations, expr_numeric_types()):
+                defining_equations = [defining_equations]
+            if not isinstance(defining_equations, (list, tuple)):
+                raise (
+                    "Given `defining_equations` parameter is in an unsuported format."
+                )
+            self.flattened_defining_equations = (
+                [allToReal(eqn) for eqn in defining_equations]
+                if self.default_coordinate_format == "real"
+                else [allToSym(eqn) for eqn in defining_equations]
+            )
+            param_extraction = set()
+            for eqn in self.flattened_defining_equations:
+                for var in get_free_symbols(eqn):
+                    holoVar = (
+                        vmf_lookup(var, relatives=True)
+                        .get("relatives", dict())
+                        .get("holo", None)
+                    )
+                    if holoVar not in seen_coordinates:
+                        if var not in parameters:
+                            param_extraction.add(var)
+                            parameters.add(var)
+            if len(param_extraction) > 0:
+                dgcv_warning(
+                    f"The given equations include the variables {param_extraction}, which are not present in the given coordinate or parameter sets. They have been added to the structure parameters."
+                )
+            self.parameters = parameters
+            self.holomorphic_coordinates = tuple(
+                order_coordinates(formatted_coordinates)
+            )
+
+            self.graph_equations = None
+        self._efrtbb = enforce_finding_real_tangent_bundle_basis
+        self.CR_codimension = len(self.flattened_defining_equations)
+        self._CR_distribution = None
+        self._holomorphic_CR_distribution = None
+        self._tangent_bundle = None
+        self._real_tangent_bundle = None
+        self._antiholomorphic_CR_dist = None
+        self._antiholomorphic_coordinates = None
+        self._real_part_coordinates = None
+        self._imag_part_coordinates = None
+        self._real_coordinates = None
+        self._complex_coordinates = None
+        self._levi_2form = None
+        self._graph_format_cache = None
+        self._LFM = None
+        self._Freeman_filtration = None
+        self._real_def_eqns_cache = None
+
+        super().__init__()
+
+    @property
+    def _graph_format_restriction(self):
+        if self._graph_format_cache is None:
+            if not self.graph_format:
+                self._graph_format_cache = dict()
+            else:
+                if self.default_coordinate_format == "real":
+                    self._graph_format_cache = self.graph_equations
+                else:
+                    self._graph_format_cache = {
+                        k: allToReal(
+                            v,
+                            convert_everything=False,
+                            variables_scope=list(self.graph_equations.keys()),
+                        )
+                        for k, v in self.graph_equations.items()
+                    }
+        return self._graph_format_cache
+
+    @property
+    def _real_defining_equations(self):
+        if self._real_def_eqns_cache is None:
+            self._real_def_eqns_cache = (
+                self.flattened_defining_equations
+                if self.default_coordinate_format == "real"
+                else [allToReal(eqn) for eqn in self.flattened_defining_equations]
+            )
+        return self._real_def_eqns_cache
+
+    @property
+    def CR_dimension(self):
+        return self.CR_distribution.rank // 2
+
+    @property
+    def CR_distribution(self):
+        if self._CR_distribution is None:
+            t_basis = self.tangent_bundle.vf_basis
+            canonf = self.tangent_bundle.canonical_form
+            Jt_basis = [complex_struct_op(vf) for vf in t_basis]
+            vl = create_key("var")
+            variables = [symbol(f"{vl}{idx}") for idx in range(len(Jt_basis))]
+            gen_elem = sum(v * elem for v, elem in zip(variables, Jt_basis))
+            obst = wedge(gen_elem, canonf)
+            sol = solve_dgcv(obst, variables, method="linsolve")
+            gen_sol = subs(gen_elem, sol[0])
+            free_vars = set()
+            for expr in sol[0].values():
+                free_vars |= {var for var in get_free_symbols(expr) if var in variables}
+            zeroing = {var: 0 for var in free_vars}
+            self._CR_distribution = distribution(
+                [subs(gen_sol, zeroing | {var: 1}) for var in free_vars],
+                _assume_minimal_Data=True,
+            )
+        return self._CR_distribution
+
+    @property
+    def holomorphic_CR_distribution(self):
+        if self._holomorphic_CR_distribution is None:
+            if self._antiholomorphic_CR_dist is None:
+                I = imag_unit()
+                self._holomorphic_CR_distribution = distribution(
+                    [
+                        X - I * complex_struct_op(X)
+                        for X in self.CR_distribution.vf_basis
+                    ],
+                    find_basis=True,
+                    find_polynomial_spanners=True,
+                    dimension_hint=self.CR_dimension,
+                )
+            else:
+                self._holomorphic_CR_distribution = conjugate(
+                    self._antiholomorphic_CR_dist
+                )
+        return self._holomorphic_CR_distribution
+
+    @property
+    def antiholomorphic_CR_distribution(self):
+        if self._antiholomorphic_CR_dist is None:
+            if self._holomorphic_CR_distribution is None:
+                I = imag_unit()
+                self._antiholomorphic_CR_dist = distribution(
+                    [
+                        X + I * complex_struct_op(X)
+                        for X in self.CR_distribution.vf_basis
+                    ],
+                    find_basis=True,
+                    find_polynomial_spanners=True,
+                    dimension_hint=self.CR_dimension,
+                )
+            else:
+                self._antiholomorphic_CR_dist = conjugate(
+                    self._holomorphic_CR_distribution
+                )
+        return self._antiholomorphic_CR_dist
+
+    @property
+    def real_coordinates(self):
+        if self._real_coordinates is None:
+            if self._real_part_coordinates is None:
+                self._real_part_coordinates = tuple(
+                    [
+                        vmf_lookup(var, relatives=True)["relatives"]["real"]
+                        for var in self.holomorphic_coordinates
+                    ]
+                )
+            if self._imag_part_coordinates is None:
+                self._imag_part_coordinates = tuple(
+                    [
+                        vmf_lookup(var, relatives=True)["relatives"]["imag"]
+                        for var in self.holomorphic_coordinates
+                    ]
+                )
+            self._real_coordinates = (
+                self._real_part_coordinates + self._imag_part_coordinates
+            )
+        return self._real_coordinates
+
+    @property
+    def tangent_bundle(self):
+        if self._tangent_bundle is None:
+            if self._efrtbb is True:
+                defeqns = self._real_defining_equations
+                coor = self.real_coordinates
+            else:
+                defeqns = self.flattened_defining_equations
+                coor = self.default_coordinates
+            d_rho_list = [exteriorDerivative(eqn) for eqn in defeqns]
+            basis = annihilator(
+                d_rho_list,
+                coor,
+                polynomial_bases=True,
+                coherent_coordinates_checked=True,
+            )
+            if self._efrtbb is True and self.default_coordinate_format != "real":
+                basis = [realToSym(arg) for arg in basis]
+            self._tangent_bundle = distribution(
+                basis,
+                formatting=self.default_coordinate_format,
+                _assume_minimal_Data=True,
+            )
+        return self._tangent_bundle
+
+    @property
+    def real_tangent_bundle(self):
+        if self._real_tangent_bundle is None:
+            I, tangent = imag_unit(), self.tangent_bundle.vf_basis
+            self._real_tangent_bundle = (
+                self.tangent_bundle
+                if self.default_coordinate_format == "real"
+                else distribution(
+                    [X + conjugate(X) for X in tangent]
+                    + [I * (conjugate(X) - X) for X in tangent],
+                    find_basis=True,
+                )
+            )
+        return self._real_tangent_bundle
+
+    @property
+    def complex_coordinates(self):
+        if self._complex_coordinates is None:
+            if self._antiholomorphic_coordinates is None:
+                self._antiholomorphic_coordinates = tuple(
+                    [
+                        vmf_lookup(var, relatives=True)["relatives"]["anti"]
+                        for var in self.holomorphic_coordinates
+                    ]
+                )
+            self._complex_coordinates = (
+                self.holomorphic_coordinates + self._antiholomorphic_coordinates
+            )
+        return self._complex_coordinates
+
+    @property
+    def default_coordinates(self):
+        if self.default_coordinate_format == "real":
+            return self.real_coordinates
+        return self.complex_coordinates
+
+    def Levi_form_skew_unrestricted(
+        self, vf1, vf2, format_scalar_as_vector=False, skip_fast_simplify=False
+    ):
+        """
+        Evaluates a representative of the Levi form on a pair of vector fields.
+        Intended for applying to pairs of vector fields from the real CR
+        distribution or its complexification (i.e., from the holomorphic +
+        antiholomorphic CR distributions).
+
+        By default the returned value is either a 1-by-n array when the CR
+        codimension is n>2, or a scalar when the CR codimension is 1. To make
+        the codimension 1 case also return an array for consistent formatting
+        set the keyword `format_scalar_as_vector=True`.
+
+        Caution/note: Intended only for applying to pairs of vector fields from
+        the complexified CR distribution. It will not raise errors or warnings
+        if applied to other vector fields however.
+        """
+        if self._levi_2form is None:
+            self._levi_2form = matrix_dgcv(
+                [Del(DelBar(rho)) for rho in self.flattened_defining_equations]
+            )
+        out = self._levi_2form.apply(lambda x: x.__call__(vf1, vf2))
+        if skip_fast_simplify is False:
+            out = expand(out)
+        if self.CR_codimension == 1 and not format_scalar_as_vector:
+            out = out[0]
+        return out
+
+    def Levi_form_skew(self, vf1, vf2, format_scalar_as_vector=False):
+        """
+        Evaluates a representative of the Levi form on a pair of vector fields.
+        Intended for applying to pairs of vector fields from the real CR
+        distribution or its complexification (i.e., from the holomorphic +
+        antiholomorphic CR distributions). This Levi form is that of the
+        distribution, in the usual sense, rather than the sesquilinear Levi form
+        of CR geometry defined with conjugation hooked into an argument.
+
+        By default the returned value is either a 1-by-n array when the CR
+        codimension is n>2, or a scalar when the CR codimension is 1. To make
+        the codimension 1 case also return an array for consistent formatting
+        set the keyword `format_scalar_as_vector=True`.
+
+        Caution/note: Intended only for applying to pairs of vector fields from
+        the complexified CR distribution. It will not raise errors or warnings
+        if applied to other vector fields however.
+        """
+        if self.graph_format is False:
+            dgcv_warning(
+                "This CR structure was not set up in `graph format`, so the computed Levi form value has not been restricted to the submanifold. Suggestion: provide structure data in `graph format` or use `Levi_form_skew_unrestricted` instead."
+            )
+        return subs(self.Levi_form_skew_unrestricted, self._graph_format_restriction)
+
+    def Levi_form_unrestricted(self, vf1, vf2, format_scalar_as_vector=False):
+        """
+        Evaluates a representative of the Levi form on a pair of vector fields.
+        Intended for applying to pairs of vector fields from the holomorphic CR
+        distribution.
+
+        By default the returned value is either a 1-by-n array when the CR
+        codimension is n>2, or a scalar when the CR codimension is 1. To make
+        the codimension 1 case also return an array for consistent formatting
+        set the keyword `format_scalar_as_vector=True`.
+
+        Caution/note: Intended only for applying to pairs of vector fields from
+        the holomorphic CR distribution. It will not raise errors or warnings
+        if applied to other vector fields however.
+        """
+        return (
+            imag_unit()
+            / 2
+            * self.Levi_form_skew_unrestricted(
+                vf1, conjugate(vf2), format_scalar_as_vector=format_scalar_as_vector
+            )
+        )
+
+    def Levi_form(self, vf1, vf2, format_scalar_as_vector=False):
+        """
+        Evaluates a representative of the Levi form on a pair of vector fields.
+        This Levi form is the usual CR geometry one, i.e.,
+        sesquilinear with complex conjugation hooked into the ordinary skew
+        symmetric Levi form of the complexified CR distribution.
+
+        By default the returned value is either a 1-by-n array when the CR
+        codimension is n>2, or a scalar when the CR codimension is 1. To make
+        the codimension 1 case also return an array for consistent formatting
+        set the keyword `format_scalar_as_vector=True`.
+
+        Caution/note: Intended only for applying to pairs of vector fields from
+        the holomorphic CR distribution. It will not raise errors or warnings
+        if applied to other vector fields however.
+        """
+        if self.graph_format is False:
+            dgcv_warning(
+                "This CR structure was not set up in `graph format`, so the computed Levi form value has not been restricted to the submanifold. Suggestion: provide structure data in `graph format` or use `Levi_form_unrestricted` instead."
+            )
+        return subs(
+            self.Levi_form_unrestricted(vf1, vf2), self._graph_format_restriction
+        )
+
+    @property
+    def Levi_form_matrix(self):
+        if self._LFM is None:
+            vf_basis = self.holomorphic_CR_distribution.vf_basis
+
+            def entry(i, j):
+                return self.Levi_form(vf_basis[i], vf_basis[j])
+
+            self._LFM = matrix_dgcv(
+                shape=(self.CR_dimension, self.CR_dimension), entry_rule=entry
+            )
+        return self._LFM
+
+    @property
+    def Freeman_filtration(self):
+        if self._Freeman_filtration is None:
+            antihol = self.antiholomorphic_CR_distribution
+            levels = [self.holomorphic_CR_distribution.vf_basis]
+            vl = create_key("var")
+            local_vars = [symbol(f"{vl}{idx}") for idx in range(len(levels[0]))]
+
+            def descent(level_list, pair, variables):
+                if len(level_list[0]) == 0:
+                    return level_list
+                level = level_list[0]
+                v_trunc = variables[: len(level)]
+                general_elem = sum(v * elem for v, elem in zip(v_trunc, level))
+                new_c_form = wedge(pair.canonical_form, *level)
+                eqns = [
+                    wedge(LieDerivative(general_elem, vf), new_c_form)
+                    for vf in pair.vf_basis
+                ]
+                solution = solve_dgcv(eqns, v_trunc, method="linsolve")
+                gen_solution = subs(general_elem, solution[0])
+                free_vars, var_set = set(), set(v_trunc)
+                for expr in solution[0].values():
+                    free_vars |= {
+                        var for var in get_free_symbols(expr) if var in var_set
+                    }
+                zeroing = {var: 0 for var in free_vars}
+                new_level = [
+                    [
+                        subs(
+                            gen_solution, zeroing | {var: 1}
+                        ).scale_to_polynomial_attempt()
+                        for var in free_vars
+                    ]
+                ]
+                lnl = len(new_level[0])
+                if len(level_list[0]) == lnl:
+                    return level_list
+                if lnl == 0:
+                    return [[]] + level_list
+                level_list = new_level + level_list
+                return descent(level_list, pair, variables)
+
+            filtration_bases = descent(levels, antihol, local_vars)
+            alligned_bases = filtration_bases[:1]
+            if len(filtration_bases) > 1:
+                obstruction = wedge(*filtration_bases[0])
+                if obstruction is None:
+                    obstruction = tensor_field_class(coeff_dict={tuple(): 1})
+                dim = len(filtration_bases[0])
+                for basis in filtration_bases[1:]:
+                    current_basis = list(alligned_bases[0])
+                    new_dim = len(basis)
+                    discrep = new_dim - dim
+                    dim = new_dim
+                    for elem in basis:
+                        if discrep == 0:
+                            break
+                        test = simplify_dgcv(wedge(elem, obstruction))
+                        if _scalar_is_zero(test):
+                            continue
+                        discrep += -1
+                        current_basis.append(elem)
+                        obstruction = test
+                    alligned_bases = [current_basis] + alligned_bases
+            self._Freeman_filtration = [
+                distribution(
+                    base,
+                    assume_compatibility=True,
+                    formatting=self.default_coordinate_format,
+                    _assume_minimal_Data=True,
+                )
+                for base in alligned_bases
+            ]
+
+        return self._Freeman_filtration
+
+    @property
+    def nondegeneracy_order(self):
+        if len(self.Freeman_filtration[-1].vf_basis) > 0:
+            return "infinity"
+        return len(self.Freeman_filtration) - 1
+
+
+class abstract_CR_structure(dgcv_class):
+    """
+    Represents local CR structure in terms of real coordinates. Initialization data
+    should be the holomorphic component of the complexified CR distribution,
+    i.e., the i-eigenspace bundle of the CR complex structure operator.
+    """
+
+    def __init__(self, holomorphic_distribution, validate_structure_data=False):
+        super().__init__()
 
 
 # -----------------------------------------------------------------------------
@@ -336,85 +952,43 @@ def findWeightedCRSymmetries(
 def model2Nondegenerate(
     hermitian_matrix: Any,
     symmetric_matrix_function: Any,
-    base_coordinates: Sequence[Any],
+    nondegenerate_coordinates: Sequence[Any],
     transverse_coordinate: Any,
+    use_symbolic_conjugates: bool = False,
     return_matrices: bool = False,
     simplify: bool = True,
+    return_CR_structure: bool = False,
+    parameters: set = None,
 ):
-    mod = _sym_engine_module()
+    if return_CR_structure is True:
+        use_symbolic_conjugates = True
 
     def _simp(x: Any) -> Any:
         return simplify_dgcv(x) if simplify else x
 
     def _as_md(mat: Any):
-        if query_dgcv_categories(mat, {"matrix"}):
-            return mat
-        try:
-            return matrix_dgcv(mat)
-        except Exception:
-            pass
-
-        if hasattr(mod, "Matrix"):
-            try:
-                return matrix_dgcv(mod.Matrix(mat))
-            except Exception:
-                pass
-        if hasattr(mod, "matrix"):
-            try:
-                return matrix_dgcv(mod.matrix(mat))
-            except Exception:
-                pass
-        raise TypeError("`model2Nondegenerate` expects array-like matrix data.")
-
-    def _eye(n: int):
-        try:
-            return matrix_dgcv(
-                [[1 if i == j else 0 for j in range(n)] for i in range(n)]
-            )
-        except Exception:
-            pass
-        if hasattr(mod, "eye"):
-            return mod.eye(n)
-        if hasattr(mod, "eye_matrix"):
-            return mod.eye_matrix(n)
-        if hasattr(mod, "identity_matrix"):
-            return mod.identity_matrix(n)
-        if hasattr(mod, "Identity"):
-            return mod.Identity(n)
-        raise TypeError("No identity matrix constructor available.")
+        return matrix_dgcv(mat)
 
     def _T(M: Any):
-        t = getattr(M, "T", None)
-        if t is not None:
-            return t() if callable(t) else t
-        tr = getattr(M, "transpose", None)
-        if callable(tr):
-            return tr()
-        if hasattr(mod, "transpose"):
-            return mod.transpose(M)
-        raise TypeError("Matrix transpose not supported for this object.")
+        try:
+            return M.transpose()
+        except Exception:
+            pass
+        fallback = M.to_symbolic_engine_class()
+        try:
+            transp = fallback.transpose
+            if callable(transp):
+                return transp()
+            else:
+                return transp
+        except Exception:
+            return fallback.T
 
     def _inv(M: Any):
-        inv = getattr(M, "inv", None)
-        if callable(inv):
-            return inv()
         try:
-            return M ** (-1)
+            return M.inverse()
         except Exception:
-            pass
-        inv2 = getattr(M, "inverse", None)
-        if callable(inv2):
-            return inv2()
-        raise TypeError("Matrix inversion not supported for this object.")
-
-    def _mat_conj(M: Any):
-        if query_dgcv_categories(M, {"matrix"}):
-            return M.apply(conjugate, in_place=False, skip_none=True)
-        try:
-            return conjugate(M)
-        except Exception:
-            pass
-        raise TypeError("Matrix conjugation not supported for this object.")
+            return M.symbolic_engine_method("__pow__", method_arguments=[-1])
 
     A = _as_md(hermitian_matrix)
     S = _as_md(symmetric_matrix_function)
@@ -424,31 +998,119 @@ def model2Nondegenerate(
         raise TypeError("`hermitian_matrix` must be square.")
     n = int(shp[0])
 
-    Iden = _eye(n)
-    BARS = _mat_conj(S)
+    Iden = matrix_dgcv.eye(n)
+    BARS = S.conjugate(symbolic=True)
+
+    tc_info = vmf_lookup(transverse_coordinate, relatives=True)
+    tc_holo = tc_info.get("relatives", dict()).get("holo")
+    if tc_info.get("sub_type") == "holo" or tc_info.get("sub_type") == "anti":
+        if use_symbolic_conjugates is False:
+            transverse_coordinate = realToHol(
+                tc_info.get("relatives", dict()).get("imag")
+            )
+        else:
+            transverse_coordinate = realToSym(
+                tc_info.get("relatives", dict()).get("imag")
+            )
+    elif tc_info.get("sub_type") not in {"real", "imag"}:
+        dgcv_warning(
+            "The given transverse coordinate is not associated with any complex coordinate system currently in the dgcv VMF."
+        )
+
+    base_coordinates = []
+    seen = set()
+    nonregistered_given = False
+    transv_given = False
+    minimal_not_given = False
+    for var in nondegenerate_coordinates:
+        holo = vmf_lookup(var, relatives=True).get("relatives", dict()).get("holo")
+        if holo is not None and holo not in seen and tc_holo != holo:
+            seen.add(holo)
+            base_coordinates.append(holo)
+        elif holo is None:
+            nonregistered_given = True
+        elif holo == tc_holo:
+            transv_given = True
+        else:
+            minimal_not_given = True
+    if nonregistered_given is True:
+        dgcv_warning(
+            "Some of the elements given in `nondegenerate_coordinates` are associated with a complex coordinate system in the dgcv VMF and were ignored."
+        )
+    if transv_given is True:
+        dgcv_warning(
+            "At least element in the given  `nondegenerate_coordinates` has the same holomorphic coordinate as the given transverse coordinate and was ignored."
+        )
+    if minimal_not_given is True:
+        dgcv_warning(
+            "Multiple elements given in `nondegenerate_coordinates` are associated with the same holomorphic coordinate and the repeats were ignored."
+        )
 
     zVec = matrix_dgcv([[v] for v in base_coordinates])
-    bzVec = matrix_dgcv([[conjugate(v)] for v in base_coordinates])
+    bzVec = zVec.conjugate(symbolic=True)
 
-    half = mod.Rational(1, 2) if hasattr(mod, "Rational") else (1 / 2)
+    half = rational(1, 2)
 
     At = _T(A)
     zt = _T(zVec)
     bzt = _T(bzVec)
 
-    M1 = Iden - (BARS * At * S * A)
-    M2 = Iden - (A * BARS * At * S)
+    try:
+        M1 = Iden - (BARS * At * S * A)
+        M1_inv = _inv(M1)
+        M1_inv_conj = M1_inv.conjugate(symbolic=True)
+        M1_inv_conj_tran = M1_inv_conj.transpose()
 
-    hFun = half * (A * _inv(M1) + _inv(M2) * A)
-    sFun = A * _inv(M1) * BARS * At
-    bsFun = At * _inv(Iden - (S * A * BARS * At)) * S * A
-
-    expr = (zt * hFun * bzVec)[0, 0] + half * (
-        (zt * sFun * zVec)[0, 0] + (bzt * bsFun * bzVec)[0, 0]
-    )
-
-    result = _simp(expr) - im(transverse_coordinate)
-
+        hFun = half * (A * M1_inv + M1_inv_conj_tran * A)
+        sFun = A * M1_inv * BARS * At
+        bsFun = At * M1_inv_conj * S * A
+        expr = (zt * hFun * bzVec)[0, 0] + half * (
+            (zt * sFun * zVec)[0, 0] + (bzt * bsFun * bzVec)[0, 0]
+        )
+    except Exception:
+        raise RuntimeError(
+            "`model2Nondegenerate` is unable to evaluate the model formula for the given parameters. Check that given matrices have compatible shapes."
+        )
+    graph = _simp(expr)
+    if use_symbolic_conjugates is False:
+        graph = symToHol(graph)
+    result = graph - transverse_coordinate
+    if return_CR_structure:
+        kernel_total = get_free_symbols(S)
+        seen = set()
+        kernel_coordinates = []
+        computed_parameters = set() if parameters is None else set(parameters)
+        par_warning = False
+        for var in kernel_total:
+            if var not in computed_parameters:
+                var_info = vmf_lookup(var, relatives=True).get("relatives", dict())
+                holo = var_info.get("holo")
+                if holo is None:
+                    computed_parameters.add(var)
+                    continue
+                if (
+                    var_info.get("real") in computed_parameters
+                    or var_info.get("imag") in computed_parameters
+                    or var_info.get("anti") in computed_parameters
+                    or holo in computed_parameters
+                ):
+                    computed_parameters.add(var)
+                    continue
+                if var != holo:
+                    par_warning is True
+                if holo not in seen:
+                    seen.add(holo)
+                    kernel_coordinates.append(holo)
+        if par_warning is True:
+            dgcv_warning(
+                "The provided symmetrix matrix has some complex coordinate elements other than holomorphic variables. They were not included among given parameters however. Since this matrix must be holomorphic in the underlying coordinates, you may have intended such elements to be included among the parameters. Use the optional `parameters` keyword to include them."
+            )
+        kernel_coordinates = order_coordinates(kernel_coordinates)
+        return CR_structure(
+            [tc_holo] + base_coordinates + kernel_coordinates,
+            {transverse_coordinate: graph},
+            parameters=parameters,
+        )
     if return_matrices:
         return result, hFun, sFun
     return result

@@ -14,7 +14,6 @@ from ._symbolic_router import (
 from ._types_and_constants import symbol
 
 __all__ = [
-    "PolyBackendError",
     "make_poly",
     "poly_gens",
     "poly_monoms",

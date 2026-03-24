@@ -377,11 +377,12 @@ def _try_wrap_html(s: str):
         return s
 
 
-def latex_in_html(html_string, apply_VSCode_workarounds=False):
+def latex_in_html(html_string, extra_support_for_math_in_tables=False):
     if dgcv_settings_registry["extra_support_for_math_in_tables"] is True:
-        apply_VSCode_workarounds = True
+        extra_support_for_math_in_tables = True
 
-    if apply_VSCode_workarounds is True:
+    if extra_support_for_math_in_tables is True:
+        # This is the display workaround given in the github pages for the Jupyter VSCode extension.
         katexInjectString = """<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+" crossorigin="anonymous">
 <script type="module">
     import renderMathInElement from "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.mjs";

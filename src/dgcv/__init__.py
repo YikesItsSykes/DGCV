@@ -119,6 +119,7 @@ from .conversions import (
 )
 from .coordinate_maps import coordinate_map
 from .CR_geometry import (
+    CR_structure,
     findWeightedCRSymmetries,
     model2Nondegenerate,
     tangencyObstruction,
@@ -285,6 +286,7 @@ __all__ = [
     # From coordinateMaps
     "coordinate_map",  # Transforms coordinates systems
     # From CRGeometry
+    "CR_structure",
     "findWeightedCRSymmetries",  # Find weighted CR symmetries
     "model2Nondegenerate",  # Produces a 2-nond. model structure
     "linear_representation",

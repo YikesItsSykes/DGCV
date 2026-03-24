@@ -508,7 +508,7 @@ def vmf_lookup(
 
     def _rel_empty():
         return {
-            "standard": tuple(),
+            "standard": None,
             "holo": None,
             "anti": None,
             "real": None,
@@ -577,7 +577,7 @@ def vmf_lookup(
                 rel["system_label"] = system_label
                 sys = _sys_std(system_label)
                 fam = sys.get("family_values")
-                rel["standard"] = tuple(fam) if fam is not None else tuple()
+                rel["standard"] = sys.get("family_values")
                 out["relatives"] = rel
                 if flattened_relatives:
                     out["flattened_relatives"] = _flatten(rel)
@@ -595,7 +595,12 @@ def vmf_lookup(
                 rel = _rel_empty()
                 rel["system_label"] = system_label
                 sys = _sys_cplx(system_label)
-                fam = sys.get("family_values")
+
+                fam = (
+                    sys.get("family_values")
+                    if sys.get("family_type") != "single"
+                    else tuple((var,) for var in sys.get("family_values"))
+                )
                 if fam is not None:
                     rel["holo"], rel["anti"], rel["real"], rel["imag"] = fam
                 out["relatives"] = rel
@@ -664,7 +669,13 @@ def vmf_lookup(
             rel = _rel_empty()
             rel["system_label"] = system_label
             fam = sys.get("family_values")
-            rel["standard"] = tuple(fam) if fam is not None else (obj,)
+            rel["standard"] = (
+                fam[0]
+                if sys.get("family_type") == "single"
+                else tuple(fam)
+                if fam is not None
+                else (obj,)
+            )
             out["relatives"] = rel
             if flattened_relatives:
                 out["flattened_relatives"] = _flatten(rel)
@@ -718,6 +729,27 @@ def vmf_lookup(
             }
 
     return out
+
+
+# -----------------------------------------------------------------------------
+# general utilities
+# -----------------------------------------------------------------------------
+def order_coordinates(coordinates):
+    def sort_key(x):
+        info = vmf_lookup(x, system_index=True, relatives=True)
+        hierarchy = {"standard": 0, "holo": 1, "anti": 2, "real": 3, "imag": 4}
+        none_guard, info1, info2 = (
+            {None: "zzzzz"},
+            info["relatives"]["system_label"],
+            info["system_index"],
+        )
+        return (
+            hierarchy.get(info["sub_type"], 9),
+            none_guard.get(info1, info1),
+            none_guard.get(info2, info2),
+        )
+
+    return sorted(coordinates, key=sort_key)
 
 
 # -----------------------------------------------------------------------------

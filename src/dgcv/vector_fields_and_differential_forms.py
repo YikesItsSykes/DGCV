@@ -461,7 +461,7 @@ def LieDerivative(
 
 
 # -----------------------------------------------------------------------------
-# vector field and differential forms operations with linsolve computations
+# vector field and differential forms operations with linear solve computations
 # -----------------------------------------------------------------------------
 def _local_unknowns(n: int, lbl: str = "__tem_label__") -> List[Any]:
     return [symbol(f"{lbl}{i}") for i in range(n)]
@@ -539,9 +539,13 @@ def _as_coeff_vector_form(tf, K, syslbl="__dgcv_par__"):
     )
 
 
-def _extract_basis_by_wedge_vectorized(objs, *, use_numeric_methods: bool = False):
+def _extract_basis_by_wedge_vectorized(
+    objs, *, use_numeric_methods: bool = False, dimension_hint=None
+):
     if not objs:
         return []
+    if dimension_hint is None:
+        dimension_hint = len(objs)
 
     use_numeric = use_numeric_methods or bool(
         get_dgcv_settings_registry().get("use_numeric_methods", False)
@@ -636,13 +640,15 @@ def _extract_basis_by_wedge_vectorized(objs, *, use_numeric_methods: bool = Fals
         vec_forms = [_as_coeff_vector_form(o, K) for o in objs]
     except Exception as exc:
         raise TypeError(
-            "Could not compute a linear-independence test for these objects because "
-            "they do not support the required linear-combination behavior."
+            "Could not compute a linear independence test for these objects because "
+            "they do not support the required linear combination behavior."
         ) from exc
 
     obstruction = None
     out = []
     for o, v in zip(objs, vec_forms):
+        if len(out) == dimension_hint:
+            break
         if use_numeric:
             if zeroish(v):
                 continue

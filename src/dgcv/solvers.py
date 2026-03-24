@@ -48,6 +48,19 @@ def normalize_equations_and_vars(eqns, vars_to_solve):
         eqns = eqns.flatten()
     if not isinstance(eqns, (list, tuple)):
         eqns = [eqns]
+    formatted = []
+    for eqn in eqns:
+        neqn = getattr(eqn, "__dgcv_zero_obstr__", None)
+        if neqn is None:
+            formatted.append(eqn)
+        else:
+            try:
+                formatted += list(neqn[0])
+            except Exception as solve_exception:
+                raise RuntimeError(
+                    "Equations data provided to `solve_dgcv` were in an unsupported format"
+                ) from solve_exception
+    eqns = formatted
 
     if vars_to_solve is None:
         vars_to_solve = set()
@@ -647,7 +660,11 @@ def solve_dgcv(
                 return []
         except Exception:
             return []
-        return _engine_solve_to_dicts(sols, vars_)
+        new_sols = _engine_solve_to_dicts(sols, vars_)
+        out = []
+        for sol in new_sols:
+            out.append({var: sol.get(var, var) for var in vars_})
+        return out
 
     _log(
         f"engine={(engine_kind() or 'unknown')} method={method} #eqns={len(processed_eqns)} #vars={len(system_vars)}"

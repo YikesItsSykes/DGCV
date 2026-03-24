@@ -44,14 +44,15 @@ from .backends._display_engine import is_rich_displaying_available
 from .backends._numeric_router import zeroish
 from .backends._symbolic_router import (
     clear_denominators,
+    conjugate,
     get_free_symbols,
     simplify,
     subs,
 )
 from .backends._types_and_constants import rational, symbol
 from .base import dgcv_class
-from .conversions import allToReal, allToSym
-from .dgcv_core import variableProcedure, wedge
+from .conversions import allToReal, allToSym, symToHol
+from .dgcv_core import tensor_field_class, variableProcedure, wedge
 from .solvers import solve_dgcv
 from .styles import get_style
 from .vector_fields_and_differential_forms import (
@@ -59,7 +60,7 @@ from .vector_fields_and_differential_forms import (
     _extract_basis_by_wedge_vectorized,
     annihilator,
 )
-from .vmf import clearVar, listVar
+from .vmf import clearVar, listVar, order_coordinates
 
 __all__ = ["Tanaka_symbol", "distribution"]
 
@@ -1317,7 +1318,7 @@ class Tanaka_symbol(dgcv_class):
         return_displayable: bool = False,
     ):
         dgcvSR = get_dgcv_settings_registry()
-        _apply_VScode_display_workaround_with_JS_deliver = bool(
+        extra_support_for_math_in_tables = bool(
             dgcvSR.get("extra_support_for_math_in_tables") is True
         )
 
@@ -1614,7 +1615,7 @@ class Tanaka_symbol(dgcv_class):
 
         out = latex_in_html(
             table,
-            apply_VSCode_workarounds=_apply_VScode_display_workaround_with_JS_deliver,
+            extra_support_for_math_in_tables=extra_support_for_math_in_tables,
         )
         if return_displayable:
             return out
@@ -2134,7 +2135,13 @@ class distribution(dgcv_class):
         find_polynomial_spanners=False,
         assume_starting_objs_polynomial=False,
         formatting: None | Literal["complex", "real"] = None,
+        dimension_hint=None,
     ):
+        """
+        The optional `dimension hint` keyword is used to minimize expensive linear independence
+        checks when extracting a basis. Only set this to a known upper bound on possible
+        distribution rank or else computed basis may be wrong.
+        """
         if spanning_vf_set is not None:
             if not isinstance(spanning_vf_set, (list, tuple)):
                 raise TypeError(
@@ -2167,7 +2174,7 @@ class distribution(dgcv_class):
             self._prefered_data_type = 1
             self._spanning_vf_set = tuple()
             self._spanning_df_set = tuple()
-            self.varSpace = tuple()
+            self.coordinates = tuple()
             self.formatting = None
             self._vf_basis = (
                 tuple() if _assume_minimal_Data == retrieve_passkey() else None
@@ -2229,8 +2236,15 @@ class distribution(dgcv_class):
                     out.append(v)
             return tuple(out)
 
+        obj_spanners = (
+            spanning_vf_set
+            if spanning_vf_set
+            else spanning_df_set
+            if spanning_df_set
+            else []
+        )
         inferred_min_vs = _flatten_unique(
-            vf.infer_minimal_varSpace() for vf in spanning_vf_set
+            obj.infer_minimal_varSpace() for obj in obj_spanners
         )
 
         if coordinate_space is not None:
@@ -2245,15 +2259,16 @@ class distribution(dgcv_class):
                     "Provided coordinate_space does not contain all inferred minimal coordinates: "
                     + ", ".join(str(x) for x in missing)
                 )
-            self.varSpace = vs
+            self.coordinates = order_coordinates(vs)
         else:
-            self.varSpace = inferred_min_vs
-
+            self.coordinates = order_coordinates(inferred_min_vs)
+        self._dim_hint = dimension_hint
         self._spanning_vf_set = vfs
         self._spanning_df_set = dfs
         self._characteristic = None
         self._ext_power_class_cache = None
         self.formatting = formatting
+        self._canonical_form = None
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "distribution"
 
@@ -2268,8 +2283,12 @@ class distribution(dgcv_class):
         self._wderived_flag = None
 
         if find_basis is True:
-            self._spanning_vf_set = self.vf_basis
-            self._spanning_df_set = self.df_basis
+            if vfs:
+                self._spanning_vf_set = self.vf_basis
+            else:
+                self._spanning_df_set = self.df_basis
+
+        self.varSpace = self.coordinates  # deprecated
 
     @staticmethod
     def _infer_minimal_vs(obj) -> Tuple[Any, ...]:
@@ -2286,6 +2305,20 @@ class distribution(dgcv_class):
         if isinstance(vs2, (list, set)):
             return tuple(vs2)
         return tuple()
+
+    @property
+    def canonical_form(self):
+        if self._canonical_form is None:
+            vf_basis = self.vf_basis
+            if len(vf_basis) == 0:
+                self._canonical_form = tensor_field_class(coeff_dict={tuple(): 1})
+            else:
+                self._canonical_form = wedge(*vf_basis)
+        return self._canonical_form
+
+    @property
+    def rank(self):
+        return len(self.vf_basis)
 
     @staticmethod
     def _validated_format_of(obj) -> str | None:
@@ -2329,7 +2362,9 @@ class distribution(dgcv_class):
                 else:
                     if scale_to_poly:
                         new_e = e.scale_to_polynomial_attempt()
-                    out.append(new_e)
+                        out.append(new_e)
+                    else:
+                        out.append(e)
             return tuple(out)
 
         fmts = set()
@@ -2361,7 +2396,7 @@ class distribution(dgcv_class):
         if self._spanning_vf_set is None:
             vfs = annihilator(
                 self.df_basis,
-                coordinate_space=self.varSpace,
+                coordinate_space=self.coordinates,
                 coherent_coordinates_checked=False,
                 polynomial_bases=self._simplifying_preference,
             )
@@ -2374,7 +2409,9 @@ class distribution(dgcv_class):
         if self._vf_basis is None:
             if self._spanning_vf_set is None:
                 return self.spanning_vf_set
-            self._vf_basis = _extract_basis_by_wedge_vectorized(self._spanning_vf_set)
+            self._vf_basis = _extract_basis_by_wedge_vectorized(
+                self._spanning_vf_set, dimension_hint=self._dim_hint
+            )
         return self._vf_basis
 
     @property
@@ -2382,7 +2419,9 @@ class distribution(dgcv_class):
         if self._df_basis is None:
             if self._spanning_df_set is None:
                 return self.spanning_df_set
-            self._df_basis = _extract_basis_by_wedge_vectorized(self._spanning_df_set)
+            self._df_basis = _extract_basis_by_wedge_vectorized(
+                self._spanning_df_set, dimension_hint=self._dim_hint
+            )
         return self._df_basis
 
     @property
@@ -2390,13 +2429,45 @@ class distribution(dgcv_class):
         if self._spanning_df_set is None:
             sdf = annihilator(
                 self.vf_basis,
-                coordinate_space=self.varSpace,
+                coordinate_space=self.coordinates,
                 coherent_coordinates_checked=False,
                 polynomial_bases=self._simplifying_preference,
             )
             self._spanning_df_set = sdf
             self._df_basis = sdf
         return self._spanning_df_set
+
+    def intersection(self, other, formatting=None):
+        if not isinstance(other, distribution):
+            raise TypeError(
+                "dgcv.distribution.intersection can only operate on other dgcv.distribution instances."
+            )
+        svf = self._vf_basis if self._vf_basis is not None else self.spanning_vf_set
+        sdf = self._df_basis if self._df_basis is not None else self.spanning_df_set
+        ovf = other._vf_basis if other._vf_basis is not None else other.spanning_vf_set
+        odf = other._df_basis if other._df_basis is not None else other.spanning_df_set
+        if len(svf) * len(odf) < len(ovf) * len(sdf):
+            interVF = annihilator(odf, control_distribution=svf)
+        else:
+            interVF = annihilator(sdf, control_distribution=ovf)
+        formatting = (
+            self.formatting
+            if formatting is None and self.formatting == other.formatting
+            else formatting
+        )
+        return distribution(
+            interVF,
+            formatting=formatting,
+        )
+
+    def union(self, other, extract_basis=False):
+        if not isinstance(other, distribution):
+            raise TypeError(
+                "dgcv.distribution.intersection can only operate on other dgcv.distribution instances."
+            )
+        return distribution(
+            self.spanning_vf_set + other.spanning_vf_set, extract_basis=extract_basis
+        )
 
     def derived_flag(
         self,
@@ -2496,7 +2567,7 @@ class distribution(dgcv_class):
             from random import randint
 
             approximation_point = dict()
-            for var in self.varSpace:
+            for var in self.coordinates:
                 in1 = randint(1, 20)
                 in2 = randint(in1 + 1, in1 + 20)
                 ins = [in1, in2]
@@ -2511,9 +2582,9 @@ class distribution(dgcv_class):
             "expansion_point", approximation_point
         )  # old syntax support
         if approximation_point is None:
-            approximation_point = {var: 0 for var in self.varSpace}
+            approximation_point = {var: 0 for var in self.coordinates}
 
-        dimension = len(self.varSpace)
+        dimension = len(self.coordinates)
         derFlag = self.weak_derived_flag(use_numeric_methods=use_numeric_methods)
         evaluated_flag = [
             list([subs(vf, approximation_point) for vf in level]) for level in derFlag
@@ -2524,7 +2595,7 @@ class distribution(dgcv_class):
         depth = len(derFlag)
         basisVF = sum(derFlag, [])
 
-        discrep = len(self.varSpace) - len(evaluated_basis)
+        discrep = len(self.coordinates) - len(evaluated_basis)
         if discrep > 0:
             dgcv_warning(
                 f"The distribution is not bracket generating or the expansion point is a growth-vector singularity singularity (note: currently `dgcv.distribution` methods are not intended for analysis at such singularities). A complement to its bracket-generated envelope has been assigned weight {-depth} and added to the nilpotent approximation as a component commuting with everything."
@@ -2562,7 +2633,7 @@ class distribution(dgcv_class):
                     idx_to_weight_assignment[count1] + idx_to_weight_assignment[count2]
                 )
                 if newLevelWeight < -depth:
-                    coeffs = [0] * len(self.varSpace)
+                    coeffs = [0] * len(self.coordinates)
                 else:
                     eqns = subs(LieDerivative(elem1, elem2), approximation_point)
                     coeff_sol = _decomp(eqns)
@@ -2736,7 +2807,12 @@ class distribution(dgcv_class):
             return seq[:k] + (r"\dots",) + seq[-k:]
 
         def _tex(obj):
-            f = getattr(obj, "_repr_latex_", None)
+            if get_dgcv_settings_registry().get("compile_latex_conjugation", True):
+                f = getattr(
+                    symToHol(obj, convert_everything=False), "_repr_latex_", None
+                )
+            else:
+                f = getattr(obj, "_repr_latex_", None)
             if callable(f):
                 s = f(raw=True)
                 return str(s).replace("$", "").replace(r"\displaystyle", "")
@@ -2747,14 +2823,14 @@ class distribution(dgcv_class):
             return out if raw else rf"$\displaystyle {out}$"
 
         inner = ", ".join(_tex(e) for e in _trunc(span))
-        core = rf"\langle {inner}\rangle"
+        core = rf"\left\langle {inner}\right\rangle"
 
         if not vlp:
             out = core
             return out if raw else rf"$\displaystyle {out}$"
 
         vs_inner = ", ".join(_tex(v) for v in _trunc(vs))
-        vs_core = rf"\langle {vs_inner}\rangle"
+        vs_core = rf"\left\langle {vs_inner}\right\rangle"
 
         tag = r"\mathcal{D}"
         if fmt == "real":
@@ -2767,3 +2843,14 @@ class distribution(dgcv_class):
 
     def _latex(self, printer=None, raw: bool = True, **kwargs):
         return self._repr_latex_(raw=raw, **kwargs)
+
+    def apply(self, operator):
+        return distribution(
+            [operator(vf) for vf in self.vf_basis], formatting=self.formatting
+        )
+
+    def __dgcv_apply__(self, operator):
+        return self.apply(operator)
+
+    def __dgcv_conjugate__(self):
+        return self.apply(conjugate)
