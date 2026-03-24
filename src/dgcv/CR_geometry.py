@@ -1206,10 +1206,20 @@ def model2Nondegenerate(
                 "The provided symmetrix matrix has some complex coordinate elements other than holomorphic variables. They were not included among given parameters however. Since this matrix must be holomorphic in the underlying coordinates, you may have intended such elements to be included among the parameters. Use the optional `parameters` keyword to include them."
             )
         kernel_coordinates = order_coordinates(kernel_coordinates)
+        holomorphic_coor = [tc_holo] + base_coordinates + kernel_coordinates
+        if coordinates_to_weights_dict is not None:
+            k, v = next(iter(coordinates_to_weights_dict.items()))
+            cw_map = dict(zip(k, v))
+            weights = [
+                cw_map.get(var) for var in holomorphic_coor if var in holomorphic_coor
+            ]
+        else:
+            weights = None
         return CR_structure(
-            [tc_holo] + base_coordinates + kernel_coordinates,
+            holomorphic_coor,
             {transverse_coordinate: graph},
             parameters=parameters,
+            weights=weights,
         )
     if return_matrices:
         return result, hFun, sFun
