@@ -169,13 +169,7 @@ class CR_structure(dgcv_class):
                     formatted_coordinates.append(holoVar)
 
                 real_v = allToReal(v)
-                v_fv = get_free_symbols(v)
-                if real_k in v_fv:
-                    self.graph_format = False
-                    dgcv_warning(
-                        "Initializing a `CR_structure` with `defining_equations` in the dictionary format is intended for inputing equations in a graph format (e.g., graph coordinates equal functions of other coordinates). The given dictionary however has an equation of the form x=f(x,y,...), so preserving `graph form` has been abandoned."
-                    )
-                    break
+                v_fv = get_free_symbols(real_v)
                 graph_coordinates.add(real_k)
                 conv_v = (
                     real_v
@@ -196,6 +190,23 @@ class CR_structure(dgcv_class):
                         "fun_symbols": v_fv,
                     }
                 )
+            import graphlib
+
+            graph_coor_tree = {
+                gc: {eq["graph_coor"] for eq in eqns_data if gc in eq["fun_symbols"]}
+                for gc in graph_coordinates
+            }
+            try:
+                ts = graphlib.TopologicalSorter(graph_coor_tree)
+                graph_coordinates_ordering = {
+                    coor: c for c, coor in enumerate(list(ts.static_order()))
+                }
+            except graphlib.CycleError:
+                self.graph_format = False
+                dgcv_warning(
+                    "Initializing a `CR_structure` with `defining_equations` in the dictionary format is intended for inputing equations in a graph format (e.g., graph coordinates equal functions of other coordinates like {x_1=f_1,...}, such that [x_j<x_k iff f_j doesn't depend on x_j] determines a partial order). The given dictionary however has an equation of the form x=f(x,y,...), so preserving `graph form` has been abandoned."
+                )
+
             if self.graph_format is True:
                 if len(added_vars) > 0:
                     dgcv_warning(
@@ -203,9 +214,7 @@ class CR_structure(dgcv_class):
                     )
 
                 def sort_key(elem):
-                    return len(
-                        [var for var in graph_coordinates if var in elem["fun_symbols"]]
-                    )
+                    return graph_coordinates_ordering.get(elem["graph_coor"], 0)
 
                 eqns_data = sorted(eqns_data, key=sort_key)
                 self.flattened_defining_equations = tuple(
@@ -734,7 +743,7 @@ class CR_structure(dgcv_class):
                 symmetries[weight] = self._symmetries[weight]
             else:
                 symmetries[weight] = findWeightedCRSymmetries(
-                    self.flattened_defining_equations,
+                    list(self.graph_equations.values()),
                     holomorphic_coordinates=self.holomorphic_coordinates,
                     coordinate_weights=coordinate_weights,
                     symmetry_weight=weight,
@@ -797,12 +806,15 @@ def tangencyObstruction(
     rVF = realPartOfVF(vf)
     real_eval = [rVF(gv - f) for gv, f in zip(graph_vars, CR_defs)]
 
-    mapping = dict(zip(graph_vars, CR_defs))
-    out = [subs(expr, mapping) for expr in real_eval]
+    def mapping(x):
+        out = x
+        for var, val in zip(graph_vars, CR_defs):
+            out = subs(out, {var: val})
+        if simplify:
+            return simplify_dgcv(out)
+        return out
 
-    if simplify:
-        out = [simplify_dgcv(x) for x in out]
-
+    out = [mapping(expr) for expr in real_eval]
     return out
 
 
