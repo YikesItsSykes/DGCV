@@ -119,7 +119,7 @@ def _validate_structure_data(
                     )
                 except Exception:
                     raise TypeError(
-                        "`createAlgebra` could not extract a Lie algebra structure from the given vector fields with the indicated grading. I indicating a grading was unintended, the provide the fields in a list instead; if that also fails, then they may not span a Lie algebra."
+                        "`createAlgebra` could not extract a Lie algebra structure from the given vector fields with the indicated grading. If indicating a grading was unintended, then provide the fields in a list instead; if that also fails, then they may not span a Lie algebra."
                     )
             if all(
                 isinstance(key, tuple)
