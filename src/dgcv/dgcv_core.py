@@ -4002,7 +4002,7 @@ class polynomial_dgcv(dgcv_class):
 
     @property
     def free_symbols(self) -> set:
-        return set(self.parameters) | set(self.coordinates)
+        return get_free_symbols(self.polyExpr)
 
     @property
     def degree(self) -> Optional[int]:

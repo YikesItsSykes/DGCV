@@ -3197,21 +3197,22 @@ def createAlgebra(
     label,
     basis_labels=None,
     grading=None,
-    format_sparse=False,
-    process_matrix_rep=False,
+    format_sparse: bool = False,  # deprecated
+    process_matrix_rep: bool = False,
     preferred_representation=None,
     matrix_representation=None,
     tensor_representation=None,
-    verbose=False,
-    assume_skew=False,
-    assume_Lie_alg=False,
+    verbose: bool = False,
+    assume_skew: bool = False,
+    assume_Lie_alg: bool = False,
     basis_order_for_supplied_str_eqns=None,
     _simple=None,
-    return_created_object=False,
-    forgo_vmf_registry=False,
-    simplify_products_by_default=None,
+    return_created_object: bool = False,
+    forgo_vmf_registry: bool = False,
+    simplify_products_by_default: bool = None,
     initial_basis_index=1,
     allow_natural_basis_reordering: bool | None = None,
+    jet_determinacy_order_ansatz: int = None,
     _basis_labels_parent=None,
     _markers={},
     **kwargs,
@@ -3439,6 +3440,7 @@ def createAlgebra(
                 assume_skew=assume_skew,
                 assume_Lie_alg=assume_Lie_alg,
                 basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,
+                determinacy_order_ansatz=jet_determinacy_order_ansatz,
             )
             if vsd[-1] == "matrix":
                 t_message = "True by construction: list of matrices --> `createAlgebra`"
@@ -3462,6 +3464,7 @@ def createAlgebra(
                     _markers["_educed_properties"]["is_skew"] = t_message
                     _markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
                 structure_data = vsd[0]
+                grading = vsd[2]
                 _markers["parameters"] = vsd[1]
                 simplify_products_by_default = (
                     False

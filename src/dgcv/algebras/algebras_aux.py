@@ -24,6 +24,7 @@ from .._safeguards import (
     retrieve_public_key,
 )
 from ..arrays import matrix_dgcv
+from ..backends._calculus import diff
 from ..backends._numeric_router import _extract_basis_over_number_field
 from ..backends._symbolic_router import (
     _scalar_is_zero,
@@ -56,6 +57,7 @@ def _validate_structure_data(
     assume_Lie_alg=False,
     basis_order_for_supplied_str_eqns=None,
     process_tensor_rep=False,
+    determinacy_order_ansatz=None,
 ):
     if process_tensor_rep:
         # # DEBUG
@@ -99,11 +101,26 @@ def _validate_structure_data(
     if isinstance(data, (list, tuple)):
         if len(data) > 0:
             if all(query_dgcv_categories(obj, {"vector_field"}) for obj in data):
-                return algebraDataFromVF(data)
+                return aDataFromVFWithAnsatz(
+                    data, determinacy_order_ansatz=determinacy_order_ansatz
+                )
         else:
             return tuple(), set()
     try:
         if isinstance(data, dict):
+            if all(
+                isinstance(key, numbers.Integral)
+                and all(query_dgcv_categories(obj, {"vector_field"}) for obj in val)
+                for key, val in data.items()
+            ):
+                try:
+                    return aDataFromVFWithAnsatz(
+                        data, determinacy_order_ansatz=determinacy_order_ansatz
+                    )
+                except Exception:
+                    raise TypeError(
+                        "`createAlgebra` could not extract a Lie algebra structure from the given vector fields with the indicated grading. I indicating a grading was unintended, the provide the fields in a list instead; if that also fails, then they may not span a Lie algebra."
+                    )
             if all(
                 isinstance(key, tuple)
                 and len(key) == 2
@@ -226,6 +243,89 @@ def _validate_structure_data(
             )
     except Exception as e:
         raise ValueError(f"Invalid structure data format: {type(data)} - {e}")
+
+
+def aDataFromVFWithAnsatz(graded_components, determinacy_order_ansatz=None):
+    if not isinstance(graded_components, dict):
+        grading = None
+        basis = graded_components  # assumed to be iterable
+        graded_components = {0: graded_components}
+    else:
+        basis = []
+        grading = []
+        for weight, component in graded_components.items():
+            grading += [weight] * len(component)
+            basis += list(component)
+    free_symbols = set()
+    for vf in basis:
+        free_symbols |= get_free_symbols(vf)
+    vlabel = create_key("var")
+    var_dict = {
+        k: [symbol(f"{vlabel}{k}_{idx}") for idx in range(len(v))]
+        for k, v in graded_components.items()
+    }
+    gen_elements = {
+        k: sum(var * elem for var, elem in zip(var_dict[k], v))
+        for k, v in graded_components.items()
+    }
+    dim = len(basis)
+
+    structure_data = [[[0 for _ in range(dim)] for _ in range(dim)] for _ in range(dim)]
+    params = set()
+
+    if determinacy_order_ansatz is None:
+        order_bound = len(basis)
+    else:
+        order_bound = determinacy_order_ansatz
+    for c1, vf1 in enumerate(basis):
+        for c, vf2 in enumerate(basis[c1 + 1 :]):
+            c2 = c1 + 1 + c
+            new_weight = 0 if grading is None else grading[c1] + grading[c2]
+            if new_weight in gen_elements:
+                genelement = gen_elements[new_weight]
+                variables = var_dict[new_weight]
+            else:
+                genelement = 0
+                variables = [symbol("_dgcv_var_")]
+            liebracket = VF_bracket(vf1, vf2)
+            eqns = [
+                eqn
+                for eqn in (liebracket - (genelement)).coeff_dict.values()
+                if eqn != 0
+            ]
+            prev_eqns = eqns
+            for _ in range(order_bound):
+                p_e = prev_eqns
+                prev_eqns = []
+                for j in p_e:
+                    for var in free_symbols:
+                        neqn = diff(
+                            j, var
+                        )  ###!!! may be good to prune free_symbols here
+                        if neqn != 0:
+                            prev_eqns.append(neqn)
+                if len(prev_eqns) == 0:
+                    break
+                eqns += prev_eqns
+            sol = solve_dgcv(eqns, variables, method="linsolve")
+            if not sol:
+                raise RuntimeError(
+                    f"Given vector field list is not closed under Lie brackets at indices ({c1}, {c2})."
+                )
+
+            sol = sol[0]
+            counter, result = 0, []
+            for weight in grading:
+                if weight == new_weight:
+                    newcoeff = sol.get(variables[counter])
+                    params |= get_free_symbols(newcoeff)
+                    result.append(newcoeff)
+                    counter += 1
+                else:
+                    result.append(0)
+            structure_data[c1][c2] = result
+            structure_data[c2][c1] = [-elem for elem in result]
+    return structure_data, params, grading
 
 
 def algebraDataFromVF(

@@ -464,3 +464,60 @@ def cancel(expr, **kwargs):
         return expr
 
     return expr
+
+
+def defloat(expr, *, heuristic=False, **kwargs):
+    """
+    Attempt to coerce floating point numbers within expressions to exact symbolic ratios.
+
+    This should not be relied apon for exact computation programmatically. Instead, it is intended as a convenience utility for copy/pasting printed math, as printed expressions tipically format exact ratios into syntax that compiles with floating point numbers.
+    """
+    if isinstance(expr, list):
+        return [defloat(inner, heuristic=False, **kwargs) for inner in expr]
+    if isinstance(expr, tuple):
+        return tuple(defloat(inner, heuristic=False, **kwargs) for inner in expr)
+    if isinstance(expr, dict):
+        return {
+            defloat(k, heuristic=False, **kwargs): defloat(v, heuristic=False, **kwargs)
+            for k, v in expr.items()
+        }
+    f = getattr(expr, "__dgcv_apply__", None)
+    if f:
+        return f(defloat, heuristic=heuristic, **kwargs)
+    kind = engine_kind()
+    if kind == "sympy":
+        return engine_module().nsimplify(expr)
+    if kind == "sage":
+        return _sage_defloat(expr, heuristic=heuristic)
+
+
+def _sage_defloat(expr, *, heuristic=False, **kwargs):
+    sage = engine_module()
+
+    try:
+        from sage.rings.real_double import RealDoubleElement
+        from sage.rings.real_mpfr import RealNumber as SageRealNumber
+
+        real_types = (SageRealNumber, RealDoubleElement)
+    except Exception:
+        real_types = ()
+
+    def convert(x):
+        if isinstance(x, real_types):
+            try:
+                return x.nearby_rational() if heuristic else sage.QQ(str(x))
+            except Exception:
+                return x
+        return x
+
+    try:
+        return expr.map(lambda x: convert(x))
+    except Exception:
+        try:
+            op = expr.operator()
+            args = expr.operands()
+            if not args:
+                return convert(expr)
+            return op(*[_sage_defloat(a, heuristic=heuristic) for a in args])
+        except Exception:
+            return convert(expr)

@@ -1,10 +1,10 @@
+# backends/_numeric_router.py
+
 from __future__ import annotations
 
 import cmath
 from math import gcd
 from random import getrandbits, randint, random
-
-# backends/_numeric_router.py
 from typing import Any, Optional
 
 from .._safeguards import create_key

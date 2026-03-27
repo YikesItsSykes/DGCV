@@ -826,6 +826,7 @@ def weightedHomogeneousVF(
     degreeCap: int = 0,
     _tempVar=None,
     assumeReal=None,
+    polynomial_coeffs=False,
 ):
     if not _is_sequence(weight):
         weight = [weight]
@@ -847,18 +848,19 @@ def weightedHomogeneousVF(
     polys = []
     for j in range(len(varSpace)):
         degs = [d + ws[j] for d, ws in zip(weight_list, weight_systems)]
-        polys.append(
-            createMultigradedPolynomial(
-                f"{varLabel}_{j}_",
-                degs,
-                varSpace,
-                weight_systems,
-                degreeCap=degreeCap,
-                _tempVar=_tempVar,
-                assumeReal=assumeReal,
-                report_vmf_updates=False,
-            )
+        newPoly = createMultigradedPolynomial(
+            f"{varLabel}_{j}_",
+            degs,
+            varSpace,
+            weight_systems,
+            degreeCap=degreeCap,
+            _tempVar=_tempVar,
+            assumeReal=assumeReal,
+            report_vmf_updates=False,
         )
+        if polynomial_coeffs is False:
+            newPoly = getattr(newPoly, "polyExpr", newPoly)
+        polys.append(newPoly)
 
     Dz_list = get_VF(*varSpace)
     out = None
@@ -1004,6 +1006,7 @@ def findWeightedCRSymmetries(
 
     sol = solutions[0] if isinstance(solutions, (list, tuple)) else solutions
 
+    vf_candidate_holo = vf_candidate_holo.apply(lambda x: getattr(x, "polyExpr", x))
     vf_solved = subs(vf_candidate_holo, sol)
 
     VFCLoc = holVF_coeffs(vf_solved, holomorphic_coordinates)

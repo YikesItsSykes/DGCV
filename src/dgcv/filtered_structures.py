@@ -39,7 +39,6 @@ from .algebras.algebras_core import (
     algebra_subspace_class,
 )
 from .algebras.algebras_secondary import createAlgebra, subalgebra_class
-from .backends._caches import _get_expr_num_types
 from .backends._display_engine import is_rich_displaying_available
 from .backends._numeric_router import zeroish
 from .backends._symbolic_router import (
@@ -49,7 +48,7 @@ from .backends._symbolic_router import (
     simplify,
     subs,
 )
-from .backends._types_and_constants import rational, symbol
+from .backends._types_and_constants import expr_numeric_types, rational, symbol
 from .base import dgcv_class
 from .conversions import allToReal, allToSym, symToHol
 from .dgcv_core import tensor_field_class, variableProcedure, wedge
@@ -110,7 +109,7 @@ class Tanaka_symbol(dgcv_class):
 
             def _set_index_thr(self, new_threshold):
                 if not (
-                    isinstance(new_threshold, _get_expr_num_types())
+                    isinstance(new_threshold, expr_numeric_types())
                     or new_threshold is None
                 ):
                     raise TypeError("index_threshold must be an integer or None.")
@@ -1966,7 +1965,7 @@ class _fast_tensor_products:
         return (-self) + other
 
     def __mul__(self, other):
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             if other == 0:
                 return _fast_tensor_products({tuple(): 0}, self.algebra, _validated=0)
             return _fast_tensor_products(
@@ -2056,7 +2055,7 @@ class _fast_tensor_products:
         return NotImplemented
 
     def __rmul__(self, other):
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             if other == 0:
                 return _fast_tensor_products(dict(), self.algebra, _validated=0)
             return _fast_tensor_products(
@@ -2076,7 +2075,7 @@ class _fast_tensor_products:
         )
 
     def __matmul__(self, other):
-        if isinstance(other, _get_expr_num_types()):
+        if isinstance(other, expr_numeric_types()):
             return self * other
         if get_dgcv_category(other) in {
             "algebra_element",
