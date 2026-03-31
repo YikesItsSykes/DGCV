@@ -8033,7 +8033,7 @@ def realPartOfVF(vf: vector_field_class, *args) -> vector_field_class:
 
 
 # -----------------------------------------------------------------------------
-# depricated
+# deprecated
 # -----------------------------------------------------------------------------
 def TFClass(
     self,

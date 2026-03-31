@@ -48,6 +48,7 @@ from ._safeguards import (
     query_dgcv_categories,
     retrieve_passkey,
 )
+from .backends._calculus import diff
 from .backends._numeric_router import zeroish
 from .backends._symbolic_router import _scalar_is_zero, get_free_symbols, simplify, subs
 from .backends._types_and_constants import expr_numeric_types, symbol
@@ -884,6 +885,96 @@ def decompose(
         decomp_coeffs = [subs(c, subs_dict) for c in decomp_coeffs]
 
     return (decomp_coeffs, basis)
+
+
+def _decompose_over_number_field(
+    obj,
+    basis: list,
+    determinacy_order_ansatz=None,
+    return_basis=False,
+    only_check_independence=False,
+):
+    free_symbols = set()
+    dim = len(basis)
+    if determinacy_order_ansatz is None:
+        order_bound = 2
+    else:
+        order_bound = determinacy_order_ansatz
+    for elem in basis:
+        free_symbols |= get_free_symbols(elem)
+    vlabel = create_key("var")
+    variables = [symbol(f"{vlabel}_{idx}") for idx in range(dim)]
+    general_combination = sum(var * elem for var, elem in zip(variables, basis))
+    eqns = obj - general_combination
+    if hasattr(eqns, "__dgcv_zero_obstr__"):
+        eqns = [eqn for eqn in eqns.__dgcv_zero_obstr__[0] if eqn != 0]
+    exhaustion_tree = {0: {tuple(free_symbols): eqns}}
+    for order in range(order_bound):
+        if order not in exhaustion_tree:
+            break
+        previous = dict(exhaustion_tree[order])
+        for v_tuple, eqn_branch in previous.items():
+            for eqn in eqn_branch:
+                branch_root = []
+                new_branch = []
+                for var in v_tuple:
+                    neqn = diff(eqn, var)
+                    if neqn != 0:
+                        branch_root.append(var)
+                        new_branch.append(neqn)
+                if len(branch_root) == 0:
+                    continue
+                branch_root = tuple(branch_root)
+                eqns += new_branch
+                if order not in exhaustion_tree:
+                    exhaustion_tree[order] = {branch_root: new_branch}
+                else:
+                    exhaustion_tree[order][branch_root] = (
+                        exhaustion_tree[order].get(branch_root, []) + new_branch
+                    )
+    sol = solve_dgcv(eqns, variables, method="linsolve")
+    if len(sol) == 0:
+        if only_check_independence:
+            return True
+        out = []
+    else:
+        if only_check_independence:
+            return False
+        sol = sol[0]
+        decomp_coeffs = []
+        fv = set()
+        for v in variables:
+            coeff = sol.get(v)
+            fv |= get_free_symbols(coeff)
+            decomp_coeffs.append(coeff)
+        fv = {v for v in fv if v not in free_symbols}
+        zeroing = {v: 0 for v in fv}
+        out = [[subs(coeff, zeroing | {v: 1}) for coeff in decomp_coeffs] for v in fv]
+    if return_basis:
+        return out, basis
+    return out
+
+
+def _extract_basis_over_number_field(
+    spanners: list | tuple, determinacy_order_ansatz=None
+):
+    basis = []
+    for elem in spanners:
+        if getattr(elem, "is_zero", False) or elem == 0:
+            continue
+        if len(basis) == 0:
+            basis.append(elem)
+            continue
+        indep = _decompose_over_number_field(
+            elem,
+            basis,
+            determinacy_order_ansatz=determinacy_order_ansatz,
+            only_check_independence=True,
+        )
+        if indep:
+            basis.append(elem)
+            continue
+    return basis
 
 
 def get_coframe(
