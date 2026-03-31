@@ -33,7 +33,7 @@ from .._safeguards import (
     validate_label,
     validate_label_list,
 )
-from ..arrays import matrix_dgcv
+from ..arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ..backends._symbolic_router import (
     clear_denominators,
     ratio,
@@ -55,7 +55,6 @@ from ..tensors import tensorProduct
 from ..vmf import clearVar, listVar
 from .algebras_aux import _validate_structure_data
 from .algebras_core import (
-    _lazy_SD,
     algebra_class,
     algebra_element_class,
     algebra_subspace_class,
@@ -113,17 +112,11 @@ class subalgebra_class(algebra_subspace_class):
 
         if _internal_lock == retrieve_passkey():
             if _compressed_structure_data is not None:
-                self.structureData = tuple(
-                    tuple(_tuple_scan(inner, params) for inner in middle)
-                    for middle in _compressed_structure_data
-                )  ###!!! optimize by always preprocessing _compressed_structure_data elsewhere
+                self.structureData = _compressed_structure_data
         if self.structureData is None:
-            valSD = self.is_subalgebra(return_structure_data=True)["structure_data"]
-            self.structureData = tuple(
-                tuple(_tuple_scan(inner, params) for inner in middle)
-                for middle in valSD
-            )
-        # self._structureData = tuple(map(tuple, self.structureData))
+            self.structureData = self.is_subalgebra(return_structure_data=True)[
+                "structure_data"
+            ]
         self._parameters = params
         self.subindices_to_ambient_dict = {
             count: elem for count, elem in enumerate(basis)
@@ -143,7 +136,13 @@ class subalgebra_class(algebra_subspace_class):
             self.basis_labels = [f"_e_{j + 1}" for j in range(self.dimension)]
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "subalgebra"
-        self.structureDataDict = _lazy_SD(self.structureData)
+
+        sdd = dict()
+        for idx, val in self.structureData._data.items():
+            idx1, idx2 = self.structureData._unspool(idx)
+            for idx3, v in val._data.items():
+                sdd[(idx1, idx2, idx3)] = v
+        self.structureDataDict = sdd
         if (
             simplify_products_by_default is True
             or self.ambient.simplify_products_by_default is True
@@ -189,6 +188,13 @@ class subalgebra_class(algebra_subspace_class):
     def zero_element(self):
         return subalgebra_element(self, (0,) * self.dimension, 1)
 
+    def _structure_data_slice(self, idx):
+        mat_data = dict()
+        for k, v in self.structureDataDict.items():
+            if k[0] == idx:
+                mat_data[(k[1], k[2])] = v
+        return mat_data
+
     def __contains__(self, item):
         return item in self.basis
 
@@ -202,9 +208,9 @@ class subalgebra_class(algebra_subspace_class):
             if len(indices) == 1:
                 return self.basis[indices[0]]
             elif isinstance(indices, list) and len(indices) == 2:
-                return self.structureData[indices[0]][indices[1]]
+                return self.structureData[indices[0], indices[1]]
             elif isinstance(indices, list) and len(indices) == 3:
-                return self.structureData[indices[0]][indices[1]][indices[2]]
+                return self.structureData[indices[0], indices[1]][indices[2]]
         else:
             raise TypeError(
                 f"To access a subalgebra element or structure data component, provide one index for an element from the basis, two indices for a list of coefficients from the product  of two basis elements, or 3 indices for the corresponding entry in the structure array. Instead of an integer of list of integers, the following was given: {indices}"
@@ -460,7 +466,7 @@ class subalgebra_class(algebra_subspace_class):
             for j in range(i, self.dimension):
                 for k in range(self.dimension):
                     vector_sum_element = (
-                        self.structureData[i][j][k] + self.structureData[j][i][k]
+                        self.structureData[i, j][k] + self.structureData[j, i][k]
                     )
                     if vector_sum_element != 0:
                         return False, (i, j, k)
@@ -1468,7 +1474,7 @@ class subalgebra_element(dgcv_class):
                         if cj == 0:
                             continue
                         scalar = sign * ci * cj
-                        row = struct[i][j]
+                        row = struct[i, j]
                         for k in range(dim):
                             c_ijk = row[k]
                             if c_ijk != 0:
@@ -1902,7 +1908,7 @@ class simple_Lie_algebra(algebra_class):
         roots: Optional[List[int]] = None,
         label: Optional[str] = None,
         basis_labels: Optional[str | List[str]] = None,
-        register_in_vmf: Optional[bool] = None,
+        register_in_vmf: Optional[bool] = False,
         return_created_object: bool = False,
         use_non_positive_weights: bool = False,
         format_as_subalgebra_class: bool = False,
@@ -1916,9 +1922,10 @@ class simple_Lie_algebra(algebra_class):
         if not isinstance(roots, (list, tuple)) or not all(
             root - 1 in range(self.rank) for root in roots
         ):
-            raise TypeError(
-                f"The `roots` parameter in `simple_Lie_algebra.parabolic_subalgebra(roots)` should be either `None`, an `int`, or a list of integers in the range (1,...,{self.rank}) representing indices of simple roots as enumerated in the algebras Dynkin diagram (see `simple_Lie_algebra.root_space_summary()` for a summary of this indexing)."
-            ) from None
+            dgcv_warning(
+                f"Unsuported `roots` parameter: The `roots` parameter in `simple_Lie_algebra.parabolic_subalgebra(roots)` should be either `None`, an `int`, or a list of integers in the range (1,...,{self.rank}) representing indices of simple roots as enumerated in the algebras Dynkin diagram (see `simple_Lie_algebra.root_space_summary()` for a summary of this indexing)."
+            )
+            return
         marked = set(roots)
         newGrading = [
             sum([self.grading[idx - 1][j] for idx in marked])
@@ -1926,8 +1933,7 @@ class simple_Lie_algebra(algebra_class):
         ]
         if format_as_subalgebra_class is True:
             parabolic = []
-        subIndices = []
-        filtered_grading = []
+        subIndices, filtered_grading, new_dim, index_map = [], [], 0, dict()
         if not isinstance(use_non_positive_weights, bool):
             use_non_positive_weights = False
         # With H_i dual to simple roots, self.grading stores the simple-root coefficients n_i.
@@ -1935,6 +1941,8 @@ class simple_Lie_algebra(algebra_class):
         sign = -1 if use_non_positive_weights else 1
         for count, weight in enumerate(newGrading):
             if sign * weight >= 0:
+                index_map[count] = new_dim
+                new_dim += 1
                 if format_as_subalgebra_class is True:
                     parabolic.append(self.basis[count])
                 subIndices.append(count)
@@ -1944,11 +1952,29 @@ class simple_Lie_algebra(algebra_class):
         def truncateBySubInd(li):
             return [li[j] for j in subIndices]
 
-        structureData = truncateBySubInd(self.structureData)
-        structureData = [truncateBySubInd(plane) for plane in structureData]
-        structureData = [
-            [truncateBySubInd(li) for li in plane] for plane in structureData
-        ]
+        def restrict_structure_data(data):
+            new_data = dict()
+            inner_shape = (new_dim, 1)
+            for (i, j, k), v in data.items():
+                if i in subIndices and j in subIndices:
+                    if k in subIndices:
+                        outer_key = (index_map[i], index_map[j])
+                        if outer_key in new_data:
+                            new_data[outer_key][index_map[k]] = v
+                        else:
+                            new_data[outer_key] = matrix_dgcv(
+                                {index_map[k]: v}, shape=inner_shape
+                            )
+                    elif v is not None and not v != 0:
+                        raise TypeError(
+                            "The basis provided to the `simple_Lie_algebra.parabolic_subalgebra` method does not span a subalgebra. Could be likely a bug in `dgcv`."
+                        )
+            return array_dgcv(
+                new_data,
+                shape=(new_dim, new_dim),
+                null_return=freeze_matrix(matrix_dgcv.zeros(new_dim, 1)),
+            )
+
         if format_as_subalgebra_class is True:
             ignoredList = []
             if label is not None:
@@ -1976,8 +2002,8 @@ class simple_Lie_algebra(algebra_class):
                 # _compressed_structure_data=structureData,
                 # _internal_lock=retrieve_passkey(),
             )
-        if isinstance(basis_labels, (list, tuple, str)):
-            register_in_vmf = True
+
+        structureData = restrict_structure_data(self.structureDataDict)
         if register_in_vmf is True:
             if label is None:
                 label = self.label + "_parabolic"
@@ -1990,19 +2016,17 @@ class simple_Lie_algebra(algebra_class):
                 raise TypeError(
                     "If supplying the optional parameter `basis_labels` to `simple_Lie_algebra.parabolic_subalgebra` then it should be either a string or list of strings"
                 ) from None
-            return createAlgebra(
-                structureData,
-                label=label,
-                basis_labels=basis_labels,
-                grading=filtered_grading,
-                return_created_object=return_created_object,
-            )
-        if return_created_object is True:
-            return algebra_class(structureData, grading=[filtered_grading])
-        elif register_in_vmf is not True:
-            dgcv_warning(
-                "Optional keywords for the `parabolic_subalgebra` method indicate that nothing should be return returned or registered in the vmf. Probably that is not intended, in which case at least one keyword `label`, `basis_labels`, `register_in_vmf`, `return_created_object`, or `format_as_subalgebra_class` should be set differently."
-            )
+        if not (register_in_vmf or return_created_object):
+            register_in_vmf = False
+            return_created_object = True
+        return createAlgebra(
+            structureData,
+            label=label,
+            basis_labels=basis_labels,
+            grading=filtered_grading,
+            return_created_object=return_created_object,
+            forgo_vmf_registry=register_in_vmf is False,
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -2071,8 +2095,6 @@ def createSimpleLieAlgebra(
         hBasis = {"elems": dict(), "grading": dict()}
         offDiag = {"elems": dict(), "grading": dict()}
 
-        repMatrix = [[0] * matrix_dim for _ in range(matrix_dim)]
-
         def elemWeights(idx1, idx2):
             wVec = []
             for idx in range(n):
@@ -2092,20 +2114,20 @@ def createSimpleLieAlgebra(
             for k in range(j, n + 1):
                 # Diagonal (Cartan) element
                 if j == k and j < n:
-                    M = [row[:] for row in repMatrix]
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
                     for idx in range(n + 1):
                         if idx > j:
-                            M[idx][idx] = -rational(j + 1, n + 1)
+                            M[idx, idx] = -rational(j + 1, n + 1)
                         else:
-                            M[idx][idx] = 1 - rational(j + 1, n + 1)
+                            M[idx, idx] = 1 - rational(j + 1, n + 1)
                     hBasis["elems"][(j, k, 0)] = M
                     hBasis["grading"][(j, k, 0)] = [0] * n
                 elif j != k:
                     # off diagonal generators
-                    MPlus = [row[:] for row in repMatrix]
-                    MMinus = [row[:] for row in repMatrix]
-                    MPlus[j][k] = 1
-                    MMinus[k][j] = 1
+                    MPlus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    MMinus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    MPlus[j, k] = 1
+                    MMinus[k, j] = 1
                     offDiag["elems"][(j, k, 1)] = MPlus
                     offDiag["grading"][(j, k, 1)] = elemWeights(j, k)
                     offDiag["elems"][(k, j, 1)] = MMinus
@@ -2193,8 +2215,6 @@ def createSimpleLieAlgebra(
         DPlus = {"elems": dict(), "grading": dict()}
         DMinus = {"elems": dict(), "grading": dict()}
 
-        skew_symmetric = [[0] * matrix_dim for _ in range(matrix_dim)]
-
         def gPlusWeights(idx1, idx2):
             wVec = []
             for idx in range(n - 1):
@@ -2240,70 +2260,70 @@ def createSimpleLieAlgebra(
         for j, k in carProd(range(n), range(n)):
             # Diagonal (Cartan) element
             if j == k and j < n - 1:
-                M = [row[:] for row in skew_symmetric]
+                M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
                 for idx in range(n):
                     if idx < j + 1:
-                        M[2 * idx][2 * idx + 1] = imag_unit()
-                        M[2 * idx + 1][2 * idx] = -imag_unit()
+                        M[2 * idx, 2 * idx + 1] = imag_unit()
+                        M[2 * idx + 1, 2 * idx] = -imag_unit()
                 hBasis["elems"][(j, k, 0)] = M
                 hBasis["grading"][(j, k, 0)] = [0] * n
                 if j + 2 == n:
-                    M = [row[:] for row in skew_symmetric]
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
                     for idx in range(n):
-                        M[2 * idx][2 * idx + 1] = imag_unit()
-                        M[2 * idx + 1][2 * idx] = -imag_unit()
+                        M[2 * idx, 2 * idx + 1] = imag_unit()
+                        M[2 * idx + 1, 2 * idx] = -imag_unit()
                     hBasis["elems"][(j + 1, k + 1, 0)] = M
                     hBasis["grading"][(j + 1, k + 1, 0)] = [0] * n
             elif j != k:
                 # “+” generator
-                MPlus = [row[:] for row in skew_symmetric]
-                MPlus[2 * j][2 * k] = 1
-                MPlus[2 * k][2 * j] = -1
-                MPlus[2 * j + 1][2 * k + 1] = 1
-                MPlus[2 * k + 1][2 * j + 1] = -1
-                MPlus[2 * j][2 * k + 1] = imag_unit()
-                MPlus[2 * k + 1][2 * j] = -imag_unit()
-                MPlus[2 * j + 1][2 * k] = -imag_unit()
-                MPlus[2 * k][2 * j + 1] = imag_unit()
+                MPlus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                MPlus[2 * j, 2 * k] = 1
+                MPlus[2 * k, 2 * j] = -1
+                MPlus[2 * j + 1, 2 * k + 1] = 1
+                MPlus[2 * k + 1, 2 * j + 1] = -1
+                MPlus[2 * j, 2 * k + 1] = imag_unit()
+                MPlus[2 * k + 1, 2 * j] = -imag_unit()
+                MPlus[2 * j + 1, 2 * k] = -imag_unit()
+                MPlus[2 * k, 2 * j + 1] = imag_unit()
                 GPlus["elems"][(j, k, 1)] = MPlus
                 GPlus["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
                 # “–” generator
                 if j < k:
-                    MMinus = [row[:] for row in skew_symmetric]
-                    MMinus[2 * j][2 * k] = 1
-                    MMinus[2 * k][2 * j] = -1
-                    MMinus[2 * j + 1][2 * k + 1] = -1
-                    MMinus[2 * k + 1][2 * j + 1] = 1
-                    MMinus[2 * j][2 * k + 1] = imag_unit()
-                    MMinus[2 * k + 1][2 * j] = -imag_unit()
-                    MMinus[2 * j + 1][2 * k] = imag_unit()
-                    MMinus[2 * k][2 * j + 1] = -imag_unit()
+                    MMinus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    MMinus[2 * j, 2 * k] = 1
+                    MMinus[2 * k, 2 * j] = -1
+                    MMinus[2 * j + 1, 2 * k + 1] = -1
+                    MMinus[2 * k + 1, 2 * j + 1] = 1
+                    MMinus[2 * j, 2 * k + 1] = imag_unit()
+                    MMinus[2 * k + 1, 2 * j] = -imag_unit()
+                    MMinus[2 * j + 1, 2 * k] = imag_unit()
+                    MMinus[2 * k, 2 * j + 1] = -imag_unit()
                     GMinus["elems"][(j, k, -1)] = MMinus
                     GMinus["grading"][(j, k, -1)] = gMinusWeights(j, k)
                 else:  # k<j
-                    MMinus = [row[:] for row in skew_symmetric]
-                    MMinus[2 * k][2 * j] = 1
-                    MMinus[2 * j][2 * k] = -1
-                    MMinus[2 * k + 1][2 * j + 1] = -1
-                    MMinus[2 * j + 1][2 * k + 1] = 1
-                    MMinus[2 * k][2 * j + 1] = -imag_unit()
-                    MMinus[2 * j + 1][2 * k] = imag_unit()
-                    MMinus[2 * k + 1][2 * j] = -imag_unit()
-                    MMinus[2 * j][2 * k + 1] = imag_unit()
+                    MMinus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    MMinus[2 * k, 2 * j] = 1
+                    MMinus[2 * j, 2 * k] = -1
+                    MMinus[2 * k + 1, 2 * j + 1] = -1
+                    MMinus[2 * j + 1, 2 * k + 1] = 1
+                    MMinus[2 * k, 2 * j + 1] = -imag_unit()
+                    MMinus[2 * j + 1, 2 * k] = imag_unit()
+                    MMinus[2 * k + 1, 2 * j] = -imag_unit()
+                    MMinus[2 * j, 2 * k + 1] = imag_unit()
                     GMinus["elems"][(j, k, -1)] = MMinus
                     GMinus["grading"][(j, k, -1)] = gMinusWeights(j, k)
         for j in range(n):
-            MPlus = [row[:] for row in skew_symmetric]
-            MMinus = [row[:] for row in skew_symmetric]
-            MPlus[2 * j][2 * n] = 1
-            MPlus[2 * n][2 * j] = -1
-            MPlus[2 * j + 1][2 * n] = imag_unit()
-            MPlus[2 * n][2 * j + 1] = -imag_unit()
-            MMinus[2 * j][2 * n] = 1
-            MMinus[2 * n][2 * j] = -1
-            MMinus[2 * j + 1][2 * n] = -imag_unit()
-            MMinus[2 * n][2 * j + 1] = imag_unit()
+            MPlus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+            MMinus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+            MPlus[2 * j, 2 * n] = 1
+            MPlus[2 * n, 2 * j] = -1
+            MPlus[2 * j + 1, 2 * n] = imag_unit()
+            MPlus[2 * n, 2 * j + 1] = -imag_unit()
+            MMinus[2 * j, 2 * n] = 1
+            MMinus[2 * n, 2 * j] = -1
+            MMinus[2 * j + 1, 2 * n] = -imag_unit()
+            MMinus[2 * n, 2 * j + 1] = imag_unit()
             DPlus["elems"][(j, 2 * n, 2)] = MPlus
             DPlus["grading"][(j, 2 * n, 2)] = DWeights(j, 1)
             DMinus["elems"][(j, 2 * n, -2)] = MMinus
@@ -2507,8 +2527,6 @@ def createSimpleLieAlgebra(
         hBasis = {"elems": dict(), "grading": dict()}
         offDiag = {"elems": dict(), "grading": dict()}
 
-        symplectic = [[0] * matrix_dim for _ in range(matrix_dim)]
-
         def gPlusWeights(idx1, idx2):
             wVec = []
             for idx in range(idx1):
@@ -2541,49 +2559,49 @@ def createSimpleLieAlgebra(
         for j in range(n):
             for k in range(j, n):
                 if j == k:
-                    M = [row[:] for row in symplectic]
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
                     if j < n - 1:
                         for idx in range(j + 1):
-                            M[idx][idx] = 1
-                            M[n + idx][n + idx] = -1
+                            M[idx, idx] = 1
+                            M[n + idx, n + idx] = -1
                     else:
                         for idx in range(n):
-                            M[idx][idx] = rational(1, 2)
-                            M[n + idx][n + idx] = -rational(1, 2)
+                            M[idx, idx] = rational(1, 2)
+                            M[n + idx, n + idx] = -rational(1, 2)
                     hBasis["elems"][(j, k, 0)] = M
                     hBasis["grading"][(j, k, 0)] = [0] * n
 
-                    M = [row[:] for row in symplectic]
-                    M[j][n + j] = 1
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    M[j, n + j] = 1
                     offDiag["elems"][(j, k, 1)] = M
                     offDiag["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
-                    M = [row[:] for row in symplectic]
-                    M[n + j][j] = 1
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    M[n + j, j] = 1
                     offDiag["elems"][(j, k, -1)] = M
                     offDiag["grading"][(j, k, -1)] = gMinusWeights(j, k)
                 else:
-                    M = [row[:] for row in symplectic]
-                    M[j][k] = 1
-                    M[n + k][n + j] = -1
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    M[j, k] = 1
+                    M[n + k, n + j] = -1
                     offDiag["elems"][(j, k, 2)] = M
                     offDiag["grading"][(j, k, 2)] = GLWeights(j, k)
 
-                    M = [row[:] for row in symplectic]
-                    M[k][j] = 1
-                    M[n + j][n + k] = -1
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    M[k, j] = 1
+                    M[n + j, n + k] = -1
                     offDiag["elems"][(k, j, 2)] = M
                     offDiag["grading"][(k, j, 2)] = GLWeights(k, j)
 
-                    M = [row[:] for row in symplectic]
-                    M[j][n + k] = 1
-                    M[k][n + j] = 1
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    M[j, n + k] = 1
+                    M[k, n + j] = 1
                     offDiag["elems"][(j, k, 1)] = M
                     offDiag["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
-                    M = [row[:] for row in symplectic]
-                    M[n + j][k] = 1
-                    M[n + k][j] = 1
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    M[n + j, k] = 1
+                    M[n + k, j] = 1
                     offDiag["elems"][(j, k, -1)] = M
                     offDiag["grading"][(j, k, -1)] = gMinusWeights(j, k)
 
@@ -2728,8 +2746,6 @@ def createSimpleLieAlgebra(
         GPlus = {"elems": dict(), "grading": dict()}
         GMinus = {"elems": dict(), "grading": dict()}
 
-        skew_symmetric = [[0] * matrix_dim for _ in range(matrix_dim)]
-
         def gPlusWeights(idx1, idx2):
             wVec = []
             for idx in range(n - 2):
@@ -2770,66 +2786,66 @@ def createSimpleLieAlgebra(
         for j, k in carProd(range(n), range(n)):
             # Diagonal (Cartan) element
             if j == k and j < n - 1:
-                M = [row[:] for row in skew_symmetric]
+                M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
                 if j < n - 2:
                     for idx in range(j + 1):
-                        M[2 * idx][2 * idx + 1] = imag_unit()
-                        M[2 * idx + 1][2 * idx] = -imag_unit()
+                        M[2 * idx, 2 * idx + 1] = imag_unit()
+                        M[2 * idx + 1, 2 * idx] = -imag_unit()
                     hBasis["elems"][(j, k, 0)] = M
                     hBasis["grading"][(j, k, 0)] = [0] * n
                 else:
                     for idx in range(n):
                         if idx > j:
-                            M[2 * idx][2 * idx + 1] = -imag_unit() / 2
-                            M[2 * idx + 1][2 * idx] = imag_unit() / 2
+                            M[2 * idx, 2 * idx + 1] = -imag_unit() / 2
+                            M[2 * idx + 1, 2 * idx] = imag_unit() / 2
                         else:
-                            M[2 * idx][2 * idx + 1] = imag_unit() / 2
-                            M[2 * idx + 1][2 * idx] = -imag_unit() / 2
+                            M[2 * idx, 2 * idx + 1] = imag_unit() / 2
+                            M[2 * idx + 1, 2 * idx] = -imag_unit() / 2
                     hBasis["elems"][(j, k, 0)] = M
                     hBasis["grading"][(j, k, 0)] = [0] * n
-                    M = [row[:] for row in skew_symmetric]
+                    M = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
                     for idx in range(n):
-                        M[2 * idx][2 * idx + 1] = imag_unit() / 2
-                        M[2 * idx + 1][2 * idx] = -imag_unit() / 2
+                        M[2 * idx, 2 * idx + 1] = imag_unit() / 2
+                        M[2 * idx + 1, 2 * idx] = -imag_unit() / 2
                     hBasis["elems"][(j + 1, k + 1, 0)] = M
                     hBasis["grading"][(j + 1, k + 1, 0)] = [0] * n
             elif j != k:
                 # “+” generator
-                MPlus = [row[:] for row in skew_symmetric]
-                MPlus[2 * j][2 * k] = 1
-                MPlus[2 * k][2 * j] = -1
-                MPlus[2 * j + 1][2 * k + 1] = 1
-                MPlus[2 * k + 1][2 * j + 1] = -1
-                MPlus[2 * j][2 * k + 1] = imag_unit()
-                MPlus[2 * k + 1][2 * j] = -imag_unit()
-                MPlus[2 * j + 1][2 * k] = -imag_unit()
-                MPlus[2 * k][2 * j + 1] = imag_unit()
+                MPlus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                MPlus[2 * j, 2 * k] = 1
+                MPlus[2 * k, 2 * j] = -1
+                MPlus[2 * j + 1, 2 * k + 1] = 1
+                MPlus[2 * k + 1, 2 * j + 1] = -1
+                MPlus[2 * j, 2 * k + 1] = imag_unit()
+                MPlus[2 * k + 1, 2 * j] = -imag_unit()
+                MPlus[2 * j + 1, 2 * k] = -imag_unit()
+                MPlus[2 * k, 2 * j + 1] = imag_unit()
                 GPlus["elems"][(j, k, 1)] = MPlus
                 GPlus["grading"][(j, k, 1)] = gPlusWeights(j, k)
 
                 # “–” generator
                 if j < k:
-                    MMinus = [row[:] for row in skew_symmetric]
-                    MMinus[2 * j][2 * k] = 1
-                    MMinus[2 * k][2 * j] = -1
-                    MMinus[2 * j + 1][2 * k + 1] = -1
-                    MMinus[2 * k + 1][2 * j + 1] = 1
-                    MMinus[2 * j][2 * k + 1] = imag_unit()
-                    MMinus[2 * k + 1][2 * j] = -imag_unit()
-                    MMinus[2 * j + 1][2 * k] = imag_unit()
-                    MMinus[2 * k][2 * j + 1] = -imag_unit()
+                    MMinus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    MMinus[2 * j, 2 * k] = 1
+                    MMinus[2 * k, 2 * j] = -1
+                    MMinus[2 * j + 1, 2 * k + 1] = -1
+                    MMinus[2 * k + 1, 2 * j + 1] = 1
+                    MMinus[2 * j, 2 * k + 1] = imag_unit()
+                    MMinus[2 * k + 1, 2 * j] = -imag_unit()
+                    MMinus[2 * j + 1, 2 * k] = imag_unit()
+                    MMinus[2 * k, 2 * j + 1] = -imag_unit()
                     GMinus["elems"][(j, k, -1)] = MMinus
                     GMinus["grading"][(j, k, -1)] = gMinusWeights(j, k)
                 else:  # k<j
-                    MMinus = [row[:] for row in skew_symmetric]
-                    MMinus[2 * k][2 * j] = 1
-                    MMinus[2 * j][2 * k] = -1
-                    MMinus[2 * k + 1][2 * j + 1] = -1
-                    MMinus[2 * j + 1][2 * k + 1] = 1
-                    MMinus[2 * k][2 * j + 1] = -imag_unit()
-                    MMinus[2 * j + 1][2 * k] = imag_unit()
-                    MMinus[2 * k + 1][2 * j] = -imag_unit()
-                    MMinus[2 * j][2 * k + 1] = imag_unit()
+                    MMinus = matrix_dgcv({}, shape=(matrix_dim, matrix_dim))
+                    MMinus[2 * k, 2 * j] = 1
+                    MMinus[2 * j, 2 * k] = -1
+                    MMinus[2 * k + 1, 2 * j + 1] = -1
+                    MMinus[2 * j + 1, 2 * k + 1] = 1
+                    MMinus[2 * k, 2 * j + 1] = -imag_unit()
+                    MMinus[2 * j + 1, 2 * k] = imag_unit()
+                    MMinus[2 * k + 1, 2 * j] = -imag_unit()
+                    MMinus[2 * j, 2 * k + 1] = imag_unit()
                     GMinus["elems"][(j, k, -1)] = MMinus
                     GMinus["grading"][(j, k, -1)] = gMinusWeights(j, k)
 
@@ -3069,7 +3085,7 @@ def createSimpleLieAlgebra(
             )
 
     elif series_type == "C":
-        default_label = f"sp{rank}" if label is None else label
+        default_label = f"sp{2 * rank}" if label is None else label
         structure_data, grading, CartanSubalgebra, matrixBasis = (
             _generate_C_series_structure_data(rank)
         )
@@ -3382,7 +3398,11 @@ def createAlgebra(
         return gate
 
     if isinstance(obj, numbers.Integral) and obj >= 0:
-        obj = (((0,) * obj,) * obj,) * obj
+        obj = array_dgcv(
+            dict(),
+            shape=(obj, obj),
+            null_return=freeze_matrix(matrix_dgcv.zeros(obj, 1)),
+        )
         t_message = "True by construction: abelian data --> `createAlgebra`"
         _markers["_educed_properties"]["is_Lie_algebra"] = t_message
         _markers["_educed_properties"]["is_skew"] = t_message
@@ -3399,7 +3419,11 @@ def createAlgebra(
         if grading is None:
             grading = getattr(obj, "grading", None)
     elif isinstance(obj, (list, tuple)) and len(obj) == 0:
-        structure_data = tuple()
+        structure_data = array_dgcv(
+            dict(),
+            shape=(0, 0),
+            null_return=freeze_matrix(matrix_dgcv.zeros(0, 1)),
+        )
         dimension = 0
     elif isinstance(obj, (list, tuple)) and all(
         get_dgcv_category(el) in {"algebra_element", "subalgebra_element"} for el in obj
@@ -3464,7 +3488,8 @@ def createAlgebra(
                     _markers["_educed_properties"]["is_skew"] = t_message
                     _markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
                 structure_data = vsd[0]
-                grading = vsd[2]
+                if len(vsd) > 2:
+                    grading = vsd[2]
                 _markers["parameters"] = vsd[1]
                 simplify_products_by_default = (
                     False
@@ -3474,7 +3499,7 @@ def createAlgebra(
 
         except dgcv_exception_note as e:
             raise SystemExit(e)
-        dimension = len(structure_data)
+        dimension = structure_data.shape[0]
 
     if (_markers.get("sum", False) or _markers.get("prod", False)) and _markers.get(
         "lockKey", None
@@ -3589,7 +3614,6 @@ def createAlgebra(
         raise ValueError(
             f"Grading must be a single vector or a list of vectors. Recieved {grading}"
         ) from None
-
     if isinstance(_simple, dict) and _simple.get("lockKey", None) == passkey:
         algebra_obj = simple_Lie_algebra(
             structure_data=structure_data,

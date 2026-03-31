@@ -39,7 +39,7 @@ from .._safeguards import (
     unique_label,
 )
 from .._tables import build_matrix_table, panel_view
-from ..arrays import _as_matrix_dgcv, matrix_dgcv
+from ..arrays import _as_matrix_dgcv, array_dgcv, freeze_matrix, matrix_dgcv
 from ..backends._display import latex
 from ..backends._display_engine import is_rich_displaying_available
 from ..backends._engine import engine_kind, engine_module
@@ -104,9 +104,12 @@ class algebra_class(dgcv_class):
         _markers={},
     ):
         if isinstance(structure_data, numbers.Integral):
-            structure_data = (
-                ((0,) * structure_data,) * structure_data,
-            ) * structure_data
+            if structure_data >= 0:
+                structure_data = array_dgcv(
+                    dict(),
+                    shape=(structure_data, structure_data),
+                    null_return=freeze_matrix(matrix_dgcv.zeros(structure_data, 1)),
+                )
         if _calledFromCreator == retrieve_passkey():
             validated_structure_data = structure_data
             params = _markers.get("parameters", set())
@@ -135,10 +138,12 @@ class algebra_class(dgcv_class):
             except dgcv_exception_note as e:
                 raise SystemExit(e)
         # validated_structure_data = tuple(map(tuple, validated_structure_data))
-        self.structureData = tuple(
-            tuple(tuple(inner) for inner in middle)
-            for middle in validated_structure_data
-        )
+        self.structureData = validated_structure_data
+        self.dimension = self.structureData.shape[0]
+        # self.structureData = tuple(
+        #     tuple(tuple(inner) for inner in middle)
+        #     for middle in validated_structure_data
+        # )
         self._parameters = params
         self._tex_label = None
         self._tex_basis_labels = None
@@ -153,11 +158,10 @@ class algebra_class(dgcv_class):
                         f"\\mathfrak{{gl}}\\left({_markers.get('endo_tex', '')}\\right)"
                     )
                     self.basis_labels = [
-                        f"{self.label}{i + 1}" for i in range(len(self.structureData))
+                        f"{self.label}{i + 1}" for i in range(self.dimension)
                     ]
                     self._tex_basis_labels = [
-                        f"{self._tex_label}_{{{i + 1}}}"
-                        for i in range(len(self.structureData))
+                        f"{self._tex_label}_{{{i + 1}}}" for i in range(self.dimension)
                     ]
                 else:
                     self.label = _label
@@ -210,7 +214,7 @@ class algebra_class(dgcv_class):
                     elif self._tex_label is not None:
                         self._tex_basis_labels = [
                             f"{self._tex_label}_{{{i + 1}}}"
-                            for i in range(len(self.structureData))
+                            for i in range(self.dimension)
                         ]
                 else:
                     self.label = _label
@@ -222,7 +226,7 @@ class algebra_class(dgcv_class):
                             else "_e"
                         )
                         self.basis_labels = [
-                            f"{base}{i + 1}" for i in range(len(self.structureData))
+                            f"{base}{i + 1}" for i in range(self.dimension)
                         ]
                     if _markers.get("_tex_label", None) is not None:
                         self._tex_label = _markers["_tex_label"]
@@ -231,7 +235,7 @@ class algebra_class(dgcv_class):
                     elif self._tex_label is not None and self._tex_basis_labels is None:
                         self._tex_basis_labels = [
                             f"{self._tex_label}_{{{i + 1}}}"
-                            for i in range(len(self.structureData))
+                            for i in range(self.dimension)
                         ]
             elif _markers.get("prod", False):
                 if _markers.get("registered", None) is False:
@@ -280,7 +284,7 @@ class algebra_class(dgcv_class):
                     elif self._tex_label is not None:
                         self._tex_basis_labels = [
                             f"{self._tex_label}_{{{i + 1}}}"
-                            for i in range(len(self.structureData))
+                            for i in range(self.dimension)
                         ]
                 else:
                     self.label = _label
@@ -292,7 +296,7 @@ class algebra_class(dgcv_class):
                     elif self._tex_label is not None:
                         self._tex_basis_labels = [
                             f"{self._tex_label}_{{{i + 1}}}"
-                            for i in range(len(self.structureData))
+                            for i in range(self.dimension)
                         ]
 
             else:
@@ -303,12 +307,10 @@ class algebra_class(dgcv_class):
             self.label = "Alg_" + create_key()
             if _basis_labels_parent is True:
                 self.basis_labels = [
-                    f"{self.label}{i + 1}" for i in range(len(self.structureData))
+                    f"{self.label}{i + 1}" for i in range(self.dimension)
                 ]
             else:
-                self.basis_labels = [
-                    f"_e{i + 1}" for i in range(len(self.structureData))
-                ]
+                self.basis_labels = [f"_e{i + 1}" for i in range(self.dimension)]
             self._registered = False
         self._basis_labels_parent = _basis_labels_parent
         self._callLock = _callLock
@@ -316,8 +318,12 @@ class algebra_class(dgcv_class):
         self._child_print_warning = _child_print_warning
         self._exclude_from_VMF = _exclude_from_VMF
         self.is_sparse = format_sparse
-        self.dimension = len(self.structureData)
-        self.structureDataDict = _lazy_SD(self.structureData)
+        sdd = dict()
+        for idx, val in self.structureData._data.items():
+            idx1, idx2 = self.structureData._unspool(idx)
+            for idx3, v in val._data.items():
+                sdd[(idx1, idx2, idx3)] = v
+        self.structureDataDict = sdd
         self._built_from_matrices = process_matrix_rep
         self.simplify_products_by_default = simplify_products_by_default
         self.semidirect_decomposition = _markers.get("semidirect_decomposition", None)
@@ -469,6 +475,13 @@ class algebra_class(dgcv_class):
     def _class_builder(self, coeffs, valence, format_sparse=False):
         return algebra_element_class(self, coeffs, valence, format_sparse=format_sparse)
 
+    def _structure_data_slice(self, idx):
+        mat_data = dict()
+        for k, v in self.structureDataDict.items():
+            if k[0] == idx:
+                mat_data[(k[1], k[2])] = v
+        return mat_data
+
     @property
     def preferred_representation(self):
         if self._preferred_representation is None:
@@ -546,7 +559,7 @@ class algebra_class(dgcv_class):
             start = i + 1 if abreviate_for_skew_struct and self.is_skew_symmetric else 0
             for j in range(start, self.dimension):
                 val = sum(
-                    c * atoms[idx] for idx, c in enumerate(self.structureData[i][j])
+                    c * atoms[idx] for idx, c in self.structureData[i, j]._data.items()
                 )
                 if not _scalar_is_zero(val):
                     str_eqns[(atoms[i], atoms[j])] = val
@@ -638,20 +651,18 @@ class algebra_class(dgcv_class):
             if len(indices) == 1:
                 return self.basis[indices[0]]
             elif isinstance(indices, list) and len(indices) == 2:
-                return self.structureData[indices[0]][indices[1]]
+                return self.structureData[indices[0], indices[1]]
             elif isinstance(indices, list) and len(indices) == 3:
-                return self.structureData[indices[0]][indices[1]][indices[2]]
+                return self.structureData[indices[0], indices[1]][indices[2]]
         else:
             raise TypeError(
                 f"To access an algebra element or structure data component, provide one index for an element from the basis, two indices for a list of coefficients from the product  of two basis elements, or 3 indices for the corresponding entry in the structure array. Instead of an integer of list of integers, the following was given: {indices}"
             ) from None
 
     def _structure_data_summary(self):
-        if self.dimension <= 3:
+        if self.dimension <= 4:
             return self.structureData
-        return (
-            "Structure data is large. Access the `structureData` attribute for details."
-        )
+        return "Structure data array is too large to print. Access the `structureData` attribute for details."
 
     def __str__(self, VLP=None):
         if not self._registered:
@@ -853,7 +864,8 @@ class algebra_class(dgcv_class):
             for j in range(i, self.dimension):
                 for k in range(self.dimension):
                     vector_sum_element = (
-                        self.structureData[i][j][k] + self.structureData[j][i][k]
+                        self.structureData[i, j][k]
+                        + self.structureData[j, i][k]  ###!!! optimize
                     )
                     if not _scalar_is_zero(vector_sum_element):
                         return False, (i, j, k)
@@ -1363,10 +1375,11 @@ class algebra_class(dgcv_class):
         linearly_independent = len(elements) == len(filtered_elem)
         closed_under_product = True
         if return_structure_data is True:
-            structure_data = [
-                [[0 for _ in range(new_dim)] for _ in range(new_dim)]
-                for _ in range(new_dim)
-            ]
+            structure_data = array_dgcv(
+                dict(),
+                shape=(new_dim, new_dim),
+                null_return=freeze_matrix(matrix_dgcv.zeros(new_dim, 1)),
+            )
         for count, elem in enumerate(filtered_elem):
             if closed_under_product is False:
                 break
@@ -1386,9 +1399,17 @@ class algebra_class(dgcv_class):
                     closed_under_product = False
                     structure_data = None
                 elif return_structure_data:
-                    structure_data[count][j] = ic[1][0]
+                    coeff_array = matrix_dgcv(
+                        {
+                            idx: coeff
+                            for idx, coeff in enumerate(ic[1][0])
+                            if coeff != 0
+                        },
+                        shape=(new_dim, 1),
+                    )
+                    structure_data[count, j] = coeff_array
                     if self.is_skew_symmetric():
-                        structure_data[j][count] = [-val for val in ic[1][0]]
+                        structure_data[j, count] = -coeff_array
         if return_structure_data:
             return {
                 "linearly_independent": linearly_independent,
@@ -2411,30 +2432,44 @@ class algebra_class(dgcv_class):
         if get_dgcv_category(basis) in {"algebra_subspace", "algebra"}:
             basis = basis.basis
         use_slices = True
-        subIndices = []
+        subIndices = set()
         index_map = dict()
         for count, elem in enumerate(basis):
             try:
                 idx = self.basis.index(elem)
                 index_map[idx] = count
-                subIndices.append(idx)
+                subIndices.add(idx)
             except ValueError:
                 use_slices = False
                 break
         if use_slices:
+            sub_dim = len(subIndices)
 
-            def truncateBySubInd(li, check_compl=False):
-                if check_compl is True:
-                    new_li = [0] * len(subIndices)
-                    for count, elem in enumerate(li):
-                        if count in subIndices:
-                            new_li[index_map[count]] = elem
-                        elif not _scalar_is_zero(elem):
-                            raise TypeError(
-                                "The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead."
-                            ) from None
-                    return new_li
+            def truncateBySubInd(li):
                 return [li[j] for j in subIndices]
+
+            def restrict_structure_data(data):
+                new_data = dict()
+                inner_shape = (sub_dim, 1)
+                for (i, j, k), v in data.items():
+                    if i in subIndices and j in subIndices:
+                        if k in subIndices:
+                            outer_key = (index_map[i], index_map[j])
+                            if outer_key in new_data:
+                                new_data[outer_key][index_map[k]] = v
+                            else:
+                                new_data[outer_key] = matrix_dgcv(
+                                    {index_map[k]: v}, shape=inner_shape
+                                )
+                        elif v is not None and not _scalar_is_zero(v):
+                            raise TypeError(
+                                "The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra."
+                            )
+                return array_dgcv(
+                    new_data,
+                    shape=(sub_dim, sub_dim),
+                    null_return=freeze_matrix(matrix_dgcv.zeros(sub_dim, 1)),
+                )
 
             if isinstance(grading, (list, tuple)) and all(
                 isinstance(elem, (list, tuple)) for elem in grading
@@ -2446,12 +2481,7 @@ class algebra_class(dgcv_class):
                         "The `gradings` keyword given to `algebra_class.subalgebra` was in an unsupported format (i.e., not list of lists), so a valid alternate gradings vector was computed instead inherited from the parent algebra."
                     )
                 gradings = [truncateBySubInd(grading) for grading in self.grading]
-            structureData = truncateBySubInd(self.structureData)
-            structureData = [truncateBySubInd(plane) for plane in structureData]
-            structureData = [
-                [truncateBySubInd(li, check_compl=True) for li in plane]
-                for plane in structureData
-            ]
+            structureData = restrict_structure_data(self.structureDataDict)
             return subalgebra_class(
                 basis,
                 self,
@@ -3279,6 +3309,7 @@ class algebra_class(dgcv_class):
     def dual(self, invert_grad_weights=True):
         return algebra_dual(self, invert_grad_weights=invert_grad_weights)
 
+    ###!!! broken
     def approximate_rank(
         self,
         check_semisimple=False,
@@ -3308,10 +3339,16 @@ class algebra_class(dgcv_class):
             if (assume_semisimple or refAlg._is_semisimple_cache is True)
             else refAlg.dimension
         )
-        elem = matrix_dgcv(refAlg.structureData[0])  # test element
+        get_slice = refAlg._structure_data_slice
+        elem = matrix_dgcv(
+            get_slice(0), shape=refAlg.structureData.shape
+        )  # test element
         bound = max(100, 10 * refAlg.dimension)
-        for elem2 in refAlg.structureData[1:]:
-            elem += random.randint(0, bound) * matrix_dgcv(elem2)
+        for idx in range(1, refAlg.dimension):
+            elem2 = get_slice(idx)
+            elem += random.randint(0, bound) * matrix_dgcv(
+                elem2, shape=refAlg.structureData.shape
+            )
         rank = refAlg.dimension - fast_rank(elem**power)
         if (
             not isinstance(refAlg._rank_approximation, numbers.Integral)
@@ -4310,10 +4347,25 @@ margin: 0;
                     )
                 elif len(simples) == 1:
                     PT = (
-                        "The subalgebra is simple."
+                        "The subalgebra is simple"
                         if subAlg
-                        else f"{algebra_name_cap} is simple."
+                        else f"{algebra_name_cap} is simple"
                     )
+                    alg = next(iter(simples))
+                    dim = getattr(alg, "dimension", None)
+
+                    rank = "?"
+                    try:
+                        rank = alg.approximate_rank(
+                            _use_cache=True, assume_semisimple=True
+                        )
+                    except Exception:
+                        pass
+                    IC = _simple_iso_label(dim, rank, use_latex=use_latex) or "?"
+                    if IC == "?":
+                        PT += "."
+                    else:
+                        PT += f" and isomorphic to {IC}."
                 else:
                     PT = (
                         "The subalgebra is a direct sum of the following simple ideals:"
@@ -4356,7 +4408,7 @@ margin: 0;
 
         sections.append(("panel", _LD_panel))
 
-        if (
+        if getattr(refAlg, "_is_simple_cache", None) is not True and (
             Levi_component is not None
             and getattr(Levi_component, "dimension", 0) != 0
             and simples is not None
@@ -4376,7 +4428,6 @@ margin: 0;
                         )
                     except Exception:
                         pass
-
                     IC = _simple_iso_label(dim, rank, use_latex=use_latex) or "?"
                     BL = _fmt_basis_list(getattr(a, "basis", ()) or ())
                     rows2.append([f"subalgebra {idx + 1}", f"{dim}", f"{rank}", IC, BL])
@@ -5241,11 +5292,10 @@ class algebra_element_class(dgcv_class):
                         if _scalar_is_zero(cj):
                             continue
                         scalar = sign * ci * cj
-                        row = struct[i][j]
+                        row = struct[i, j]
                         for k in range(dim):
                             c_ijk = row[k]
-                            if not _scalar_is_zero(c_ijk):
-                                raw_result[k] += scalar * c_ijk
+                            raw_result[k] += scalar * c_ijk
 
                 if self.algebra.simplify_products_by_default:
                     result_coeffs = [self._si_wrap(c) for c in raw_result]
@@ -5885,7 +5935,12 @@ def decompose_semisimple_algebra(
         )
 
     n = alg.dimension
-    mbasis = [matrix_dgcv(j).transpose() for j in alg.structureData]
+    get_slice = alg._structure_data_slice
+    slice_shape = (n, n)
+    mbasis = [
+        matrix_dgcv(get_slice(idx), shape=slice_shape).transpose()
+        for idx in range(alg.dimension)
+    ]
 
     pref = create_key("_var")
     vars = [symbol(f"{pref}{j}") for j in range(n * n)]
@@ -5944,51 +5999,39 @@ def decompose_semisimple_algebra(
     return simples
 
 
-def killingForm(alg, list_processing=False, assume_Lie_algebra=False):
-    if get_dgcv_category(alg) in {"algebra", "subalgebra"}:
-        if alg._killing_form is None:
-            if assume_Lie_algebra is False and not alg.is_Lie_algebra():
-                raise Exception(
-                    "killingForm expects argument to be a Lie algebra instance of the algebra"
-                ) from None
-            if list_processing:
-                aRepLoc = alg.structureData
-                return [
-                    [
-                        trace_matrix(multiply_matrices(aRepLoc[j], aRepLoc[k]))
-                        for k in range(alg.dimension)
-                    ]
-                    for j in range(alg.dimension)
-                ]
-            else:
-                aRepLoc = adjointRepresentation(
-                    alg, assume_Lie_algebra=assume_Lie_algebra
-                )
-                alg._killing_form = matrix_dgcv(
-                    [
-                        [
-                            (aRepLoc[j] * aRepLoc[k]).trace()
-                            for k in range(alg.dimension)
-                        ]
-                        for j in range(alg.dimension)
-                    ]
-                )
-        return alg._killing_form
-    else:
+def killingForm(alg, assume_Lie_algebra=False):
+    if get_dgcv_category(alg) not in {"algebra", "subalgebra"}:
         raise Exception(
             "killingForm expected to receive an algebra instance."
         ) from None
+    if alg._killing_form is None:
+        if assume_Lie_algebra is False and not alg.is_Lie_algebra():
+            raise Exception(
+                "killingForm expects argument to be a Lie algebra instance of the algebra"
+            ) from None
+        aRepLoc = adjointRepresentation(alg, assume_Lie_algebra=assume_Lie_algebra)
+        alg._killing_form = matrix_dgcv(
+            [
+                [(aRepLoc[j] * aRepLoc[k]).trace() for k in range(alg.dimension)]
+                for j in range(alg.dimension)
+            ]
+        )
+
+    return alg._killing_form
 
 
 def adjointRepresentation(alg, list_format=False, assume_Lie_algebra=False):
     if get_dgcv_category(alg) in {"algebra", "subalgebra"}:
         if assume_Lie_algebra is False and not alg.is_Lie_algebra():
             dgcv_warning(
-                "Caution: The algebra passed to `adjointRepresentation` is not a Lie algebra."
+                "The algebra passed to `adjointRepresentation` is not a Lie algebra; there is likely a mistake if applying  `adjointRepresentation`."
             )
-        if list_format:
-            return alg.structureData
-        return [matrix_dgcv(j).transpose() for j in alg.structureData]
+        get_slice = alg._structure_data_slice
+        shp = (alg.dimension, alg.dimension)
+        return [
+            matrix_dgcv(get_slice(idx), shape=shp).transpose()
+            for idx in range(alg.dimension)
+        ]
     else:
         raise Exception(
             "adjointRepresentation expected to receive an algebra instance."
@@ -6364,11 +6407,10 @@ class vector_space_endomorphisms(algebra_class):
 
 class linear_representation(dgcv_class):
     def __init__(self, hom: homomorphism):
-        self.structureData, self.antihomomorphism, self.parameters = self._validate_hom(
-            hom
-        )
+        self.structureData, self.antihomomorphism = self._validate_hom(hom)
         self.homomorphism = hom
         self.domain = hom.domain
+        self.parameters = set(hom.parameters) if getattr(hom, "parameters") else set()
         self.representation_space = hom.codomain.domain
 
     @classmethod
@@ -6409,81 +6451,28 @@ class linear_representation(dgcv_class):
                     if anti is None:
                         anti = False
 
-        def _extract_update(elems, idx, par):
-            elem = elems[idx]
-            par |= get_free_symbols(elem)
-            return elem
+        out_sd = getattr(hom.domain, "structureDataDict", dict()) | {
+            (k[0] + dom_dim, k[1] + dom_dim, k[2] + dom_dim): v
+            for k, v in getattr(hom.codomain.domain, "structureDataDict", dict())
+        }
+        if not is_zero_map:
+            for j in range(dom_dim):
+                for k in range(amb_dim - dom_dim):
+                    image = hom(hom.domain.basis[j])(hom.codomain.domain.basis[k])
+                    if _scalar_is_zero(image):
+                        continue
+                    for idx, value in enumerate(image.coeffs):
+                        if value != 0:
+                            out_sd[(j, k, idx)] = value
+                            out_sd[(k, j, idx)] = -value  ###!!! assumed skew here
 
-        def sd_gen(j, k, sd1, sd2, assume_skew=True):
-            if assume_skew and j == k:
-                return tuple(0 for _ in range(amb_dim))
-            if j < dom_dim:
-                if k < dom_dim:
-                    start = sd1[j][k]
-                    return tuple(
-                        _extract_update(start, jj, params) if jj < dom_dim else 0
-                        for jj in range(amb_dim)
-                    )
-                else:
-                    if is_zero_map:
-                        end = (0,) * (amb_dim - dom_dim)
-                    else:
-                        endterm = hom(hom.domain.basis[j])(
-                            hom.codomain.domain.basis[k - dom_dim]
-                        )
-                        if _scalar_is_zero(endterm):
-                            end = (0,) * (amb_dim - dom_dim)
-                        else:
-                            end = endterm.coeffs
-                    return tuple(
-                        0
-                        if jj < dom_dim
-                        else _extract_update(end, jj - dom_dim, params)
-                        for jj in range(amb_dim)
-                    )
-            else:
-                if k < dom_dim:
-                    if is_zero_map:
-                        end = (0,) * (amb_dim - dom_dim)
-                    else:
-                        endterm = hom(hom.domain.basis[k])(
-                            hom.codomain.domain.basis[j - dom_dim]
-                        )
-                        if _scalar_is_zero(endterm):
-                            end = (0,) * (amb_dim - dom_dim)
-                        else:
-                            end = endterm.coeffs
-                    return tuple(
-                        0 if jj < dom_dim else -end[jj - dom_dim]
-                        for jj in range(amb_dim)
-                    )
-                else:
-                    end = sd2[j - dom_dim][k - dom_dim]
-                    return tuple(
-                        0 if jj < dom_dim else end[jj - dom_dim]
-                        for jj in range(amb_dim)
-                    )
+        out_sd = array_dgcv(
+            out_sd,
+            shape=(amb_dim, amb_dim),
+            null_return=freeze_matrix(matrix_dgcv.zeros(amb_dim, 1)),
+        )
 
-        sd_dom = getattr(
-            hom.domain,
-            "structureData",
-            tuple(
-                tuple((0,) * dom_dim for _ in range(dom_dim)) for __ in range(dom_dim)
-            ),
-        )
-        sd_targ = getattr(
-            hom.codomain.domain,
-            "structureData",
-            tuple(
-                tuple((0,) * (amb_dim - dom_dim) for _ in range(amb_dim - dom_dim))
-                for __ in range(amb_dim - dom_dim)
-            ),
-        )
-        new_sd = tuple(
-            tuple(sd_gen(j, k, sd_dom, sd_targ) for k in range(amb_dim))
-            for j in range(amb_dim)
-        )
-        return new_sd, anti, params
+        return out_sd, anti, params
 
     def semidirect_sum(
         self,

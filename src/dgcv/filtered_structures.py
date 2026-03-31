@@ -39,6 +39,7 @@ from .algebras.algebras_core import (
     algebra_subspace_class,
 )
 from .algebras.algebras_secondary import createAlgebra, subalgebra_class
+from .arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from .backends._display_engine import is_rich_displaying_available
 from .backends._numeric_router import zeroish
 from .backends._symbolic_router import (
@@ -187,35 +188,65 @@ class Tanaka_symbol(dgcv_class):
 
         raiseWarning = False
         if subspace is None:
-            subIndices = []
-            filtered_grading = []
-            truncateIndices = {}
-            nonnegPartsTemp = {}
+            (
+                subIndices,
+                si_count,
+                filtered_grading,
+                truncateIndices,
+                nonnegPartsTemp,
+                index_map,
+            ) = [], 0, [], dict(), dict(), dict()
             for count, weight in enumerate(primary_grading):
                 if weight < 0:
-                    truncateIndices[count] = len(subIndices)
+                    truncateIndices[count] = si_count
                     subIndices.append(count)
+                    index_map[count] = si_count
                     filtered_grading.append(weight)
+                    si_count += 1
                 else:
                     nonnegPartsTemp[weight] = nonnegPartsTemp.get(weight, []) + [
                         GLA.basis[count]
                     ]
+            if si_count == 0:
+                raise ValueError(
+                    "`Tanaka_symbol` objects cannot be initialized from GLA data that has no negative weight components."
+                )
             if len(nonnegPartsTemp) > 0:
 
                 def truncateBySubInd(li):
                     return [li[j] for j in subIndices]
 
+                def restrict_structure_data(data):
+                    new_data = dict()
+                    inner_shape = (si_count, 1)
+                    for (i, j, k), v in data.items():
+                        if i in subIndices and j in subIndices:
+                            if k in subIndices:
+                                outer_key = (index_map[i], index_map[j])
+                                if outer_key in new_data:
+                                    new_data[outer_key][index_map[k]] = v
+                                else:
+                                    new_data[outer_key] = matrix_dgcv(
+                                        {index_map[k]: v}, shape=inner_shape
+                                    )
+                            elif v is not None and v != 0:
+                                raise TypeError(
+                                    "The GLA data given to the `Tanaka_symbol` initializer appears to not be compatible with its grading."
+                                )
+                    return array_dgcv(
+                        new_data,
+                        shape=(si_count, si_count),
+                        null_return=freeze_matrix(matrix_dgcv.zeros(si_count, 1)),
+                    )
+
                 ###!!! generalize for vector space GLA
-                structureData = truncateBySubInd(GLA.structureData)
-                structureData = [truncateBySubInd(plane) for plane in structureData]
-                structureData = [
-                    [truncateBySubInd(li) for li in plane] for plane in structureData
-                ]
                 subspace = subalgebra_class(
                     truncateBySubInd(GLA.basis),
                     GLA,
                     grading=[filtered_grading],
-                    _compressed_structure_data=structureData,
+                    _compressed_structure_data=restrict_structure_data(
+                        GLA.structureDataDict
+                    ),
                     _internal_lock=retrieve_passkey(),
                 )
             else:
@@ -1754,15 +1785,15 @@ class Tanaka_symbol(dgcv_class):
             end = [0] * complimentWeights[newWeight][1]
             return start + coeffVec + end
 
-        zeroVec = [0] * dimen
-        str_data = [
-            [bracket_decomp(k, j) if j < k else list(zeroVec) for j in range(dimen)]
-            for k in range(dimen)
-        ]
+        str_data = array_dgcv(
+            dict(),
+            shape=(dimen, dimen),
+            null_return=freeze_matrix(matrix_dgcv.zeros(dimen, 1)),
+        )
         for j in range(dimen):
             for k in range(j + 1, dimen):
-                skew_data = str_data[k][j]
-                if skew_data == "NoSol":
+                bracket_data = bracket_decomp(k, j)
+                if bracket_data == "NoSol":
                     warningStr = f"due to failure to confirm if the symbol data is closed under brackets between basis elements {j} and {k}."
                     if _internal_call_lock != retrieve_passkey():
                         dgcv_warning(
@@ -1775,19 +1806,39 @@ class Tanaka_symbol(dgcv_class):
                         "Unable to extract algebra structure from `Tanaka_symbol` object, "
                         + warningStr
                     )
-                str_data[j][k] = [-entry for entry in skew_data]
+                new_mat = matrix_dgcv(bracket_data)
+                str_data[(k, j)] = new_mat
+                str_data[(j, k)] = -new_mat
+
         if preserve_negative_part_basis:
 
             def permute_structure_data(SD, perm):
-                d = len(SD)  # len(perm) == d
+                d = SD.shape[0]
+                new_sd = array_dgcv(
+                    dict(),
+                    shape=(d, d),
+                    null_return=freeze_matrix(matrix_dgcv.zeros(d, 1)),
+                )
                 perm = list(perm)
-                return [
-                    [
-                        [SD[perm[i]][perm[j]][perm[m]] for m in range(d)]
-                        for j in range(d)
-                    ]
-                    for i in range(d)
-                ]
+                sddd = SD._data
+                for idx, v in sddd.items():
+                    i, j = SD._unspool(idx)
+                    new_key = (perm[i], perm[j])
+                    inner_shp = (d, 1)
+                    for k, value in enumerate(v):
+                        if value != 0:
+                            if new_key in new_sd:
+                                new_sd[new_key][perm[k]] = value
+                            else:
+                                new_sd[new_key] = matrix_dgcv(
+                                    {perm[k]: value}, shape=inner_shp
+                                )
+
+                return array_dgcv(
+                    str_data,
+                    shape=(d, d),
+                    null_return=freeze_matrix(matrix_dgcv.zeros(d, 1)),
+                )
 
             return {
                 "structure_data": permute_structure_data(str_data, permutation),
@@ -2648,7 +2699,6 @@ class distribution(dgcv_class):
                     ] + ([0] * discrep)
                 algebra_data[(count1, count2)] = coeffs
                 algebra_data[(count2, count1)] = [-j for j in coeffs]
-
         if label is None:
             if basis_labels is not None:
                 dgcv_warning(

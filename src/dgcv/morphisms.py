@@ -127,6 +127,9 @@ class homomorphism(dgcv_class):
         self.domain = domain
         self.codomain = codomain
         self._zero_map = all_zero
+        p1, p2 = getattr(domain, "parameters"), getattr(codomain, "parameters")
+        p1, p2 = p1 if p1 else set(), p2 if p2 else set()
+        self.parameters = p1 | p2
         if not self._zero_map:
             self.tensor_representation = sum(
                 e1 @ e2.dual()

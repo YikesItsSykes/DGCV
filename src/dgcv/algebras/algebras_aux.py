@@ -20,10 +20,9 @@ from .._safeguards import (
     get_dgcv_category,
     get_dgcv_settings_registry,
     query_dgcv_categories,
-    retrieve_passkey,
     retrieve_public_key,
 )
-from ..arrays import matrix_dgcv
+from ..arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ..backends._calculus import diff
 from ..backends._numeric_router import _extract_basis_over_number_field
 from ..backends._symbolic_router import (
@@ -33,7 +32,7 @@ from ..backends._symbolic_router import (
     subs,
 )
 from ..backends._types_and_constants import is_atomic, rational, symbol
-from ..dgcv_core import VF_bracket, allToReal, variableProcedure
+from ..dgcv_core import VF_bracket, allToReal
 from ..solvers import solve_dgcv
 from ..vmf import clearVar, listVar
 
@@ -58,6 +57,7 @@ def _validate_structure_data(
     basis_order_for_supplied_str_eqns=None,
     process_tensor_rep=False,
     determinacy_order_ansatz=None,
+    dimension=None,
 ):
     if process_tensor_rep:
         # # DEBUG
@@ -92,10 +92,10 @@ def _validate_structure_data(
                 assume_Lie_alg=assume_Lie_alg,
                 basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,
                 process_tensor_rep=True,
-            ), "tensor"
+            )
         else:
             raise ValueError(
-                f"matrix representation processing requires a list of square matrices. Recieved: {data}"
+                "matrix representation processing requires a list of square matrices."
             )
 
     if isinstance(data, (list, tuple)):
@@ -104,8 +104,19 @@ def _validate_structure_data(
                 return aDataFromVFWithAnsatz(
                     data, determinacy_order_ansatz=determinacy_order_ansatz
                 )
+            else:
+                try:
+                    return aDataFromNestedLists(data)
+                except Exception:
+                    raise TypeError(
+                        "The algebra_class initializer recieved data in an unsupported format."
+                    )
         else:
-            return tuple(), set()
+            return array_dgcv(
+                dict(),
+                shape=(0, 0),
+                null_return=freeze_matrix(matrix_dgcv.zeros(0, 1)),
+            ), set()
     try:
         if isinstance(data, dict):
             if all(
@@ -127,6 +138,10 @@ def _validate_structure_data(
                 and all(is_atomic(idx) for idx in key)
                 for key in data
             ):
+                tuple_vars = set()
+                for key in data:
+                    tuple_vars.add(key[0])
+                    tuple_vars.add(key[1])
                 if basis_order_for_supplied_str_eqns is None:
                     build_basis_order = True
                     basis_order_for_supplied_str_eqns = []
@@ -140,7 +155,7 @@ def _validate_structure_data(
                     raise ValueError(
                         "If initializing an algebra from structure equations and supplying the `basis_order_for_supplied_str_eqns` parameter, this parameter should be a list of the atomic variables appearing in the supplied structure equations."
                     )
-                for var in set(sum([list(key) for key in data.keys()], [])):
+                for var in tuple_vars:
                     if var not in basis_order_for_supplied_str_eqns:
                         if build_basis_order:
                             basis_order_for_supplied_str_eqns.append(var)
@@ -149,98 +164,144 @@ def _validate_structure_data(
                                 "If initializing an algebra from structure equations and supplying the `basis_order_for_supplied_str_eqns` parameter, this parameter should be a list containing all atomic variables appearing in the supplied structure equations."
                             )
                 ordered_BV = basis_order_for_supplied_str_eqns
+                enum_oBV = enumerate(ordered_BV)
                 zeroing = {var: 0 for var in ordered_BV}
-                new_data = dict()
+                dim = len(ordered_BV)
+                structure_data = array_dgcv(
+                    dict(),
+                    shape=(dim, dim),
+                    null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1)),
+                )
+                params = set()
                 for idx_pair, val in data.items():
                     if not _scalar_is_zero(val):
+                        params |= get_free_symbols(val)
                         v1, v2 = idx_pair
                         idx1 = ordered_BV.index(v1)
                         idx2 = ordered_BV.index(v2)
                         if hasattr(val, "subs") and _scalar_is_zero(val.subs(zeroing)):
-                            coeffs = []
-                            for var in ordered_BV:
-                                coeffs.append(
-                                    simplify(val.subs({var: 1}).subs(zeroing))
-                                )
-                            new_data[(idx2, idx1)] = tuple(coeffs)
+                            coeffs = matrix_dgcv.zeros(dim, 1)
+                            for idx, var in enum_oBV:
+                                coeffs[idx] = simplify(val.subs(zeroing | {var: 1}))
+                            structure_data[idx2, idx1] = coeffs
+                            if assume_skew or assume_Lie_alg:
+                                invert_idx = structure_data._spool((idx1, idx2))
+                                if invert_idx in structure_data._data:
+                                    if not all(
+                                        v == 0
+                                        for v in (
+                                            coeffs + structure_data._data[invert_idx]
+                                        )._data.values()
+                                    ):
+                                        raise ValueError(
+                                            "Either `assume_skew=True` or `assume_Lie_alg=True` was passed to the algebra contructor, but the accompanying structure data was not skew symmetric."
+                                        )
+                                else:
+                                    structure_data[idx1, idx2] = -coeffs
                         else:
                             raise ValueError(
-                                "If initializing an algebra from structure equations, supplied structure equations should be a dictionary whose keys are tuples of atomic variables and whose values are linear combinations of variables representing the product of the elements in the key tuple. If that is the case then you are likely getting this error because you did not supply the algebra creator with a valid value for the `basis_order_for_supplied_str_eqns` parameter. If that paremeter were omited, it is not always possible to unambiguously infer its proper value from general structure equations data, and hence this error arises."
+                                "If initializing an algebra from structure equations, supplied structure equations should be a dictionary whose keys are tuples of atomic variables and whose values are linear combinations of variables representing the product of the elements in the key tuple. If that is the case then you are likely getting this error because you did not supply the algebra creator with a valid value for the `basis_order_for_supplied_str_eqns` parameter. If that paremeter were omitted, it is not always possible to unambiguously infer its proper value from general structure equations data, which can lead to this error."
                             )
-                data = new_data
+                return structure_data, {x for x in params if x not in tuple_vars}
+            if get_dgcv_category(data) == "array":
+                shp = data.shape
+                if (
+                    isinstance(shp, (tuple, list))
+                    and len(shp) == 2
+                    and shp[0] == shp[1]
+                ):
+                    dimension = shp[0]
+                    data = data._data_unspooled
             if all(
                 isinstance(key, tuple)
                 and len(key) == 2
                 and all(isinstance(idx, numbers.Integral) and idx >= 0 for idx in key)
                 for key in data
             ):
-                provided_index_bound = max(sum([list(key) for key in data.keys()], []))
+                provided_index_bound = (
+                    max(max(key) for key in data.keys())
+                    if dimension is None
+                    else max(dimension, max(max(key) for key in data.keys()))
+                )
             else:
                 raise ValueError(
-                    "Structure data must be have one of several formats: It can be a list/tuple with 3D shape of size (x, x, x). Or it can be a dictionairy of the (i,j) entries for the structure data. Set `process_matrix_rep=True` to initialize from a matrix representation, or provide a list of vector fields to initialize from a VF rep."
+                    "Structure data must be in one of several formats. E.g.: It can be a list/tuple with 3D shape of size (x, x, x). Or it can be a sparse dictionairy of the (i,j) entries for the structure data. Set `process_matrix_rep=True` to initialize from a matrix representation, or provide a list of vector fields to initialize from a VF rep."
                 )
-            if all(isinstance(val, (tuple, list)) for val in data.values()):
-                base_dims = list(len(val) for val in data.values())
-                if len(set(base_dims)) != 1 or base_dims[0] < provided_index_bound + 1:
-                    raise ValueError(
-                        "If initializing an algebra algebra with structure data from a dictionairy, its keys should be (i,j) index tuples and its values should be tuples of coefficients from the product of i and j basis elements. All values tuples must have the same length in particular. Indices in the keys must not exceed the length of value tuples - 1 (as indexing starts from 0!)"
-                    )
-                else:
-                    base_dim = base_dims[0]
+            try:
+                formatted_data = {}
+                base_dim = None
+                for key, value in data.items():
+                    if isinstance(value, (list, tuple)):
+                        ol = len(value)
+                        formatted_data[key] = matrix_dgcv(value)
+                    elif get_dgcv_category(value) == "array":
+                        shp = value.shape
+                        if len(shp) != 2:
+                            raise RuntimeError()
+                        if shp[1] != 1 and shp[0] == 1:
+                            ol = shp[0]
+                            formatted_data[key] = matrix_dgcv(value).transpose()
+                        else:
+                            formatted_data[key] = matrix_dgcv(value)
+                    else:
+                        raise RuntimeError()
+                    if base_dim is None:
+                        ol = max(provided_index_bound, ol)
+                        base_dim = ol
+                    if base_dim != ol:
+                        print(f"DEBUG: {provided_index_bound}, {ol}, {base_dim}")
+                        raise ValueError(
+                            "If initializing an algebra with structure data from a dictionairy, its keys should be (i,j) index tuples and its values should be list-like structures of coefficients from the product of i and j basis elements. All values lists must have the same length in particular. Indices in the keys must not exceed the length of value tuples - 1 (as indexing starts from 0!)"
+                        )
+                base_dim = (
+                    base_dim
+                    if base_dim is not None
+                    else dimension
+                    if dimension is not None
+                    else 0
+                )
                 if assume_skew or assume_Lie_alg:
-                    seen = []
-                    initial_keys = list(data.keys())
+                    seen = set()
+                    initial_keys = list(formatted_data.keys())
                     for idx in initial_keys:
                         if idx in seen:
                             pass
                         else:
                             invert_idx = (idx[1], idx[0])
-                            if invert_idx in data.keys():
+                            if invert_idx in formatted_data.keys():
                                 if any(
-                                    j + k != 0
-                                    for j, k in zip(data[idx], data[invert_idx])
+                                    j != 0
+                                    for j in formatted_data[idx]
+                                    + formatted_data[invert_idx]
                                 ):
+                                    print(
+                                        f"DEBUG {idx}, {invert_idx}, {formatted_data[idx] + formatted_data[invert_idx]}"
+                                    )
                                     raise ValueError(
                                         "Either `assume_skew=True` or `assume_Lie_alg=True` was passed to the algebra contructor, but the accompanying structure data was not skew symmetric."
                                     )
                             else:
-                                data[invert_idx] = [-j for j in data[idx]]
-                            seen += [idx, invert_idx]
-                data = [
-                    [list(data.get((j, k), [0] * base_dim)) for j in range(base_dim)]
-                    for k in range(base_dim)
-                ]
-            else:
+                                formatted_data[invert_idx] = matrix_dgcv(
+                                    [-j for j in formatted_data[idx]]
+                                )
+                            seen.add(idx)
+                            seen.add(invert_idx)
+
+                data = array_dgcv(
+                    formatted_data,
+                    shape=(base_dim, base_dim),
+                    null_return=freeze_matrix(matrix_dgcv({}, shape=(base_dim, 1))),
+                )
+            except Exception:
                 raise ValueError(
                     "If initializing an algebra algebra with structure data from a dictionairy, its keys should be (i,j) index tuples and its values should be tuples of coefficients from the product of i and j basis elements. All values tuples must have the same length in particular."
                 )
         params = set()
+        for j in data._data.values():
+            params |= get_free_symbols(j)
 
-        def _tuple_scan(elems, par: set):
-            for elem in elems:
-                par |= getattr(elem, "free_symbols", set())
-            return tuple(elems)
+        return data, params  # structure data array, parameters
 
-        # Check that the data is a 3D list-like structure
-        if (
-            isinstance(data, (list, tuple))
-            and len(data) > 0
-            and isinstance(data[0], (list, tuple))
-        ):
-            if len(data) == len(data[0]) == len(data[0][0]):
-                sd = tuple(
-                    tuple(_tuple_scan(inner, params) for inner in outer)
-                    for outer in data
-                )
-                return sd, params
-            else:
-                raise ValueError(
-                    "Structure data must be a list with 3D shape of size (x, x, x). Or it can a  dictionairy of the (i,j) entries for the structure data. Set `process_matrix_rep=True` to initialize from a matrix representation, or provide a list of vector fields to initialize from a VF rep."
-                )
-        else:
-            raise ValueError(
-                "Structure data must be a list with 3D shape of size (x, x, x). Or it can a  dictionairy of the (i,j) entries for the structure data. Set `process_matrix_rep=True` to initialize from a matrix representation, or provide a list of vector fields to initialize from a VF rep."
-            )
     except Exception as e:
         raise ValueError(f"Invalid structure data format: {type(data)} - {e}")
 
@@ -270,7 +331,9 @@ def aDataFromVFWithAnsatz(graded_components, determinacy_order_ansatz=None):
     }
     dim = len(basis)
 
-    structure_data = [[[0 for _ in range(dim)] for _ in range(dim)] for _ in range(dim)]
+    structure_data = array_dgcv(
+        dict(), shape=(dim, dim), null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1))
+    )
     params = set()
 
     if determinacy_order_ansatz is None:
@@ -314,18 +377,42 @@ def aDataFromVFWithAnsatz(graded_components, determinacy_order_ansatz=None):
                 )
 
             sol = sol[0]
-            counter, result = 0, []
-            for weight in grading:
+            counter, result = 0, (matrix_dgcv.zeros(dim, 1))
+            for idx in range(dim):
+                weight = 0 if grading is None else grading[idx]
                 if weight == new_weight:
                     newcoeff = sol.get(variables[counter])
-                    params |= get_free_symbols(newcoeff)
-                    result.append(newcoeff)
+                    if newcoeff != 0:
+                        params |= get_free_symbols(newcoeff)
+                        result[idx] = newcoeff
                     counter += 1
-                else:
-                    result.append(0)
-            structure_data[c1][c2] = result
-            structure_data[c2][c1] = [-elem for elem in result]
+            structure_data[c1, c2] = result
+            structure_data[c2, c1] = -result
     return structure_data, params, grading
+
+
+def aDataFromNestedLists(nested_lists):
+    dim = len(nested_lists)
+    sd = array_dgcv(
+        dict(),
+        shape=(dim, dim),
+        null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1)),
+    )
+    params = set()
+    for idx1, outer in enumerate(nested_lists):
+        if len(outer) != dim:
+            raise TypeError()
+        for idx2, middle in enumerate(outer):
+            if len(middle) != dim:
+                raise TypeError()
+            inner_dict = dict()
+            for c, v in enumerate(middle):
+                if v != 0 and v is not None:
+                    params |= get_free_symbols(v)
+                    inner_dict[c] = v
+            if inner_dict:
+                sd[idx1, idx2] = matrix_dgcv(inner_dict, shape=(dim, 1))
+    return sd, params
 
 
 def algebraDataFromVF(
@@ -488,144 +575,102 @@ def algebraDataFromVF(
 def algebraDataFromMatRep(mat_list):
     """
     Create the structure data array for a Lie algebra from a list of matrices in *mat_list*.
-
-    This function computes the Lie algebra structure constants from a matrix representation of a Lie algebra.
-    The returned structure data can be used to initialize an algebra instance.
-
-    Parameters
-    ----------
-    mat_list : list
-        A list of square matrices of the same size representing the Lie algebra.
-
-    Returns
-    -------
-    list
-        A 3D list of lists of lists representing the Lie algebra structure data.
-
-    Raises
-    ------
-    Exception
-        If the matrices do not span a Lie algebra, or if the matrices are not square and of the same size.
     """
-    if not isinstance(mat_list, (list, tuple)):
-        raise Exception(
-            "algorithm for extracting algebra data from matrices expects a list of square matrices."
+    if not mat_list:
+        return (
+            array_dgcv(
+                dict(),
+                shape=(0, 0),
+                null_return=freeze_matrix(matrix_dgcv.zeros(0, 1)),
+            ),
+            mat_list,
+            set(),
         )
 
-    mListLoc = []
-    for j in mat_list:
-        m = _as_matrix(j)
-        if m is None:
-            raise Exception(
-                "algorithm for extracting algebra data from matrices expects a list of square matrices."
-            )
-        mListLoc.append(m)
-
-    if not mListLoc:
-        return ([], mat_list, set())
-
-    shapeLoc = mListLoc[0].nrows
-    indexRangeCap = len(mListLoc)
-
-    if not all(m.shape == (shapeLoc, shapeLoc) for m in mListLoc):
+    shape = mat_list[0].shape
+    indexRangeCap = len(mat_list)
+    if not all(m.shape == shape for m in mat_list):
         raise Exception(
             "algorithm for extracting algebra data from matrices expects a list of square matrices of the same size."
         )
 
     tempVarLabel = "T" + retrieve_public_key()
-    vars = variableProcedure(
-        tempVarLabel,
-        indexRangeCap,
-        return_created_object=True,
-        _tempVar=retrieve_passkey(),
-    )[0]
-
-    combiMatLoc = matrix_dgcv.zeros(shapeLoc, shapeLoc)
-    for j in range(indexRangeCap):
-        combiMatLoc = combiMatLoc + vars[j] * mListLoc[j]
-
+    vars = [symbol(f"{tempVarLabel}{idx}") for idx in range(indexRangeCap)]
+    combiMatLoc = sum(var * mat for var, mat in zip(vars, mat_list))
     params = set()
 
     def pairValue(j, k, par):
-        mat = (mListLoc[j] @ mListLoc[k]) - (mListLoc[k] @ mListLoc[j]) - combiMatLoc
+        mat = (mat_list[j] @ mat_list[k]) - (mat_list[k] @ mat_list[j]) - combiMatLoc
 
         bracketVals = list(set(mat._data.values()))
         if not bracketVals:
-            return [0] * indexRangeCap
+            return freeze_matrix(matrix_dgcv.zeros(indexRangeCap, 1))
         if len(bracketVals) == 1 and _scalar_is_zero(bracketVals[0]):
-            return [0] * indexRangeCap
+            return freeze_matrix(matrix_dgcv.zeros(indexRangeCap, 1))
 
         solLoc = list(solve_dgcv(bracketVals, vars))
-        if len(solLoc) == 1:
-            coeffs = []
-            for var in vars:
-                coeff = var.subs(solLoc[0])
-                par |= get_free_symbols(coeff)
-                coeffs.append(coeff)
+        if len(solLoc) > 0:
+            soll = solLoc[0]
+            coeffs = freeze_matrix(matrix_dgcv.zeros(indexRangeCap, 1))
+            for idx, var in enumerate(vars):
+                coeff = soll.get(var, var)
+                if coeff != 0:
+                    par |= get_free_symbols(coeff)
+                    coeffs[idx] = coeff
             return coeffs
-
-        clearVar(*listVar(temporary_only=True), report=False)
         raise Exception(
             f"Unable to determine if matrices are closed under commutators. "
             f"Problem matrices are in positions {j} and {k}."
         )
 
-    structure_data = [
-        [
-            [0] * indexRangeCap if k <= j else pairValue(k, j, params)
-            for j in range(indexRangeCap)
-        ]
-        for k in range(indexRangeCap)
-    ]
-    for k in range(indexRangeCap):
-        for j in range(k + 1, indexRangeCap):
-            structure_data[k][j] = [-entry for entry in structure_data[j][k]]
-
-    clearVar(*listVar(temporary_only=True), report=False)
+    structure_data = array_dgcv(
+        dict(),
+        shape=(indexRangeCap, indexRangeCap),
+        null_return=freeze_matrix(matrix_dgcv.zeros(indexRangeCap, 1)),
+    )
+    for j in range(indexRangeCap):
+        for k in range(j + 1, indexRangeCap):
+            br = pairValue(k, j, params)
+            if len(br._data) > 0:
+                structure_data[j, k] = br
+                structure_data[k, j] = -br
 
     return (structure_data, mat_list, params)
 
 
 def algebraDataFromTensorRep(tensor_list):
     """
-    Create the structure data array from a list of tensor products closed under the `_contraction_product` operator (see dgcv.tensorProduct documentation).
-
-    Parameters
-    ----------
-    tensorProduct : list
-        A list of tensorProduct instances
-
-    Returns
-    -------
-    list
-        A 3D array-like list of lists of lists representing the Lie algebra structure data.
+    Create the structure data array from a list of tensor products closed under the `_contraction_product` operator (see dgcv.tensor_field_class documentation).
     """
 
     tempVarLabel = "T" + create_key()
     dim = len(tensor_list)
     if dim == 0:
-        return [[[]]], tensor_list, set()
-    vars = variableProcedure(
-        tempVarLabel, dim, return_created_object=True, _tempVar=retrieve_passkey()
-    )[0]
-    gen_elem = sum(
-        [vars[j] * tensor_list[j] for j in range(1, dim)], vars[0] * tensor_list[0]
-    )
+        return (
+            array_dgcv(
+                dict(), shape=(0, 0), null_return=freeze_matrix(matrix_dgcv.zeros(0, 1))
+            ),
+            tensor_list,
+            set(),
+        )
+    vars = [symbol(f"{tempVarLabel}{idx}") for idx in range(dim)]
+    gen_elem = sum([vars[j] * tensor_list[j] for j in range(dim)])
 
     params = set()
 
     def computeBracket(j, k, par):
         if k < j:
-            return [0] * dim
+            return
         product = (tensor_list[j] * tensor_list[k]) - gen_elem
         solutions = solve_dgcv(product, vars)
         if len(solutions) > 0:
             sol_values = solutions[0]
-            coeffs = []
-            for var in vars:
-                coeff = var.subs(sol_values)
-                par |= get_free_symbols(coeff)
-                coeffs.append(coeff)
+            coeffs = freeze_matrix(matrix_dgcv.zeros(dim, 1))
+            for idx, var in enumerate(vars):
+                coeff = sol_values.get(var, var)
+                if coeff != 0:
+                    par |= get_free_symbols(coeff)
+                    coeffs[idx] = coeff
             return coeffs
         else:
             clearVar(*listVar(temporary_only=True), report=False)
@@ -633,15 +678,15 @@ def algebraDataFromTensorRep(tensor_list):
                 f"Contraction product of tensors at positions {j} and {k} are not in the given tensor list."
             )
 
-    structure_data = [
-        [[0 for _ in tensor_list] for _ in tensor_list] for _ in tensor_list
-    ]
+    structure_data = array_dgcv(
+        dict(), shape=(dim, dim), null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1))
+    )
 
     for j in range(dim):
         for k in range(j):
-            structure_data[k][j] = computeBracket(k, j, params)  # CHECK index order!!!
-            structure_data[j][k] = [-elem for elem in structure_data[k][j]]
-
-    clearVar(*listVar(temporary_only=True), report=False)
+            br = computeBracket(k, j, params)
+            if len(br._data) > 0:
+                structure_data[k, j] = br  # CHECK index order!!!
+                structure_data[j, k] = -br
 
     return structure_data, tensor_list, params  # filter independants

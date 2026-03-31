@@ -12,6 +12,7 @@ License:
 # imports and broadcasting
 # -----------------------------------------------------------------------------
 from numbers import Integral
+from types import MappingProxyType
 
 from ._config import dgcv_warning
 from ._safeguards import (
@@ -66,7 +67,9 @@ def _unspool(index, shape):
 class array_dgcv(dgcv_class):
     _dgcv_category = "array"
 
-    def __init__(self, array_data=None, *, shape=None, entry_rule=None):
+    def __init__(
+        self, array_data=None, *, shape=None, entry_rule=None, null_return=None
+    ):
         if shape is not None:
             if isinstance(shape, (list, tuple)):
                 shape = tuple(shape)
@@ -101,7 +104,9 @@ class array_dgcv(dgcv_class):
                     array_data = dict()
                     self.shape = (0,)
         self._data, self.shape = self._normalize(array_data)
+        self._data_unspooled_cache = None
         self.ndim = len(self.shape)
+        self.null_return = 0 if null_return is None else null_return
         self._dgcv_class_check = retrieve_passkey()
 
     def _normalize(self, array_data):
@@ -240,15 +245,30 @@ class array_dgcv(dgcv_class):
             flat[_spool(prefix, shape_full)] = data
             return
         for i, val in enumerate(data):
-            self._fill(flat, val, shape[1:], shape_full, prefix + (i,))
+            if val != 0 and val is not None:
+                self._fill(flat, val, shape[1:], shape_full, prefix + (i,))
 
     def __getitem__(self, key):
         idx = _spool(key, self.shape) if isinstance(key, tuple) else key
-        return self._data.get(idx, 0)
+        return self._data.get(idx, self.null_return)
 
     def __setitem__(self, key, value):
         idx = _spool(key, self.shape) if isinstance(key, tuple) else key
         self._data[idx] = value
+
+    def _spool(self, key):
+        return _spool(key, self.shape)
+
+    def _unspool(self, key):
+        return _unspool(key, self.shape)
+
+    @property
+    def _data_unspooled(self):
+        if self._data_unspooled_cache is None:
+            self._data_unspooled_cache = {
+                self._unspool(key, self.shape): value for key, value in self._data
+            }
+        return self._data_unspooled_cache
 
     def __len__(self):
         total = 1
@@ -262,7 +282,7 @@ class array_dgcv(dgcv_class):
             raise TypeError("array_dgcv is missing a valid shape")
 
         if not shp:
-            yield self._data.get(0, 0)
+            yield self._data.get(0, self.null_return)
             return
 
         n = 1
@@ -272,7 +292,7 @@ class array_dgcv(dgcv_class):
         d = self._data
         for k in range(n):
             v = d.get(k, 0)
-            yield 0 if v is None else v
+            yield self.null_return if v is None else v
 
     def iter_nonzero_items(self, *, include_zeros=False, include_none=False):
         shp = getattr(self, "shape", None)
@@ -306,7 +326,9 @@ class array_dgcv(dgcv_class):
         eqns = [v for v in self._data.values() if v is not None]
         return eqns, list(self.free_symbols)
 
-    def apply(self, func, *, in_place=False, skip_none=True, default=None):
+    def apply(self, func, *, in_place=False, skip_none=True, default=None, **kwargs):
+        if default is None:
+            default = self.null_return
         if in_place:
             target = self
         else:
@@ -314,6 +336,7 @@ class array_dgcv(dgcv_class):
             target._data = {}
             target.shape = tuple(self.shape)
             target.ndim = self.ndim
+            target.null_return = self.null_return
 
             if hasattr(self, "_dgcv_class_check"):
                 target._dgcv_class_check = self._dgcv_class_check
@@ -323,7 +346,8 @@ class array_dgcv(dgcv_class):
                 target._dgcv_categories = set(self._dgcv_categories)
         if skip_none:
             for k, v in self._data.items():
-                target._data[k] = None if v is None else func(v)
+                if v is not None:
+                    target._data[k] = func(v)
         else:
             n = 1
             for s in self.shape:
@@ -334,8 +358,8 @@ class array_dgcv(dgcv_class):
 
         return target
 
-    def __dgcv_apply__(self, func):
-        return self.apply(func)
+    def __dgcv_apply__(self, func, **kwargs):
+        return self.apply(func, **kwargs)
 
     def subs(self, *args, **kwargs):
         def f(x):
@@ -348,6 +372,67 @@ class array_dgcv(dgcv_class):
 
     def __dgcv_simplify__(self, *args, **kwargs):
         return self.apply(simplify, in_place=False, skip_none=True)
+
+
+class frozen_array_dgcv(array_dgcv):
+    _dgcv_category = "array"
+
+    def __init__(
+        self, array_data=None, *, shape=None, entry_rule=None, null_return=None
+    ):
+        super().__init__(
+            array_data=array_data,
+            shape=shape,
+            entry_rule=entry_rule,
+            null_return=null_return,
+        )
+        self._freeze()
+
+    def _freeze(self):
+        self._data = MappingProxyType(dict(self._data))
+        self._is_frozen = True
+
+    def __setitem__(self, key, value):
+        raise TypeError(f"{self.__class__.__name__} is immutable")
+
+    def __delitem__(self, key):
+        raise TypeError(f"{self.__class__.__name__} is immutable")
+
+    def __setattr__(self, name, value):
+        if getattr(self, "_is_frozen", False):
+            raise TypeError(f"{self.__class__.__name__} is immutable")
+        object.__setattr__(self, name, value)
+
+    def apply(self, func, *, in_place=False, skip_none=True, default=None, **kwargs):
+        if in_place:
+            raise TypeError(f"{self.__class__.__name__} does not support in_place=True")
+        return super().apply(
+            func,
+            in_place=False,
+            skip_none=skip_none,
+            default=default,
+            **kwargs,
+        )
+
+    @property
+    def _data_unspooled(self):
+        if self._data_unspooled_cache is None:
+            self._data_unspooled_cache = {
+                self._unspool(key): value for key, value in self._data.items()
+            }
+        return MappingProxyType(self._data_unspooled_cache)
+
+
+def freeze_array(array):
+    if isinstance(array, frozen_array_dgcv):
+        return array
+    if not isinstance(array, array_dgcv):
+        raise TypeError("freeze_array expects an array_dgcv instance")
+    return frozen_array_dgcv(
+        dict(array._data),
+        shape=tuple(array.shape),
+        null_return=array.null_return,
+    )
 
 
 def _as_matrix_dgcv(obj):
@@ -378,8 +463,15 @@ class matrix_dgcv(array_dgcv):
 
     _dgcv_categories = {"matrix"}
 
-    def __init__(self, array_data=None, *, shape=None, entry_rule=None):
-        super().__init__(array_data=array_data, shape=shape, entry_rule=entry_rule)
+    def __init__(
+        self, array_data=None, *, shape=None, entry_rule=None, null_return=None
+    ):
+        super().__init__(
+            array_data=array_data,
+            shape=shape,
+            entry_rule=entry_rule,
+            null_return=null_return,
+        )
 
         if self.ndim == 1:
             n = self.shape[0]
@@ -420,7 +512,10 @@ class matrix_dgcv(array_dgcv):
         return (
             [self.col(j) for j in range(self.ncols)]
             if as_plain_lists
-            else [matrix_dgcv(self.col(j)) for j in range(self.ncols)]
+            else [
+                matrix_dgcv(self.col(j), null_return=self.null_return)
+                for j in range(self.ncols)
+            ]
         )
 
     def rowspace(self, as_plain_lists=False):
@@ -430,12 +525,15 @@ class matrix_dgcv(array_dgcv):
         return (
             [self.row(j) for j in range(self.nrows)]
             if as_plain_lists
-            else [matrix_dgcv([self.row(j)]) for j in range(self.nrows)]
+            else [
+                matrix_dgcv([self.row(j)], null_return=self.null_return)
+                for j in range(self.nrows)
+            ]
         )
 
     def __getitem__(self, key):
         v = super().__getitem__(key)
-        return 0 if v is None else v
+        return self.null_return if v is None else v
 
     def __setitem__(self, key, value):
         rep = getattr(self, "_engine_representation", None)
@@ -459,6 +557,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = tuple(self.shape)
         out.ndim = 2
         out._data = dict(self._data)
+        out.null_return = self.null_return
         return out
 
     @classmethod
@@ -469,6 +568,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = (n, n)
         out.ndim = 2
         out._data = {}
+        out.null_return = 0
         for i in range(n):
             out._data[_spool((i, i), out.shape)] = one
         return out
@@ -484,6 +584,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = (int(nrows), int(ncols))
         out.ndim = 2
         out._data = {}
+        out.null_return = 0
 
         d = min(out.shape[0], out.shape[1])
         if one != zero:
@@ -533,6 +634,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = (self.ncols, self.nrows)
         out.ndim = 2
         out._data = {}
+        out.null_return = self.null_return
 
         for k, v in self._data.items():
             i, j = _unspool(k, self.shape)
@@ -556,6 +658,8 @@ class matrix_dgcv(array_dgcv):
         return self.transpose()
 
     def __add__(self, other):
+        if other == 0 or getattr(other, "is_zero", False):
+            return self
         other = _as_matrix_dgcv(other)
         if other is None:
             return NotImplemented
@@ -569,11 +673,12 @@ class matrix_dgcv(array_dgcv):
         out.ndim = 2
         out._data = {}
         out._engine_representation = dict()
+        out.null_return = self.null_return
 
         keys = set(self._data) | set(other._data)
         for k in keys:
-            a = self._data.get(k, 0)
-            b = other._data.get(k, 0)
+            a = self._data.get(k, self.null_return)
+            b = other._data.get(k, other.null_return)
             v = a + b
             if not _scalar_is_zero(v):
                 out._data[k] = v
@@ -602,6 +707,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = self.shape
         out.ndim = 2
         out._data = {}
+        out.null_return = self.null_return
         out._engine_representation = dict()
         for k, v in self._data.items():
             out._data[k] = v * other
@@ -614,6 +720,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = self.shape
         out.ndim = 2
         out._data = {}
+        out.null_return = self.null_return
         out._engine_representation = dict()
         for k, v in self._data.items():
             if v is not None:
@@ -636,6 +743,7 @@ class matrix_dgcv(array_dgcv):
         out.shape = (self.nrows, other_m.ncols)
         out.ndim = 2
         out._data = {}
+        out.null_return = self.null_return
         out._engine_representation = dict()
 
         for i in range(self.nrows):
@@ -648,7 +756,7 @@ class matrix_dgcv(array_dgcv):
                     if _scalar_is_zero(b):
                         continue
                     idx = _spool((i, j), out.shape)
-                    out._data[idx] = out._data.get(idx, 0) + a * b
+                    out._data[idx] = out._data.get(idx, out.null_return) + a * b
 
         return out
 
@@ -762,17 +870,17 @@ class matrix_dgcv(array_dgcv):
         return self.__class__(shell)
 
     @classmethod
-    def zeros(cls, nrows, ncols=None, zero=0):
+    def zeros(cls, nrows, ncols=None):
         if ncols is None:
             ncols = nrows
-        out = _new_empty_matrix(cls, nrows, ncols)
+        out = _new_empty_matrix(cls, nrows, ncols, null_return=0)
         return out
 
     @classmethod
     def ones(cls, nrows, ncols=None, one=1):
         if ncols is None:
             ncols = nrows
-        out = _new_empty_matrix(cls, nrows, ncols)
+        out = _new_empty_matrix(cls, nrows, ncols, null_return=0)
         for i in range(nrows):
             for j in range(ncols):
                 out._data[_spool((i, j), out.shape)] = one
@@ -799,7 +907,7 @@ class matrix_dgcv(array_dgcv):
             _validate_pos_int(nrows, "nrows")
             ncols = max(0, nrows + k)
 
-        out = _new_empty_matrix(cls, nrows, ncols)
+        out = _new_empty_matrix(cls, nrows, ncols, null_return=0)
         for t, v in enumerate(d):
             i = t
             j = t + k
@@ -860,7 +968,7 @@ class matrix_dgcv(array_dgcv):
 
         nrows = len(c)
         ncols = len(r)
-        out = _new_empty_matrix(cls, nrows, ncols)
+        out = _new_empty_matrix(cls, nrows, ncols, null_return=0)
 
         for i in range(nrows):
             for j in range(ncols):
@@ -883,7 +991,7 @@ class matrix_dgcv(array_dgcv):
 
         nrows = len(c)
         ncols = len(r)
-        out = _new_empty_matrix(cls, nrows, ncols)
+        out = _new_empty_matrix(cls, nrows, ncols, null_return=0)
 
         for i in range(nrows):
             for j in range(ncols):
@@ -907,7 +1015,7 @@ class matrix_dgcv(array_dgcv):
         if lower < 0 or upper < 0:
             raise ValueError("lower/upper must be >= 0")
 
-        out = _new_empty_matrix(cls, nrows, ncols)
+        out = _new_empty_matrix(cls, nrows, ncols, null_return=0)
         for i in range(nrows):
             j0 = max(0, i - lower)
             j1 = min(ncols - 1, i + upper)
@@ -919,7 +1027,7 @@ class matrix_dgcv(array_dgcv):
     @classmethod
     def triu(cls, n, k=0, one=1, zero=0):
         _validate_int(k, "k")
-        out = _new_empty_matrix(cls, n, n)
+        out = _new_empty_matrix(cls, n, n, null_return=0)
         for i in range(n):
             for j in range(max(0, i + k), n):
                 if one != zero:
@@ -929,7 +1037,7 @@ class matrix_dgcv(array_dgcv):
     @classmethod
     def tril(cls, n, k=0, one=1, zero=0):
         _validate_int(k, "k")
-        out = _new_empty_matrix(cls, n, n)
+        out = _new_empty_matrix(cls, n, n, null_return=0)
         for i in range(n):
             for j in range(0, min(n, i + k + 1)):
                 if one != zero:
@@ -939,7 +1047,7 @@ class matrix_dgcv(array_dgcv):
     @classmethod
     def shift(cls, n, k=1, one=1, zero=0):
         _validate_int(k, "k")
-        out = _new_empty_matrix(cls, n, n)
+        out = _new_empty_matrix(cls, n, n, null_return=0)
         for i in range(n):
             j = i + k
             if 0 <= j < n and one != zero:
@@ -955,7 +1063,7 @@ class matrix_dgcv(array_dgcv):
             return cls.zeros(0, 0)
 
         n = len(a)
-        out = _new_empty_matrix(cls, n, n)
+        out = _new_empty_matrix(cls, n, n, null_return=0)
 
         for i in range(1, n):
             out._data[_spool((i, i - 1), out.shape)] = one
@@ -1374,6 +1482,189 @@ class matrix_dgcv(array_dgcv):
         return self._to_engine_matrix()
 
 
+class frozen_matrix_dgcv(matrix_dgcv):
+    _dgcv_categories = {"matrix"}
+
+    def __init__(
+        self, array_data=None, *, shape=None, entry_rule=None, null_return=None
+    ):
+        super().__init__(
+            array_data=array_data,
+            shape=shape,
+            entry_rule=entry_rule,
+            null_return=null_return,
+        )
+        self._freeze()
+
+    def _freeze(self):
+        object.__setattr__(self, "_data", MappingProxyType(dict(self._data)))
+        rep = getattr(self, "_engine_representation", None)
+        if isinstance(rep, dict):
+            object.__setattr__(
+                self, "_engine_representation", MappingProxyType(dict(rep))
+            )
+        else:
+            object.__setattr__(self, "_engine_representation", MappingProxyType({}))
+        object.__setattr__(self, "_is_frozen", True)
+
+    @classmethod
+    def _freeze_existing(cls, M):
+        out = cls.__new__(cls)
+        object.__setattr__(out, "_dgcv_class_check", M._dgcv_class_check)
+        object.__setattr__(out, "_dgcv_categories", set(M._dgcv_categories))
+        object.__setattr__(out, "shape", tuple(M.shape))
+        object.__setattr__(out, "ndim", M.ndim)
+        object.__setattr__(out, "_data", MappingProxyType(dict(M._data)))
+        object.__setattr__(out, "null_return", M.null_return)
+        object.__setattr__(out, "_engine_representation", MappingProxyType({}))
+        object.__setattr__(out, "_data_unspooled_cache", None)
+        object.__setattr__(out, "_is_frozen", True)
+        return out
+
+    def __setattr__(self, name, value):
+        if getattr(self, "_is_frozen", False):
+            raise TypeError(f"{self.__class__.__name__} is immutable")
+        object.__setattr__(self, name, value)
+
+    def __setitem__(self, key, value):
+        raise TypeError(f"{self.__class__.__name__} is immutable")
+
+    def copy(self):
+        return self.__class__(
+            dict(self._data),
+            shape=tuple(self.shape),
+            null_return=self.null_return,
+        )
+
+    @property
+    def _data_unspooled(self):
+        cache = getattr(self, "_data_unspooled_cache", None)
+        if cache is None:
+            object.__setattr__(
+                self,
+                "_data_unspooled_cache",
+                {self._unspool(key): value for key, value in self._data.items()},
+            )
+            cache = self._data_unspooled_cache
+        return MappingProxyType(cache)
+
+    def apply(self, func, *, in_place=False, skip_none=True, default=None, **kwargs):
+        if in_place:
+            raise TypeError(f"{self.__class__.__name__} does not support in_place=True")
+
+        target = self.__class__.__new__(self.__class__)
+        object.__setattr__(target, "_data", {})
+        object.__setattr__(target, "shape", tuple(self.shape))
+        object.__setattr__(target, "ndim", self.ndim)
+        object.__setattr__(target, "null_return", self.null_return)
+        object.__setattr__(target, "_dgcv_class_check", self._dgcv_class_check)
+        object.__setattr__(target, "_dgcv_categories", set(self._dgcv_categories))
+        object.__setattr__(target, "_engine_representation", {})
+        object.__setattr__(target, "_data_unspooled_cache", None)
+        object.__setattr__(target, "_is_frozen", False)
+
+        if default is None:
+            default = self.null_return
+        if skip_none:
+            for k, v in self._data.items():
+                if v is not None:
+                    target._data[k] = func(v)
+        else:
+            n = self.nrows * self.ncols
+            for k in range(n):
+                v = self._data.get(k, default)
+                target._data[k] = func(v)
+
+        target._freeze()
+        return target
+
+    def transpose(self):
+        def _entry_transpose(x):
+            if x is None:
+                return x
+
+            try:
+                is_dgcv = check_dgcv_category(x) is not None
+            except Exception:
+                is_dgcv = False
+
+            if is_dgcv:
+                t = getattr(x, "transpose", None)
+                if callable(t):
+                    try:
+                        return t()
+                    except Exception:
+                        return x
+
+            t = getattr(x, "transpose", None)
+            if callable(t):
+                try:
+                    return t()
+                except Exception:
+                    pass
+
+            rt = getattr(x, "T", None)
+            if rt is not None:
+                try:
+                    return rt
+                except Exception:
+                    pass
+
+            return x
+
+        out = self.__class__.__new__(self.__class__)
+        object.__setattr__(out, "_dgcv_class_check", self._dgcv_class_check)
+        object.__setattr__(out, "_dgcv_categories", set(self._dgcv_categories))
+        object.__setattr__(out, "shape", (self.ncols, self.nrows))
+        object.__setattr__(out, "ndim", 2)
+        object.__setattr__(out, "_data", {})
+        object.__setattr__(out, "null_return", self.null_return)
+        object.__setattr__(out, "_engine_representation", {})
+        object.__setattr__(out, "_data_unspooled_cache", None)
+        object.__setattr__(out, "_is_frozen", False)
+
+        for k, v in self._data.items():
+            i, j = _unspool(k, self.shape)
+            out._data[_spool((j, i), out.shape)] = _entry_transpose(v)
+
+        out._freeze()
+        return out
+
+    def _to_engine_matrix(self, kind: str | None = None):
+        if kind is None:
+            kind = engine_kind()
+        if kind not in ("sage", "sympy"):
+            raise RuntimeError(f"Unsupported engine kind {kind!r}")
+
+        rep = self._engine_representation.get(kind, None)
+        if rep is not None:
+            return rep
+
+        mod = engine_module()
+        if mod is None:
+            raise RuntimeError("No symbolic engine is available.")
+
+        rows = [[self[i, j] for j in range(self.ncols)] for i in range(self.nrows)]
+
+        if kind == "sage":
+            M = mod.matrix(rows)
+        else:
+            M = mod.Matrix(rows)
+
+        new_rep = dict(self._engine_representation)
+        new_rep[kind] = M
+        object.__setattr__(self, "_engine_representation", MappingProxyType(new_rep))
+        return M
+
+
+def freeze_matrix(M):
+    if isinstance(M, frozen_matrix_dgcv):
+        return M
+    if not isinstance(M, matrix_dgcv):
+        raise TypeError("freeze_matrix expects a matrix_dgcv instance")
+    return frozen_matrix_dgcv._freeze_existing(M)
+
+
 def assemble_block_matrix(blocks):
     B = _as_seq(blocks, "blocks")
     if B is None:
@@ -1497,7 +1788,7 @@ def _as_seq(x, name="data"):
     raise TypeError(f"{name} must be a list/tuple, got {type(x).__name__}")
 
 
-def _new_empty_matrix(cls, nrows, ncols, passkey=None):
+def _new_empty_matrix(cls, nrows, ncols, passkey=None, null_return=None):
     _validate_pos_int(nrows, "nrows")
     _validate_pos_int(ncols, "ncols")
     out = cls.__new__(cls)
@@ -1506,4 +1797,5 @@ def _new_empty_matrix(cls, nrows, ncols, passkey=None):
     out.shape = (nrows, ncols)
     out.ndim = 2
     out._data = {}
+    out.null_return = null_return if null_return is None else 0
     return out
