@@ -3278,7 +3278,7 @@ def createAlgebra(
         )
         if isinstance(symbolData, str):
             raise TypeError(
-                symbolData + " So no `createAlgebra` did not instantiate a new algebra."
+                symbolData + " So `createAlgebra` did not instantiate a new algebra."
             ) from None
         obj = symbolData["structure_data"]
         grading = symbolData["grading"]

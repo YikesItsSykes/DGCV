@@ -60,8 +60,6 @@ def _validate_structure_data(
     dimension=None,
 ):
     if process_tensor_rep:
-        # # DEBUG
-        # return algebraDataFromTensorRep(data), "tensor"
         try:
             return algebraDataFromTensorRep(data), "tensor"
         except Exception as e:
@@ -75,8 +73,6 @@ def _validate_structure_data(
                 break
             mats.append(m)
         if mats is not None:
-            # # DEBUG:
-            # return algebraDataFromMatRep(data), "matrix"
             try:
                 return algebraDataFromMatRep(data), "matrix"
             except Exception as e:
@@ -164,7 +160,6 @@ def _validate_structure_data(
                                 "If initializing an algebra from structure equations and supplying the `basis_order_for_supplied_str_eqns` parameter, this parameter should be a list containing all atomic variables appearing in the supplied structure equations."
                             )
                 ordered_BV = basis_order_for_supplied_str_eqns
-                enum_oBV = enumerate(ordered_BV)
                 zeroing = {var: 0 for var in ordered_BV}
                 dim = len(ordered_BV)
                 structure_data = array_dgcv(
@@ -179,10 +174,12 @@ def _validate_structure_data(
                         v1, v2 = idx_pair
                         idx1 = ordered_BV.index(v1)
                         idx2 = ordered_BV.index(v2)
+
                         if hasattr(val, "subs") and _scalar_is_zero(val.subs(zeroing)):
                             coeffs = matrix_dgcv.zeros(dim, 1)
-                            for idx, var in enum_oBV:
-                                coeffs[idx] = simplify(val.subs(zeroing | {var: 1}))
+                            for idx, var in enumerate(ordered_BV):
+                                subdict = zeroing | {var: 1}
+                                coeffs[idx] = simplify(val.subs(subdict))
                             structure_data[idx2, idx1] = coeffs
                             if assume_skew or assume_Lie_alg:
                                 invert_idx = structure_data._spool((idx1, idx2))
@@ -249,7 +246,6 @@ def _validate_structure_data(
                         ol = max(provided_index_bound, ol)
                         base_dim = ol
                     if base_dim != ol:
-                        print(f"DEBUG: {provided_index_bound}, {ol}, {base_dim}")
                         raise ValueError(
                             "If initializing an algebra with structure data from a dictionairy, its keys should be (i,j) index tuples and its values should be list-like structures of coefficients from the product of i and j basis elements. All values lists must have the same length in particular. Indices in the keys must not exceed the length of value tuples - 1 (as indexing starts from 0!)"
                         )
@@ -274,9 +270,6 @@ def _validate_structure_data(
                                     for j in formatted_data[idx]
                                     + formatted_data[invert_idx]
                                 ):
-                                    print(
-                                        f"DEBUG {idx}, {invert_idx}, {formatted_data[idx] + formatted_data[invert_idx]}"
-                                    )
                                     raise ValueError(
                                         "Either `assume_skew=True` or `assume_Lie_alg=True` was passed to the algebra contructor, but the accompanying structure data was not skew symmetric."
                                     )
