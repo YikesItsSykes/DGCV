@@ -8,8 +8,8 @@ name = "dgcv"
 version = "0.4.19"
 description = "Differential Geometry with Complex Variables"
 authors = [{ name = "David Sykes", email = "david@realandimaginary.com" }]
-license = "MIT"
-license-files = ["LICENSE.txt"]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 dependencies = []
 readme = "README.md"
 
