@@ -1,11 +1,25 @@
 """
 package: dgcv - Differential Geometry with Complex Variables
-module: matrix_ring
 
-Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
+module: dgcv.matrix_ring
 
-License:
-    MIT License
+---
+Author (of this module): David Gamble Sykes
+Project page: https://realandimaginary.com/dgcv/
+
+Copyright (c) 2024-present David Gamble Sykes
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 """
 
 # -----------------------------------------------------------------------------
@@ -14,12 +28,19 @@ License:
 import numbers
 from collections import deque
 
-from .._config import get_dgcv_settings_registry
-from .._dgcv_display import LaTeX
-from .._safeguards import check_dgcv_category, get_dgcv_category, retrieve_passkey
-from ..backends._types_and_constants import expr_numeric_types, is_atomic
-from ..base import dgcv_class
-from ..printing._string_processing import _format_label_with_hi_low, latex_superscript
+from .._aux._backends._types_and_constants import expr_numeric_types, is_atomic
+from .._aux._utilities._config import get_dgcv_settings_registry
+from .._aux._vmf._safeguards import (
+    check_dgcv_category,
+    get_dgcv_category,
+    retrieve_passkey,
+)
+from .._aux.printing.printing._dgcv_display import LaTeX
+from .._aux.printing.printing._string_processing import (
+    _format_label_with_hi_low,
+    latex_superscript,
+)
+from ..core.base import dgcv_class
 
 __all__ = ["matrix_atom", "symbolic_matrix"]
 

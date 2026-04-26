@@ -1,8 +1,8 @@
 import numbers
 
-from .._safeguards import retrieve_passkey
-from ..backends._symbolic_router import simplify
-from ..backends._types_and_constants import expr_numeric_types
+from .._aux._backends._symbolic_router import simplify
+from .._aux._backends._types_and_constants import expr_numeric_types
+from .._aux._vmf._safeguards import retrieve_passkey
 from .eds import abst_coframe, abstract_ZF, coframe_derivative, zeroFormAtom
 
 
@@ -389,11 +389,11 @@ class abstract_VF:
                 return c._repr_latex_(raw=True)
         except Exception:
             pass
-        # best-effort fallback
+        # fallback
         try:
-            from sympy import latex as _sp_latex  # lazy, optional
+            from .._aux.printing.printing._dgcv_display import LaTeX
 
-            return _sp_latex(c)
+            return LaTeX(c)
         except Exception:
             return str(c)
 
@@ -639,7 +639,7 @@ class abstract_VF:
                 inner = eval_node(v)
                 return c * inner
             if tag == "bracket":
-                Xn, Yn = n[1], n[2]
+                _, Yn = n[1], n[2]
                 # [X,Y](f) = X(Y(f)) - Y(X(f))
                 Yf = eval_node(Yn)
                 X_of_Yf = apply_node(n[1], Yf)

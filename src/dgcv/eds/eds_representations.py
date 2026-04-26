@@ -1,7 +1,30 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+
+sub-package: dgcv.eds - Exterior Differential Systems
+
+module: dgcv.eds.representations
+
+
+Description: Classes and methods to handle EDS matrix representations.
+
+---
+Author (of this module): David Gamble Sykes
+
+Project page: https://realandimaginary.com/dgcv/
+
+
+Copyright (c) 2024-present David Gamble Sykes
+
+Licensed under the Apache License, Version 2.0
+
+SPDX-License-Identifier: Apache-2.0
+"""
+
 import numbers
 
-from ..backends._engine import sympy_module_if_available
-from ..backends._types_and_constants import expr_numeric_types
+from .._aux._backends._engine import sympy_module_if_available
+from .._aux._backends._types_and_constants import expr_numeric_types
 from .eds import abstDFAtom, abstDFMonom, abstract_DF, abstract_ZF, zeroFormAtom
 
 sp = sympy_module_if_available()

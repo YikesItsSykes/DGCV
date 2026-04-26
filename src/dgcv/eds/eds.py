@@ -1,3 +1,26 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+
+sub-package: dgcv.eds - Exterior Differential Systems
+
+module: dgcv.eds.eds
+
+
+Description: Core EDS definitions and functions
+
+---
+Author (of this module): David Gamble Sykes
+
+Project page: https://realandimaginary.com/dgcv/
+
+
+Copyright (c) 2024-present David Gamble Sykes
+
+Licensed under the Apache License, Version 2.0
+
+SPDX-License-Identifier: Apache-2.0
+"""
+
 import numbers
 import random
 import string
@@ -5,7 +28,11 @@ from collections import Counter
 from functools import total_ordering
 from math import prod  # requires python >=3.8
 
-from .._config import (
+from .._aux._backends._engine import sympy_module_if_available
+from .._aux._backends._symbolic_router import get_free_symbols, ratio
+from .._aux._backends._types_and_constants import expr_numeric_types, expr_types
+from .._aux._deprecated.dgcv_formatter import process_basis_label
+from .._aux._utilities._config import (
     dgcv_warning,
     get_dgcv_settings_registry,
     get_globals,
@@ -13,18 +40,14 @@ from .._config import (
     update_globals,
     update_globals_k_v,
 )
-from .._safeguards import (
+from .._aux._vmf._safeguards import (
     create_key,
     get_dgcv_category,
     retrieve_passkey,
     validate_label,
 )
-from ..backends._engine import sympy_module_if_available
-from ..backends._symbolic_router import get_free_symbols, ratio
-from ..backends._types_and_constants import expr_numeric_types, expr_types
-from ..combinatorics import carProd, weightedPermSign
-from ..dgcv_formatter import process_basis_label
-from ..vmf import clearVar
+from .._aux._vmf.vmf import clearVar
+from ..core.combinatorics.combinatorics import carProd, weightedPermSign
 
 sp = sympy_module_if_available()
 

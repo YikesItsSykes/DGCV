@@ -1,0 +1,558 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+
+sub-package: dgcv._aux._backends
+
+module: dgcv.bac_aux._backendskends._symbolic_router
+
+
+Description: manages dgcv's interfacing with available CAS libraries.
+
+---
+Author (of this module): David Gamble Sykes
+
+Project page: https://realandimaginary.com/dgcv/
+
+Copyright (c) 2024-present David Gamble Sykes
+
+Licensed under the Apache License, Version 2.0
+
+SPDX-License-Identifier: Apache-2.0
+"""
+
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
+import math
+import numbers
+from fractions import Fraction
+
+from .._utilities._config import get_variable_registry
+from ._engine import engine_kind, engine_module
+from ._types_and_constants import constant_scalar_types, one, zero
+
+
+# -----------------------------------------------------------------------------
+# uilities
+# -----------------------------------------------------------------------------
+def _scalar_is_zero(x) -> bool:
+    if x is None:
+        return False
+
+    z = getattr(x, "is_zero", None)
+    if z is True:
+        return True
+    if z is False:
+        return False
+    if callable(z):
+        try:
+            v = z()
+            if isinstance(v, bool):
+                return v
+        except Exception:
+            pass
+    try:
+        if isinstance(x, constant_scalar_types()) and not isinstance(x, bool):
+            return x == 0
+    except Exception:
+        pass
+    try:
+        eq = x == 0
+        return eq if isinstance(eq, bool) else False
+    except Exception:
+        return False
+
+
+def get_free_symbols(expr):
+    """
+    Return the set of atomic elements in symbolic expr
+    """
+    if hasattr(expr, "free_symbols"):
+        return expr.free_symbols
+
+    if hasattr(expr, "variables"):
+        return set(expr.variables())
+
+    return set()
+
+
+def simplify(expr, method=None, **kwargs):
+    f = getattr(expr, "__dgcv_simplify__", None)
+    if callable(f):
+        try:
+            return f(method=method, **kwargs)
+        except Exception:
+            return expr
+
+    kind = engine_kind()
+
+    if kind == "sympy":
+        sp = engine_module()
+        try:
+            if method is None or method == "simplify":
+                return sp.simplify(expr, **kwargs)
+            fn = getattr(sp, method, None)
+            if callable(fn):
+                return fn(expr, **kwargs)
+            return expr
+        except Exception:
+            return expr
+
+    if kind == "sage":
+        try:
+            if method is None or method == "simplify":
+                f = getattr(expr, "simplify_full", None)
+                if callable(f):
+                    return f(**kwargs)
+                f = getattr(expr, "simplify", None)
+                if callable(f):
+                    return f(**kwargs)
+                return expr
+            f = getattr(expr, method, None)
+            if callable(f):
+                return f(**kwargs)
+            return expr
+        except Exception:
+            return expr
+
+    return expr
+
+
+def subs(expr, subs_data, **kwargs):
+    if not subs_data:
+        return expr
+    f = getattr(expr, "subs", None)
+    if f is None:
+        return expr
+    try:
+        return f(subs_data, **kwargs)
+    except Exception:
+        return f(subs_data)
+
+
+def conjugate(expr, symbolic=False):
+    f = getattr(expr, "__dgcv_conjugate__", None)
+    if callable(f):
+        return f(symbolic=symbolic)
+    if symbolic is True:
+        from ._types_and_constants import imag_unit
+
+        imag = imag_unit()
+        cd = {
+            **get_variable_registry()["conversion_dictionaries"]["conjugation"],
+            imag: -imag,
+        }
+        return subs(expr, cd, simultaneous=True)
+
+    kind = engine_kind()
+
+    if kind == "sympy":
+        f = getattr(expr, "conjugate", None)
+        if f is not None:
+            return f()
+        return expr
+
+    if kind == "sage":
+        f = getattr(expr, "conjugate", None)
+        if f is None:
+            return expr
+
+        c = f()
+
+        registry = get_variable_registry()
+        subs_map = registry.get("dgcv_enforced_real_atoms")
+        if subs_map:
+            g = getattr(c, "subs", None)
+            if g is not None:
+                return g(subs_map)
+        return c
+
+    f = getattr(expr, "conjugate", None)
+    if f is not None:
+        return f()
+    return expr
+
+
+def ratio(x, y=1):
+    y = getattr(y, "to_sym_engine_expr", y)
+
+    kind = engine_kind()
+
+    if kind is None:
+        if isinstance(x, (float, complex)) or isinstance(y, (float, complex)):
+            return x / y
+        if isinstance(x, Fraction) or isinstance(y, Fraction):
+            return Fraction(x) / Fraction(y)
+        if isinstance(x, numbers.Integral) and isinstance(y, numbers.Integral):
+            return Fraction(int(x), int(y))
+        return x / y
+
+    eng = engine_module()
+
+    if kind == "sympy":
+        sp = eng
+
+        if isinstance(x, sp.Float) or isinstance(y, sp.Float):
+            return x / y
+        if isinstance(x, (float, complex)) or isinstance(y, (float, complex)):
+            return sp.sympify(x) / sp.sympify(y)
+
+        if isinstance(x, numbers.Integral) and isinstance(y, numbers.Integral):
+            return sp.Rational(int(x), int(y))
+
+        if isinstance(x, (sp.Integer, sp.Rational)) and isinstance(
+            y, (sp.Integer, sp.Rational)
+        ):
+            return x / y
+
+        if isinstance(x, Fraction):
+            x = sp.Rational(x.numerator, x.denominator)
+        if isinstance(y, Fraction):
+            y = sp.Rational(y.numerator, y.denominator)
+
+        sx = x if isinstance(x, sp.Basic) else sp.sympify(x)
+        sy = y if isinstance(y, sp.Basic) else sp.sympify(y)
+
+        return sx / sy
+
+    if kind == "sage":
+        sage = eng
+        if isinstance(x, (float, complex)) or isinstance(y, (float, complex)):
+            return sage(x) / sage(y)
+        return sage(x) / sage(y)
+
+    return x / y
+
+
+def re(expr):
+    """
+    Return the real part of expr in the active symbolic engine.
+    """
+    f = getattr(expr, "__dgcv_re__", None)
+    if callable(f):
+        return f()
+    kind = engine_kind()
+
+    if kind == "sympy":
+        sp = engine_module()
+        return sp.re(expr)
+
+    if kind == "sage":
+        f = getattr(expr, "real_part", None)
+        if f is not None:
+            return f()
+        f = getattr(expr, "real", None)
+        if f is not None and not callable(f):
+            return f
+        f = getattr(expr, "real", None)
+        if callable(f):
+            return f()
+        try:
+            return expr.real_part()
+        except Exception:
+            return expr
+
+    z = getattr(expr, "real", None)
+    if callable(z):
+        return z()
+    if z is not None:
+        return z
+    if isinstance(expr, numbers.Number):
+        return expr.real
+    return expr
+
+
+def im(expr):
+    """
+    Return the imaginary part of expr in the active symbolic engine.
+    """
+    f = getattr(expr, "__dgcv_im__", None)
+    if callable(f):
+        return f()
+    kind = engine_kind()
+
+    if kind == "sympy":
+        sp = engine_module()
+        return sp.im(expr)
+
+    if kind == "sage":
+        f = getattr(expr, "imag_part", None)
+        if f is not None:
+            return f()
+        f = getattr(expr, "imag", None)
+        if f is not None and not callable(f):
+            return f
+        f = getattr(expr, "imag", None)
+        if callable(f):
+            return f()
+        try:
+            return expr.imag_part()
+        except Exception:
+            return zero()
+
+    z = getattr(expr, "imag", None)
+    if callable(z):
+        return z()
+    if z is not None:
+        return z
+    if isinstance(expr, numbers.Number):
+        return expr.imag
+    return zero()
+
+
+def as_numer_denom(expr):
+    """
+    Return (numerator, denominator) for expr in the active symbolic engine.
+    """
+    kind = engine_kind()
+
+    f = getattr(expr, "as_numer_denom", None)
+    if callable(f):
+        return f()
+    if kind == "sympy":
+        if f is None:
+            try:
+                sp = engine_module()
+                expr = sp.sympify(expr)
+                return expr.as_numer_denom()
+            except Exception:
+                pass
+        elif callable(f):
+            return f()
+        else:
+            return expr, one()
+
+    if kind == "sage":
+        f = getattr(expr, "numerator", None)
+        g = getattr(expr, "denominator", None)
+        if callable(f) and callable(g):
+            return f(), g()
+        f = getattr(expr, "numerator", None)
+        g = getattr(expr, "denominator", None)
+        if callable(f) and callable(g):
+            return f(), g()
+        try:
+            return expr.numerator(), expr.denominator()
+        except Exception:
+            return expr, one()
+
+    return expr, one()
+
+
+def common_multiple(*exprs):
+    return lcm_routed(*exprs)
+
+
+def lcm_routed(*exprs):
+    try:
+        if len(exprs) == 0:
+            return
+        if len(exprs) == 1:
+            return exprs[0]
+        return common_multiple(engine_module().lcm(exprs[0], exprs[1]), *exprs[2:])
+    except Exception:
+        return math.prod(exprs)
+
+
+def gcd_routed(*exprs):
+    try:
+        if len(exprs) == 0:
+            return
+        if len(exprs) == 1:
+            if exprs[0] == 0:
+                return 1
+            return exprs[0]
+        return gcd_routed(engine_module().gcd(exprs[0], exprs[1]), *exprs[2:])
+    except Exception:
+        return math.prod(exprs)
+
+
+def ilcm(*ints):
+    """
+    Integer least common multiple in the active symbolic engine.
+    """
+    ints = [int(x) for x in ints if x is not None]
+    if not ints:
+        return 1
+    if len(ints) == 1:
+        return ints[0]
+
+    kind = engine_kind()
+
+    if kind == "sympy":
+        sp = engine_module()
+        return sp.ilcm(*ints)
+
+    if kind == "sage":
+        sage = engine_module()
+        fn = getattr(sage, "lcm", None)
+        if fn is not None:
+            return fn(ints)
+        # fallback
+        return math.lcm(*ints)
+
+    return math.lcm(*ints)
+
+
+def clear_denominators(seq, *, return_scale=False):
+    """
+    Multiply a sequence of scalars by the LCM of their denominators (when detectable),
+    returning a new list.
+    """
+    if seq is None:
+        return None
+
+    denoms = []
+    for x in seq:
+        _, d = as_numer_denom(x)
+        try:
+            denoms.append(int(d))
+        except Exception:
+            pass
+
+    L = ilcm(*denoms) if denoms else 1
+    out = list(seq) if L == 1 else [L * x for x in seq]
+    return (out, L) if return_scale else out
+
+
+def expand(expr, **kwargs):
+    """
+    Expand expr using the active symbolic engine, intended as a backend hook for
+    expand_dgcv (and polynomial expansion).
+    """
+
+    kind = engine_kind()
+    f = getattr(expr, "__dgcv_expand__", None)
+    if f:
+        try:
+            return f(**kwargs)
+        except TypeError:
+            return f()
+    f = getattr(expr, "__dgcv_apply__", None)
+    if f:
+        try:
+            return f(expand, **kwargs)
+        except TypeError:
+            return f(expand)  ###!!! remove try/excepts here
+
+    if kind == "sympy":
+        sp = engine_module()
+        try:
+            return sp.expand(expr, **kwargs)
+        except Exception:
+            return expr
+
+    if kind == "sage":
+        # Sage has .expand() on symbolic expressions; if it wasn't callable above,
+        # just return expr unchanged.
+        return expr
+
+    return expr
+
+
+def factor(expr, **kwargs):
+    """
+    Factor expr using the active symbolic engine, intended as a backend hook for
+    factor_dgcv (and polynomial factoring).
+    """
+    kind = engine_kind()
+
+    f = getattr(expr, "__dgcv_apply__", None)
+    if f:
+        try:
+            return f(factor, **kwargs)
+        except TypeError:
+            return f(factor)
+
+    if kind == "sympy":
+        sp = engine_module()
+        return sp.factor(expr, **kwargs)
+
+    if kind == "sage":
+        # If Sage supports .factor() on the symbolic expressions/ring elements then
+        # it was caught above already.
+        return expr
+
+    return expr
+
+
+def cancel(expr, **kwargs):
+    """
+    Cancel common factors in a rational expression using the active symbolic engine,
+    intended as a backend hook for cancel_dgcv (and rational simplification).
+    """
+    kind = engine_kind()
+
+    f = getattr(expr, "__dgcv_apply__", None)
+    if f:
+        try:
+            return f(cancel, **kwargs)
+        except TypeError:
+            return f(cancel)
+
+    if kind == "sympy":
+        sp = engine_module()
+        return sp.cancel(expr, **kwargs)
+
+    if kind == "sage":
+        # no sage solution yet
+        return expr
+
+    return expr
+
+
+def defloat(expr, *, heuristic=False, **kwargs):
+    """
+    Attempt to coerce floating point numbers within expressions to exact symbolic ratios.
+
+    This should not be relied apon for exact computation programmatically. Instead, it is intended as a convenience utility for copy/pasting printed math, as printed expressions tipically format exact ratios into syntax that compiles with floating point numbers.
+    """
+    if isinstance(expr, list):
+        return [defloat(inner, heuristic=False, **kwargs) for inner in expr]
+    if isinstance(expr, tuple):
+        return tuple(defloat(inner, heuristic=False, **kwargs) for inner in expr)
+    if isinstance(expr, dict):
+        return {
+            defloat(k, heuristic=False, **kwargs): defloat(v, heuristic=False, **kwargs)
+            for k, v in expr.items()
+        }
+    f = getattr(expr, "__dgcv_apply__", None)
+    if f:
+        return f(defloat, heuristic=heuristic, **kwargs)
+    kind = engine_kind()
+    if kind == "sympy":
+        return engine_module().nsimplify(expr)
+    if kind == "sage":
+        return _sage_defloat(expr, heuristic=heuristic)
+
+
+def _sage_defloat(expr, *, heuristic=False, **kwargs):
+    sage = engine_module()
+
+    try:
+        from sage.rings.real_double import RealDoubleElement  # type: ignore
+        from sage.rings.real_mpfr import RealNumber as SageRealNumber  # type: ignore
+
+        real_types = (SageRealNumber, RealDoubleElement)
+    except Exception:
+        real_types = ()
+
+    def convert(x):
+        if isinstance(x, real_types):
+            try:
+                return x.nearby_rational() if heuristic else sage.QQ(str(x))
+            except Exception:
+                return x
+        return x
+
+    try:
+        return expr.map(lambda x: convert(x))
+    except Exception:
+        try:
+            op = expr.operator()
+            args = expr.operands()
+            if not args:
+                return convert(expr)
+            return op(*[_sage_defloat(a, heuristic=heuristic) for a in args])
+        except Exception:
+            return convert(expr)

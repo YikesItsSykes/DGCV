@@ -1,11 +1,24 @@
 """
 package: dgcv - Differential Geometry with Complex Variables
-module: algebras/__init__
 
-Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
+sub-package: dgcv.algebras
 
-License:
-    MIT License
+
+Description:
+------------
+This sub-package provides tools for representing and analyzing algebras
+
+---
+Author (of this sub-package): David Gamble Sykes
+
+Project page: https://realandimaginary.com/dgcv/
+
+
+Copyright (c) 2024-present David Gamble Sykes
+
+Licensed under the Apache License, Version 2.0
+
+SPDX-License-Identifier: Apache-2.0
 """
 
 # -----------------------------------------------------------------------------

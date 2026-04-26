@@ -1,5 +1,25 @@
-from .._safeguards import create_key
-from ..backends._types_and_constants import symbol
+"""
+package: dgcv - Differential Geometry with Complex Variables
+
+sub-package: dgcv.eds - Exterior Differential Systems
+
+module: dgcv.eds.operations
+
+---
+Author (of this module): David Gamble Sykes
+
+Project page: https://realandimaginary.com/dgcv/
+
+
+Copyright (c) 2024-present David Gamble Sykes
+
+Licensed under the Apache License, Version 2.0
+
+SPDX-License-Identifier: Apache-2.0
+"""
+
+from .._aux._backends._types_and_constants import symbol
+from .._aux._vmf._safeguards import create_key
 from .eds import abst_coframe, abstDFAtom, abstDFMonom, abstract_DF, extDer
 
 
@@ -77,7 +97,7 @@ def transform_coframe(
     new_structure_eqns = dict()
 
     for df_atom, df in zip(new_coframe_basis, new_basis):
-        from ..solvers import solve_dgcv
+        from ..core.solvers.solvers import solve_dgcv
 
         new_extD = extDer(df, original_coframe)
         eqns = [new_extD - general_elem]

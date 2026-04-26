@@ -1,11 +1,33 @@
 """
 package: dgcv - Differential Geometry with Complex Variables
-module: algebras/algebras_secondary
 
-Author (of this module): David Sykes (https://realandimaginary.com/dgcv/)
+sub-package: dgcv.algebras
 
-License:
-    MIT License
+module: algebras.algebras_secondary
+
+
+---
+Author (of this module): David Gamble Sykes
+
+Project page: https://realandimaginary.com/dgcv/
+
+
+Copyright (c) 2024-present David Gamble Sykes
+
+SPDX-License-Identifier: Apache-2.0
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 """
 
 # -----------------------------------------------------------------------------
@@ -16,14 +38,30 @@ from __future__ import annotations
 import numbers
 from typing import List, Optional
 
-from .._config import (
+from .._aux._backends._symbolic_router import (
+    _scalar_is_zero,
+    clear_denominators,
+    get_free_symbols,
+    ratio,
+    simplify,
+    subs,
+)
+from .._aux._backends._types_and_constants import (
+    expr_numeric_types,
+    expr_types,
+    imag_unit,
+    rational,
+    symbol,
+)
+from .._aux._utilities._config import (
     dgcv_exception_note,
     dgcv_warning,
+    dgcvDeprecationWarning,
     get_dgcv_settings_registry,
     get_variable_registry,
     update_globals,
 )
-from .._safeguards import (
+from .._aux._vmf._safeguards import (
     create_key,
     get_dgcv_category,
     query_dgcv_categories,
@@ -33,26 +71,13 @@ from .._safeguards import (
     validate_label,
     validate_label_list,
 )
-from ..arrays import array_dgcv, freeze_matrix, matrix_dgcv
-from ..backends._symbolic_router import (
-    clear_denominators,
-    ratio,
-    simplify,
-    subs,
-)
-from ..backends._types_and_constants import (
-    expr_numeric_types,
-    expr_types,
-    imag_unit,
-    rational,
-    symbol,
-)
-from ..base import dgcv_class
-from ..combinatorics import carProd
-from ..dgcv_core import variableProcedure
-from ..solvers import solve_dgcv
-from ..tensors import tensorProduct
-from ..vmf import clearVar, listVar
+from .._aux._vmf.vmf import clearVar, listVar
+from ..core.arrays.arrays import array_dgcv, freeze_matrix, matrix_dgcv
+from ..core.base import annotated_container, dgcv_class
+from ..core.combinatorics.combinatorics import carProd
+from ..core.dgcv_core.dgcv_core import variableProcedure
+from ..core.solvers.solvers import solve_dgcv
+from ..core.tensors.tensors import tensorProduct
 from .algebras_aux import _validate_structure_data
 from .algebras_core import (
     algebra_class,
@@ -118,9 +143,7 @@ class subalgebra_class(algebra_subspace_class):
                 "structure_data"
             ]
         self._parameters = params
-        self.subindices_to_ambient_dict = {
-            count: elem for count, elem in enumerate(basis)
-        }
+
         self.basis_in_ambient_alg = tuple(basis)
         self.basis = [
             subalgebra_element(
@@ -420,7 +443,9 @@ class subalgebra_class(algebra_subspace_class):
                 _calledFromCreator=retrieve_passkey(),
             )
 
-    def is_skew_symmetric(self, verbose=False, _return_proof_path=False):
+    def is_skew_symmetric(
+        self, verbose=False, _return_proof_path=False, _ignore_caches=False
+    ):
         """
         Checks if the algebra is skew-symmetric.
         """
@@ -434,13 +459,16 @@ class subalgebra_class(algebra_subspace_class):
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
-        if isinstance(self._educed_properties.get("is_skew", None), str):
+        if (
+            isinstance(self._educed_properties.get("is_skew", None), str)
+            and _ignore_caches is False
+        ):
             t_message = self._educed_properties.get("is_skew", None)
             self._skew_symmetric_cache = (True, None)
         else:
             t_message = ""
 
-        if self._skew_symmetric_cache is None:
+        if self._skew_symmetric_cache is None or _ignore_caches is True:
             result, failure = self._check_skew_symmetric()
             self._skew_symmetric_cache = (result, failure)
         else:
@@ -455,7 +483,7 @@ class subalgebra_class(algebra_subspace_class):
             else:
                 i, j, k = failure
                 print(
-                    f"Skew symmetry fails for basis elements {i} and {j}, at coefficient index {k}."
+                    f"Skew symmetry fails for basis elements {i}, {j}, at coefficient index {k}."
                 )
         if _return_proof_path is True:
             return result, t_message
@@ -472,7 +500,9 @@ class subalgebra_class(algebra_subspace_class):
                         return False, (i, j, k)
         return True, None
 
-    def satisfies_jacobi_identity(self, verbose=False, _return_proof_path=False):
+    def satisfies_jacobi_identity(
+        self, verbose=False, _return_proof_path=False, _ignore_caches=False
+    ):
         """
         Checks if the algebra satisfies the Jacobi identity.
         Includes a warning for unregistered instances only if verbose=True.
@@ -487,13 +517,16 @@ class subalgebra_class(algebra_subspace_class):
                     "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
                 )
 
-        if isinstance(self._educed_properties.get("satisfies_Jacobi_ID", None), str):
+        if (
+            isinstance(self._educed_properties.get("satisfies_Jacobi_ID", None), str)
+            and _ignore_caches is False
+        ):
             t_message = self._educed_properties.get("satisfies_Jacobi_ID", None)
             self._jacobi_identity_cache = (True, None)
         else:
             t_message = ""
 
-        if self._jacobi_identity_cache is None:
+        if self._jacobi_identity_cache is None or _ignore_caches is True:
             result, fail_list = self._check_jacobi_identity()
             self._jacobi_identity_cache = (result, fail_list)
         else:
@@ -551,23 +584,18 @@ class subalgebra_class(algebra_subspace_class):
             "If it is not then unexpected results may occur."
         )
 
-    def is_Lie_algebra(self, verbose=False, return_bool=True, _return_proof_path=False):
-        """
-        Checks if the algebra is a Lie algebra.
-        Includes a warning for unregistered instances only if verbose=True.
-
-        Parameters
-        ----------
-        verbose : bool, optional
-            If True, prints detailed information about the check.
-        return_bool : bool, optional
-            Affects whether or not a boolian value is returned. If False, nothing is returned, which may be used in combination with verbose=True to have the function simply print a report.
-
-        Returns
-        -------
-        bool or nothing
-            True if the algebra is a Lie algebra, False otherwise. Nothing is returned if return_bool=False is set.
-        """
+    def is_Lie_algebra(
+        self,
+        verbose=False,
+        return_bool=True,
+        _return_proof_path=False,
+        _ignore_caches=False,
+        *,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+    ):
         if not self._registered and verbose:
             if self._callLock == retrieve_passkey() and isinstance(
                 self._print_warning, str
@@ -586,8 +614,11 @@ class subalgebra_class(algebra_subspace_class):
         else:
             t_message = ""
 
-        if self._lie_algebra_cache is not None:
-            if verbose:
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+        threshold = float(_reporting_threshold_s)
+
+        if self._lie_algebra_cache is not None and _ignore_caches is False:
+            if verbose and not timed:
                 print(
                     f"Cached result: {'Previously verified the subalgebra is a Lie algebra' if self._lie_algebra_cache else 'Previously verified the subalgebra is not a Lie algebra'}."
                 )
@@ -595,22 +626,53 @@ class subalgebra_class(algebra_subspace_class):
                 return self._lie_algebra_cache, t_message
             return self._lie_algebra_cache
 
-        if not self.is_skew_symmetric(verbose=verbose):
+        def _call_with_optional_timing(fn, **kwargs):
+            if not callable(fn):
+                return fn
+            if timed:
+                kwargs.setdefault("_timed_reporting", True)
+                kwargs.setdefault("_reporting_threshold_s", threshold)
+                kwargs.setdefault("_progress_message", _progress_message)
+                kwargs.setdefault("_on_timed_update", _on_timed_update)
+            try:
+                return fn(**kwargs)
+            except TypeError:
+                kwargs.pop("_timed_reporting", None)
+                kwargs.pop("_reporting_threshold_s", None)
+                kwargs.pop("_progress_message", None)
+                kwargs.pop("_on_timed_update", None)
+                return fn(**kwargs)
+
+        ok_skew = _call_with_optional_timing(
+            self.is_skew_symmetric,
+            verbose=verbose,
+            _ignore_caches=_ignore_caches,
+        )
+        if not ok_skew:
             self._lie_algebra_cache = False
             if return_bool is True:
                 if _return_proof_path is True:
                     return False, t_message
                 return False
-        if not self.satisfies_jacobi_identity(verbose=verbose):
+            return
+
+        ok_jacobi = _call_with_optional_timing(
+            self.satisfies_jacobi_identity,
+            verbose=verbose,
+            _ignore_caches=_ignore_caches,
+        )
+        if not ok_jacobi:
             self._lie_algebra_cache = False
             if return_bool is True:
                 if _return_proof_path is True:
                     return False, t_message
                 return False
-        if self._lie_algebra_cache is None:
+            return
+
+        if self._lie_algebra_cache is None or _ignore_caches is True:
             self._lie_algebra_cache = True
 
-        if verbose:
+        if verbose and not timed:
             if self.ambient.label is None:
                 print("The algebra is a Lie algebra.")
             else:
@@ -815,10 +877,16 @@ class subalgebra_class(algebra_subspace_class):
 
         if for_associative_alg:
             eqns = sum(
-                [list((el * other - other * el).coeffs) for other in self.basis], []
+                [
+                    list((el * other - other * el).coeff_dict.values())
+                    for other in self.basis
+                ],
+                [],
             )
         else:
-            eqns = sum([list((el * other).coeffs) for other in self.basis], [])
+            eqns = sum(
+                [list((el * other).coeff_dict.values()) for other in self.basis], []
+            )
 
         solutions = solve_dgcv(eqns, temp_vars)
         if not solutions:
@@ -829,7 +897,9 @@ class subalgebra_class(algebra_subspace_class):
 
         el_sol = el.subs(solutions[0])
 
-        free_variables = tuple(set.union(*[set(j.free_symbols) for j in el_sol.coeffs]))
+        free_variables = tuple(
+            set.union(*[get_free_symbols(j) for j in el_sol.coeff_dict.values()])
+        )
 
         return_list = []
         for var in free_variables:
@@ -867,6 +937,7 @@ class subalgebra_class(algebra_subspace_class):
         format_as_subalgebras=False,
         from_subalg=None,
         align_nested_bases=False,
+        surface_singularities=False,
     ):
         if from_subalg is None:
             from_subalg = self
@@ -875,6 +946,7 @@ class subalgebra_class(algebra_subspace_class):
             format_as_subalgebras=format_as_subalgebras,
             from_subalg=from_subalg,
             align_nested_bases=align_nested_bases,
+            surface_singularities=surface_singularities,
         )
 
     def is_nilpotent(self, **kwargs):
@@ -946,18 +1018,28 @@ class subalgebra_class(algebra_subspace_class):
                 f"{method_name} can only be applied to Lie algebras."
             ) from None
 
-    def radical(self, from_subalg=None, assume_Lie_algebra=False):
+    def radical(
+        self, from_subalg=None, assume_Lie_algebra=False, surface_singularities=False
+    ):
         if from_subalg is None:
             from_subalg = self
         return self.ambient.radical(
-            from_subalg=from_subalg, assume_Lie_algebra=assume_Lie_algebra
+            from_subalg=from_subalg,
+            assume_Lie_algebra=assume_Lie_algebra,
+            surface_singularities=surface_singularities,
         )
 
     def killing_form_product(self, elem1, elem2, assume_Lie_algebra=False):
+        if not self.contains(elem1, strict_types=True) or not self.contains(
+            elem2, strict_types=True
+        ):
+            raise TypeError(
+                "algebra_class.killing_form_product only operates on algebra elements from the dispatching algebra"
+            )
         kf = killingForm(self, assume_Lie_algebra=assume_Lie_algebra)
-        vec1 = matrix_dgcv(elem1.coeffs)
-        vec2 = matrix_dgcv(elem2.coeffs)
-        return (vec2.transpose() * kf * vec1)[0]
+        vec1 = matrix_dgcv(elem1.coeff_dict, shape=(self.dimension, 1))
+        vec2 = matrix_dgcv(elem2.coeff_dict, shape=(1, self.dimension))
+        return (vec2 * kf * vec1)[0]
 
     @property
     def graded_components(self):
@@ -981,7 +1063,7 @@ class subalgebra_class(algebra_subspace_class):
         return wc
 
     def grading_summary(self):
-        from .._dgcv_display import show
+        from .._aux.printing.printing._dgcv_display import show
 
         gradingNumber = len(self.grading)
         graded_components = self.graded_components
@@ -1043,8 +1125,12 @@ class subalgebra_class(algebra_subspace_class):
         decompose_semisimple_fully=False,
         _bust_cache=False,
         assume_Lie_algebra=False,
-        _try_multiple_times=None,
         verbose=False,
+        surface_singularities=None,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
     ):
         return self.ambient.Levi_decomposition(
             from_subalg=self,
@@ -1052,7 +1138,11 @@ class subalgebra_class(algebra_subspace_class):
             verbose=verbose,
             _bust_cache=_bust_cache,
             assume_Lie_algebra=assume_Lie_algebra,
-            _try_multiple_times=_try_multiple_times,
+            surface_singularities=surface_singularities,
+            _timed_reporting=_timed_reporting,
+            _reporting_threshold_s=_reporting_threshold_s,
+            _progress_message=_progress_message,
+            _on_timed_update=_on_timed_update,
         )
 
     def approximate_rank(
@@ -1302,18 +1392,27 @@ class subalgebra_class(algebra_subspace_class):
 
 
 class subalgebra_element(dgcv_class):
-    def __init__(self, alg, coeffs, valence, ambient_rep=None, _internalLock=None):
+    def __init__(self, alg, coeff_dict, valence, ambient_rep=None, _internalLock=None):
         self.algebra = alg
         self.vectorSpace = alg
         if valence not in (0, 1):
             raise ValueError(f"valence must be 0 or 1, got {valence!r}")
         self.valence = valence
-        if isinstance(coeffs, (list, tuple)):
-            self.coeffs = tuple(coeffs)
+        if isinstance(coeff_dict, dict):
+            {k: v for k, v in coeff_dict.items() if not _scalar_is_zero(v)}
+        elif isinstance(coeff_dict, (list, tuple)):
+            coeff_dict = {
+                k: v for k, v in enumerate(coeff_dict) if not _scalar_is_zero(v)
+            }
+        elif get_dgcv_category(coeff_dict) == "array":
+            coeff_dict = coeff_dict._data
         else:
-            raise TypeError(
-                "subalgebra_element expects coeffs to be a list or tuple."
+            raise (
+                "subalgebra_element recieved unsupports coeffs parameter format."
             ) from None
+        self.coeff_dict = coeff_dict
+        self._coeffs = None  # deprecated
+        self._coeffs_hash_cache = None
         if _internalLock == retrieve_passkey():
             self._ambient_rep = ambient_rep
         else:
@@ -1321,17 +1420,28 @@ class subalgebra_element(dgcv_class):
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "subalgebra_element"
         self.dgcv_vs_id = self.vectorSpace.dgcv_vs_id
-        self._natural_weight = None
+        self._known_weight = None
+
+    @property
+    def coeffs(self):
+        if self._coeffs is None:
+            self._coeffs = tuple(
+                self.coeff_dict.get(x, 0) for x in range(self.algebra.dimension)
+            )
+        return self._coeffs
+
+    @property
+    def _coeffs_hash(self):
+        if self._coeffs_hash_cache is None:
+            self._coeffs_hash_cache = frozenset(self.coeff_dict.items())
+        return self._coeffs_hash_cache
 
     @property
     def ambient_rep(self):
         if self._ambient_rep is None:
             self._ambient_rep = sum(
-                [
-                    coeff * self.algebra.subindices_to_ambient_dict[j + 1]
-                    for j, coeff in enumerate(self.coeffs[1:])
-                ],
-                self.coeffs[0] * self.algebra.subindices_to_ambient_dict[0],
+                coeff * self.algebra.basis_in_ambient_alg[j]
+                for j, coeff in self.coeff_dict.items()
             )
         return self._ambient_rep
 
@@ -1340,12 +1450,12 @@ class subalgebra_element(dgcv_class):
             return NotImplemented
         return (
             self.algebra == other.algebra
-            and self.coeffs == other.coeffs
+            and self._coeffs_hash == other._coeffs_hash
             and self.valence == other.valence
         )
 
     def __hash__(self):
-        return hash((self.algebra, self.coeffs, self.valence))
+        return hash((self.algebra, self._coeffs_hash, self.valence))
 
     def __str__(self):
         return self.ambient_rep.__str__()
@@ -1365,11 +1475,10 @@ class subalgebra_element(dgcv_class):
 
     @property
     def is_zero(self):
-        for j in self.coeffs:
+        for j in self.coeff_dict.values():
             if simplify(j) != 0:
                 return False
-        else:
-            return True
+        return True
 
     def _si_wrap(self, obj):
         if self.algebra.simplify_products_by_default is True:
@@ -1378,27 +1487,28 @@ class subalgebra_element(dgcv_class):
             return obj
 
     def __dgcv_simplify__(self, *args, **kwargs):
-        newCoeffs = [simplify(j) for j in self.coeffs]
+        newCoeffs = {k: simplify(v) for k, v in self.coeff_dict.items()}
         return subalgebra_element(self.algebra, newCoeffs, self.valence)
 
     def _eval_simplify(self, *args, **kwargs):
-        newCoeffs = [simplify(j) for j in self.coeffs]
+        newCoeffs = {k: simplify(v) for k, v in self.coeff_dict.items()}
         return subalgebra_element(self.algebra, newCoeffs, self.valence)
 
     def subs(self, subsData):
-        newCoeffs = [subs(j, subsData) for j in self.coeffs]
+        newCoeffs = {k: subs(v, subsData) for k, v in self.coeff_dict.items()}
         return subalgebra_element(self.algebra, newCoeffs, self.valence)
 
     def dual(self):
-        return subalgebra_element(self.algebra, self.coeffs, (self.valence + 1) % 2)
+        return subalgebra_element(self.algebra, self.coeff_dict, (self.valence + 1) % 2)
 
     def _convert_to_tp(self):
         return tensorProduct(
-            tuple([self.dgcv_vs_id]),
+            (self.dgcv_vs_id,),
             {
-                (j, self.valence, self.dgcv_vs_id): self.coeffs[j]
-                for j in range(self.algebra.dimension)
+                (idx, self.valence, self.dgcv_vs_id): c
+                for idx, c in self.coeff_dict.items()
             },
+            shape="all",
         )
 
     def _recursion_contract_hom(self, other):
@@ -1406,15 +1516,15 @@ class subalgebra_element(dgcv_class):
 
     def _fast_add(self, other):
         """
-        Internal-only: assumes `other` is a subalgebra_element_class
-        from the same subalgebra with the same valence.
-        No type or safety checks.
-        No simplification.
+        Internal-only: assumes `other` is a subalgebra_element class
+        with the same algebra and valence. No type or safety checks etc.
         """
-        coeffs = [a + b for a, b in zip(self.coeffs, other.coeffs)]
+        new_dict = dict(self.coeff_dict)
+        for k, v in other.coeff_dict.items():
+            new_dict[k] = new_dict.get(k, 0) + v
         return subalgebra_element(
             self.algebra,
-            coeffs,
+            new_dict,
             self.valence,
             format_sparse=self.is_sparse,
         )
@@ -1424,8 +1534,10 @@ class subalgebra_element(dgcv_class):
             return self
         if get_dgcv_category(other) == "subalgebra_element":
             if self.algebra == other.algebra and self.valence == other.valence:
-                coeffs = [a + b for a, b in zip(self.coeffs, other.coeffs)]
-                return subalgebra_element(self.algebra, coeffs, self.valence)
+                new_dict = dict(self.coeff_dict)
+                for k, v in other.coeff_dict.items():
+                    new_dict[k] = new_dict.get(k, 0) + v
+                return subalgebra_element(self.algebra, new_dict, self.valence)
             elif other.algebra.ambient == self.algebra.ambient:
                 return self.ambient_rep + other.ambient_rep
             else:
@@ -1460,36 +1572,27 @@ class subalgebra_element(dgcv_class):
             if self.algebra == other.algebra and self.valence == other.valence:
                 sign = 1 if self.valence == 1 else -1
                 alg = self.algebra
-                dim = alg.dimension
-                coeffs1 = self.coeffs
-                coeffs2 = other.coeffs
                 struct = alg.structureData
-                raw_result = [0] * dim
-                for i in range(dim):
-                    ci = coeffs1[i]
-                    if ci == 0:
-                        continue
-                    for j in range(dim):
-                        cj = coeffs2[j]
-                        if cj == 0:
-                            continue
-                        scalar = sign * ci * cj
-                        row = struct[i, j]
-                        for k in range(dim):
-                            c_ijk = row[k]
-                            if c_ijk != 0:
-                                raw_result[k] += scalar * c_ijk
-                if self.algebra.simplify_products_by_default:
-                    result_coeffs = [self._si_wrap(c) for c in raw_result]
-                else:
-                    result_coeffs = raw_result
-                return subalgebra_element(self.algebra, result_coeffs, self.valence)
+                spbd = self.algebra.simplify_products_by_default
+                new_coeffs = dict()
+                for idx1, c1 in self.coeff_dict.items():
+                    for idx2, c2 in other.coeff_dict.items():
+                        scalar = sign * c1 * c2
+                        row = struct[idx1, idx2]
+                        for idx3, c3 in row._data.items():
+                            new_coeffs[idx3] = new_coeffs.get(idx3, 0) + (
+                                self._si_wrap(scalar * c3) if spbd else scalar * c3
+                            )
+                return subalgebra_element(self.algebra, new_coeffs, self.valence)
             elif other.algebra.ambient == self.algebra.ambient:
                 return self.ambient_rep * other.ambient_rep
             else:
                 return self._convert_to_tp().__mul__(other)
         elif isinstance(other, expr_numeric_types()):
-            new_coeffs = [self._si_wrap(coeff * other) for coeff in self.coeffs]
+            new_coeffs = {
+                idx: self._si_wrap(coeff * other)
+                for idx, coeff in self.coeff_dict.items()
+            }
             return subalgebra_element(self.algebra, new_coeffs, self.valence)
         elif get_dgcv_category(other) == "algebra_element":
             return self.ambient_rep * other
@@ -1526,15 +1629,15 @@ class subalgebra_element(dgcv_class):
             return self._convert_to_tp().__matmul__(other)
         new_dict = {
             (
-                j,
-                k,
+                idx1,
+                idx2,
                 self.valence,
                 other.valence,
                 self.dgcv_vs_id,
                 other.dgcv_vs_id,
-            ): self.coeffs[j] * other.coeffs[k]
-            for j in range(self.algebra.dimension)
-            for k in range(other.algebra.dimension)
+            ): c1 * c2
+            for idx1, c1 in self.coeff_dict.items()
+            for idx2, c2 in other.coeff_dict.items()
         }
         return self._si_wrap(
             tensorProduct([], new_dict)  ###!!! first keyword is deprication placeholder
@@ -1558,7 +1661,8 @@ class subalgebra_element(dgcv_class):
             get_dgcv_category(other) == "subalgebra_element"
             and other.algebra == self.algebra
         ):
-            return sum([j * k for j, k in zip(self.coeffs, other.coeffs)])
+            cd = other.coeff_dict
+            return sum(c * cd.get(idx, 0) for idx, c in self.coeff_dict.items())
         else:
             return self.ambient_rep(other)
 
@@ -1590,7 +1694,7 @@ class subalgebra_element(dgcv_class):
 
     def weighted_decomposition(self, test_weights=None, flatten_weights=False):
         weighted_components = {}
-        for idx, coeff in enumerate(self.coeffs):
+        for idx, coeff in self.coeff_dict.items():
             if coeff != 0:
                 elem = self.algebra.basis[idx]
                 w = elem.check_element_weight(
@@ -1602,14 +1706,7 @@ class subalgebra_element(dgcv_class):
         return weighted_components
 
     def terms(self):
-        if self._terms is None:
-            terms = []
-            for idx, c in enumerate(self.coeffs):
-                if c == 0:
-                    continue
-                terms.append(c * self.algebra.basis[idx])
-            self._terms = [self] if len(terms) < 2 else terms
-        return self._terms
+        return [c * self.algebra.basis[idx] for idx, c in self.coeff_dict()]
 
     def dual_pairing(self, other):
         return self._convert_to_tp().dual_pairing(other)
@@ -2140,7 +2237,7 @@ def createSimpleLieAlgebra(
         LADimension = len(indexingKey)
 
         def _structureCoeffs(idx1, idx2):
-            coeffs = [0] * LADimension
+            coeffs = matrix_dgcv({}, shape=(LADimension, 1))
             if idx2 == idx1:
                 return coeffs
             if idx2 < idx1:
@@ -2148,7 +2245,7 @@ def createSimpleLieAlgebra(
                 idx2, idx1 = idx1, idx2
             else:
                 reSign = 1
-            p10, p11, p12 = indexingKey[idx1]
+            p10, p11, p12 = indexingKey[idx1]  # (first index, second index, type index)
             p20, p21, p22 = indexingKey[idx2]
             if p12 == 0:  # implies p10 = p11
                 if p22 == 1:
@@ -2194,10 +2291,18 @@ def createSimpleLieAlgebra(
                         coeffs[indexingKeyRev[(p20, p11, 1)]] = -reSign
             return coeffs
 
-        _structure_data = [
-            [_structureCoeffs(k, j) for j in range(LADimension)]
-            for k in range(LADimension)
-        ]
+        _structure_data = array_dgcv(
+            dict(),
+            shape=(LADimension, LADimension),
+            null_return=freeze_matrix(matrix_dgcv.zeros(LADimension, 1)),
+        )
+        for j in range(LADimension):
+            for k in range(j + 1, LADimension):
+                scoeffs = _structureCoeffs(j, k)
+                if len(scoeffs._data) > 0:
+                    _structure_data[(j, k)] = scoeffs
+                    _structure_data[(k, j)] = -scoeffs
+
         CartanSubalg = list(hBasis["elems"].values())
         matrixBasis = CartanSubalg + list(offDiag["elems"].values())
         gradingVecs = list(hBasis["grading"].values()) + list(
@@ -2348,7 +2453,7 @@ def createSimpleLieAlgebra(
         } | {n - 1: {j: 1 for j in range(n)}}
 
         def _structureCoeffs(idx1, idx2):
-            coeffs = [0] * LADimension
+            coeffs = matrix_dgcv({}, shape=(LADimension, 1))
             if idx2 == idx1:
                 return coeffs
             if idx2 < idx1:
@@ -2499,10 +2604,18 @@ def createSimpleLieAlgebra(
                         coeffs[indexingKeyRev[(p10, p20, -1)]] = reSign
             return coeffs
 
-        _structure_data = [
-            [_structureCoeffs(k, j) for j in range(LADimension)]
-            for k in range(LADimension)
-        ]
+        _structure_data = array_dgcv(
+            dict(),
+            shape=(LADimension, LADimension),
+            null_return=freeze_matrix(matrix_dgcv.zeros(LADimension, 1)),
+        )
+        for j in range(LADimension):
+            for k in range(j + 1, LADimension):
+                scoeffs = _structureCoeffs(j, k)
+                if len(scoeffs._data) > 0:
+                    _structure_data[(j, k)] = scoeffs
+                    _structure_data[(k, j)] = -scoeffs
+
         CartanSubalg = list(hBasis["elems"].values())
         matrixBasis = (
             CartanSubalg
@@ -2611,13 +2724,18 @@ def createSimpleLieAlgebra(
         indexingKeyRev = {j: k for k, j in indexingKey.items()}
         LADimension = len(indexingKey)
 
+        print(f"indexingKey={indexingKey}")
+        print(f"indexingKeyRev={indexingKeyRev}")
+        print(f"offDiag={offDiag}")
+        print(f"hBasis={hBasis}")
+
         def minmaxtuple(id1, id2, id3):
             if id1 < id2:
                 return (id1, id2, id3)
             return (id2, id1, id3)
 
         def _structureCoeffs(idx1, idx2):
-            coeffs = [0] * LADimension
+            coeffs = matrix_dgcv({}, shape=(LADimension, 1))
             if idx2 == idx1:
                 return coeffs
             if idx2 < idx1:
@@ -2629,11 +2747,11 @@ def createSimpleLieAlgebra(
             p20, p21, p22 = indexingKey[idx2]
             if p12 == 0:
                 if p22 == 1:
-                    coeffs[idx2] += offDiag["grading"][indexingKey[idx2]][p10]
+                    coeffs[idx2] += reSign * offDiag["grading"][indexingKey[idx2]][p10]
                 elif p22 == -1:
-                    coeffs[idx2] += offDiag["grading"][indexingKey[idx2]][p10]
+                    coeffs[idx2] += reSign * offDiag["grading"][indexingKey[idx2]][p10]
                 elif p22 == 2:
-                    coeffs[idx2] += offDiag["grading"][indexingKey[idx2]][p10]
+                    coeffs[idx2] += reSign * offDiag["grading"][indexingKey[idx2]][p10]
             elif p12 == 1:
                 if p22 == -1:
                     if p11 == p20:
@@ -2727,10 +2845,17 @@ def createSimpleLieAlgebra(
                         ] += -reSign
             return coeffs
 
-        _structure_data = [
-            [_structureCoeffs(k, j) for j in range(LADimension)]
-            for k in range(LADimension)
-        ]
+        _structure_data = array_dgcv(
+            dict(),
+            shape=(LADimension, LADimension),
+            null_return=freeze_matrix(matrix_dgcv.zeros(LADimension, 1)),
+        )
+        for j in range(LADimension):
+            for k in range(j + 1, LADimension):
+                scoeffs = _structureCoeffs(j, k)
+                if len(scoeffs._data) > 0:
+                    _structure_data[(j, k)] = scoeffs
+                    _structure_data[(k, j)] = -scoeffs
         CartanSubalg = list(hBasis["elems"].values())
         matrixBasis = CartanSubalg + list(offDiag["elems"].values())
         gradingVecs = list(hBasis["grading"].values()) + list(
@@ -2879,7 +3004,7 @@ def createSimpleLieAlgebra(
             }
 
         def _structureCoeffs(idx1, idx2):
-            coeffs = [0] * LADimension
+            coeffs = matrix_dgcv({}, shape=(LADimension, 1))
             if idx2 == idx1:
                 return coeffs
             if idx2 < idx1:
@@ -2991,10 +3116,18 @@ def createSimpleLieAlgebra(
                         coeffs[indexingKeyRev[(p10, p20, 1)]] += -2 * reSign * sign2
             return coeffs
 
-        _structure_data = [
-            [_structureCoeffs(k, j) for j in range(LADimension)]
-            for k in range(LADimension)
-        ]
+        _structure_data = array_dgcv(
+            dict(),
+            shape=(LADimension, LADimension),
+            null_return=freeze_matrix(matrix_dgcv.zeros(LADimension, 1)),
+        )
+        for j in range(LADimension):
+            for k in range(j + 1, LADimension):
+                scoeffs = _structureCoeffs(j, k)
+                if len(scoeffs._data) > 0:
+                    _structure_data[(j, k)] = scoeffs
+                    _structure_data[(k, j)] = -scoeffs
+
         CartanSubalg = list(hBasis["elems"].values())
         matrixBasis = (
             CartanSubalg
@@ -3187,10 +3320,12 @@ def createFiniteAlg(
     **kwargs,
 ):
     dgcv_warning(
-        "`createFiniteAlg` has been deprecated as it is being replaced with a more genera function. "
-        "It will be removed in 2026. Use `createAlgebra` instead.",
-        DeprecationWarning,
+        "`createFiniteAlg` has been deprecated as it is being replaced with a more general function.",
+        dgcvDeprecationWarning,
         stacklevel=2,
+        old_kw="createFiniteAlg",
+        new_kw="createAlgebra",
+        sunset="2026",
     )
     return createAlgebra(
         obj,
@@ -3396,6 +3531,17 @@ def createAlgebra(
             elif get_dgcv_category(elem) not in types:
                 return False
         return gate
+
+    if (
+        isinstance(obj, annotated_container)
+        and obj._dgcv_notes.get("signature", None) == "algebra_str_eqns"
+    ):
+        if obj._dgcv_notes.get("skew_aware_sparse", False):
+            assume_skew = True
+        basis_order_for_supplied_str_eqns = obj[1]
+        obj = obj[0]
+        if basis_labels is None:
+            basis_labels = [str(x) for x in basis_order_for_supplied_str_eqns]
 
     if isinstance(obj, numbers.Integral) and obj >= 0:
         obj = array_dgcv(

@@ -1,0 +1,934 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+
+sub-package: dgcv.core
+
+module: dgcv.core.combinatorics
+
+description: This module provides various combinatorial functions used throughout the dgcv package,
+primarily focusing on efficient computation of Cartesian products, permutations, and
+related operations. These functions are tuned for specialized backend dgcv tasks and not intended for general use otherwise.
+
+
+---
+Author (of this sub-package): David Gamble Sykes
+
+Project page: https://realandimaginary.com/dgcv/
+
+Copyright (c) 2024-present David Gamble Sykes
+
+Licensed under the Apache License, Version 2.0
+
+SPDX-License-Identifier: Apache-2.0
+"""
+
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
+import numbers
+from functools import lru_cache
+from itertools import combinations, combinations_with_replacement, permutations, product
+from math import factorial, gcd
+
+__all__ = [
+    "Baker_Campbell_Hausdorff",
+    "carProd",
+    "chooseOp",
+    "permSign",
+    "weightedPermSign",
+    "shufflings",
+]
+
+
+# -----------------------------------------------------------------------------
+# general combinatorics
+# -----------------------------------------------------------------------------
+def Baker_Campbell_Hausdorff(X, Y, truncation_degree=None, ad_op_syntax=None):
+    """
+    Computes a degree-truncated Baker Campbell Hausdorff formula, i.e., leading
+    polynomial of specified degree in the series representing log(exp(X)*exp(Y)).
+
+    Parameters
+    ----------
+    X : algebra element-like []
+        could be an algebra_element_class, matrix_dgcv, etc.
+
+    Y : algebra element-like []
+        could be an algebra_element_class, matrix_dgcv, etc.
+
+    truncation_degree: int (optional, default=5)
+        The degree up to which terms in the series log(exp(X)*exp(Y)) are computed.
+
+    ad_op_syntax: callable (optional)
+        This can specify a custom Lie bracket for the elements X and Y, intended for
+        cases where the bracket rule would not be automatically infered from a dgcv
+        Lie algebra class. If X and Y are not elements of dgcv Lie algebra, then
+        a custom definition of the adjoint operator must be provided.
+        E.g. if X and Y are matrices then set `ad_op_syntax = custom_rule` where
+            ```
+            def custom_rule(x):
+                def ad_x(y):
+                    return x*y-y*x
+                return ad_x
+            ```
+
+    Returns
+    -------
+    generator
+        Leading polynomial of specified degree in the [ad_X,ad_Y] series expansion
+        representing log(exp(X)*exp(Y))
+    """
+    if callable(ad_op_syntax):
+
+        def ad(op, elem, power=1):
+            if power == 0:
+                return elem
+            if power == 1:
+                return ad_op_syntax(op)(elem)
+            return ad(op, ad_op_syntax(op)(elem), power=power - 1)
+
+    else:
+
+        def ad(op, elem, power=1):
+            if power == 0:
+                return elem
+            if power == 1:
+                return op * elem
+            return ad(op, op * elem, power=power - 1)
+
+    def ad_tuples(t1, t2, target=None):
+        target = X if target is None else target
+        if len(t1) == 1:
+            return ad(X, ad(Y, target, t2[0]), t1[0])
+        return ad_tuples(t1[:-1], t2[:-1], ad(X, ad(Y, target, t2[-1]), t1[-1]))
+
+    if not isinstance(truncation_degree, numbers.Integral):
+        truncation_degree = 5
+    out = X + Y
+
+    def _tfact(inttuple):
+        out = 1
+        for x in inttuple:
+            out *= factorial(x)
+        return out
+
+    term_cache = dict()
+
+    for degree in range(1, truncation_degree + 1):
+        for k, ell in split_number(degree, [1, 1])[
+            1:
+        ]:  # relying on the pattern that first split is [degree,0]
+            for split_length in range(1, 2 * degree):  # pigeon hole principle
+                sl_sign = 1 if split_length % 2 == 0 else -1
+                sl_denom = split_length + 1
+                k_splits = split_number(k, [1 for _ in range(split_length)])
+                ell_splits = split_number(ell, [1 for _ in range(split_length)])
+                for ell_tuple in ell_splits:
+                    if ell_tuple[-1] == 0:
+                        continue
+                    ell_lead = tuple(ell_tuple[1:])
+                    ell_fact = _tfact(ell_tuple)
+                    for k_tuple in k_splits:
+                        if any(a == 0 and b == 0 for a, b in zip(k_tuple, ell_tuple)):
+                            continue
+                        k_lead = tuple(k_tuple[1:])
+                        key, new_key = (
+                            (k_lead, ell_lead),
+                            (tuple(k_tuple), tuple(ell_tuple)),
+                        )
+                        if key in term_cache:
+                            old_term = term_cache[key]
+                            if old_term == 0:
+                                term_cache[new_key] = 0
+                                continue
+                            new_monom = ad(
+                                X, ad(Y, term_cache[key], ell_tuple[0]), k_tuple[0]
+                            )
+                            if getattr(new_monom, "is_zero", False) or new_monom == 0:
+                                term_cache[new_key] = 0
+                                continue
+                            k_fact = _tfact(k_tuple)
+                            denom = sum(k_tuple, 1) * k_fact * ell_fact * sl_denom
+                            term_cache[new_key] = new_monom
+                            out += sl_sign * new_monom / denom
+                        else:
+                            k_fact = _tfact(k_tuple)
+                            denom = sum(k_tuple, 1) * k_fact * ell_fact * sl_denom
+                            new_val = ad_tuples(k_tuple, ell_tuple)
+                            if getattr(new_val, "is_zero", False) or new_val == 0:
+                                term_cache[new_key] = 0
+                                continue
+                            term_cache[new_key] = new_val
+                            out += sl_sign * new_val / denom
+    return out
+
+
+def carProd(*args):
+    return product(*args)
+
+
+def carProd_experimental(*args):
+    """
+    Compute the Cartesian product of a variable number of lists.
+
+    Takes multiple lists as input and computes their
+    Cartesian product, yielding tuples containing elements from each list.
+
+    Parameters
+    ----------
+    *args : lists
+        The input lists whose Cartesian product is to be computed.
+
+    Returns
+    -------
+    generator
+        A generator yielding tuples representing the Cartesian product.
+    """
+
+    def carProdTwo(arg1, arg2):
+        return (j + (k,) for j in arg1 for k in arg2)
+
+    if len(args) == 1:
+        return ((j,) for j in args[0])
+    else:
+        resultLoc = ((j,) for j in args[0])
+        for j in range(1, len(args)):
+            resultLoc = carProdTwo(resultLoc, args[j])
+        return resultLoc
+
+
+def carProd_with_weights_without_R(*args):
+    """
+    Form cartesian product (filtered for replacement) of a variable number of lists whose elements are marked with a weight (specifically, list entries should be length 2 lists whose first element goes into the car. prod. space and second element a scalar vaule). Weights are multiplied when elements are joined into a list (i.e., element of the cartesian product space).
+
+    Args:
+        args: List
+
+    Returns: List
+        list of lists marked with weights. Specifically, a list of length 2 lists, each conaintaining a scalar (e.g., number or sympy.Expr) in the second position representing a weight and a list representing the car. prod. element
+
+    Raises:
+    """
+
+    def prodOfTwo(arg1, arg2):
+        return [
+            [j[0] + (k[0],), j[1] * k[1]]
+            for j in arg1
+            for k in arg2
+            if len(set(j[0] + (k[0],))) == len(j[0] + (k[0],))
+        ]
+
+    if len(args) == 1:
+        return [[(j[0],), j[1]] for j in args[0]]
+    else:
+        resultLoc = ([(j[0],), j[1]] for j in args[0])
+        for j in range(len(args) - 1):
+            resultLoc = prodOfTwo(resultLoc, list(args[j + 1]))
+        return resultLoc
+
+
+def carProdWithOrder_experiment(*args):
+    """
+    Compute the Cartesian product of lists, excluding permutations.
+
+    Parameters
+    ----------
+    *args : lists
+        The input lists whose Cartesian product is to be computed.
+
+    Returns
+    -------
+    generator
+        A generator yielding unique tuples representing the Cartesian
+        product, with permutations removed.
+    """
+    seen = set()
+
+    for combo in carProd(*args):
+        key = tuple(sorted(combo))
+
+        if key not in seen:
+            seen.add(key)
+
+            yield combo
+
+
+def carProdWithOrder(*args):
+
+    pool = sorted(set().union(*args))
+
+    k = len(args)
+
+    yield from combinations(pool, k)
+
+
+def carProdWithoutRepl(*args):
+    """
+    Compute Cartesian product excluding repeated elements.
+    """
+    # return (j for j in carProd(*args) if len(set(j)) == len(j))
+    return (j for j in product(*args) if len(set(j)) == len(j))
+
+
+def carProdWithOrderWithoutRepl(*args):
+    """
+    Compute Cartesian product excluding permutations and repeated elements.
+
+    This function computes the Cartesian product of multiple lists, filters
+    out tuples that contain repeated values, and removes elements equivalent
+    up to permutation by sorting the input lists upfront. The function yields
+    unique tuples lazily for improved memory efficiency.
+
+    Parameters
+    ----------
+    *args : lists
+        The input lists whose Cartesian product is to be computed.
+
+    Returns
+    -------
+    generator
+        A generator yielding unique tuples that do not contain repeated
+        elements or permutations.
+
+    Examples
+    --------
+    >>> list(carProdWithOrderWithoutRepl([1, 2], [2, 3]))
+    [(1, 2), (1, 3), (2,3)]
+
+    Notes
+    -----
+    By sorting the input lists beforehand and applying filters during the
+    Cartesian product computation, this function minimizes the need to
+    process permutations and repetitions separately.
+
+    Raises
+    ------
+    TypeError
+        If any of the input arguments are not iterable.
+    """
+    seen = set()
+
+    for combo in carProd(*args):
+        if len(set(combo)) != len(combo):
+            continue
+
+        key = tuple(sorted(combo))
+
+        if key not in seen:
+            seen.add(key)
+
+            yield key
+
+
+def chooseOp(
+    arg1, arg2, withOrder=False, withoutReplacement=False, restrictHomogeneity=None
+):
+    if (
+        isinstance(restrictHomogeneity, numbers.Integral)
+        and restrictHomogeneity >= 0
+        and all(isinstance(v, numbers.Integral) and v >= 0 for v in arg1)
+    ):
+        return chooseOp_common_pool_homogeneous_posints(
+            arg1,
+            arg2,
+            restrictHomogeneity,
+            withOrder=withOrder,
+            withoutReplacement=withoutReplacement,
+            _valid=True,
+        )
+
+    if arg2 == 0:
+        resultLoc = iter(())
+
+    elif withoutReplacement and arg2 > len(arg1):
+        resultLoc = iter(())
+
+    else:
+        pool = tuple(arg1)
+
+        if withOrder:
+            if withoutReplacement:
+                resultLoc = combinations(pool, arg2)
+
+            else:
+                resultLoc = combinations_with_replacement(pool, arg2)
+
+        else:
+            if withoutReplacement:
+                resultLoc = permutations(pool, arg2)
+
+            else:
+                resultLoc = product(pool, repeat=arg2)
+
+    if isinstance(restrictHomogeneity, numbers.Integral):
+        return (j for j in resultLoc if sum(j) == restrictHomogeneity)
+
+    return resultLoc
+
+
+def chooseOp_experiment(
+    arg1, arg2, withOrder=False, withoutReplacement=False, restrictHomogeneity=None
+):
+    """
+    Generate all possible combinations of length *arg2* containing elements from *arg1*.
+
+    The function can apply several filters: excluding permutations, preventing duplicate elements,
+    and restricting combinations to those with a specified homogeneity degree (sum of elements).
+
+    Parameters
+    ----------
+    arg1 : list
+        The list of elements from which combinations are drawn.
+    arg2 : int
+        The length of the combinations to be generated.
+    withOrder : bool, optional
+        If True, removes equivalent combinations that are permutations of each other.
+    withoutReplacement : bool, optional
+        If True, prevents duplicate elements within a combination.
+    restrictHomogeneity : int, optional
+        If set, filters combinations to only include those whose elements sum to the given value.
+
+    Returns
+    -------
+    generator
+        A generator yielding tuples of the specified combinations.
+
+    Examples
+    --------
+    >>> list(chooseOp([1, 2], 2, withOrder=True))
+    [(1, 2)]
+
+    >>> list(chooseOp([1, 2, 3], 2, restrictHomogeneity=4))
+    [(1, 3), (3, 1), (2, 2)]
+
+    Notes
+    -----
+    - The `withOrder` and `withoutReplacement` options control whether permutations
+      and duplicate elements are included.
+    - If `restrictHomogeneity` is set, only tuples whose elements sum to the
+      specified value will be returned.
+
+    Raises
+    ------
+    TypeError
+        If the arguments are not in the correct format.
+    """
+    if arg2 == 0 or (withoutReplacement and arg2 > len(arg1)):
+        return (0 for _ in range(0))
+    if withoutReplacement and withOrder and arg2 == len(arg1):
+        return (arg1 for _ in range(1))
+    arg1 = [list(arg1)]
+    if withOrder:
+        if withoutReplacement:
+            resultLoc = carProdWithOrderWithoutRepl(*arg2 * arg1)
+        else:
+            resultLoc = carProdWithOrder(*arg2 * arg1)
+    else:
+        if withoutReplacement:
+            resultLoc = carProdWithoutRepl(*arg2 * arg1)
+        else:
+            resultLoc = carProd(*arg2 * arg1)
+    if isinstance(restrictHomogeneity, numbers.Integral):
+        return (j for j in resultLoc if sum(j) == restrictHomogeneity)
+    else:
+        return resultLoc
+
+
+def split_number(n, nums=[1]):
+    if n < 0 or not nums or any(x <= 0 for x in nums):
+        return []
+    g = 0
+    for x in nums:
+        g = gcd(g, x)
+    if n % g != 0:
+        return []
+    order = sorted(range(len(nums)), key=lambda i: nums[i], reverse=True)
+    vals = [nums[i] for i in order]
+    m = len(vals)
+    back = [0] * (m + 1)
+    for i in range(m - 1, -1, -1):
+        back[i] = gcd(back[i + 1], vals[i])
+
+    @lru_cache(maxsize=None)
+    def step(i, r):
+        if r % back[i] != 0:
+            return ()
+        if i == m - 1:
+            v = vals[i]
+            if r % v == 0:
+                c = r // v
+                a = [0] * m
+                a[i] = c
+                return (tuple(a),)
+            return ()
+        v = vals[i]
+        out = []
+        for c in range(r // v, -1, -1):
+            new_r = r - c * v
+            tails = step(i + 1, new_r)
+            for t in tails:
+                a = list(t)
+                a[i] = c
+                out.append(tuple(a))
+        return tuple(out)
+
+    out_sorted = step(0, n)
+    out_final = []
+    for s in out_sorted:
+        a = [0] * m
+        for pos, idx in enumerate(order):
+            a[idx] = s[pos]
+        out_final.append(a)
+    return out_final
+
+
+def permSign(sortable, returnSorted=False, key=None, **kwargs):
+    """
+    Compute the signature (sign) of a permutation and, optionally, return the sorted list.
+
+    The computation uses a merge-sort inversion count:
+    https://en.wikipedia.org/wiki/Merge_sort
+
+    The signature is 1 for even permutations and -1 for odd permutations.
+
+    Parameters
+    ----------
+    sortable : list
+        A list containing a permutation of sortable elements.
+
+    returnSorted : bool (optional), default is False
+        If True, also return the sorted list.
+
+    key : callable (optional), default is None
+        A key function used for comparisons, like in Python's `sorted(..., key=key)`.
+
+    Returns
+    -------
+    int (or (int, list) if returnSorted is True)
+        The signature of the permutation, either 1 (even) or -1 (odd).
+        If returnSorted is True, returns (sign, sorted_list).
+    """
+
+    def merge_sort(permutation):
+        # Length 1 or empty lists do not need to be sorted
+        if len(permutation) <= 1:
+            return permutation, 0
+
+        # For longer lists, divide them into two smaller parts.
+        # Most merge-sort documentation says to split in half
+        partition = len(permutation) // 2
+        left = permutation[:partition]
+        right = permutation[partition:]
+
+        # Recursively merge-sort and count permutation parities.
+        left_sorted, left_parity = merge_sort(left)
+        right_sorted, right_parity = merge_sort(right)
+
+        # merge the sorted left and right parts in a sorted way while counting
+        # parity of the permutation from "concatenation" to "sorted" merge.
+        merged_list, merge_parity = merge_and_count(left_sorted, right_sorted)
+
+        sorting_parity = left_parity + right_parity + merge_parity
+
+        return merged_list, sorting_parity
+
+    def merge_and_count(left, right):
+        # we'll build the sorted merge in a list
+        merged = []
+        # and count the number of swaps performed as we build it
+        # (starting with parity = 0)
+        parity = 0
+
+        # Pull elements from the two lists into the merged list
+        # by comparing the first element not yet pulled in from
+        # either list and taking the smaller one. Do this until
+        # all elements from one list are pulled into merged.
+        i = j = 0
+        while i < len(left) and j < len(right):
+            li = key(left[i]) if key else left[i]
+            rj = key(right[j]) if key else right[j]
+            if li <= rj:
+                merged.append(left[i])
+                i += 1
+            else:
+                merged.append(right[j])
+                j += 1
+                # pulling in the leading element from the right list
+                # requires swapping it with the remaining elements in the
+                # left list. Upate parity accordingly
+                parity += len(left) - i
+
+        # one of the sublists may not have been exhaust, so add what
+        # remains to the end of the merged list.
+        merged.extend(left[i:])
+        merged.extend(right[j:])
+
+        return merged, parity
+
+    # Count inversions in the permutation and get the sorted list
+    sorted_list, inversions = merge_sort(sortable)
+
+    # Compute the sign based on the number of inversions
+    sign = 1 if inversions % 2 == 0 else -1
+
+    # Return based on the returnSorted flag
+    if returnSorted:
+        return sign, sorted_list
+    else:
+        return sign
+
+
+def weightedPermSign(
+    permutation, weights, returnSorted=False, use_degree_attribute=False
+):
+    def merge_sort(permutation, weights):
+        # Base case: single element or empty list
+        if len(permutation) <= 1:
+            return permutation, weights, 0
+
+        # Split into left and right parts
+        partition = len(permutation) // 2
+        left = permutation[:partition]
+        right = permutation[partition:]
+        left_weights = weights[:partition]
+        right_weights = weights[partition:]
+
+        # Recursively sort and count parities
+        left_sorted, left_weights_sorted, left_parity = merge_sort(left, left_weights)
+        right_sorted, right_weights_sorted, right_parity = merge_sort(
+            right, right_weights
+        )
+
+        # Merge sorted parts while counting weighted parity
+        merged_list, merged_weights, merge_parity = merge_and_count(
+            left_sorted, right_sorted, left_weights_sorted, right_weights_sorted
+        )
+
+        # Combine parities
+        sorting_parity = (left_parity + right_parity + merge_parity) % 2
+
+        return merged_list, merged_weights, sorting_parity
+
+    def merge_and_count(left, right, left_weights, right_weights):
+        merged = []
+        merged_weights = []
+        parity = 0
+
+        i = j = 0
+        while i < len(left) and j < len(right):
+            if left[i] <= right[j]:
+                merged.append(left[i])
+                merged_weights.append(left_weights[i])
+                i += 1
+            else:
+                merged.append(right[j])
+                merged_weights.append(right_weights[j])
+                # Weighted parity calculation
+                if use_degree_attribute:
+                    parity += (
+                        sum([mu.degree for mu in left_weights[i:]])
+                        * (right_weights[j].degree)
+                    ) % 2
+                else:
+                    parity += (sum(left_weights[i:]) * right_weights[j]) % 2
+                j += 1
+
+        # Append remaining elements
+        merged.extend(left[i:])
+        merged_weights.extend(left_weights[i:])
+        merged.extend(right[j:])
+        merged_weights.extend(right_weights[j:])
+
+        return merged, merged_weights, parity
+
+    # Sort and compute weighted parity
+    sorted_list, sorted_weights, inversions = merge_sort(permutation, weights)
+
+    # Compute the sign based on inversions
+    sign = 1 if inversions % 2 == 0 else -1
+
+    if returnSorted:
+        return sign, sorted_list, sorted_weights
+    else:
+        return sign
+
+
+def shufflings(list1: list | tuple, list2: list | tuple):
+    """
+    Yield all order-preserving shufflings of list1 and list2.
+
+    This is achieved by recursively building a tree of incrementally longer lists,
+    starting from the empty list []. Each step appends the next unused element
+    from either list1 or list2, preserving the relative order within each list.
+
+    Parameters
+    ----------
+    list1 : list or tuple
+        First sequence to merge.
+    list2 : list or tuple
+        Second sequence to merge.
+
+    Yields
+    ------
+    list
+        A single shuffling of list1 and list2.
+
+    Examples
+    --------
+    >>> list(shufflings([1, 2], ['a', 'b']))
+    [[1, 2, 'a', 'b'], [1, 'a', 2, 'b'], [1, 'a', 'b', 2],
+     ['a', 1, 2, 'b'], ['a', 1, 'b', 2], ['a', 'b', 1, 2]]
+    """
+
+    def treeCrawl(path, i, j):
+        if i == len(list1) and j == len(list2):
+            yield path
+            return
+        if i < len(list1):
+            yield from treeCrawl(path + [list1[i]], i + 1, j)
+        if j < len(list2):
+            yield from treeCrawl(path + [list2[j]], i, j + 1)
+
+    yield from treeCrawl([], 0, 0)
+
+
+# -----------------------------------------------------------------------------
+# for tensor caculus
+# -----------------------------------------------------------------------------
+def permuteTupleEntries(arg1, arg2):
+    """
+    Apply a permutation to the entries of a tuple or list.
+
+    This function takes a tuple or list *arg1*, containing integers in the range
+    [0, ..., k-1] for some integer k, and applies a permutation *arg2* to the
+    entries of *arg1*. The result is returned as a new tuple.
+
+    Parameters
+    ----------
+    arg1 : tuple or list
+        A tuple or list containing integers in the range [0, ..., k-1].
+    arg2 : list
+        A list representing a permutation of [0, 1, ..., k-1].
+
+    Returns
+    -------
+    tuple
+        A new tuple with the entries of *arg1* permuted according to *arg2*.
+
+    Examples
+    --------
+    >>> permuteTupleEntries((1, 2, 0), [2, 0, 1])
+    (0, 1, 2)
+
+    Notes
+    -----
+    - The elements of *arg1* must be valid indices in the permutation *arg2*.
+    - If *arg1* contains out-of-range values, the function will raise an error.
+
+    Raises
+    ------
+    ValueError
+        If the values in *arg1* are out of the range defined by the length of *arg2*.
+    """
+    if not all(0 <= x < len(arg2) for x in arg1):
+        raise ValueError(
+            "Entries of arg1 must be in the range of [0, ..., len(arg2)-1]."
+        )
+
+    return tuple(arg2[arg1[j]] for j in range(len(arg1)))
+
+
+def permuteTuple(arg1, arg2):
+    """
+    Apply a permutation to the order of a tuple or list.
+
+    This function takes a tuple or list *arg1* of length *k*, and applies the
+    permutation *arg2* (a permutation of [0, 1, ..., k-1]) to reorder its
+    elements. The result is returned as a new tuple.
+
+    Parameters
+    ----------
+    arg1 : tuple or list
+        A tuple or list of length *k* whose elements will be permuted.
+    arg2 : list
+        A list representing a permutation of [0, 1, ..., k-1].
+
+    Returns
+    -------
+    tuple
+        A new tuple with the elements of *arg1* rearranged according to *arg2*.
+
+    Examples
+    --------
+    >>> permuteTuple((1, 2, 3), [2, 0, 1])
+    (3, 1, 2)
+
+    Notes
+    -----
+    - The length of *arg2* must match the length of *arg1*.
+    - If *arg2* contains invalid indices, the function will raise an error.
+
+    Raises
+    ------
+    ValueError
+        If the length of *arg2* does not match the length of *arg1*, or if *arg2*
+        contains invalid indices.
+    """
+    if len(arg1) != len(arg2):
+        raise ValueError("The length of arg2 must match the length of arg1.")
+    if not all(0 <= x < len(arg1) for x in arg2):
+        raise ValueError("arg2 must contain valid indices for arg1.")
+
+    return tuple(arg1[j] for j in arg2)
+
+
+def build_nd_array(entries_list, shape, use_lists_instead_of_tuples=False, pad=0):
+    total = 1
+    for s in shape:
+        total *= s
+
+    flat = list(entries_list[:total])
+    if len(flat) < total:
+        flat.extend([pad] * (total - len(flat)))
+
+    def build(level, offset):
+        if level == len(shape):
+            return flat[offset]
+        size = shape[level]
+        stride = 1
+        for s in shape[level + 1 :]:
+            stride *= s
+        items = [build(level + 1, offset + i * stride) for i in range(size)]
+        return items if use_lists_instead_of_tuples else tuple(items)
+
+    return build(0, 0)
+
+
+# ------- testing
+
+
+def chooseOp_common_pool_homogeneous_posints(
+    pool,
+    k: int,
+    target: int,
+    *,
+    withOrder: bool = False,
+    withoutReplacement: bool = False,
+    _valid=False,
+):
+    """
+    Experimental helper for generating length-k tuples from a single common pool
+    of positive integers whose entries sum to `target`, pruning branches during
+    generation.
+
+    Assumptions
+    -----------
+    - pool entries are positive integers
+    - k is a nonnegative integer
+    - target is a nonnegative integer
+
+    Semantics
+    ---------
+    - withOrder=False, withoutReplacement=False:
+        ordered tuples with repetition allowed
+    - withOrder=False, withoutReplacement=True:
+        ordered tuples without repetition
+    - withOrder=True, withoutReplacement=False:
+        unordered tuples with repetition allowed
+    - withOrder=True, withoutReplacement=True:
+        unordered tuples without repetition
+    """
+    vals = tuple(pool)
+    if _valid is False:
+        if not isinstance(k, numbers.Integral) or k < 0:
+            raise TypeError("k must be a nonnegative integer")
+        if not isinstance(target, numbers.Integral) or target < 0:
+            raise TypeError("target must be a nonnegative integer")
+        if any(not isinstance(v, numbers.Integral) or v < 0 for v in vals):
+            raise TypeError("pool must contain only positive integers")
+
+    vals = tuple(sorted(vals))
+
+    if k == 0:
+        if target == 0:
+            yield tuple()
+        return
+
+    if not vals:
+        return
+
+    if withoutReplacement and k > len(vals):
+        return
+
+    if withOrder:
+        if withoutReplacement:
+            yield from _hcp_combinations(vals, k, target, start=0)
+        else:
+            yield from _hcp_combinations_with_replacement(vals, k, target, start=0)
+    else:
+        if withoutReplacement:
+            yield from _hcp_permutations(vals, k, target)
+        else:
+            yield from _hcp_product(vals, k, target)
+
+
+def _hcp_combinations(vals, k, target, *, start):
+    if k == 0:
+        if target == 0:
+            yield tuple()
+        return
+
+    n = len(vals)
+    for i in range(start, n):
+        v = vals[i]
+        if v > target:
+            break
+        for tail in _hcp_combinations(vals, k - 1, target - v, start=i + 1):
+            yield (v,) + tail
+
+
+def _hcp_combinations_with_replacement(vals, k, target, *, start):
+    if k == 0:
+        if target == 0:
+            yield tuple()
+        return
+
+    n = len(vals)
+    for i in range(start, n):
+        v = vals[i]
+        if v > target:
+            break
+        for tail in _hcp_combinations_with_replacement(
+            vals, k - 1, target - v, start=i
+        ):
+            yield (v,) + tail
+
+
+def _hcp_product(vals, k, target):
+    if k == 0:
+        if target == 0:
+            yield tuple()
+        return
+
+    for v in vals:
+        if v > target:
+            break
+        for tail in _hcp_product(vals, k - 1, target - v):
+            yield (v,) + tail
+
+
+def _hcp_permutations(vals, k, target):
+    def rec(available, r, t):
+        if r == 0:
+            if t == 0:
+                yield tuple()
+            return
+
+        for i, v in enumerate(available):
+            if v > t:
+                break
+            rest = available[:i] + available[i + 1 :]
+            for tail in rec(rest, r - 1, t - v):
+                yield (v,) + tail
+
+    yield from rec(vals, k, target)

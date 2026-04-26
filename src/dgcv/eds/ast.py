@@ -1,6 +1,28 @@
-# src/dgcv/eds/ast.py
+"""
+package: dgcv - Differential Geometry with Complex Variables
 
-from ..backends._engine import sympy_module_if_available
+sub-package: dgcv.eds - Exterior Differential Systems
+
+module: dgcv.eds.ast
+
+
+Description: abstract syntx tree tools underlying EDS representations
+
+
+---
+Author (of this module): David Gamble Sykes
+
+Project page: https://realandimaginary.com/dgcv/
+
+
+Copyright (c) 2024-present David Gamble Sykes
+
+Licensed under the Apache License, Version 2.0
+
+SPDX-License-Identifier: Apache-2.0
+"""
+
+from .._aux._backends._engine import sympy_module_if_available
 from .eds import abstDFAtom, abstract_ZF
 
 sp = sympy_module_if_available()

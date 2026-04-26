@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 requires-python = ">=3.9"
 name = "dgcv"
-version = "0.4.18"
+version = "0.4.19"
 description = "Differential Geometry with Complex Variables"
 authors = [{ name = "David Sykes", email = "david@realandimaginary.com" }]
 license = "MIT"
@@ -17,6 +17,8 @@ readme = "README.md"
 sympy = ["sympy>=1.9"]
 ipython = ["ipython>=7.0"]
 recommended = ["sympy>=1.9", "ipython>=7.0"]
+testing = ["pytest>=8", "pytest-cov>=5"]
+development = ["pytest>=8", "pytest-cov>=5", "ipython>=7.0", "sympy>=1.9"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -26,7 +28,6 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-dgcv = ["assets/fonts/*.ttf", "assets/fonts/fonts.css"]
 
 [tool.ruff]
 line-length = 88
@@ -38,6 +39,7 @@ ignore = ["E501", "Q", "W291"] # global ignores
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402"]
+"tests/**/*.py" = ["F401"]
 
 [tool.black]
 line-length = 88
