@@ -1,9 +1,36 @@
+"""
+package: dgcv - Differential Geometry with Complex Variables
+
+module: dgcv._aux.styles
+
+
+---
+Author (of this module): David Gamble Sykes
+
+Project page: https://realandimaginary.com/dgcv/
+
+Copyright (c) 2024-present David Gamble Sykes
+
+Licensed under the Apache License, Version 2.0
+
+SPDX-License-Identifier: Apache-2.0
+"""
+
+# -----------------------------------------------------------------------------
+# imports and broadcasting
+# -----------------------------------------------------------------------------
+
 import colorsys
 import random
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
 __all__ = ["get_dgcv_themes", "get_style", "ThemeConfig"]
+
+
+# -----------------------------------------------------------------------------
+# body
+# -----------------------------------------------------------------------------
 
 dgcv_display_theme = "dark_modern"
 dgcv_custom_variables = [
