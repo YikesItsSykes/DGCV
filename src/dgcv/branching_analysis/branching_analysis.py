@@ -735,13 +735,13 @@ def _tree_leaves_html(
         return ", ".join(eqns)
 
     def state(x):
-        return "solved" if x == "complete" else x
+        return "solved" if x.startswith("complete") else "unsolved"
 
     rows = []
     for k, v in leaves.items():
         rows.append(
             [
-                k[1:] if k.startswith(".") else k,
+                (k[1:] if k.startswith(".") else k).replace("._", "."),
                 state(v.get("state", "")),
                 str(len(v.get("free_vars", []))),
                 process_conditions(v.get("conditions", [])),
@@ -750,7 +750,7 @@ def _tree_leaves_html(
     table = build_plain_table(
         columns=[
             "subcase",
-            "state",
+            "equation state",
             "free parameters",
             "conditions",
         ],
