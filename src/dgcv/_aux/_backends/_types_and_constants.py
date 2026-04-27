@@ -216,6 +216,7 @@ def symbol(name, assumptions=None):
             return sp.Symbol(str(name), nonnegative=True)
         if assumptions.get("real", False) is True:
             return sp.Symbol(str(name), real=True)
+        return sp.Symbol(str(name))
 
     if kind == "sage":
         sage = _get_sage_module()

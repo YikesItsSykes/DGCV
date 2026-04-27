@@ -38,8 +38,19 @@ import textwrap
 import uuid
 
 from .._aux._backends._symbolic_router import get_free_symbols, simplify, subs
-from .._aux._utilities._config import dgcv_warning, latex_in_html
-from .._aux.printing.printing._dgcv_display import LaTeX_eqn_system, LaTeX_list, show
+from .._aux._utilities._config import (
+    dgcv_warning,
+    get_dgcv_settings_registry,
+    latex_in_html,
+)
+from .._aux._utilities._styles import get_style
+from .._aux._vmf._safeguards import check_dgcv_category
+from .._aux.printing._tables import build_plain_table
+from .._aux.printing.printing._dgcv_display import (
+    LaTeX_eqn_system,
+    LaTeX_list,
+    show,
+)
 
 __all__ = ["case_tree"]
 
@@ -135,7 +146,6 @@ class case_tree:
                 stacklevel=2,
             )
             self.case_rules = {}
-
         self._complete = None
         self._ev_eqn_system = None
         self._free_variables = None
@@ -159,25 +169,60 @@ class case_tree:
             self._complete = self.completion_condition(self.reduced_equation_system)
         return self._complete
 
-    def add_case(self, label, **kwargs):
+    def add_case(self, label: str = None, case_rules: dict = None, **kwargs):
+        if label is None:
+            for idx in range(1, len(self._subcases) + 2):
+                pref = f"_{idx}"
+                if any(str(x) == f"_{idx}" for x in self._subcases):
+                    continue
+                label = pref
+                break
+
+        if not isinstance(case_rules, dict):
+            case_rules = {}
+        verbose = kwargs.get("verbose", None)
+        if not isinstance(verbose, bool):
+            verbose = True is getattr(self, "verbose", False)
         if not isinstance(label, str):
             raise TypeError("The `label` parameter must be a string.")
-        if "case_rules" in kwargs:
-            new_cr = kwargs["case_rules"]
-            cr = {
-                k: subs(v, new_cr) for k, v in getattr(self, "case_rules", {}).items()
-            } | new_cr
-            kwargs["case_rules"] = cr
-            kwargs["_new_case_rules"] = new_cr
-            new_tree = case_tree(
-                label=label,
-                equation_system=self.general_equation_system,
-                parameters=self.system_parameters,
-                completion_condition=self.completion_condition,
-                **{"_simplify_rule": self._internal_simplify, **kwargs},
+        if label.isnumeric():
+            raise ValueError(
+                "Pure numeric labels for subcases are not supported. Recommendation: prepend the numeric label with an underscore."
             )
+        if label in self._subcases:
+            if verbose:
+                dgcv_warning(
+                    "Overwriting an existing subcase branch.",
+                    wc_label="dgcvOperationsNote",
+                )
+        elif hasattr(self, label):
+            raise ValueError(
+                "subcases cannot be assigned names coinciding with the `case_tree` class' base attributes."
+            )
+        new_cr = case_rules
+        cr = {
+            k: subs(v, new_cr) for k, v in getattr(self, "case_rules", {}).items()
+        } | new_cr
+        kwargs["case_rules"] = cr
+        kwargs["_new_case_rules"] = new_cr
+        new_tree = case_tree(
+            label=label,
+            equation_system=self.general_equation_system,
+            parameters=self.system_parameters,
+            completion_condition=self.completion_condition,
+            **{"_simplify_rule": self._internal_simplify, **kwargs},
+        )
         setattr(self, label, new_tree)
         self._subcases[label] = getattr(self, label)
+
+    def add_corollary(self, label: str, case_rules=None):
+        return self.add_case(label=label, case_rules=case_rules, note=r"$\implies $")
+
+    def remove_case(self, label):
+        if label in self._subcases:
+            _ = self._subcases.pop(label, None)
+            if hasattr(self, label):
+                delattr(self, label)
 
     def _repr_latex_(self, raw=False, **kwargs):
         out = LaTeX_eqn_system(
@@ -193,8 +238,11 @@ class case_tree:
     def __str__(self):
         return getattr(self, "inheritance_path", "") + self.label
 
-    def show_case_rules(self, **kwargs):
-        show(self._repr_latex_(**kwargs))
+    def show_case_rules(self, plain_text=False, **kwargs):
+        if plain_text is True:
+            print(self.case_rules)
+        else:
+            show(self._repr_latex_(**kwargs))
 
     @property
     def reduced_equation_system(self):
@@ -293,7 +341,14 @@ class case_tree:
         return tree_dict
 
     def tree_summary(self, theme=None):
-        return latex_in_html(_full_tree_html(self._latex_verbose_tree, theme=theme))
+        return latex_in_html(
+            _full_tree_html(
+                self._latex_verbose_tree, theme=theme, root_label=self.label
+            )
+        )
+
+    def leaf_summary(self, theme=None, **kwargs):
+        return _tree_leaves_html(self, theme=theme, **kwargs)
 
     @classmethod
     def _print_path_tree(cls, data, indent="", path="", root=True):
@@ -386,20 +441,37 @@ class case_tree:
                 next_indent = indent + vertical_gate + (" " * padding_width)
                 cls._print_verbose_tree(value, next_indent, display_label, root=False)
 
-    def case_summary(self, punctuation="."):
+    def case_summary(self, plain_text=False):
         f = getattr(self, "summary", None)
         if callable(f):
             return f(self)
-        print("Conditions")
-        self.show_case_rules(punctuation=",")
-        print("imply")
-        show(
-            LaTeX_eqn_system(
-                {"0=[A,B]": self.general_equation_system}, punctuation=punctuation
+        eqns = self.reduced_equation_system
+        if check_dgcv_category(eqns):
+            eqns = {0: eqns}
+        else:
+            eqns = [var for var in eqns]
+        c_numb = len(self.case_rules)
+        if c_numb == 0:
+            print("The general equation system is")
+        else:
+            print("The condition" if c_numb == 1 else "Conditions")
+            self.show_case_rules(punctuation=",", plain_text=plain_text)
+            print("implies" if c_numb == 1 else "imply")
+
+        if plain_text:
+            print(eqns)
+        else:
+            show(
+                LaTeX_eqn_system(
+                    eqns,
+                    punctuation=".",
+                )
             )
-        )
         print("The remaining free parameters in this branch are")
-        show(LaTeX_list(self.free_variables, one_line=True, punctuation="."))
+        if plain_text is True:
+            print(self.free_variables)
+        else:
+            show(LaTeX_list(self.free_variables, one_line=True, punctuation="."))
         if self.complete:
             print("********** The branch is complete! **********")
             print(f"     {len(self.free_variables)} dim. parameter space remaining ")
@@ -407,11 +479,7 @@ class case_tree:
 
 def _html_style(theme=None, container_id=None):
     if not isinstance(theme, str):
-        from .._aux._utilities._config import get_dgcv_settings_registry
-
         theme = get_dgcv_settings_registry().get("theme", "dark")
-
-    from .._aux._utilities._styles import get_style
 
     theme_vars = get_style(theme, legacy=False)
 
@@ -539,16 +607,25 @@ def _html_style(theme=None, container_id=None):
 {scope} .compound-node:hover .complete-msg, 
 {scope} .compound-node:hover .note-msg {{ 
     background-color: var(--dgcv-bg-hover) !important; 
-    color: var(--dgcv-text-hover) !important; 
-    font-weight: var(--dgcv-hover-font-weight, inherit);
+    color: var(--dgcv-text-hover) !important;
+    border-color: var(--dgcv-text-hover) !important;
 }}
+{scope} .compound-node:hover .node-label {{ 
+    background-color: var(--dgcv-bg-hover) !important; 
+    color: var(--dgcv-text-hover) !important;
+    border-color: var(--dgcv-text-hover) !important;
+    font-weight: bold; 
+    font-size: 14px; 
+    text-shadow: var(--dgcv-text-shadow, none);
+}}
+
 
 {scope} .children-ul {{ margin-left: 10px; }}
     """
     return f"<style>{base_styles}</style>"
 
 
-def _to_html_tree(data, path="", is_root=True, container_id=None):
+def _to_html_tree(data, path="", is_root=True, root_label=None, container_id=None):
     if not isinstance(data, dict):
         return ""
     import html
@@ -560,9 +637,11 @@ def _to_html_tree(data, path="", is_root=True, container_id=None):
         if is_root
         else '<ul class="children-ul">'
     )
-    if is_root and "root" in data:
-        res += '<li><div class="compound-node root-wrapper"><div class="node-label">root</div></div>'
-        res += _to_html_tree(data["root"], "", False, container_id=container_id)
+    if not isinstance(root_label, str):
+        root_label = "root"
+    if is_root and root_label in data:
+        res += f'<li><div class="compound-node root-wrapper"><div class="node-label" style="min-width: 10px;">{root_label}</div></div>'
+        res += _to_html_tree(data[root_label], "", False, container_id=container_id)
         res += "</li>"
     else:
         items = list(data.get("descendants", {}).items())
@@ -590,7 +669,9 @@ def _to_html_tree(data, path="", is_root=True, container_id=None):
                 )
             note = value.get("note") if isinstance(value, dict) else None
             if note is not None:
-                res += f'<div class="note-msg">{html.escape(str(note))}</div>'
+                res += (
+                    f'<div class="note-msg">{html.escape("Note: " + str(note))}</div>'
+                )
             res += "</div>"
             if is_dict:
                 res += _to_html_tree(
@@ -601,8 +682,90 @@ def _to_html_tree(data, path="", is_root=True, container_id=None):
     return (res + "</div>") if is_root else res
 
 
-def _full_tree_html(data, theme=None):
+def _full_tree_html(data, theme=None, root_label=None):
     cid = f"tree-{uuid.uuid4().hex[:8]}"
     styles = _html_style(theme=theme, container_id=cid)
-    tree = _to_html_tree(data, is_root=True, container_id=cid)
+    tree = _to_html_tree(data, is_root=True, root_label=root_label, container_id=cid)
     return styles + tree
+
+
+def _tree_leaves_html(
+    tree: case_tree, theme=None, use_latex=True, return_displayable=False, **kwargs
+):
+    if not isinstance(theme, str):
+        theme = get_dgcv_settings_registry().get("theme", "dark")
+    data = tree._latex_verbose_tree if use_latex else tree._verbose_tree
+    if not isinstance(data, dict):
+        return
+    leaves = {}
+
+    def scan_and_descend(folder, pref=""):
+        if not isinstance(folder, dict):
+            return
+        for k, v in folder.items():
+            if isinstance(v, dict):
+                dec = v.get("descendants", None)
+                path = str(pref) + "." + str(k)
+                if isinstance(dec, str):
+                    leaves[path] = {"state": dec}
+                else:
+                    scan_and_descend(dec, path)
+
+    for _, v in data.items():
+        scan_and_descend(v.get("descendants", None))
+    for k in leaves:
+        root = tree
+        steps = filter(None, k.split("."))
+        for step in steps:
+            root = root._subcases.get(step, None)
+            if root is None:
+                break
+        if root is None:
+            continue
+        leaves[k]["conditions"] = root.case_rules
+        leaves[k]["free_vars"] = root.free_variables
+
+    def process_conditions(conds):
+        eqns = []
+        for k, v in conds.items():
+            if use_latex:
+                eqns.append(LaTeX_eqn_system({k: v}, math_mode="$"))
+            else:
+                eqns.append(str(k) + "=" + str(v))
+        return ", ".join(eqns)
+
+    def state(x):
+        return "solved" if x == "complete" else x
+
+    rows = []
+    for k, v in leaves.items():
+        rows.append(
+            [
+                k[1:] if k.startswith(".") else k,
+                state(v.get("state", "")),
+                str(len(v.get("free_vars", []))),
+                process_conditions(v.get("conditions", [])),
+            ]
+        )
+    table = build_plain_table(
+        columns=[
+            "subcase",
+            "state",
+            "free parameters",
+            "conditions",
+        ],
+        rows=rows,
+        theme_css_vars=get_style(theme, legacy=False),
+        caption="Case tree leaves",
+        table_attrs='style="table-layout:auto;"',
+        container_id="tree-leaves-summary",
+    )
+    extra_support_for_math_in_tables = bool(
+        get_dgcv_settings_registry().get("extra_support_for_math_in_tables") is True
+    )
+    out = latex_in_html(
+        table, extra_support_for_math_in_tables=extra_support_for_math_in_tables
+    )
+    if return_displayable:
+        return out
+    show(out)

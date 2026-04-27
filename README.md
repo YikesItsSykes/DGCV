@@ -48,7 +48,7 @@ Depending on Python install configurations, the above command can vary. The key 
 
 ## License
 
-**dgcv** is licensed under the MIT License. See the [`LICENSE.txt`](https://github.com/YikesItsSykes/dgcv/blob/main/LICENSE.txt) file for more information.
+**dgcv** is licensed under an Apache 2.0 License. See the [`LICENSE`](https://github.com/YikesItsSykes/dgcv/blob/main/LICENCE) and [`NOTICE`](https://github.com/YikesItsSykes/dgcv/blob/main/NOTICE) files for more information.
 
 ## Author
 
@@ -56,6 +56,6 @@ Depending on Python install configurations, the above command can vary. The key 
 
 ---
 
-### Future Development
+### Development Notes
 
 **dgcv** is always growing and updated regularly. I regularly make new functions for personal projects, and add the ones with general utility for others to the public versions of **dgcv**. Contributions, requests for additions to the library, and feedback from anyone interested are very much welcome. –D.S.

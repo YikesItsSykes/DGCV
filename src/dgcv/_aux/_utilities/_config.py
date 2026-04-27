@@ -151,6 +151,7 @@ def set_up_globals():
 def configure_warnings():
     warnings.simplefilter("once", category=dgcvWarning)
     warnings.simplefilter("once", category=dgcvDeprecationWarning)
+    warnings.simplefilter("always", category=dgcvOperationsNote)
     warnings.showwarning = _dgcv_showwarning
 
 
@@ -158,6 +159,10 @@ _original_showwarning = warnings.showwarning
 
 
 class dgcvWarning(UserWarning):
+    pass
+
+
+class dgcvOperationsNote(UserWarning):
     pass
 
 
@@ -204,13 +209,23 @@ def _dgcv_showwarning(message, category, filename, lineno, file=None, line=None)
     if issubclass(category, dgcvWarning):
         print(f"dgcv warning: {message}", file=stream)
         return
-
+    if issubclass(category, dgcvOperationsNote):
+        print(f"dgcv operations note: {message}", file=stream)
+        return
     _original_showwarning(message, category, filename, lineno, file=file, line=line)
 
 
-def dgcv_warning(message, warning_class=None, stacklevel=2, **warning_kwargs):
+def dgcv_warning(
+    message, warning_class=None, stacklevel=2, wc_label=None, **warning_kwargs
+):
     if warning_class is None:
-        warning_class = dgcvWarning
+        if isinstance(wc_label, str):
+            if wc_label == "dgcvOperationsNote":
+                warning_class = dgcvOperationsNote
+            else:
+                warning_class = dgcvWarning
+        else:
+            warning_class = dgcvWarning
 
     if isinstance(warning_class, type) and issubclass(warning_class, Warning):
         warning = (

@@ -5625,7 +5625,7 @@ def createVariables(
         assumptions = dict()
     elif isinstance(assumptions, (list, tuple, set)):
         assumptions = {k: True for k in supported_assumptions if k in assumptions}
-    elif assumptions in supported_assumptions:
+    elif isinstance(assumptions, str) and assumptions in supported_assumptions:
         assumptions = {assumptions: True}
     elif not isinstance(assumptions, dict):
         assumptions = dict()
@@ -5647,12 +5647,14 @@ def createVariables(
                 valid = False
                 break
             if isinstance(v, (list, tuple, set)):
-                new_k_v[k] = {key: True for key in supported_assumptions if key in v}
+                for key in v:
+                    if isinstance(key, "str") and key in supported_assumptions:
+                        new_k_v[k] = new_k_v.get(k, {}) | {key: True}
             elif isinstance(v, dict):
                 new_k_v[k] = {
                     key: v.get(key) for key in supported_assumptions if key in v
                 }
-            elif v in supported_assumptions:
+            elif isinstance(v, str) and v in supported_assumptions:
                 new_k_v[k] = {v: True}
             else:
                 valid = False
