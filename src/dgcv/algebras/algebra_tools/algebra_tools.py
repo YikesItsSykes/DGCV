@@ -1,9 +1,9 @@
 """
 package: dgcv - Differential Geometry with Complex Variables
 
-sub-package: dgcv.algebras
+sub-package: dgcv.algebras.algebra_tools
 
-module: algebras.algebra_tools
+module: dgcv.algebras.algebra_tools.algebra_tools
 
 
 ---
@@ -35,37 +35,42 @@ limitations under the License.
 # -----------------------------------------------------------------------------
 from typing import Sequence
 
-from .._aux._backends._symbolic_router import get_free_symbols, subs
-from .._aux._backends._types_and_constants import check_dgcv_scalar, symbol
-from .._aux._utilities._config import dgcv_warning
-from .._aux._utilities._misc import zip_sum
-from .._aux._vmf._safeguards import create_key, get_dgcv_category
-from .._aux._vmf.vmf import first_available_label, vmf_lookup
-from ..core.arrays.arrays import array_dgcv, freeze_matrix, matrix_dgcv
-from ..core.combinatorics.combinatorics import Baker_Campbell_Hausdorff
-from ..core.dgcv_core.dgcv_core import createVariables, wedge
-from ..core.morphisms import homomorphism
-from ..core.solvers.solvers import solve_dgcv
-from ..core.vector_fields_and_differential_forms import (
+from ..._aux._backends._symbolic_router import get_free_symbols, subs
+from ..._aux._backends._types_and_constants import check_dgcv_scalar, symbol
+from ..._aux._utilities._config import dgcv_warning
+from ..._aux._utilities._misc import zip_sum
+from ..._aux._vmf._safeguards import create_key, get_dgcv_category
+from ..._aux._vmf.vmf import first_available_label, vmf_lookup
+from ...core.arrays.arrays import array_dgcv, freeze_matrix, matrix_dgcv
+from ...core.combinatorics.combinatorics import Baker_Campbell_Hausdorff
+from ...core.dgcv_core.dgcv_core import createVariables, wedge
+from ...core.morphisms import homomorphism
+from ...core.solvers.solvers import solve_dgcv
+from ...core.vector_fields_and_differential_forms import (
     coordinate_vector_field,
 )
-from .algebras_core import (
+from ..algebras_core import (
     _extract_basis,
     adjointRepresentation,
     algebra_class,
     algebra_subspace_class,
     killingForm,
 )
-from .algebras_secondary import createAlgebra, subalgebra_class
+from ..algebras_secondary import createAlgebra, subalgebra_class
 
 __all__ = [
     "adjointRepresentation",
+    "derivations",
+    "derived_subalgebra",
     "generate_subalgebra",
     "intersection",
     "killingForm",
+    "Levi_decomposition",
     "multiply",
+    "quotient_by_ideal",
     "span",
     "vector_field_representation",
+    "vector_field_rep_from_linear_rep",
 ]
 
 
@@ -104,6 +109,25 @@ def adjoint_representation(algebra, list_format=False, assume_Lie_algebra=False)
 def multiply(
     *args, filter_for_linear_independance=False, apply_light_basis_simplification=False
 ):
+    """
+    Computes a list of products of elements in the given algebras (or algebra-like objects)
+
+    Parameters:
+    -----------
+    *args: algebra like objects
+        This can be any number of algebra calss objects, or lists of algebra elements, or even single algebra elements. "algebra-like" is broad here, include algebra subspace/subalgebra classes, vector space classes etc.
+
+    filter_for_linear_independance: bool
+        If true the computed products are filtered down to a linearly independant subset
+
+    apply_light_basis_simplification: bool
+        permits the algorithm to scale elements in a way that attempts to simplify coefficients.
+
+    returns:
+    --------
+        list of alegra elements
+    """
+
     def scale_or_atom(obj):
         return get_dgcv_category(obj) in {
             "algebra_element",
@@ -142,6 +166,29 @@ def span(
     promote_to_parent_algebra=False,
     format_as_subspaces=False,
 ):
+    """
+    computes the span of elements in given list of algebra-like objects.
+
+    Parameters:
+    -----------
+    *args: algebra like objects
+        This can be any number of algebra calss objects, or lists of algebra elements, or even single algebra elements. "algebra-like" is broad here, include algebra subspace/subalgebra classes, vector space classes etc.
+
+    apply_light_basis_simplification: bool
+        permits the algorithm to scale elements in a way that attempts to simplify coefficients.
+
+    separate_by_algebra: bool
+        If true, the returned list is divided into sub-lists grouped by algebra.
+
+    Returns:
+    --------
+        list of alegra elements or list of lists of algebra_elements (depending on separate_by_algebra setting)
+
+    Notes:
+    ------
+        Returns empty list for 0-dimensional spaces
+    """
+
     def wrap(obj):
         return (
             [obj]
@@ -197,6 +244,25 @@ def generate_subalgebra(
     simplify_basis=False,
     simplify_products_by_default=None,
 ):
+    """
+    Generates a subalgebra from a subset of algebra elements
+
+    Parameters:
+    -----------
+    *args: algebra like objects
+        This can be any number of algebra calss objects, or lists of algebra elements, or even single algebra elements. "algebra-like" is broad here, include algebra subspace/subalgebra classes, vector space classes etc.
+
+    simplify_basis: bool
+        Permits the algorithm to scale elements in a way that attempts to simplify coefficients. The resulting bases may be different from subsets of input algebra element lists as a result.
+
+    simplify_products_by_default: bool
+        Set's the default simplification behavior on the created algebra objects. Recommended to ignore this if unsure.
+
+    returns:
+    --------
+        Single algebra/subalgebra object or list of them depending on whether given elements belong to a common algebra or not.
+    """
+
     spaces = span(
         *subspaces,
         separate_by_algebra=True,
@@ -216,9 +282,24 @@ def generate_subalgebra(
     return out
 
 
-def intersection(
-    *args, filter_for_linear_independance=False, apply_light_basis_simplification=False
-):
+def intersection(*args):
+    """
+    computes the intersection of spaces spanned by elements in given set of algebra-like objects.
+
+    Parameters:
+    -----------
+    *args: algebra like objects
+        This can be any number of algebra calss objects, or lists of algebra elements, or even single algebra elements. "algebra-like" is broad here, include algebra subspace/subalgebra classes, vector space classes etc. Each obeject is interpreted as spanning a subspace, so if single elements are given, they represent 1-d. subspaces, tc.
+
+    Returns:
+    --------
+        list of alegra elements spanning the intersection.
+
+    Notes:
+    ------
+        Returns empty list for 0-dimensional spaces
+    """
+
     def scale_or_atom(obj):
         return get_dgcv_category(obj) in {
             "algebra_element",
@@ -357,6 +438,27 @@ def vector_field_representation(
     coordinate_labels=None,
     register_new_coordinates_in_vmf=False,
 ):
+    """
+    Attempts to find vector field representations of Lie algebras. Currently supports nilpotent and semisimple algebras, and others that are marked with a faithful linear representations.
+
+    Parameters:
+    -----------
+    algebra: algebra_class | subalgebra
+
+    coordinate_labels: str | list[str]
+        Will be used to label coordinates that the vector fields are represented in
+
+    register_new_coordinates_in_vmf: bool
+        If true, the created coordinate system will be registered in the dgcv VMF (and active session's namespace.)
+
+    Returns:
+    --------
+        list of vector fields representing a basis.
+
+    Notes:
+    ------
+        Not fully implemented --  missing algorithm for general Lie algebras.
+    """
     if isinstance(algebra, (list, tuple)):
         return vector_field_rep_from_linear_rep(
             algebra,
@@ -440,6 +542,24 @@ def vector_field_representation(
 
 
 def derivations(algebra: algebra_class | subalgebra_class, grading_preserving=True):
+    """
+    Computes derivations of an algebra.
+
+    Parameters:
+    -----------
+    algebra: algebra_class | subalgebra_class | algebra_dual
+
+    grading_preserving: bool (optional, default=True)
+        If the algebra has assigned gradings, then when True, this will restrict the computed derivations to only those that preserve the gradings.
+
+    Returns:
+    --------
+        list of tensor products A x A^* representing endomorphisms on the algebra A
+
+    Notes:
+    ------
+        The returns list of tensor product plus the algebra's basis added to the list can be given to dgcv.createAlgebra to build an algebra isomorphic to their semi-direct sum.
+    """
     params = algebra._parameters if algebra._parameters else set()
     basis = algebra.basis
     if grading_preserving:
@@ -493,6 +613,30 @@ def quotient_by_ideal(
     simplify_products_by_default: bool = None,
     register_in_vmf=True,
 ):
+    """
+    Constructs an algebra isomorphic to the quotient by an ideal.
+
+    Parameters:
+    -----------
+    algebra: algebra_class
+
+    subalgebra: algebra_class
+        Needs to be an ideal in the given parent algebra.
+
+    coordinate_labels: str | list[str]
+        Will be used to label coordinates that the vector fields are represented in
+
+    register_in_vmf: bool (default, True)
+        If true, the created algebra will be registered in the dgcv VMF (and active session's namespace.)
+
+    Returns:
+    --------
+        new algebra_class isomorphic to the quotient algebra/subalgebra
+
+    Notes:
+    ------
+        If the given subalgebra `B` is not a subspace in the given algebra `A`, then it is interpreted as a subace in the direct sum A+B and A = (A+B)/B is returned.
+    """
     if not isinstance(algebra, (algebra_class, subalgebra_class)) or not isinstance(
         subalgebra, (algebra_subspace_class, algebra_class)
     ):

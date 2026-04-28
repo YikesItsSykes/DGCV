@@ -532,6 +532,8 @@ class TableView:
 
     def _theme_and_layout_css(self) -> str:
         cid = self.container_id
+        has_panel = bool(self._panel_html())
+
         scoped_vars = (
             self.theme_css_vars.replace(":root", f"#{cid}")
             if self.theme_css_vars
@@ -547,15 +549,29 @@ class TableView:
         r_tl, r_tr, r_br, r_bl = self.ul, self.ur, self.ll, self.lr
         gap = int(self.gap_px)
 
-        if self.secondary_panel_html and direction == "row":
+        if has_panel and direction == "row":
             m_tr, m_br, m_bl = "0px", "0px", r_bl
             s_tl, s_tr, s_br, s_bl = "0px", r_tr, r_br, "0px"
+        elif has_panel and direction == "column":
+            m_tr, m_br, m_bl = r_tr, "0px", "0px"
+            s_tl, s_tr, s_br, s_bl = "0px", "0px", r_br, r_bl
         else:
             m_tr, m_br, m_bl = r_tr, r_br, r_bl
             s_tl, s_tr, s_br, s_bl = r_tl, r_tr, r_br, r_bl
 
+        if has_panel:
+            mq_m_tr, mq_m_br, mq_m_bl = r_tr, "0px", "0px"
+            mq_s_tl, mq_s_tr, mq_s_br, mq_s_bl = "0px", "0px", r_br, r_bl
+        else:
+            mq_m_tr, mq_m_br, mq_m_bl = r_tr, r_br, r_bl
+            mq_s_tl, mq_s_tr, mq_s_br, mq_s_bl = r_tl, r_tr, r_br, r_bl
+
         r_tl_eff = "0px" if self.caption else r_tl
-        f_br, f_bl = (m_br, m_bl) if not self.footer_rows else ("0px", "0px")
+        f_br, f_bl = (
+            ("var(--m-r-br)", "var(--m-r-bl)")
+            if not self.footer_rows
+            else ("0px", "0px")
+        )
 
         scroll_css = f"width: {'max-content; min-width: 100%' if self.table_scroll else '100%'}; table-layout: fixed; border-collapse: separate; border-spacing: 0;"
         wrap_css = f"overflow-x: auto; max-width: 100%; {'contain: inline-size;' if self.table_scroll else ''}"
@@ -652,9 +668,10 @@ class TableView:
 #{cid} .dgcv-table-wrap {{ {wrap_css} }}
 #{cid} .dgcv-side-panel {{ 
     border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ccc); 
-    border-radius: var(--s-r-tl) var(--s-r-tr) var(--s-r-br) var(--s-r-bl); 
+    border-radius: var(--s-r-tl) var(--s-r-tr) var(--s-r-br) var(--s-r-bl);
+    color: var(--dgcv-text_main);
     overflow: hidden; 
-    background: var(--dgcv-table-background, var(--dgcv-bg-primary)); 
+    background: var(--dgcv-bg-primary, var(--dgcv-table-background)); 
 }}
 {cell_scroll_css}
 #{cid} .dgcv-data-table thead th, #{cid} .dgcv-data-table th.col_heading {{ 
@@ -702,7 +719,15 @@ class TableView:
 @media (max-width: {int(self.breakpoint_px)}px) {{
     #{cid} .dgcv-flex {{ flex-direction: column; align-items: flex-start; }}
     #{cid} .dgcv-main, #{cid} .dgcv-side {{ max-width: 100%; width: 100%; }}
-    #{cid} {{--m-r-br: {r_br};--m-r-bl: {r_bl};}}
+    #{cid} {{
+        --m-r-tr: {mq_m_tr};
+        --m-r-br: {mq_m_br};
+        --m-r-bl: {mq_m_bl};
+        --s-r-tl: {mq_s_tl};
+        --s-r-tr: {mq_s_tr};
+        --s-r-br: {mq_s_br};
+        --s-r-bl: {mq_s_bl};
+    }}
     #{cid} .phantom {{ display: none; }}
 }}
 {scoped_extra}

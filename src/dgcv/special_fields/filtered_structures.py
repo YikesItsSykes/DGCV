@@ -1485,8 +1485,8 @@ class Tanaka_symbol(dgcv_class):
             secondary_panel_html = (
                 "<div class='dgcv-side-panel' style='height: fit-content;'>"
                 "<div style='padding: 12px; border-bottom: 1px solid var(--dgcv-border-main); "
-                "color: var(--dgcv-text-heading); font-weight: bold;'>Distinguished Subspaces</div>"
-                "<ul style='margin: 0; padding: 0; list-style: none; overflow-y: visible; height: fit-content;'>"
+                "color: var(--dgcv-text-main); font-weight: bold;'>Distinguished Subspaces</div>"
+                "<ul style='margin: 0; padding: 0; list-style: none; overflow-y: visible; height: fit-content; color: var(--dgcv-text-main);'>"
                 + "".join(items)
                 + "</ul></div>"
             )
@@ -1499,7 +1499,7 @@ class Tanaka_symbol(dgcv_class):
 .dgcv-side-panel {
     border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main);
     background-color: var(--dgcv-bg-primary);
-    color: var(--dgcv-text-heading);
+    color: var(--dgcv-text-main);
     padding: 12px;
     height: 100%;
     box-sizing: border-box;

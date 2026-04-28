@@ -363,7 +363,7 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-text-shadow": "none",
         },
     ),
-    "dark_purple": ThemeConfig(
+    "radial_blues": ThemeConfig(
         bg_primary="#1a1a2e",
         bg_surface="#2c2c54",
         bg_alt="#0f3460",
@@ -899,7 +899,7 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-border-width": "1px",
         },
     ),
-    "dark_moody": ThemeConfig(
+    "dark_purple": ThemeConfig(
         bg_primary="#3b1a4f",
         bg_surface="#2c003e",
         bg_alt="#503a66",
@@ -983,7 +983,7 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-border-width": "1px",
         },
     ),
-    "Matisse": ThemeConfig(
+    "Matisse_light": ThemeConfig(
         bg_primary="#e6ffe6",
         bg_surface="#ffcc00",
         bg_alt="#ffd6cc",
@@ -992,6 +992,21 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
         text_heading="#004d00",
         text_hover="#004d00",
         border_main="#004d00",
+        font_family="inherit",
+        custom_css_vars={
+            "--dgcv-border-width": "1px",
+        },
+    ),
+    "Matisse": ThemeConfig(
+        bg_primary="#b2d5eb",
+        bg_surface="#ee9e84",
+        bg_alt="#41b199",
+        bg_hover="#df7d8c",
+        text_main="#d45659",
+        text_heading="#004d00",
+        text_alt="#ffd6cc",
+        text_hover="#b2d5eb",
+        border_main="#ee9e84",
         font_family="inherit",
         custom_css_vars={
             "--dgcv-border-width": "1px",

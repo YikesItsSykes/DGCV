@@ -209,7 +209,7 @@ class subalgebra_class(algebra_subspace_class):
 
     @property
     def zero_element(self):
-        return subalgebra_element(self, (0,) * self.dimension, 1)
+        return subalgebra_element(self, {}, 1)
 
     def _structure_data_slice(self, idx):
         mat_data = dict()
@@ -1439,10 +1439,14 @@ class subalgebra_element(dgcv_class):
     @property
     def ambient_rep(self):
         if self._ambient_rep is None:
-            self._ambient_rep = sum(
-                coeff * self.algebra.basis_in_ambient_alg[j]
-                for j, coeff in self.coeff_dict.items()
-            )
+            cd = self.coeff_dict
+            if len(cd) == 0:
+                self._ambient_rep = self.algebra.ambient.zero_element
+            else:
+                self._ambient_rep = sum(
+                    coeff * self.algebra.basis_in_ambient_alg[j]
+                    for j, coeff in self.coeff_dict.items()
+                )
         return self._ambient_rep
 
     def __eq__(self, other):

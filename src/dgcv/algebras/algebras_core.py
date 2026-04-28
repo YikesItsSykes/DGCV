@@ -1887,7 +1887,7 @@ class algebra_class(dgcv_class):
         scoped_basis = list(refAlg.basis)
         if refAlg._lower_central_series_cache is None:
             if max_depth is None:
-                max_depth = refAlg.dimension
+                max_depth = max(refAlg.dimension, 1)
             series = []
             current_basis = scoped_basis
             previous_length = len(current_basis)
@@ -2006,7 +2006,7 @@ class algebra_class(dgcv_class):
         scoped_basis = list(refAlg.basis)
         if refAlg._derived_series_cache is None:
             if max_depth is None:
-                max_depth = refAlg.dimension
+                max_depth = max(refAlg.dimension, 1)
 
             series = []
             current_basis = scoped_basis
@@ -2651,12 +2651,14 @@ class algebra_class(dgcv_class):
             refAlg = self
             amb_basis = self.basis
             parent = self
-        if refAlg._radical_cache is None:
+        if refAlg._radical_cache is None and refAlg.dimension == 0:
+            refAlg._radical_cache = refAlg.subalgebra([], span_warning=False)
+        elif refAlg._radical_cache is None:
             da = refAlg.compute_derived_algebra()
             pref = "v" + create_key()
             variables = [symbol(f"{pref}{idx}") for idx in range(refAlg.dimension)]
             terms = [var * elem for var, elem in zip(variables, amb_basis)]
-            genElem = sum(terms)
+            genElem = sum(terms, refAlg.zero_element)
             eqns = []
             for elem in da.basis_in_ambient_alg:
                 eqns.append(
@@ -2680,7 +2682,7 @@ class algebra_class(dgcv_class):
             if len(sol) == 0:
                 raise RuntimeError("failed to compute radical.")
             else:
-                genSol = genElem.subs(sol[0])
+                genSol = subs(genElem, sol[0])
             freeVars = get_free_symbols(genSol)
             if len(freeVars) != 0:
                 radSpanners = []
@@ -4551,7 +4553,7 @@ class algebra_subspace_class(dgcv_class):
 
     @property
     def zero_element(self):
-        return algebra_element_class(self, (0,) * self.ambient.dimension, 1)
+        return algebra_element_class(self, {}, 1)
 
     def __eq__(self, other):
         if not isinstance(other, algebra_subspace_class):
