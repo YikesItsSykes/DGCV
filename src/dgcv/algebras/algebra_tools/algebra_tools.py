@@ -210,10 +210,8 @@ def span(
             if alg.ambient in parents:
                 parents[alg.ambient][alg] = parents[alg.ambient].get(alg, []) + [x]
             else:
-                parents[alg.ambient] = (
-                    {alg.ambient} | {alg: [x]}
-                    if promote_to_parent_algebra
-                    else {alg: [x]}
+                parents[alg.ambient] = (  ###!!! promote_to_parent_algebra logic here
+                    {alg: [x]}
                 )
     space_bases = dict()
     for k, v in parents.items():
@@ -227,6 +225,8 @@ def span(
             spanners, apply_light_basis_simplification=apply_light_basis_simplification
         )
     if separate_by_algebra:
+        if format_as_subspaces:
+            space_bases = {k: k.subspace(v) for k, v in space_bases.items()}
         return space_bases
     out = []
     for k, v in space_bases.items():
@@ -270,7 +270,7 @@ def generate_subalgebra(
         format_as_subspaces=True,
     )
     out = []
-    for algebra, subspace in spaces.items():
+    for _, subspace in spaces.items():
         out.append(
             subspace.generate_subalgebra(
                 simplify_basis=simplify_basis,

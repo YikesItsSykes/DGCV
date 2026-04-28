@@ -4772,7 +4772,7 @@ class algebra_subspace_class(dgcv_class):
         amb = self.ambient
         amb_dim = amb.dimension
         skew = amb.is_skew_symmetric()
-        variables = [symbol(f"_indep_check_{idx}") for idx in amb_dim - 1]
+        variables = [symbol(f"_indep_check_{idx}") for idx in range(amb_dim - 1)]
         sd_out = dict()
         previous_basis = []
         for _ in range(in_dim):  # it should never reach this bound
@@ -4810,7 +4810,7 @@ class algebra_subspace_class(dgcv_class):
                             }
         dim = len(basis)
         sd_out = array_dgcv(
-            {k: matrix_dgcv(v, shape=(dim, 1)) for k, v in sd_out},
+            {k: matrix_dgcv(v, shape=(dim, 1)) for k, v in sd_out.items()},
             shape=(dim, dim),
             null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1)),
         )
