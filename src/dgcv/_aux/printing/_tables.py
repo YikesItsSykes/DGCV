@@ -595,7 +595,7 @@ class TableView:
         h_txt = "var(--dgcv-text-hover)"
         h_trans = "var(--dgcv-hover-transform, none)"
         h_speed = "var(--dgcv-hover-transition, transform 0.2s, box-shadow 0.2s, background-color 0.2s)"
-        h_weight = "var(--dgcv-hover-font-weight, bold)"
+        # h_weight = "var(--dgcv-hover-font-weight, bold)"
 
         if self.hover_mode == "cell":
             hover_css = f"""
@@ -604,7 +604,6 @@ class TableView:
                         background-color: {h_bg} !important; 
                         color: {h_txt} !important; 
                         transform: {h_trans}; 
-                        font-weight: {h_weight};
                     }}"""
         elif self.hover_mode == "row":
             hover_css = f"""
@@ -613,7 +612,6 @@ class TableView:
                         background-color: {h_bg} !important; 
                         color: {h_txt} !important; 
                         transform: {h_trans}; 
-                        font-weight: {h_weight};
                     }}"""
         else:
             hover_css = ""

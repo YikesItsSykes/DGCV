@@ -787,7 +787,7 @@ def _tree_leaves_html(
     theme=None,
     use_latex=True,
     return_displayable=False,
-    sort_by: str = None,
+    sort_by: str | list = None,
     reverse=False,
     **kwargs,
 ):
@@ -866,13 +866,21 @@ def _tree_leaves_html(
     def sort(rs, property):
         aliases = {
             "case": "subcase",
+            "cases": "subcase",
+            "subcases": "subcase",
             "label": "subcase",
-            "equation": "equation state",
             "state": "equation state",
+            "equation states": "equation state",
+            "states": "equation state",
+            "variable": "free variables",
             "variables": "free variables",
             "var": "free variables",
+            "vars": "free variables",
             "par": "free parameters",
+            "pars": "free parameters",
             "parameters": "free parameters",
+            "parameter": "free parameters",
+            "param": "free parameters",
             "params": "free parameters",
             "case_rules": "conditions",
         }
@@ -881,12 +889,32 @@ def _tree_leaves_html(
             idxs |= {"conditions": 3}
         else:
             idxs |= {"free parameters": 3, "conditions": 4}
-        idx = idxs.get(aliases.get(property, property), None)
+        numerics = set(
+            filter(None, {idxs.get("free variables"), idxs.get("free parameters")})
+        )
+        tuple_sort = isinstance(property, (list, tuple))
+        if tuple_sort:
+            idx = [idxs.get(aliases.get(prop, prop), None) for prop in property]
+        else:
+            idx = idxs.get(aliases.get(property, property), None)
         if idx is None:
             if reverse:
                 return rs[-1::-1]
             return rs
-        return sorted(rs, key=lambda x: x[idx], reverse=reverse)
+
+        def sort_key(x):
+            if tuple_sort:
+                return tuple(sort_class(x, y) for y in idx)
+            return sort_class(x, idx)
+
+        def sort_class(x, y):
+            return int(x[y]) if y in numerics else x[y]
+
+        return sorted(
+            rs,
+            key=lambda x: sort_key(x),
+            reverse=reverse,
+        )
 
     rows = sort(rows, sort_by)
 
