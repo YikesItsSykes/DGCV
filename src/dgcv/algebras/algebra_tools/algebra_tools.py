@@ -81,7 +81,7 @@ __all__ = [
 
 def derived_subalgebra(
     algebra: algebra_class | subalgebra_class, return_basis_only=False
-):
+) -> subalgebra_class:
     if get_dgcv_category(algebra) not in {"algebra", "subalgebra"}:
         raise TypeError(
             "`derived_subalgebra` only operates on dgcv algebra class objects."
@@ -100,7 +100,9 @@ def killing_form(algebra, assume_Lie_algebra=False):
     return killingForm(algebra, assume_Lie_algebra=assume_Lie_algebra)
 
 
-def adjoint_representation(algebra, list_format=False, assume_Lie_algebra=False):
+def adjoint_representation(
+    algebra, list_format=False, assume_Lie_algebra=False
+) -> list:
     return adjointRepresentation(
         algebra, list_format=list_format, assume_Lie_algebra=assume_Lie_algebra
     )
@@ -108,7 +110,7 @@ def adjoint_representation(algebra, list_format=False, assume_Lie_algebra=False)
 
 def multiply(
     *args, filter_for_linear_independance=False, apply_light_basis_simplification=False
-):
+) -> subalgebra_class | algebra_class | list:
     """
     Computes a list of products of elements in the given algebras (or algebra-like objects)
 
@@ -165,7 +167,7 @@ def span(
     separate_by_algebra=False,
     promote_to_parent_algebra=False,
     format_as_subspaces=False,
-):
+) -> subalgebra_class | algebra_class | list:
     """
     computes the span of elements in given list of algebra-like objects.
 
@@ -243,7 +245,7 @@ def generate_subalgebra(
     *subspaces,
     simplify_basis=False,
     simplify_products_by_default=None,
-):
+) -> subalgebra_class | algebra_class | list:
     """
     Generates a subalgebra from a subset of algebra elements
 
@@ -282,7 +284,7 @@ def generate_subalgebra(
     return out
 
 
-def intersection(*args):
+def intersection(*args) -> list:
     """
     computes the intersection of spaces spanned by elements in given set of algebra-like objects.
 
@@ -343,7 +345,7 @@ def vector_field_rep_from_linear_rep(
     algebra: algebra_class | subalgebra_class | list | tuple,
     coordinate_labels=None,
     register_new_coordinates_in_vmf=False,
-):
+) -> list:
     if isinstance(algebra, list | tuple):
         if len(algebra) == 0:
             return 0
@@ -437,7 +439,7 @@ def vector_field_representation(
     algebra: algebra_class | subalgebra_class | list | tuple,
     coordinate_labels=None,
     register_new_coordinates_in_vmf=False,
-):
+) -> list:
     """
     Attempts to find vector field representations of Lie algebras. Currently supports nilpotent and semisimple algebras, and others that are marked with a faithful linear representations.
 
@@ -541,7 +543,9 @@ def vector_field_representation(
     return vf_rep
 
 
-def derivations(algebra: algebra_class | subalgebra_class, grading_preserving=True):
+def derivations(
+    algebra: algebra_class | subalgebra_class, grading_preserving=True
+) -> list:
     """
     Computes derivations of an algebra.
 
@@ -596,7 +600,7 @@ def Levi_decomposition(
     decompose_semisimple_fully: bool = False,
     verbose: bool = False,
     assume_Lie_algebra: bool = False,
-):
+) -> tuple[subalgebra_class, subalgebra_class]:
     return algebra.Levi_decomposition(
         decompose_semisimple_fully=decompose_semisimple_fully,
         verbose=verbose,
@@ -612,7 +616,7 @@ def quotient_by_ideal(
     initial_basis_index: int = 1,
     simplify_products_by_default: bool = None,
     register_in_vmf=True,
-):
+) -> algebra_class:
     """
     Constructs an algebra isomorphic to the quotient by an ideal.
 
@@ -713,4 +717,15 @@ def quotient_by_ideal(
         initial_basis_index=initial_basis_index,
         simplify_products_by_default=simplify_products_by_default,
         return_created_object=True,
+    )
+
+
+def center(
+    algebra: algebra_class | subalgebra_class,
+    format_as_subalgebra=True,
+    surface_singularities=False,
+) -> list | subalgebra_class:
+    return algebra.center(
+        surface_singularities=surface_singularities,
+        format_as_subalgebra=format_as_subalgebra,
     )

@@ -84,6 +84,7 @@ class case_tree:
         self,
         label: str = None,
         equation_system=None,
+        variables=None,
         parameters=None,
         completion_condition=None,
         evaluate_with_simplifies=True,
@@ -105,11 +106,23 @@ class case_tree:
 
         self._internal_simplify = s
 
+        if variables is None:
+            try:
+                vari = set()
+                for eqn in self.general_equation_system:
+                    vari |= get_free_symbols(eqn)
+                self.system_variables = vari
+            except Exception:
+                self.system_variables = set()
+        else:
+            self.system_variables = set(variables)
         if parameters is None:
             try:
                 params = set()
                 for eqn in self.general_equation_system:
-                    params |= get_free_symbols(eqn)
+                    params |= set(
+                        filter(lambda x: x not in variables, get_free_symbols(eqn))
+                    )
                 self.system_parameters = params
             except Exception:
                 self.system_parameters = set()
@@ -149,6 +162,7 @@ class case_tree:
         self._complete = None
         self._ev_eqn_system = None
         self._free_variables = None
+        self._free_parameters = None
 
     @property
     def _completion_message(self):
@@ -208,6 +222,7 @@ class case_tree:
         new_tree = case_tree(
             label=label,
             equation_system=self.general_equation_system,
+            variables=self.system_variables,
             parameters=self.system_parameters,
             completion_condition=self.completion_condition,
             **{"_simplify_rule": self._internal_simplify, **kwargs},
@@ -263,12 +278,23 @@ class case_tree:
     def free_variables(self):
         if self._free_variables is None:
             scr = getattr(self, "case_rules", {})
-            fvd = {v: subs(v, scr) for v in self.system_parameters}
+            fvd = {v: subs(v, scr) for v in self.system_variables}
             fv = set()
             for k, v in fvd.items():
                 fv |= get_free_symbols(v)
-            self._free_variables = [v for v in fv if v in self.system_parameters]
+            self._free_variables = [v for v in fv if v in self.system_variables]
         return self._free_variables
+
+    @property
+    def free_parameters(self):
+        if self._free_parameters is None:
+            scr = getattr(self, "case_rules", {})
+            fvd = {v: subs(v, scr) for v in self.system_parameters}
+            fv = set()
+            for v in fvd.values():
+                fv |= get_free_symbols(v)
+            self._free_parameters = [v for v in fv if v in self.system_parameters]
+        return self._free_parameters
 
     @property
     def _tree(self):
@@ -286,9 +312,22 @@ class case_tree:
                 tree_dict[self.label] = "incomplete"
         return tree_dict
 
-    @property
-    def _verbose_tree(self):
+    def _verbose_tree(self, filter_conditions=None):
         branch_conditions = getattr(self, "_new_case_rules", {})
+        if filter_conditions is not None:
+            try:
+                branch_conditions = (
+                    [
+                        f"{filter_conditions(k)}={filter_conditions(v)}"
+                        for k, v in branch_conditions.items()
+                    ]
+                    if isinstance(branch_conditions, dict)
+                    else []
+                )
+            except Exception:
+                dgcv_warning(
+                    "The given value for `filter_conditions` is not in a supported format. It must be a callable function that transforms symbolic expressions (e.g., simplify/allToReal/expand/etc.)"
+                )
         branch_conditions = (
             [f"{k}={v}" for k, v in branch_conditions.items()]
             if isinstance(branch_conditions, dict)
@@ -299,7 +338,9 @@ class case_tree:
         }
         if self._subcases:
             for sc, subtree in self._subcases.items():
-                tree_dict[self.label]["descendants"] |= subtree._verbose_tree
+                tree_dict[self.label]["descendants"] |= subtree._verbose_tree(
+                    filter_conditions=filter_conditions
+                )
         else:
             if self.complete:
                 addon = (
@@ -310,17 +351,31 @@ class case_tree:
                 tree_dict[self.label]["descendants"] = "incomplete"
         return tree_dict
 
-    @property
-    def _latex_verbose_tree(self):
+    def _latex_verbose_tree(self, filter_conditions=None):
         branch_conditions = getattr(self, "_new_case_rules", {})
-        branch_conditions = (
-            [
-                f"{LaTeX_eqn_system({k: v}, math_mode='$')}"
-                for k, v in branch_conditions.items()
-            ]
-            if isinstance(branch_conditions, dict)
-            else []
-        )
+        if filter_conditions is not None:
+            try:
+                branch_conditions = (
+                    [
+                        f"{LaTeX_eqn_system({filter_conditions(k): filter_conditions(v)}, math_mode='$')}"
+                        for k, v in branch_conditions.items()
+                    ]
+                    if isinstance(branch_conditions, dict)
+                    else []
+                )
+            except Exception:
+                dgcv_warning(
+                    "The given value for `filter_conditions` is not in a supported format. It must be a callable function that transforms symbolic expressions (e.g., simplify/allToReal/expand/etc.)"
+                )
+        else:
+            branch_conditions = (
+                [
+                    f"{LaTeX_eqn_system({k: v}, math_mode='$')}"
+                    for k, v in branch_conditions.items()
+                ]
+                if isinstance(branch_conditions, dict)
+                else []
+            )
 
         tree_dict = {
             self.label: {"branch_conditions": branch_conditions, "descendants": {}}
@@ -329,7 +384,9 @@ class case_tree:
             tree_dict[self.label]["note"] = str(self.note)
         if self._subcases:
             for sc, subtree in self._subcases.items():
-                tree_dict[self.label]["descendants"] |= subtree._latex_verbose_tree
+                tree_dict[self.label]["descendants"] |= subtree._latex_verbose_tree(
+                    filter_conditions=filter_conditions
+                )
         else:
             if self.complete:
                 addon = (
@@ -340,15 +397,31 @@ class case_tree:
                 tree_dict[self.label]["descendants"] = "incomplete"
         return tree_dict
 
-    def tree_summary(self, theme=None):
+    def tree_summary(
+        self,
+        theme: str = None,
+        root_label: str = None,
+        filter_conditions=None,
+        use_latex=None,
+    ):
+        use_latex = (
+            use_latex
+            if use_latex
+            else get_dgcv_settings_registry().get("use_latex", False)
+        )
+        tree = (
+            self._latex_verbose_tree(filter_conditions=filter_conditions)
+            if use_latex
+            else self._verbose_tree(filter_conditions=filter_conditions)
+        )
         return latex_in_html(
-            _full_tree_html(
-                self._latex_verbose_tree, theme=theme, root_label=self.label
-            )
+            _full_tree_html(tree, theme=theme, root_label=root_label or self.label)
         )
 
-    def leaf_summary(self, theme=None, **kwargs):
-        return _tree_leaves_html(self, theme=theme, **kwargs)
+    def leaf_summary(self, theme=None, sort_by=None, reverse=False, **kwargs):
+        return _tree_leaves_html(
+            self, theme=theme, sort_by=sort_by, reverse=reverse, **kwargs
+        )
 
     @classmethod
     def _print_path_tree(cls, data, indent="", path="", root=True):
@@ -445,6 +518,12 @@ class case_tree:
         f = getattr(self, "summary", None)
         if callable(f):
             return f(self)
+        param_count = len(self.system_parameters)
+        if param_count == 0:
+            pass
+        purality_note = "pameter" if param_count == 1 else "pameters"
+        print(f"The system is parameterized with {param_count} {purality_note}.")
+
         eqns = self.reduced_equation_system
         if check_dgcv_category(eqns):
             eqns = {0: eqns}
@@ -467,11 +546,25 @@ class case_tree:
                     punctuation=".",
                 )
             )
-        print("The remaining free parameters in this branch are")
-        if plain_text is True:
-            print(self.free_variables)
+        if param_count > 0:
+            fp = self.free_parameters
+            if len(fp) == 0:
+                print("No free parameters remain in this branch.")
+            else:
+                print("The remaining free parameters in this branch are")
+                if plain_text is True:
+                    print(fp)
+                else:
+                    show(LaTeX_list(fp, one_line=True, punctuation="."))
+        fv = self.free_variables
+        if len(fv) == 0:
+            print("No free variables remain in this branch.")
         else:
-            show(LaTeX_list(self.free_variables, one_line=True, punctuation="."))
+            print("The remaining free variables in this branch are")
+            if plain_text is True:
+                print(self.free_variables)
+            else:
+                show(LaTeX_list(self.free_variables, one_line=True, punctuation="."))
         if self.complete:
             print("********** The branch is complete! **********")
             print(f"     {len(self.free_variables)} dim. parameter space remaining ")
@@ -690,11 +783,17 @@ def _full_tree_html(data, theme=None, root_label=None):
 
 
 def _tree_leaves_html(
-    tree: case_tree, theme=None, use_latex=True, return_displayable=False, **kwargs
+    tree: case_tree,
+    theme=None,
+    use_latex=True,
+    return_displayable=False,
+    sort_by: str = None,
+    reverse=False,
+    **kwargs,
 ):
     if not isinstance(theme, str):
         theme = get_dgcv_settings_registry().get("theme", "dark")
-    data = tree._latex_verbose_tree if use_latex else tree._verbose_tree
+    data = tree._latex_verbose_tree() if use_latex else tree._verbose_tree()
     if not isinstance(data, dict):
         return
     leaves = {}
@@ -724,6 +823,7 @@ def _tree_leaves_html(
             continue
         leaves[k]["conditions"] = root.case_rules
         leaves[k]["free_vars"] = root.free_variables
+        leaves[k]["free_params"] = root.free_parameters
 
     def process_conditions(conds):
         eqns = []
@@ -738,22 +838,60 @@ def _tree_leaves_html(
         return "solved" if x.startswith("complete") else "unsolved"
 
     rows = []
+    no_params = len(tree.free_parameters) == 0
     for k, v in leaves.items():
         rows.append(
             [
                 (k[1:] if k.startswith(".") else k).replace("._", "."),
                 state(v.get("state", "")),
                 str(len(v.get("free_vars", []))),
+            ]
+            + ([] if no_params else [str(len(v.get("free_params", [])))])
+            + [
                 process_conditions(v.get("conditions", [])),
             ]
         )
-    table = build_plain_table(
-        columns=[
+    headers = (
+        [
             "subcase",
             "equation state",
-            "free parameters",
+            "free variables",
+        ]
+        + ([] if no_params else ["free parameters"])
+        + [
             "conditions",
-        ],
+        ]
+    )
+
+    def sort(rs, property):
+        aliases = {
+            "case": "subcase",
+            "label": "subcase",
+            "equation": "equation state",
+            "state": "equation state",
+            "variables": "free variables",
+            "var": "free variables",
+            "par": "free parameters",
+            "parameters": "free parameters",
+            "params": "free parameters",
+            "case_rules": "conditions",
+        }
+        idxs = {"subcase": 0, "equation state": 1, "free variables": 2}
+        if no_params:
+            idxs |= {"conditions": 3}
+        else:
+            idxs |= {"free parameters": 3, "conditions": 4}
+        idx = idxs.get(aliases.get(property, property), None)
+        if idx is None:
+            if reverse:
+                return rs[-1::-1]
+            return rs
+        return sorted(rs, key=lambda x: x[idx], reverse=reverse)
+
+    rows = sort(rows, sort_by)
+
+    table = build_plain_table(
+        columns=headers,
         rows=rows,
         theme_css_vars=get_style(theme, legacy=False),
         caption="Case tree leaves",

@@ -67,6 +67,7 @@ from .._aux._utilities._config import (
     get_vs_registry,
     latex_in_html,
 )
+from .._aux._utilities._misc import zip_sum
 from .._aux._utilities._styles import get_style
 from .._aux._vmf._safeguards import (
     create_key,
@@ -3010,6 +3011,61 @@ class algebra_class(dgcv_class):
 
         return refAlg._Levi_deco_cache.get("LD_components", None)
 
+    def center(
+        self,
+        from_subalg=None,
+        surface_singularities: bool = False,
+        format_as_subalgebra=True,
+    ):
+        if get_dgcv_category(from_subalg) == "subalgebra":
+            refAlg = from_subalg
+        else:
+            refAlg = self
+        if refAlg._center_cache is None:
+            if refAlg.dimension == 0:
+                refAlg._center_cache = refAlg.subalgebra([])
+                if format_as_subalgebra:
+                    return refAlg._center_cache
+                return refAlg._center_cache.basis
+            variables = [
+                symbol(f"_dgcvcenterv_{idx}") for idx in range(refAlg.dimension)
+            ]
+            gene = zip_sum(variables, refAlg.basis)
+            eqns = (
+                [gene * elem for elem in refAlg.basis]
+                if refAlg.is_skew_symmetric()
+                else [gene * elem for elem in refAlg.basis]
+                + [gene * elem for elem in refAlg.basis]
+            )
+            if surface_singularities is True:
+                sol, sing = solve_dgcv(
+                    eqns,
+                    variables,
+                    return_divisors=True,
+                    pass_to_symbolic_engine=False,
+                )
+                sol = sol[0]
+                self._singularities["center"] = list(
+                    set([v for v in sing if get_free_symbols(v)])
+                )
+            else:
+                sol = solve_dgcv(eqns, variables)[0]
+            gsol = subs(gene, sol)
+            fv = set()
+            vset = set(variables)
+            for v in variables:
+                fv |= filter(lambda x: x not in vset, get_free_symbols(sol.get(v)))
+            if len(fv) == 0:
+                refAlg._center_cache = refAlg.subalgebra([])
+            else:
+                zeroing = {v: 0 for v in fv}
+                refAlg._center_cache = refAlg.subalgebra(
+                    [subs(gsol, {**zeroing, v: 1}) for v in fv]
+                )
+        if format_as_subalgebra:
+            return refAlg._center_cache
+        return refAlg._center_cache.basis
+
     @property
     def graded_components(self):
         if self._graded_components is None:
@@ -4515,7 +4571,7 @@ class algebra_subspace_class(dgcv_class):
         self.filtered_basis = tuple(filtered_basis)
         self.basis = tuple(filtered_basis)
         self.dimension = len(filtered_basis)
-        self.ambient = parent_alg
+        self.ambient: algebra_class = parent_alg
 
         grading_per_elem = []
         if (

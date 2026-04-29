@@ -1029,6 +1029,17 @@ class subalgebra_class(algebra_subspace_class):
             surface_singularities=surface_singularities,
         )
 
+    def center(
+        self, from_subalg=None, surface_singularities=False, format_as_subalgebra=True
+    ):
+        if from_subalg is None:
+            from_subalg = self
+        return self.ambient.center(
+            from_subalg=from_subalg,
+            surface_singularities=surface_singularities,
+            format_as_subalgebra=format_as_subalgebra,
+        )
+
     def killing_form_product(self, elem1, elem2, assume_Lie_algebra=False):
         if not self.contains(elem1, strict_types=True) or not self.contains(
             elem2, strict_types=True
