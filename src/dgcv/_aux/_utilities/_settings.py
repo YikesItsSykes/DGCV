@@ -96,6 +96,17 @@ def set_dgcv_settings(
     fallback_conjugate_prefix: str | None = None,
     **kwargs,
 ):
+    if kwargs.pop("quick_notebook", False):
+        set_dgcv_settings(
+            format_displays=True,
+            use_latex=True,
+            print_style="readable",
+            ask_before_overwriting_objects_in_vmf=False,
+            forgo_warnings=True,
+            extra_support_for_math_in_tables=True,
+            force_rich_display=True,
+        )
+        print("Applied the `quick_notebook` settings.")
     dgcvSR = get_dgcv_settings_registry()
 
     # deprecated_keywords
@@ -380,7 +391,7 @@ def view_dgcv_settings(verbose=False):
     if not settings:
         print("dgcv settings registry is empty.")
         return
-    hidden = {"VLP"}
+    hidden = {"VLP", "__"}
     if verbose is not True:
         hidden = (
             hidden
@@ -445,7 +456,7 @@ def reset_dgcv_settings():
     dgcvSR.update(
         {
             "use_latex": True,
-            "theme": "graph_paper",
+            "theme": "paper_graphite",
             "format_displays": True,
             "version_specific_defaults": f"v{__version__}",
             "ask_before_overwriting_objects_in_vmf": True,

@@ -676,6 +676,19 @@ class matrix_dgcv(array_dgcv):
         out.null_return = self.null_return
         return out
 
+    def apply(self, func, *, in_place=False, skip_none=True, default=None, **kwargs):
+        structure = {k: func(v) for k, v in self._data.items()}
+        if in_place:
+            self._data = structure
+            self._data_unspooled_cache = None
+        else:
+            return matrix_dgcv(structure, shape=self.shape)
+
+    def subs(self, rules):
+        return matrix_dgcv(
+            {k: subs(v, rules) for k, v in self._data.items()}, shape=self.shape
+        )
+
     @classmethod
     def identity(cls, n, one=1, zero=0):
         out = cls.__new__(cls)
@@ -1329,8 +1342,16 @@ class matrix_dgcv(array_dgcv):
             return r, pivcol_to_row, pivot_cols, divisors
         return r, divisors
 
-    def rank(self, assume_fast_data_types=False):
+    def rank(
+        self,
+        assume_fast_data_types=False,
+        allow_formal_inverse=False,
+        simplify_steps=False,
+        record_divisors=False,
+    ):
         if self.nrows == 0 or self.ncols == 0:
+            if record_divisors:
+                return 0, []
             return 0
 
         fast_types = fast_scalar_types()
@@ -1339,15 +1360,17 @@ class matrix_dgcv(array_dgcv):
         )
 
         A = self._dense_copy()
-        r, _ = self._elim_core(
+        r, divisors = self._elim_core(
             A,
             rhs_cols=0,
-            record_divisors=False,
-            allow_formal_inverse=False,
-            simplify_steps=False,
+            record_divisors=record_divisors,
+            allow_formal_inverse=allow_formal_inverse,
+            simplify_steps=simplify_steps,
             fast_only=fast_case,
             want_pivmap=False,
         )
+        if record_divisors:
+            return r, divisors
         return r
 
     def nullspace(self):

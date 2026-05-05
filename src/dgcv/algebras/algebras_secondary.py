@@ -51,7 +51,6 @@ from .._aux._backends._types_and_constants import (
     expr_types,
     imag_unit,
     rational,
-    symbol,
 )
 from .._aux._utilities._config import (
     dgcv_exception_note,
@@ -61,12 +60,12 @@ from .._aux._utilities._config import (
     get_variable_registry,
     update_globals,
 )
+from .._aux._utilities._misc import linear_combination
 from .._aux._vmf._safeguards import (
     create_key,
     get_dgcv_category,
     query_dgcv_categories,
     retrieve_passkey,
-    retrieve_public_key,
     unique_label,
     validate_label,
     validate_label_list,
@@ -75,7 +74,6 @@ from .._aux._vmf.vmf import clearVar, listVar
 from ..core.arrays.arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ..core.base import annotated_container, dgcv_class
 from ..core.combinatorics.combinatorics import carProd
-from ..core.dgcv_core.dgcv_core import variableProcedure
 from ..core.solvers.solvers import solve_dgcv
 from ..core.tensors.tensors import tensorProduct
 from .algebras_aux import _validate_structure_data
@@ -128,12 +126,6 @@ class subalgebra_class(algebra_subspace_class):
 
         basis = self.filtered_basis
         self.structureData = None
-        params = set()
-
-        def _tuple_scan(elems, par: set):
-            for elem in elems:
-                par |= getattr(elem, "free_symbols", set())
-            return tuple(elems)
 
         if _internal_lock == retrieve_passkey():
             if _compressed_structure_data is not None:
@@ -142,7 +134,7 @@ class subalgebra_class(algebra_subspace_class):
             self.structureData = self.is_subalgebra(return_structure_data=True)[
                 "structure_data"
             ]
-        self._parameters = params
+        self._parameters = get_free_symbols(self.structureData)
 
         self.basis_in_ambient_alg = tuple(basis)
         self.basis = [
@@ -336,56 +328,6 @@ class subalgebra_class(algebra_subspace_class):
             for elem in basis
         ]
         return self.ambient.subspace(elems, grading=grading, span_warning=span_warning)
-
-    def contains(
-        self, items, return_basis_coeffs=False
-    ):  ###!!! optimize for high volume calls with batched coeff creation
-        if not isinstance(items, (list, tuple)):
-            items = [items]
-        for item in items:
-            if get_dgcv_category(item) == "subalgebra_element":
-                if item.algebra == self:
-                    bas = self.basis
-                elif item.algebra.ambient == self.ambient:
-                    item = item.ambient_rep
-                    bas = self.basis_in_ambient_alg
-                else:
-                    return False
-            elif (
-                get_dgcv_category(item) == "algebra_element"
-                and item.algebra == self.ambient
-            ):
-                bas = self.basis_in_ambient_alg
-            else:
-                return False
-            if item not in bas:
-                if len(bas) == 0:
-                    return False
-                tempVarLabel = "T" + retrieve_public_key()
-                vars = variableProcedure(
-                    tempVarLabel,
-                    len(bas),
-                    _tempVar=retrieve_passkey(),
-                    return_created_object=True,
-                )[0]
-                genElement = sum(
-                    [vars[j + 1] * elem for j, elem in enumerate(bas[1:])],
-                    vars[0] * (bas[0]),
-                )
-                sol = solve_dgcv(item - genElement, vars)
-                if len(sol) == 0:
-                    clearVar(*listVar(temporary_only=True), report=False)
-                    return False
-            else:
-                if return_basis_coeffs is True:
-                    idx = bas.index(item)
-                    return [1 if _ == idx else 0 for _ in range(len(bas))]
-        if return_basis_coeffs is True:
-            vec = [var.subs(sol[0]) for var in vars]
-            clearVar(*listVar(temporary_only=True), report=False)
-            return vec
-        clearVar(*listVar(temporary_only=True), report=False)
-        return True
 
     def copy(
         self,
@@ -867,13 +809,7 @@ class subalgebra_class(algebra_subspace_class):
                 "This algebra is not a Lie algebra. To compute the center for an associative algebra, set for_associative_alg=True."
             ) from None
 
-        temp_label = create_key(prefix="center_var")
-        temp_vars = [symbol(f"{temp_label}{i}") for i in range(self.dimension)]
-
-        el = sum(
-            (temp_vars[i] * self.basis[i] for i in range(self.dimension)),
-            self.basis[0] * 0,
-        )
+        el, temp_vars = linear_combination(self.basis)
 
         if for_associative_alg:
             eqns = sum(
@@ -888,7 +824,7 @@ class subalgebra_class(algebra_subspace_class):
                 [list((el * other).coeff_dict.values()) for other in self.basis], []
             )
 
-        solutions = solve_dgcv(eqns, temp_vars)
+        solutions = solve_dgcv(eqns, temp_vars, method="linslove")
         if not solutions:
             dgcv_warning(
                 "The internal solver (which depends on which symbolic engine is defaults in dgcv settings) returned no solutions, indicating that this computation of the center failed, as solutions do exist. An empty list is being returned."
@@ -938,6 +874,7 @@ class subalgebra_class(algebra_subspace_class):
         from_subalg=None,
         align_nested_bases=False,
         surface_singularities=False,
+        simplify_singularities=None,
     ):
         if from_subalg is None:
             from_subalg = self
@@ -947,6 +884,7 @@ class subalgebra_class(algebra_subspace_class):
             from_subalg=from_subalg,
             align_nested_bases=align_nested_bases,
             surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
         )
 
     def is_nilpotent(self, **kwargs):
@@ -1019,7 +957,11 @@ class subalgebra_class(algebra_subspace_class):
             ) from None
 
     def radical(
-        self, from_subalg=None, assume_Lie_algebra=False, surface_singularities=False
+        self,
+        from_subalg=None,
+        assume_Lie_algebra=False,
+        surface_singularities=False,
+        simplify_singularities=None,
     ):
         if from_subalg is None:
             from_subalg = self
@@ -1027,16 +969,22 @@ class subalgebra_class(algebra_subspace_class):
             from_subalg=from_subalg,
             assume_Lie_algebra=assume_Lie_algebra,
             surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
         )
 
     def center(
-        self, from_subalg=None, surface_singularities=False, format_as_subalgebra=True
+        self,
+        from_subalg=None,
+        surface_singularities=False,
+        format_as_subalgebra=True,
+        simplify_singularities=None,
     ):
         if from_subalg is None:
             from_subalg = self
         return self.ambient.center(
             from_subalg=from_subalg,
             surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
             format_as_subalgebra=format_as_subalgebra,
         )
 
@@ -1138,6 +1086,7 @@ class subalgebra_class(algebra_subspace_class):
         assume_Lie_algebra=False,
         verbose=False,
         surface_singularities=None,
+        simplify_singularities=None,
         _timed_reporting: bool | None = None,
         _reporting_threshold_s: float = 10,
         _progress_message: str | None = None,
@@ -1150,6 +1099,7 @@ class subalgebra_class(algebra_subspace_class):
             _bust_cache=_bust_cache,
             assume_Lie_algebra=assume_Lie_algebra,
             surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
             _timed_reporting=_timed_reporting,
             _reporting_threshold_s=_reporting_threshold_s,
             _progress_message=_progress_message,
@@ -1161,6 +1111,8 @@ class subalgebra_class(algebra_subspace_class):
         check_semisimple=False,
         assume_semisimple=False,
         _use_cache=False,
+        surface_singularities=False,
+        simplify_singularities=None,
         **kwargs,
     ):
         return self.ambient.approximate_rank(
@@ -1168,6 +1120,9 @@ class subalgebra_class(algebra_subspace_class):
             assume_semisimple=assume_semisimple,
             _use_cache=_use_cache,
             from_subalg=self,
+            surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
+            **kwargs,
         )
 
     def direct_sum(
@@ -1475,7 +1430,7 @@ class subalgebra_element(dgcv_class):
     def __str__(self):
         return self.ambient_rep.__str__()
 
-    def _repr_latex_(self, verbose=False, raw=False):
+    def _repr_latex_(self, verbose=False, raw=False, **kwargs):
         return self.ambient_rep._repr_latex_(verbose=verbose, raw=raw)
 
     def _latex(self, printer=None, raw=True, **kwargs):
@@ -1642,18 +1597,21 @@ class subalgebra_element(dgcv_class):
             "vector_space_element",
         }:
             return self._convert_to_tp().__matmul__(other)
-        new_dict = {
-            (
-                idx1,
-                idx2,
-                self.valence,
-                other.valence,
-                self.dgcv_vs_id,
-                other.dgcv_vs_id,
-            ): c1 * c2
-            for idx1, c1 in self.coeff_dict.items()
-            for idx2, c2 in other.coeff_dict.items()
-        }
+        try:
+            new_dict = {
+                (
+                    idx1,
+                    idx2,
+                    self.valence,
+                    other.valence,
+                    self.dgcv_vs_id,
+                    other.dgcv_vs_id,
+                ): c1 * c2
+                for idx1, c1 in self.coeff_dict.items()
+                for idx2, c2 in other.coeff_dict.items()
+            }
+        except Exception:
+            print(f"DEBUG: {self.coeff_dict}, {other.coeff_dict}")
         return self._si_wrap(
             tensorProduct([], new_dict)  ###!!! first keyword is deprication placeholder
         )
@@ -2738,11 +2696,14 @@ def createSimpleLieAlgebra(
         )
         indexingKeyRev = {j: k for k, j in indexingKey.items()}
         LADimension = len(indexingKey)
-
-        print(f"indexingKey={indexingKey}")
-        print(f"indexingKeyRev={indexingKeyRev}")
-        print(f"offDiag={offDiag}")
-        print(f"hBasis={hBasis}")
+        CSDict = {
+            idx: {0: 1}
+            if idx == 0
+            else {idx: 2, idx - 1: -1}
+            if idx == n - 1
+            else {idx: 1, idx - 1: -1}
+            for idx in range(n)
+        }  # Cartan subalgebra basis transform indexing
 
         def minmaxtuple(id1, id2, id3):
             if id1 < id2:
@@ -2770,22 +2731,28 @@ def createSimpleLieAlgebra(
             elif p12 == 1:
                 if p22 == -1:
                     if p11 == p20:
-                        coeffs[indexingKeyRev[(p10, p21, 2 * int(p10 != p21))]] += (
-                            reSign
-                        )
+                        if p10 != p21:
+                            coeffs[indexingKeyRev[(p10, p21, 2)]] += reSign
+                        else:
+                            rk = indexingKeyRev[(p10, p21, 0)]
+                            for term, scale in CSDict[rk].items():
+                                coeffs[term] += scale * reSign
                     elif p11 == p21:
-                        coeffs[indexingKeyRev[(p10, p20, 2 * int(p10 != p20))]] += (
-                            reSign
-                        )
+                        if p10 != p20:
+                            coeffs[indexingKeyRev[(p10, p20, 2)]] += reSign
+                        else:
+                            for rk in [
+                                indexingKeyRev[(p10, p20, 0)],
+                                indexingKeyRev[(p11, p21, 0)],
+                            ]:
+                                for term, scale in CSDict[rk].items():
+                                    coeffs[term] += scale * reSign
+
                     if p11 != p10:
-                        if p10 == p20:
-                            coeffs[indexingKeyRev[(p11, p21, 2 * int(p11 != p21))]] += (
-                                reSign
-                            )
-                        elif p10 == p21:
-                            coeffs[indexingKeyRev[(p11, p20, 2 * int(p11 != p20))]] += (
-                                reSign
-                            )
+                        if p10 == p20 and p11 != p21:
+                            coeffs[indexingKeyRev[(p11, p21, 2)]] += reSign
+                        elif p10 == p21 and p11 != p20:
+                            coeffs[indexingKeyRev[(p11, p20, 2)]] += reSign
                 elif p22 == 2:
                     if p11 == p21 and p10 == p20:  ###!!! check second condition
                         coeffs[indexingKeyRev[minmaxtuple(p10, p20, 1)]] += -reSign
@@ -2800,13 +2767,19 @@ def createSimpleLieAlgebra(
             elif p12 == -1:
                 if p22 == 1:
                     if p11 == p20:
-                        coeffs[
-                            indexingKeyRev[(p21, p10, 2 * int(p10 != p21))]
-                        ] += -reSign
+                        if p10 != p21:
+                            coeffs[indexingKeyRev[(p21, p10, 2)]] += -reSign
+                        else:
+                            rk = indexingKeyRev[(p21, p10, 0)]
+                            for term, scale in CSDict[rk].items():
+                                coeffs[term] += -scale * reSign
                     elif p11 == p21:
-                        coeffs[
-                            indexingKeyRev[(p20, p10, 2 * int(p10 != p20))]
-                        ] += -reSign
+                        if p10 != p20:
+                            coeffs[indexingKeyRev[(p20, p10, 2)]] += -reSign
+                        else:
+                            rk = indexingKeyRev[(p20, p10, 0)]
+                            for term, scale in CSDict[rk].items():
+                                coeffs[term] += -scale * reSign
                     if p11 != p10:
                         if p10 == p20:
                             coeffs[
@@ -2851,13 +2824,19 @@ def createSimpleLieAlgebra(
 
                 elif p22 == 2:
                     if p11 == p20:
-                        coeffs[indexingKeyRev[(p10, p21, 2 * int(p10 != p21))]] += (
-                            reSign
-                        )
+                        if p10 != p21:
+                            coeffs[indexingKeyRev[(p10, p21, 2)]] += reSign
+                        else:
+                            rk = indexingKeyRev[(p10, p21, 0)]
+                            for term, scale in CSDict[rk].items():
+                                coeffs[term] += scale * reSign
                     if p10 == p21:
-                        coeffs[
-                            indexingKeyRev[(p20, p11, 2 * int(p20 != p11))]
-                        ] += -reSign
+                        if p20 != p11:
+                            coeffs[indexingKeyRev[(p20, p11, 2)]] += -reSign
+                        else:
+                            rk = indexingKeyRev[(p20, p11, 0)]
+                            for term, scale in CSDict[rk].items():
+                                coeffs[term] += -scale * reSign
             return coeffs
 
         _structure_data = array_dgcv(

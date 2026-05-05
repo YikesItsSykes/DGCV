@@ -183,6 +183,10 @@ class dgcvDeprecationWarning(DeprecationWarning):
         self.sunset = sunset
 
 
+class debug_log(UserWarning):
+    pass
+
+
 def _dgcv_showwarning(message, category, filename, lineno, file=None, line=None):
     stream = file if file is not None else sys.stderr
 
@@ -205,12 +209,15 @@ def _dgcv_showwarning(message, category, filename, lineno, file=None, line=None)
 
         print(f"dgcv deprecation: {message}{suffix}", file=stream)
         return
-
     if issubclass(category, dgcvWarning):
         print(f"dgcv warning: {message}", file=stream)
         return
     if issubclass(category, dgcvOperationsNote):
         print(f"dgcv operations note: {message}", file=stream)
+        return
+    if issubclass(category, debug_log):
+        if get_dgcv_settings_registry().get("DEBUG", False):
+            print(f"DEBUG note: {message}", file=stream)
         return
     _original_showwarning(message, category, filename, lineno, file=file, line=line)
 
@@ -222,6 +229,8 @@ def dgcv_warning(
         if isinstance(wc_label, str):
             if wc_label == "dgcvOperationsNote":
                 warning_class = dgcvOperationsNote
+            elif wc_label == "debug_log":
+                warning_class = debug_log
             else:
                 warning_class = dgcvWarning
         else:
@@ -337,7 +346,7 @@ def environment_inference():
 
 dgcv_settings_registry = {
     "use_latex": True,
-    "theme": "graph_paper",
+    "theme": "paper_graphite",
     "format_displays": True,
     "version_specific_defaults": f"v{__version__}",
     "ask_before_overwriting_objects_in_vmf": True,

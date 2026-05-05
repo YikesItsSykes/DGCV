@@ -576,7 +576,11 @@ def _as_coeff_vector_form(tf, K, syslbl="__dgcv_par__"):
 
 
 def _extract_basis_by_wedge_vectorized(
-    objs, *, use_numeric_methods: bool = False, dimension_hint=None
+    objs,
+    *,
+    use_numeric_methods: bool = False,
+    dimension_hint=None,
+    array_shape_checked: bool = False,
 ):
     if not objs:
         return []
@@ -593,6 +597,24 @@ def _extract_basis_by_wedge_vectorized(
         return _scalar_is_zero(x)
 
     if all(get_dgcv_category(o) == "array" for o in objs):
+        if array_shape_checked is False:
+            shaped = dict()
+            for obj in objs:
+                shp = obj.shape
+                shaped[shp] = shaped.get(shp, []) + [obj]
+            if len(shaped) > 1:
+                return sum(
+                    [
+                        _extract_basis_by_wedge_vectorized(
+                            val,
+                            use_numeric_methods=use_numeric_methods,
+                            array_shape_checked=True,
+                        )
+                        for val in shaped.values()
+                    ],
+                    [],
+                )
+
         K = set()
         for o in objs:
             K.update(getattr(o, "_data", {}).keys())

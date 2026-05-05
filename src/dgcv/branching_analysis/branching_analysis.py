@@ -111,6 +111,8 @@ class case_tree:
                 vari = set()
                 for eqn in self.general_equation_system:
                     vari |= get_free_symbols(eqn)
+                if parameters:
+                    vari = {v for v in vari if v not in parameters}
                 self.system_variables = vari
             except Exception:
                 self.system_variables = set()
@@ -280,7 +282,7 @@ class case_tree:
             scr = getattr(self, "case_rules", {})
             fvd = {v: subs(v, scr) for v in self.system_variables}
             fv = set()
-            for k, v in fvd.items():
+            for _, v in fvd.items():
                 fv |= get_free_symbols(v)
             self._free_variables = [v for v in fv if v in self.system_variables]
         return self._free_variables
@@ -570,13 +572,16 @@ class case_tree:
             print(f"     {len(self.free_variables)} dim. parameter space remaining ")
 
 
-def _html_style(theme=None, container_id=None):
+def _html_style(theme=None, container_id=None, slim=False):
     if not isinstance(theme, str):
         theme = get_dgcv_settings_registry().get("theme", "dark")
 
-    theme_vars = get_style(theme, legacy=False)
-
     scope = f"#{container_id}" if container_id else ""
+
+    if slim:
+        return ""
+
+    theme_vars = get_style(theme, legacy=False)
     scoped_vars = theme_vars.replace(":root", scope) if scope else theme_vars
 
     base_styles = f"""
@@ -643,8 +648,8 @@ def _html_style(theme=None, container_id=None):
 {scope} .node-label {{
     font-weight: bold; 
     font-size: 14px; 
-    background: var(--dgcv-table-background, var(--dgcv-bg-primary));
-    color: var(--dgcv-text-main);
+    background: var(--dgcv-special-background, var(--dgcv-bg-surface));
+    color: var(--dgcv-special-text,var(--dgcv-text-heading));
     text-shadow: var(--dgcv-text-shadow, none);
 }}
 
@@ -687,6 +692,7 @@ def _html_style(theme=None, container_id=None):
     border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main); 
     border-top: none;
     border-radius: 0 0 var(--dgcv-border-radius, 12px) 0;
+    border-image: var(--dgcv-border-image, none);
     white-space: normal;
     word-wrap: break-word;
 }}
@@ -699,42 +705,47 @@ def _html_style(theme=None, container_id=None):
 {scope} .compound-node:hover .cond-box, 
 {scope} .compound-node:hover .complete-msg, 
 {scope} .compound-node:hover .note-msg {{ 
+    background: var(--dgcv-bg-hover);
     background-color: var(--dgcv-bg-hover) !important; 
     color: var(--dgcv-text-hover) !important;
     border-color: var(--dgcv-text-hover) !important;
 }}
-{scope} .compound-node:hover .node-label {{ 
-    background-color: var(--dgcv-bg-hover) !important; 
-    color: var(--dgcv-text-hover) !important;
-    border-color: var(--dgcv-text-hover) !important;
-    font-weight: bold; 
-    font-size: 14px; 
-    text-shadow: var(--dgcv-text-shadow, none);
+{scope} .node-label:hover {{
+background: var(--dgcv-bg-hover);
+color: var(--dgcv-text-hover) !important;
+border-color: var(--dgcv-text-hover) !important;
 }}
-
 
 {scope} .children-ul {{ margin-left: 10px; }}
     """
     return f"<style>{base_styles}</style>"
 
 
-def _to_html_tree(data, path="", is_root=True, root_label=None, container_id=None):
+def _to_html_tree(
+    data, path="", is_root=True, root_label=None, container_id=None, slim=False
+):
     if not isinstance(data, dict):
         return ""
     import html
+    import uuid
 
     if is_root and container_id is None:
         container_id = f"tree-{uuid.uuid4().hex[:8]}"
+
     res = (
         f'<div id="{container_id}" class="tree-container"><ul>'
         if is_root
         else '<ul class="children-ul">'
     )
+
     if not isinstance(root_label, str):
         root_label = "root"
+
     if is_root and root_label in data:
         res += f'<li><div class="compound-node root-wrapper"><div class="node-label" style="min-width: 10px;">{root_label}</div></div>'
-        res += _to_html_tree(data[root_label], "", False, container_id=container_id)
+        res += _to_html_tree(
+            data[root_label], "", False, container_id=container_id, slim=slim
+        )
         res += "</li>"
     else:
         items = list(data.get("descendants", {}).items())
@@ -744,42 +755,60 @@ def _to_html_tree(data, path="", is_root=True, root_label=None, container_id=Non
             conds = (
                 value.get("branch_conditions", []) if isinstance(value, dict) else []
             )
+
             if isinstance(conds, str):
                 conds = [conds.strip("[]'")]
+
             descendants = value.get("descendants") if isinstance(value, dict) else value
             is_dict = isinstance(descendants, dict)
+
             res += '<li><div class="compound-node">'
             res += f'<div class="node-label">{html.escape(current_path)}</div>'
+
             cond_text = (
                 ",\u00a0  ".join(html.escape(str(c)) for c in conds)
                 if any(conds)
                 else "None"
             )
             res += f'<div class="cond-box">{cond_text}</div>'
+
             if not is_dict:
                 res += (
                     f'<div class="complete-msg">{html.escape(str(descendants))}</div>'
                 )
+
             note = value.get("note") if isinstance(value, dict) else None
             if note is not None:
                 res += (
                     f'<div class="note-msg">{html.escape("Note: " + str(note))}</div>'
                 )
+
             res += "</div>"
             if is_dict:
                 res += _to_html_tree(
-                    value, current_path, False, container_id=container_id
+                    value, current_path, False, container_id=container_id, slim=slim
                 )
             res += "</li>"
+
     res += "</ul>"
     return (res + "</div>") if is_root else res
 
 
-def _full_tree_html(data, theme=None, root_label=None):
+def _full_tree_html(data, theme=None, root_label=None, slim=False):
     cid = f"tree-{uuid.uuid4().hex[:8]}"
-    styles = _html_style(theme=theme, container_id=cid)
-    tree = _to_html_tree(data, is_root=True, root_label=root_label, container_id=cid)
-    return styles + tree
+    styles = _html_style(theme=theme, container_id=cid, slim=slim)
+    tree_html = _to_html_tree(
+        data, is_root=True, root_label=root_label, container_id=cid, slim=slim
+    )
+
+    return styles + tree_html
+
+
+# def _full_tree_html(data, theme=None, root_label=None):
+#     cid = f"tree-{uuid.uuid4().hex[:8]}"
+#     styles = _html_style(theme=theme, container_id=cid)
+#     tree = _to_html_tree(data, is_root=True, root_label=root_label, container_id=cid)
+#     return styles + tree
 
 
 def _tree_leaves_html(

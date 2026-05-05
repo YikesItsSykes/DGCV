@@ -49,6 +49,7 @@ from .._aux._utilities._config import (
     get_dgcv_settings_registry,
     latex_in_html,
 )
+from .._aux._utilities._misc import linear_combination
 from .._aux._utilities._styles import get_style
 from .._aux._vmf._safeguards import (
     create_key,
@@ -58,7 +59,7 @@ from .._aux._vmf._safeguards import (
 )
 from .._aux._vmf.vmf import clearVar, listVar, order_coordinates
 from .._aux.printing._tables import build_plain_table
-from .._aux.printing.printing._dgcv_display import show
+from .._aux.printing.printing._dgcv_display import LaTeX, show
 from ..algebras.algebras_core import (
     _extract_basis,
     _indep_check,
@@ -69,7 +70,7 @@ from ..algebras.algebras_secondary import createAlgebra, subalgebra_class
 from ..core.arrays.arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ..core.base import dgcv_class
 from ..core.conversions.conversions import allToReal, allToSym, symToHol
-from ..core.dgcv_core.dgcv_core import tensor_field_class, variableProcedure, wedge
+from ..core.dgcv_core.dgcv_core import tensor_field_class, wedge
 from ..core.solvers.solvers import solve_dgcv
 from ..core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
     LieDerivative,
@@ -105,11 +106,13 @@ class Tanaka_symbol(dgcv_class):
         assume_FGLA=False,
         subspace=None,
         distinguished_subspaces=None,
+        prolongation_label_prefix: str = None,
         validate_aggresively=False,
         index_threshold=None,
         precompute_generators=False,
         _validated=None,
         _internal_parameters=set(),
+        _internal_singularities=None,
     ):
         class dynamic_dict(dict):
             def __init__(self, dict_data, initial_index=None):
@@ -421,30 +424,21 @@ class Tanaka_symbol(dgcv_class):
                             dynamic_dict(subSLevels, initial_index=idx_cap + 1)
                         )
                     elif process == "standard":
-                        var_pre = create_key(prefix="var")
                         rich_dict = dynamic_dict(dict(), initial_index=idx_cap + 1)
                         for k, v in subSLevels.items():
                             rich_dict[k] = dict()
-                            rich_dict[k]["vars"] = [
-                                symbol(f"{var_pre}{j}") for j in range(len(v))
-                            ]
-                            terms_list = [
-                                var * elem for var, elem in zip(rich_dict[k]["vars"], v)
-                            ]
-                            rich_dict[k]["element"] = sum(terms_list[1:], terms_list[0])
+                            genelement, newv = linear_combination(v)
+                            rich_dict[k]["vars"] = newv
+                            rich_dict[k]["element"] = genelement
                             rich_dict[k]["spanners"] = v
                         _standard_process_DS.append(rich_dict)
                     else:
-                        var_pre = create_key(prefix="var")
-                        rich_dict = dict()
-                        rich_dict["vars"] = [
-                            symbol(f"{var_pre}{j}") for j in range(len(DSList))
-                        ]
-                        terms_list = [
-                            var * elem for var, elem in zip(rich_dict["vars"], DSList)
-                        ]
-                        rich_dict["element"] = sum(terms_list)
-                        rich_dict["spanners"] = DSList
+                        genelement, newv = linear_combination(DSList)
+                        rich_dict = {
+                            "vars": newv,
+                            "element": genelement,
+                            "spanners": DSList,
+                        }
                         _slow_process_DS.append(rich_dict)
             self._fast_process_DS = _fast_process_DS
             self._standard_process_DS = _standard_process_DS
@@ -527,6 +521,14 @@ class Tanaka_symbol(dgcv_class):
         self.distinguished_subspaces = distinguished_subspaces
         self._test_commutators = None
         self._GLA_generators = None
+        self._plp = (
+            prolongation_label_prefix
+            if isinstance(prolongation_label_prefix, str)
+            else "eta"
+        )
+        self._singularities = (
+            _internal_singularities if _internal_singularities else dict()
+        )
         if precompute_generators is True:
             _ = self.GLA_generators
 
@@ -628,7 +630,16 @@ class Tanaka_symbol(dgcv_class):
         distinguished_s_weight_bound=-1,
         with_characteristic_space_reductions=False,
         ADS=None,
+        surface_singularities=None,
+        simplify_pivots=None,
     ):  # height must match levels structure
+        if len(self._parameters) > 0:
+            if surface_singularities is not False:
+                surface_singularities = True
+        else:
+            surface_singularities = False
+        if simplify_pivots is None:
+            simplify_pivots = surface_singularities
         if ADS is None:
             fast_DS = self._fast_process_DS
             standard_DS = self._standard_process_DS
@@ -667,16 +678,21 @@ class Tanaka_symbol(dgcv_class):
                             return False
                 return True
 
+            def stamp(j, k, jidx, kidx, jdeg, kdeg):
+                obj = _fast_tensor_products(k) @ j  # removed .dual() for fast algorithm
+                obj._hom_id = [{(jidx, kidx, jdeg, kdeg): 1}, ""]
+                return obj
+
             if self._GLA_generators is None:
                 ambient_basis = []
                 for weight in self.negWeights:
+                    kdeg = height + 1 + weight
                     ambient_basis += [
-                        _fast_tensor_products(k)
-                        @ j  # removed .dual() for fast algorithm
-                        for j in self.GLA_levels[weight]
-                        for k in levels[height + 1 + weight]
+                        stamp(j, k, jidx, kidx, weight, kdeg)
+                        for jidx, j in enumerate(self.GLA_levels[weight])
+                        for kidx, k in enumerate(levels[kdeg])
                         if height + 1 + weight > distinguished_s_weight_bound
-                        or fast_validate_for_DS(k, j, height + 1 + weight, weight)
+                        or fast_validate_for_DS(k, j, kdeg, weight)
                     ]
             else:
                 preBasis = []
@@ -717,33 +733,46 @@ class Tanaka_symbol(dgcv_class):
             for subSData in standard_DS:
                 if len(ambient_basis) == 0:
                     break
-                vLab = create_key(prefix="vLab")
-                ambVars = [symbol(f"{vLab}{j}") for j in range(len(ambient_basis))]
-                ds_terms = [var * elem for var, elem in zip(ambVars, ambient_basis)]
-                ambGE = sum(ds_terms)
+                ambGE, ambVars = linear_combination(ambient_basis)
                 for w, level in subSData.items():
                     if height + w + 1 <= distinguished_s_weight_bound:
-                        dsGE = subSData[height + w + 1]["element"]
-                        dsVars = subSData[height + w + 1]["vars"]
+                        dsSpanners = subSData[height + w + 1]["spanners"]
                         eqns = []
                         esVars = ambVars.copy()
-                        for count, elem in enumerate(level["spanners"]):
-                            newVars = [
-                                symbol(f"_{count}{vLab}{j}") for j in range(len(dsVars))
-                            ]
+                        for elem in level["spanners"]:
+                            newGE, newVars = linear_combination(dsSpanners)
                             esVars += newVars
-                            eqn = ambGE * elem + (dsGE.subs(dict(zip(dsVars, newVars))))
-                            eqns.append(eqn)
-                        sol = solve_dgcv(eqns, esVars)
+                            eqns.append(ambGE * elem + newGE)
+                        if surface_singularities:
+                            sol, sing = solve_dgcv(
+                                eqns,
+                                esVars,
+                                method="linsolve",
+                                return_divisors=True,
+                                pass_to_symbolic_engine=False,
+                                simplify_pivots=simplify_pivots,
+                            )
+                            self._singularities["prolongation"] = (
+                                self._singularities.get("prolongation", [])
+                                + [v for v in sing if get_free_symbols(v)]
+                            )
+                        else:
+                            sol = solve_dgcv(eqns, esVars, method="linsolve")
                         ambient_basis = []
                         if len(sol) > 0:
-                            solGE = ambGE.subs(sol[0])
+                            solGE = subs(ambGE, sol[0])
                             freeVars = set()
                             for c in solGE.coeffs:
-                                freeVars |= get_free_symbols(c) - self._parameters
+                                freeVars |= get_free_symbols(c)
+                            if self._parameters:
+                                freeVars = set(
+                                    filter(
+                                        lambda x: x not in self._parameters, freeVars
+                                    )
+                                )
                             zeroing = {var: 0 for var in freeVars}
-                            for var in freeVars:
-                                ambient_basis.append(solGE.subs({var: 1}).subs(zeroing))
+                            for v in freeVars:
+                                ambient_basis.append(subs(solGE, {**zeroing, v: 1}))
             if len(self._slow_process_DS) > 0:
                 dgcv_warning(
                     "At least one of the distinguished subspaces was given by a spanning set of elements containing some element that is not weighted-homogeneous. The algorithm for preserving subspaces in such a format is not yet implemented in this version of `dgcv`, so the subspace is being disregarding."
@@ -752,61 +781,75 @@ class Tanaka_symbol(dgcv_class):
             if len(ambient_basis) == 0:
                 ambient_basis = [0 * self.basis[0]]
 
-            varLabel = create_key(prefix="center_var")  # label for temparary variables
-            tVars = [symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))]
-            general_elem = sum([tVars[j] * ambient_basis[j] for j in range(len(tVars))])
+            general_elem, tVars = linear_combination(ambient_basis)
 
             eqns = []
             for triple in self.test_commutators:
+                t0, t1, t2 = triple[0], triple[1], triple[2]
                 derivation_rule = (
-                    (general_elem * (triple[0])) * triple[1]
-                    + triple[0] * (general_elem * (triple[1]))
-                    - general_elem * (triple[2])
+                    (general_elem * t0) * t1
+                    + t0 * (general_elem * t1)
+                    - general_elem * t2
                 )
                 if getattr(derivation_rule, "is_zero", False) or derivation_rule == 0:
                     continue
                 if get_dgcv_category(derivation_rule) in {
                     "fastTensorProduct",
                     "tensorProduct",
-                }:
-                    eqns += list(derivation_rule.coeff_dict.values())
-                elif get_dgcv_category(derivation_rule) in {
                     "algebra_element",
                     "subalgebra_element",
                     "vector_space_element",
                 }:
-                    eqns += derivation_rule.coeffs
+                    eqns += list(derivation_rule.coeff_dict.values())
+                else:
+                    dgcv_warning(
+                        f"The derivation rule value {derivation_rule} is outside of expected class. Recieved type: {type(derivation_rule)}",
+                        wc_label="debug_log",
+                    )
 
             if eqns == [0] or eqns == []:
                 solution = [{}]
             else:
-                solution = solve_dgcv(eqns, tVars)
+                if surface_singularities:
+                    solution, sing = solve_dgcv(
+                        eqns,
+                        tVars,
+                        method="linsolve",
+                        return_divisors=True,
+                        pass_to_symbolic_engine=False,
+                        simplify_pivots=simplify_pivots,
+                    )
+                    self._singularities["prolongation"] = self._singularities.get(
+                        "prolongation", []
+                    ) + [v for v in sing if get_free_symbols(v)]
+                else:
+                    solution = solve_dgcv(eqns, tVars, method="linsolve")
 
             if len(solution) == 0:
-                raise RuntimeError(
-                    f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {tVars}; return solution data was {solution}"
+                dgcv_warning(
+                    f"At breakpoint in prolongation algorithm: The equation system was {eqns} w.r.t. {tVars}; return solution data was {solution}",
+                    wc_label="debug_log",
                 )
-            el_sol = general_elem.subs(solution[0])
+                raise RuntimeError(
+                    "`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied."
+                )
+            solution = solution[0]
+            el_sol = subs(general_elem, solution)
             if not isinstance(el_sol, _fast_tensor_products):
                 el_sol = _fast_tensor_products(el_sol)
 
-            free_variables = tuple(
-                var
-                for var in set.union(
-                    set(),
-                    *[
-                        getattr(j, "free_symbols", set())
-                        for j in el_sol.coeff_dict.values()
-                    ],
-                )
-                if var not in self._parameters
-            )
-
+            fv = set()
+            for j in el_sol.coeff_dict.values():
+                fv |= get_free_symbols(j)
+            if self._parameters:
+                fv = set(filter(lambda x: x not in self._parameters, fv))
             new_level = []
-            for var in free_variables:
-                basis_element = el_sol.subs({var: 1}).subs(
-                    [(other_var, 0) for other_var in free_variables if other_var != var]
-                )
+            zeroing = {v: 0 for v in fv}
+            for v in fv:
+                basis_element = subs(el_sol, {**zeroing, v: 1})
+                coeffs = [subs(solution.get(v, 0), {**zeroing, v: 1}) for v in tVars]
+                # _hom_id format: [(source_label,((x,y) for x,y in zip(coeffs,target_labels)), label]
+                _hom_id = {}
                 new_level.append(basis_element)
 
             if ADS is True:
@@ -862,13 +905,26 @@ class Tanaka_symbol(dgcv_class):
                             eqns += list(commutator.coeff_dict.values())
                         elif get_dgcv_category(commutator) == "algebra_element_class":
                             eqns += commutator.coeffs
-                    # eqns = list(set(eqns))
-                    solution = solve_dgcv(eqns, solVars)
+                    if surface_singularities:
+                        solution, sing = solve_dgcv(
+                            eqns,
+                            solVars,
+                            method="linsolve",
+                            return_divisors=True,
+                            pass_to_symbolic_engine=False,
+                            simplify_pivots=simplify_pivots,
+                        )
+                        self._singularities["prolongation"] = self._singularities.get(
+                            "prolongation", []
+                        ) + [v for v in sing if get_free_symbols(v)]
+                    else:
+                        solution = solve_dgcv(eqns, solVars, method="linsolve")
                     if len(solution) == 0:
                         raise RuntimeError(
                             f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {solVars}"
                         )
-                    solCoeffs = [subs(j, solution[0]) for j in tVars]
+                    solution = solution[0]
+                    solCoeffs = [solution.get(j, 0) for j in tVars]
 
                     free_variables = tuple(
                         set.union(
@@ -937,7 +993,11 @@ class Tanaka_symbol(dgcv_class):
         distinguished_s_weight_bound=-1,
         with_characteristic_space_reductions=False,
         ADS=None,
+        surface_singularities=None,
     ):  # height must match levels structure
+        if len(self._parameters) > 0 and surface_singularities is not False:
+            surface_singularities = True
+
         if ADS is None:
             fast_DS = self._fast_process_DS
             standard_DS = self._standard_process_DS
@@ -1023,30 +1083,46 @@ class Tanaka_symbol(dgcv_class):
             for subSData in standard_DS:
                 if len(ambient_basis) == 0:
                     break
-                vLab = create_key(prefix="vLab")
-                ambVars = [symbol(f"{vLab}{j}") for j in range(len(ambient_basis))]
-                ds_terms = [var * elem for var, elem in zip(ambVars, ambient_basis)]
-                ambGE = sum(ds_terms)
+                ambGE, ambVars = linear_combination(ambient_basis)
                 for w, level in subSData.items():
                     if height + w + 1 <= distinguished_s_weight_bound:
-                        dsGE = subSData[height + w + 1]["element"]
-                        dsVars = subSData[height + w + 1]["vars"]
+                        dsSpanners = subSData[height + w + 1]["spanners"]
                         eqns = []
                         esVars = ambVars.copy()
-                        for count, elem in enumerate(level["spanners"]):
-                            newVars = [
-                                symbol(f"_{count}{vLab}{j}") for j in range(len(dsVars))
-                            ]
+                        for elem in level["spanners"]:
+                            newGE, newVars = linear_combination(dsSpanners)
                             esVars += newVars
-                            eqn = ambGE * elem + (dsGE.subs(dict(zip(dsVars, newVars))))
-                            eqns.append(eqn)
-                        sol = solve_dgcv(eqns, esVars)
+                            eqns.append(ambGE * elem + newGE)
+                        if surface_singularities:
+                            sol, sing = solve_dgcv(
+                                eqns,
+                                esVars,
+                                method="linsolve",
+                                return_divisors=True,
+                                pass_to_symbolic_engine=False,
+                            )
+                            self._singularities["prolongation"] = (
+                                self._singularities.get("prolongation", [])
+                                + [v for v in sing if get_free_symbols(v)]
+                            )
+                        else:
+                            sol = solve_dgcv(
+                                eqns,
+                                esVars,
+                                method="linsolve",
+                            )
                         ambient_basis = []
                         if len(sol) > 0:
                             solGE = ambGE.subs(sol[0])
                             freeVars = set()
                             for c in solGE.coeffs:
-                                freeVars |= get_free_symbols(c) - self._parameters
+                                freeVars |= get_free_symbols(c)
+                            if self._parameters:
+                                freeVars = set(
+                                    filter(
+                                        lambda x: x not in self._parameters, freeVars
+                                    )
+                                )
                             zeroing = {var: 0 for var in freeVars}
                             for var in freeVars:
                                 ambient_basis.append(solGE.subs({var: 1}).subs(zeroing))
@@ -1058,58 +1134,67 @@ class Tanaka_symbol(dgcv_class):
             if len(ambient_basis) == 0:
                 ambient_basis = [0 * self.basis[0]]
 
-            varLabel = create_key(prefix="center_var")  # label for temparary variables
-            tVars = [symbol(f"{varLabel}{j}") for j in range(len(ambient_basis))]
-            general_elem = sum([tVars[j] * ambient_basis[j] for j in range(len(tVars))])
+            general_elem, tVars = linear_combination(ambient_basis)
 
             eqns = []
             for triple in self.test_commutators:
+                t0, t1, t2 = triple[0], triple[1], triple[2]
                 derivation_rule = (
-                    (general_elem * (triple[0])) * triple[1]
-                    + triple[0] * (general_elem * (triple[1]))
-                    - general_elem * (triple[2])
+                    (general_elem * t0) * t1
+                    + t0 * (general_elem * t1)
+                    - general_elem * t2
                 )
                 if getattr(derivation_rule, "is_zero", False) or derivation_rule == 0:
                     continue
-                if get_dgcv_category(derivation_rule) == "tensorProduct":
-                    eqns += list(derivation_rule.coeff_dict.values())
-                elif get_dgcv_category(derivation_rule) in {
+                if get_dgcv_category(derivation_rule) in {
+                    "fastTensorProduct",
+                    "tensorProduct",
                     "algebra_element",
                     "subalgebra_element",
                     "vector_space_element",
                 }:
-                    eqns += derivation_rule.coeffs
+                    eqns += list(derivation_rule.coeff_dict.values())
+                else:
+                    dgcv_warning(
+                        f"The derivation rule value {derivation_rule} is outside of expected class. Recieved type: {type(derivation_rule)}",
+                        wc_label="debug_log",
+                    )
 
             if eqns == [0] or eqns == []:
                 solution = [{}]
             else:
-                solution = solve_dgcv(eqns, tVars)
+                if surface_singularities:
+                    solution, sing = solve_dgcv(
+                        eqns,
+                        tVars,
+                        method="linsolve",
+                        return_divisors=True,
+                        pass_to_symbolic_engine=False,
+                    )
+                    self._singularities["prolongation"] = self._singularities.get(
+                        "prolongation", []
+                    ) + [v for v in sing if get_free_symbols(v)]
+                else:
+                    solution = solve_dgcv(eqns, tVars, method="linsolve")
 
             if len(solution) == 0:
                 raise RuntimeError(
                     f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {tVars}; return solution data was {solution}"
                 )
-            el_sol = general_elem.subs(solution[0])
+
+            el_sol = subs(general_elem, solution[0])
             if hasattr(el_sol, "_convert_to_tp"):
                 el_sol = el_sol._convert_to_tp()
 
-            free_variables = tuple(
-                var
-                for var in set.union(
-                    set(),
-                    *[
-                        getattr(j, "free_symbols", set())
-                        for j in el_sol.coeff_dict.values()
-                    ],
-                )
-                if var not in self._parameters
-            )
-
+            fv = set()
+            for j in el_sol.coeff_dict.values():
+                fv |= get_free_symbols(j)
+            if self._parameters:
+                fv = set(filter(lambda x: x not in self._parameters, fv))
             new_level = []
-            for var in free_variables:
-                basis_element = el_sol.subs({var: 1}).subs(
-                    [(other_var, 0) for other_var in free_variables if other_var != var]
-                )
+            zeroing = {v: 0 for v in fv}
+            for v in fv:
+                basis_element = subs(el_sol, {**zeroing, v: 1})
                 new_level.append(basis_element)
 
             if ADS is True:
@@ -1162,8 +1247,19 @@ class Tanaka_symbol(dgcv_class):
                             eqns += list(commutator.coeff_dict.values())
                         elif get_dgcv_category(commutator) == "algebra_element_class":
                             eqns += commutator.coeffs
-                    # eqns = list(set(eqns))
-                    solution = solve_dgcv(eqns, solVars)
+                    if surface_singularities:
+                        solution, sing = solve_dgcv(
+                            eqns,
+                            solVars,
+                            method="linsolve",
+                            return_divisors=True,
+                            pass_to_symbolic_engine=False,
+                        )
+                        self._singularities["prolongation"] = self._singularities.get(
+                            "prolongation", []
+                        ) + [v for v in sing if get_free_symbols(v)]
+                    else:
+                        solution = solve_dgcv(eqns, solVars)
                     if len(solution) == 0:
                         raise RuntimeError(
                             f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {solVars}"
@@ -1233,14 +1329,59 @@ class Tanaka_symbol(dgcv_class):
 
     def prolong(
         self,
-        iterations,
-        return_symbol=True,
-        report_progress=False,
-        report_progress_and_return_nothing=False,
-        with_characteristic_space_reductions=None,
-        absorb_distinguished_subspaces=False,
+        iterations: int,
+        return_symbol: bool = True,
+        report_progress: bool = False,
+        report_progress_and_return_nothing: bool = False,
+        with_characteristic_space_reductions: bool = None,
+        absorb_distinguished_subspaces: bool = False,
+        surface_singularities: bool = None,
+        simplify_singularities: bool = None,
+        max_report_columns: int = 13,
         _fast_algorithm=True,
-    ):
+    ) -> Tanaka_symbol:
+        """
+        Computes a number of prolongations above the highest level stored in the current Tanaka_symbol data (starting with the first nonnegative integer, so if highest level is -2, it starts with 0, e.g.), up to the number given in `iterations`. Will stop earlier if stabelization is detected.
+
+        New prolongation levels are stored in the symbols internal data. Can alternatively return a new Tanaka_symbol object with the new prolongation levels stored in its data.
+
+        parameters:
+        -----------
+            iterations: int
+        Determines how many prolongation levels to compute
+
+            return_symbol: bool (optional, default=True)
+        If True, the algorithm will return a new Tanaka_symbol object with the new prolongation levels stored in its data. If False returns a dictionary whose keys are level weights and values are corresponding prolongation levels (including all initial levels in the symbol data).
+
+            report_progress:
+        Reports progress summaries as prolongations are computed in printed output
+
+            report_progress_and_return_nothing: bool (optional, default=False)
+        If True, overides `return_symbol` and `surface_singularities`, reports progress summaries of prolongation in printed output, and returns nothing further.
+
+            with_characteristic_space_reductions: bool (defaults to True if relevant - False if theoretically irrelivant)
+        If True and `distinguished_subspaces` was registered in the Tanaka_symbol obj creationg then the prolongation algorithm reduces computed prolongation subspaces to the maximal subspaces allowing the result to be a Lie algebra. This is relavent because if any subspace in distinguished_subspaces has elements of nonnegative weight then the standard subspace-preserving prolongation need not yield an algebra. While this reduction can be geometrically motivated, omitting it permits a less demanding algorithm that will produce a larger prolongation space. A typical application for omitting it would be confirming finite prolongation dimensionality with a less demanding algorithm.
+
+            absorb_distinguished_subspaces:bool (default=False)
+        This is relevant when distinguished_subspaces include weighted components of higher weight than the given levels data. In this case those higher weighted components are interpreted as subspaces in a tensor algebra where the theoretical prolongation lives, and on which it also operates. The prolongation algorithm proceeds respecting these in the sense that it honors the axiom that distinguished subspaces are invariant under the action of computed prolongation levels. When absorb_distinguished_subspaces=True, then higher weighted levels are artificially added to computed prolongation levels of the same weight. Setting this to True is only natural in niche geometry motivated contexts, so leaving it as False is likely correct if unsure.
+
+            surface_singularities:bool (optional, default=None)
+        If paramater space is empty then this is irrelevant for the prolongation algorithm, but affects the output signature. If True (and not overridden by report_progress_and_return_nothing), additionally returns a list of functions whose zeros are singularities in parameter space found during prolongation. i.e., prolongation will be correct for parameters outside of these singularities. If not set to anything (i.e., left as default None) then when relevant all singularities are still found and saved internally. If set to False then tracking of singularities will be skipped, which may improve the algorithm speed slightly.
+
+            max_report_columns: int (positive)
+        This controls the maximum number of columns displayed in the output tables when report_progress is true.
+
+        returns:
+        --------
+            A Tanaka_symbol object with new prolongation levels stored in its data. Returns a dictionary of unformatted prolongation level data if return_symbol=False.
+
+            Additionally returns a list of singularities in parameter space if surface_singularities
+        """
+        if (
+            not isinstance(max_report_columns, numbers.Integral)
+            or max_report_columns < 5
+        ):
+            max_report_columns = 5
         if absorb_distinguished_subspaces is True:
             subspace_data = [
                 copy.deepcopy(self._fast_process_DS),
@@ -1292,6 +1433,8 @@ class Tanaka_symbol(dgcv_class):
                     distinguished_s_weight_bound=distinguished_s_weight_bound,
                     with_characteristic_space_reductions=with_characteristic_space_reductions,
                     ADS=subspace_data,
+                    surface_singularities=surface_singularities,
+                    simplify_pivots=simplify_singularities,
                 )
             else:
                 levels, stable, subspace_data = self._prolong_by_1(
@@ -1300,47 +1443,74 @@ class Tanaka_symbol(dgcv_class):
                     distinguished_s_weight_bound=distinguished_s_weight_bound,
                     with_characteristic_space_reductions=with_characteristic_space_reductions,
                     ADS=subspace_data,
+                    surface_singularities=surface_singularities,
                 )
             if report_progress:
+                keys = list(levels.keys())
+                values = list(levels.values())
+                n_cols = len(keys)
+                elision_cell = " … "
+                elision_border = "     "
+
+                if n_cols > max_report_columns:
+                    seg = max_report_columns // 2
+                    display_keys = keys[:seg] + [None] + keys[-seg:]
+                    display_values = values[:seg] + [None] + values[-seg:]
+                else:
+                    display_keys = keys
+                    display_values = values
+
                 max_len = max(
-                    max(len(str(weight)) for weight in levels.keys()),
-                    max(len(str(len(basis))) for basis in levels.values()),
+                    max(len(str(k)) for k in keys),
+                    max(len(str(len(v))) for v in values),
                 )
+                is_elision = [item is None for item in display_keys]
 
-                weights = " │ ".join(
-                    [str(weight).ljust(max_len) for weight in levels.keys()]
-                )
-                dimensions = " │ ".join(
-                    [str(len(basis)).ljust(max_len) for basis in levels.values()]
-                )
-                weights = f"Weights    │ {weights}"
-                dimensions = f"Dimensions │ {dimensions}"
-                line_length = max(len(weights), len(dimensions)) + 1
+                def fmt_row(label, items):
+                    cells = []
+                    for item, elide in zip(items, is_elision):
+                        cells.append(
+                            elision_cell if elide else str(item).ljust(max_len)
+                        )
+                    return f"│ {label} │ " + " │ ".join(cells) + " │"
 
-                header_length = len("Weights    │ ")
-                top_border = f"┌{'─' * (header_length - 1)}┬{'─' * (1 + line_length - header_length)}┐"
-                middle_border = f"├{'─' * (header_length - 1)}┼{'─' * (1 + line_length - header_length)}┤"
-                bottom_border = f"└{'─' * (header_length - 1)}┴{'─' * (1 + line_length - header_length)}┘"
+                def fmt_border(left, mid, right, junction):
+                    segments = []
+                    for elide in is_elision:
+                        segments.append(
+                            elision_border if elide else "─" * (max_len + 2)
+                        )
+                    header_fill = "─" * len("Weights    │")
+                    return f"{left}{header_fill}{mid}" + junction.join(segments) + right
+
+                weight_strs = [None if k is None else str(k) for k in display_keys]
+                dim_strs = [None if v is None else str(len(v)) for v in display_values]
 
                 print(f"After {count_to_str(prol_counter)} iteration:")
-                print(top_border)
-                print(f"│ {weights} │")
-                print(middle_border)
-                print(f"│ {dimensions} │")
-                print(bottom_border)
+                print(fmt_border("┌", "┬", "┐", "┬"))
+                print(fmt_row("Weights   ", weight_strs))
+                print(fmt_border("├", "┼", "┤", "┼"))
+                print(fmt_row("Dimensions", dim_strs))
+                print(fmt_border("└", "┴", "┘", "┴"))
                 prol_counter += 1
             height += 1
         if _fast_algorithm is True:
             for w in levels:
                 if w >= 0:
-                    levels[w] = [j._convert_to_tp() for j in levels[w]]
+                    levels[w] = [
+                        j._convert_to_tp(
+                            _hom_id_map=(self._plp, self.levels),
+                            _hom_id_label=f"{self._plp}_{c + 1}__{{[{w}]}}",
+                        )
+                        for c, j in enumerate(levels[w])
+                    ]
         if report_progress_and_return_nothing is not True:
             if return_symbol:
                 new_nonneg_parts = []
                 for key, value in levels.items():
                     if key >= 0:
                         new_nonneg_parts += value
-                return Tanaka_symbol(
+                out = Tanaka_symbol(
                     self.negativePart,
                     new_nonneg_parts,
                     assume_FGLA=self.assume_FGLA,
@@ -1348,24 +1518,34 @@ class Tanaka_symbol(dgcv_class):
                     index_threshold=levels.index_threshold,
                     _validated=retrieve_passkey(),
                     _internal_parameters=self._parameters,
+                    _internal_singularities=self._singularities,
                 )
+                if surface_singularities is True:
+                    return out, self._singularities.get("prolongation", [])
+                return out
             else:
+                if surface_singularities is True:
+                    return levels, self._singularities.get("prolongation", [])
                 return levels
 
     def summary(
         self,
-        style=None,
+        theme=None,
         use_latex=None,
         display_length=500,
         table_scroll=False,
         cell_scroll=False,
         plain_text: bool | None = None,
+        condense_tensor_labels: bool = True,
         return_displayable: bool = False,
+        **kwargs,
     ):
         dgcvSR = get_dgcv_settings_registry()
         extra_support_for_math_in_tables = bool(
             dgcvSR.get("extra_support_for_math_in_tables") is True
         )
+        params = len(self._parameters) > 0
+        sing = len(self._singularities.get("prolongation", [])) > 0
 
         if use_latex is None:
             use_latex = dgcvSR.get("use_latex", False)
@@ -1376,7 +1556,8 @@ class Tanaka_symbol(dgcv_class):
 
         levels = self.levels or {}
         have_prolongations = any(w >= 0 for w in levels.keys())
-        main_title = (
+        paramessage = "Parametric " if params else ""
+        main_title = paramessage + (
             "Tanaka Symbol (+ prolongation) Components"
             if have_prolongations
             else "Tanaka Symbol Components"
@@ -1396,9 +1577,14 @@ class Tanaka_symbol(dgcv_class):
                 len(dsubs) == 0 or (len(dsubs) == 1 and len(dsubs[0]) == 0)
             )
             sub_title = "Distinguished Subspaces"
+            paratitle = "Parameters"
+            singtitle = "Singularities in Parameter Space"
 
             inner_width = max(
-                len(f" {main_title} "), len(f" {sub_title} ") if render_panel else 0
+                len(f" {main_title} "),
+                len(f" {sub_title} ") if render_panel else 0,
+                len(f" {paratitle} ") if params else 0,
+                len(f" {singtitle} ") if sing else 0,
             )
             lines = [_header_block(main_title, inner_width)]
 
@@ -1416,7 +1602,18 @@ class Tanaka_symbol(dgcv_class):
                 for sub in dsubs:
                     inner = ", ".join(str(e) for e in (sub or [])) if sub else "∅"
                     lines.append(f"• [{inner}]")
-
+            if params:
+                lines.append("")
+                lines.append(_header_block(paratitle, inner_width))
+                inner = ", ".join(str(e) for e in self._parameters)
+                lines.append(f"• [{inner}]")
+            if sing:
+                lines.append("")
+                lines.append(_header_block(singtitle, inner_width))
+                inner = ", ".join(
+                    str(e) for e in self._singularities.get("prolongation", [])
+                )
+                lines.append(f"• [{inner}]")
             out = "\n".join(lines)
             if return_displayable:
                 return out
@@ -1424,12 +1621,17 @@ class Tanaka_symbol(dgcv_class):
             return
 
         # HTML path
-        style_key = style or dgcvSR.get("theme", "dark")
+        if not isinstance(theme, str):
+            style_key = kwargs.get("style", None) or dgcvSR.get("theme", "dark")
+        else:
+            style_key = theme
         theme_vars = get_style(style_key, legacy=False)
+        if use_latex and len(self.nonneg_levels) < 2:
+            condense_tensor_labels = False
 
         def _to_string(e, ul=False):
             if ul:
-                s = e._repr_latex_(verbose=False)
+                s = e._repr_latex_(verbose=False, alias=condense_tensor_labels)
                 if s.startswith("$") and s.endswith("$"):
                     s = s[1:-1]
                 s = (
@@ -1460,35 +1662,88 @@ class Tanaka_symbol(dgcv_class):
         ]
 
         dsubs = getattr(self, "distinguished_subspaces", []) or []
-        render_panel = not (len(dsubs) == 0 or (len(dsubs) == 1 and len(dsubs[0]) == 0))
+        render_panel = not (
+            (len(dsubs) == 0 or (len(dsubs) == 1 and len(dsubs[0]) == 0))
+            and not params
+            and not sing
+        )
         secondary_panel_html = None
         if render_panel:
-            items = []
-            for sub in dsubs:
+
+            def _to_math(e):
                 if use_latex:
-                    labels = [(e._repr_latex_(raw=True) or "").strip() for e in sub]
-                    inner = ", ".join(labels) if labels else r"\varnothing"
-                    content = f"$\\left\\langle {inner} \\right\\rangle$"
+                    return f"${LaTeX(e)}$"
+                return str(e)
+
+            def _panel_section(title, items_html, include_divider):
+                divider = (
+                    "<div style='border-top: 2px solid var(--dgcv-border-main);'></div>"
+                    if include_divider
+                    else ""
+                )
+                return (
+                    divider
+                    + f"<div style='padding: 12px; border-bottom: 1px solid var(--dgcv-border-main); "
+                    f"color: var(--dgcv-text-main); font-weight: bold;'>{title}</div>"
+                    + "<ul style='margin: 0; padding: 0; list-style: none; overflow-y: visible; "
+                    "height: fit-content; color: var(--dgcv-text-main);'>"
+                    + "".join(
+                        f"<li style='overflow-x: auto; overflow-y: hidden; white-space: nowrap; "
+                        f"padding: 8px; border-bottom: 1px solid var(--dgcv-border-main); "
+                        f"display: list-item; list-style-type: disc; list-style-position: inside;'>{item}</li>"
+                        for item in items_html
+                    )
+                    + "</ul>"
+                )
+
+            sections = []
+
+            if not (len(dsubs) == 0 or (len(dsubs) == 1 and len(dsubs[0]) == 0)):
+                if use_latex:
+                    dsub_items = []
+                    for sub in dsubs:
+                        if sub:
+                            inner = ", ".join(
+                                (e._repr_latex_(raw=True) or "").strip() for e in sub
+                            )
+                        else:
+                            inner = r"\varnothing"
+                        dsub_items.append(f"$\\left\\langle {inner} \\right\\rangle$")
                 else:
                     import html
 
-                    labels = [html.escape(str(e)) for e in sub]
-                    inner = ", ".join(labels) if labels else "∅"
-                    content = f"[{inner}]"
+                    dsub_items = [
+                        f"[{', '.join(html.escape(str(e)) for e in sub) if sub else '∅'}]"
+                        for sub in dsubs
+                    ]
+                sections.append(
+                    _panel_section("Distinguished Subspaces", dsub_items, False)
+                )
 
-                items.append(
-                    f"<li style='overflow-x: auto; overflow-y: hidden; white-space: nowrap; "
-                    f"padding: 8px; border-bottom: 1px solid var(--dgcv-border-main); "
-                    f"display: list-item; list-style-type: disc; list-style-position: inside;'>{content}</li>"
+            if params:
+                param_items = [_to_math(e) for e in self._parameters]
+                sections.append(
+                    _panel_section(
+                        "Parameters", [", ".join(param_items)], len(sections) > 0
+                    )
+                )
+
+            if sing:
+                sing_items = [
+                    _to_math(e) for e in self._singularities.get("prolongation", [])
+                ]
+                sections.append(
+                    _panel_section(
+                        "Singularities in Parameter Space",
+                        [", ".join(sing_items)],
+                        len(sections) > 0,
+                    )
                 )
 
             secondary_panel_html = (
                 "<div class='dgcv-side-panel' style='height: fit-content;'>"
-                "<div style='padding: 12px; border-bottom: 1px solid var(--dgcv-border-main); "
-                "color: var(--dgcv-text-main); font-weight: bold;'>Distinguished Subspaces</div>"
-                "<ul style='margin: 0; padding: 0; list-style: none; overflow-y: visible; height: fit-content; color: var(--dgcv-text-main);'>"
-                + "".join(items)
-                + "</ul></div>"
+                + "".join(sections)
+                + "</div>"
             )
         extra_css = """
 .dgcv-data-table th:nth-child(1), .dgcv-data-table td:nth-child(1),
@@ -1639,9 +1894,9 @@ class Tanaka_symbol(dgcv_class):
             grading_vec += [weight] * lLength
         if preserve_negative_part_basis:
             invPerm = [permutation.index(j) for j in range(len(permutation))]
-            permutation = invPerm + list(
-                range(self.negativePart.dimension, self.dimension)
-            )
+            tail = list(range(self.negativePart.dimension, self.dimension))
+            back = invPerm + tail
+            forward = permutation + tail
 
         def flatToLayered(idx):
             return indexBands[idx]
@@ -1667,11 +1922,7 @@ class Tanaka_symbol(dgcv_class):
                     return [0] * dimen
                 else:
                     return "NoSol"
-            varLabel = create_key(prefix="_cv")
-            tVars = variableProcedure(
-                varLabel, nLDim, _tempVar=retrieve_passkey(), return_created_object=True
-            )[0]
-            general_elem = sum([tVars[j] * ambient_basis[j] for j in range(len(tVars))])
+            general_elem, tVars = linear_combination(ambient_basis)
             eqns = [newElem - general_elem]
             sol = solve_dgcv(eqns, tVars)
             if len(sol) == 0:
@@ -1714,11 +1965,7 @@ class Tanaka_symbol(dgcv_class):
 
             def permute_structure_data(SD, perm):
                 d = SD.shape[0]
-                new_sd = array_dgcv(
-                    dict(),
-                    shape=(d, d),
-                    null_return=freeze_matrix(matrix_dgcv.zeros(d, 1)),
-                )
+                new_sd = dict()
                 perm = list(perm)
                 sddd = SD._data
                 for idx, v in sddd.items():
@@ -1735,19 +1982,15 @@ class Tanaka_symbol(dgcv_class):
                                 )
 
                 return array_dgcv(
-                    str_data,
+                    new_sd,
                     shape=(d, d),
                     null_return=freeze_matrix(matrix_dgcv.zeros(d, 1)),
                 )
 
             return {
-                "structure_data": permute_structure_data(str_data, permutation),
+                "structure_data": permute_structure_data(str_data, forward),
                 "grading": [
-                    (
-                        grading_vec[permutation[j]]
-                        if j < len(permutation)
-                        else grading_vec[j]
-                    )
+                    (grading_vec[back[j]] if j < len(back) else grading_vec[j])
                     for j in range(self.dimension)
                 ],
             }
@@ -1803,12 +2046,13 @@ def _GAE_to_hom_formatting(elem, nilradical, test_weights=None, return_weights=F
 
 
 class _fast_tensor_products:
-    def __init__(self, coeff_dict, alg=None, _validated=None):
-        if get_dgcv_category(coeff_dict) == "fastTensorProduct":
-            coeff_dict, alg, _validated = (
+    def __init__(self, coeff_dict, alg=None, _validated=None, _hom_id=None):
+        if isinstance(coeff_dict, _fast_tensor_products):
+            coeff_dict, alg, _validated, _hom_id = (
                 coeff_dict.coeff_dict,
                 coeff_dict.algebra,
                 coeff_dict.degree,
+                coeff_dict._hom_id,
             )
         self.algebra = alg
         if _validated is None:
@@ -1853,6 +2097,12 @@ class _fast_tensor_products:
         self._coeffs = None
         if self.degree < max(len(k) for k in self.coeff_dict):
             raise TypeError("ftp init fail")
+        if _hom_id:
+            self._hom_id = (
+                _hom_id  # _hom_id format: [{(jidx, kidx, jdeg, kdeg): val,...}, label]
+            )
+        else:
+            self._hom_id = None
 
     @property
     def is_zero(self):
@@ -1877,7 +2127,10 @@ class _fast_tensor_products:
                 ae += v * alg.basis[k[0]]
         return ae
 
-    def _convert_to_tp(self):
+    def _convert_to_tp(self, _hom_id_map=None, _hom_id_label=None):
+        """
+        _hom_id_map should be a pair of (str pref, map from neg weights to components)
+        """
         from ..core.tensors.tensors import tensorProduct
 
         new_dict = dict()
@@ -1886,7 +2139,32 @@ class _fast_tensor_products:
             k3 = (self.algebra.dgcv_vs_id,) * len(k)
             newkey = k + k2 + k3
             new_dict[newkey] = v
-        return tensorProduct([], new_dict)
+        if self._hom_id and _hom_id_map:
+            decomp, label = self._hom_id
+            if _hom_id_label:
+                label = _hom_id_label
+            pref, ngla = _hom_id_map
+            hidd = dict()
+            valid = True
+            for key, v in decomp.items():
+                jidx, kidx, jdeg, kdeg = key
+                try:
+                    jstr = str(ngla[jdeg][jidx])
+                    if kdeg < 0:
+                        kstr = str(ngla[kdeg][kidx])
+                    else:
+                        kstr = f"{pref}_{kidx + 1}__{{[{kdeg}]}}"
+                    hidd[(jstr, kstr)] = v
+                except Exception:
+                    valid = False
+                    break
+            if valid:
+                homid = [hidd, label]
+            else:
+                homid = None
+        else:
+            homid = None
+        return tensorProduct([], new_dict, _hom_id=homid)
 
     def __add__(self, other):
         if other == 0 or getattr(other, "is_zero", False):
@@ -1897,7 +2175,22 @@ class _fast_tensor_products:
             for k, v in other.coeff_dict.items():
                 deg = max(len(k), deg)
                 new_dict[k] = self.coeff_dict.get(k, 0) + v
-            return _fast_tensor_products(new_dict, self.algebra, _validated=deg)
+
+            if self._hom_id and other._hom_id:
+                nhidd = {k: v for k, v in self._hom_id[0].items()}
+                for k, v in other._hom_id[0].items():
+                    newv = nhidd.get(k, 0) + v
+                    if newv == 0:
+                        nhidd.pop(k)
+                    else:
+                        nhidd[k] = newv
+                hom_id = [nhidd, ""]
+            else:
+                hom_id = None
+
+            return _fast_tensor_products(
+                new_dict, self.algebra, _validated=deg, _hom_id=hom_id
+            )
         if get_dgcv_category(other) in {
             "algebra_element",
             "subalgebra_element",
@@ -1918,11 +2211,22 @@ class _fast_tensor_products:
     def __mul__(self, other):
         if isinstance(other, expr_numeric_types()):
             if other == 0:
-                return _fast_tensor_products({tuple(): 0}, self.algebra, _validated=0)
+                return _fast_tensor_products(
+                    {tuple(): 0},
+                    self.algebra,
+                    _validated=0,
+                    _hom_id=[{}, ""] if self._hom_id else None,
+                )
+            homid = (
+                [{k: other * v for k, v in self._hom_id[0].items()}, ""]
+                if self._hom_id
+                else None
+            )
             return _fast_tensor_products(
                 {k: other * v for k, v in self.coeff_dict.items()},
                 self.algebra,
                 _validated=self.degree,
+                _hom_id=homid,
             )
         if isinstance(other, _fast_tensor_products):
             if other.degree == 0:
@@ -2008,11 +2312,22 @@ class _fast_tensor_products:
     def __rmul__(self, other):
         if isinstance(other, expr_numeric_types()):
             if other == 0:
-                return _fast_tensor_products(dict(), self.algebra, _validated=0)
+                return _fast_tensor_products(
+                    dict(),
+                    self.algebra,
+                    _validated=0,
+                    _hom_id=[{}, ""] if self._hom_id else None,
+                )
+            homid = (
+                [{k: other * v for k, v in self._hom_id[0].items()}, ""]
+                if self._hom_id
+                else None
+            )
             return _fast_tensor_products(
                 {k: other * v for k, v in self.coeff_dict.items()},
                 self.algebra,
                 _validated=self.degree,
+                _hom_id=homid,
             )
         if self.degree == 0:
             return sum(v * other for v in self.coeff_dict.values())
@@ -2023,6 +2338,9 @@ class _fast_tensor_products:
             {k: -v for k, v in self.coeff_dict.items()},
             self.algebra,
             _validated=self.degree,
+            _hom_id=[{k: -v for k, v in self._hom_id[0].items()}, ""]
+            if self._hom_id
+            else None,
         )
 
     def __matmul__(self, other):
@@ -2068,7 +2386,18 @@ class _fast_tensor_products:
 
     def subs(self, subs_data):
         new_dict = {k: subs(v, subs_data) for k, v in self.coeff_dict.items()}
-        return _fast_tensor_products(new_dict, self.algebra, _validated=self.degree)
+        if self._hom_id:
+            hidd = dict()
+            for k, v in self._hom_id[0].items():
+                newv = subs(v, subs_data)
+                if newv != 0:
+                    hidd[k] = newv
+            homid = [hidd, ""]
+        else:
+            homid = None
+        return _fast_tensor_products(
+            new_dict, self.algebra, _validated=self.degree, _hom_id=homid
+        )
 
 
 class distribution(dgcv_class):

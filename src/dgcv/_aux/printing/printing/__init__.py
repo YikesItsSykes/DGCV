@@ -27,6 +27,7 @@ from ._class_printers import (
     space_display,
     tensor_field_latex2,
     tensor_field_printer2,
+    tensor_latex_alias,
     tensor_latex_helper,
     tensor_VS_printer,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "space_display",
     "tensor_field_latex2",
     "tensor_field_printer2",
+    "tensor_latex_alias",
     "tensor_latex_helper",
     "tensor_VS_printer",
 ]

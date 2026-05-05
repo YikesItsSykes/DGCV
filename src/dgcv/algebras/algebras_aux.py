@@ -42,17 +42,20 @@ from .._aux._backends._symbolic_router import (
     simplify,
 )
 from .._aux._backends._types_and_constants import is_atomic, symbol
-from .._aux._utilities._config import dgcv_exception_note, dgcv_warning
+from .._aux._utilities._config import dgcv_warning
+from .._aux._utilities._misc import linear_combination
 from .._aux._vmf._safeguards import (
     create_key,
     get_dgcv_category,
     query_dgcv_categories,
-    retrieve_public_key,
 )
 from .._aux._vmf.vmf import clearVar, listVar
 from ..core.arrays.arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ..core.dgcv_core.dgcv_core import VF_bracket
 from ..core.solvers.solvers import solve_dgcv
+from ..core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
+    _extract_basis_by_wedge_vectorized,
+)
 
 
 # -----------------------------------------------------------------------------
@@ -91,10 +94,10 @@ def _validate_structure_data(
                 break
             mats.append(m)
         if mats is not None:
-            try:
-                return algebraDataFromMatRep(data), "matrix"
-            except Exception as e:
-                raise dgcv_exception_note(f"{e}") from None
+            # try:
+            return algebraDataFromMatRep(data), "matrix"
+            # except Exception as e:
+            #     raise dgcv_exception_note(f"{e}") from None
         elif all(get_dgcv_category(elem) == "tensorProduct" for elem in data):
             dgcv_warning(
                 "`_validate_structure_data` was given a list of tensorProduct instance, but `process_matrix_rep` was also marked True. The latter was ignored."
@@ -163,6 +166,8 @@ def _validate_structure_data(
                     basis_order_for_supplied_str_eqns = []
                 else:
                     build_basis_order = False
+                    if len(tuple_vars) < len(basis_order_for_supplied_str_eqns):
+                        tuple_vars |= set(basis_order_for_supplied_str_eqns)
                 if not isinstance(
                     basis_order_for_supplied_str_eqns, (list, tuple)
                 ) or not all(
@@ -447,15 +452,17 @@ def algebraDataFromMatRep(mat_list):
         )
 
     shape = mat_list[0].shape
-    indexRangeCap = len(mat_list)
-    if not all(m.shape == shape for m in mat_list):
+    if (
+        not len(shape) == 2
+        or not shape[0] == shape[1]
+        or not all(m.shape == shape for m in mat_list)
+    ):
         raise Exception(
             "algorithm for extracting algebra data from matrices expects a list of square matrices of the same size."
         )
-
-    tempVarLabel = "T" + retrieve_public_key()
-    variables = [symbol(f"{tempVarLabel}{idx}") for idx in range(indexRangeCap)]
-    combiMatLoc = sum(var * mat for var, mat in zip(variables, mat_list))
+    mat_list = _extract_basis_by_wedge_vectorized(mat_list, array_shape_checked=True)
+    indexRangeCap = len(mat_list)
+    combiMatLoc, variables = linear_combination(mat_list)
     params = set()
 
     def pairValue(j, k, par):
@@ -467,7 +474,7 @@ def algebraDataFromMatRep(mat_list):
         if len(bracketVals) == 1 and _scalar_is_zero(bracketVals[0]):
             return
 
-        solLoc = list(solve_dgcv(bracketVals, variables))
+        solLoc = solve_dgcv(bracketVals, variables)
         if len(solLoc) > 0:
             soll = solLoc[0]
             coeffs = matrix_dgcv.zeros(indexRangeCap, 1)
@@ -502,7 +509,6 @@ def algebraDataFromTensorRep(tensor_list):
     Create the structure data array from a list of tensor products closed under the `_contraction_product` operator (see dgcv.tensor_field_class documentation).
     """
 
-    tempVarLabel = "T" + create_key()
     dim = len(tensor_list)
     if dim == 0:
         return (
@@ -512,8 +518,8 @@ def algebraDataFromTensorRep(tensor_list):
             tensor_list,
             set(),
         )
-    vars = [symbol(f"{tempVarLabel}{idx}") for idx in range(dim)]
-    gen_elem = sum([vars[j] * tensor_list[j] for j in range(dim)])
+
+    gen_elem, variables = linear_combination(tensor_list)
 
     params = set()
 
@@ -521,11 +527,11 @@ def algebraDataFromTensorRep(tensor_list):
         if k < j:
             return
         product = (tensor_list[j] * tensor_list[k]) - gen_elem
-        solutions = solve_dgcv(product, vars)
+        solutions = solve_dgcv(product, variables, method="linsolve")
         if len(solutions) > 0:
             sol_values = solutions[0]
             coeffs = matrix_dgcv.zeros(dim, 1)
-            for idx, var in enumerate(vars):
+            for idx, var in enumerate(variables):
                 coeff = sol_values.get(var, var)
                 if coeff != 0:
                     par |= get_free_symbols(coeff)

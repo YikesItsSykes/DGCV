@@ -22,6 +22,7 @@ SPDX-License-Identifier: Apache-2.0
 import html as _html
 import numbers
 import re
+import textwrap
 import uuid
 from html import escape as _esc
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -69,147 +70,55 @@ def _coerce_html(x: object, *, html_safe: bool) -> str:
     return s if html_safe else _esc(s)
 
 
-def _scoped_css(
-    scope_id: str,
-    base_css: str,
-    *,
-    column_align: Optional[Dict[int, str]] = None,
-    has_index: bool = False,
-    cell_align: Optional[str] = None,
-    nowrap: bool = False,
-) -> str:
-    lines = []
-    if base_css.strip():
-        lines.append("\n".join(f"#{scope_id} {ln}" for ln in base_css.splitlines()))
-    if cell_align in {"left", "center", "right"}:
-        lines.append(f"#{scope_id} td {{ text-align: {cell_align}; }}")
-        lines.append(f"#{scope_id} th {{ text-align: {cell_align}; }}")
-    if nowrap:
-        lines.append(f"#{scope_id} td {{ white-space: nowrap; }}")
-        lines.append(f"#{scope_id} th {{ white-space: nowrap; }}")
-    if column_align:
-        offset = 1 if has_index else 0
-        for col0, align in column_align.items():
-            if align not in {"left", "center", "right"}:
-                continue
-            nth = col0 + offset  # 1-based index for nth-child
-            lines.append(
-                f"#{scope_id} thead th:nth-child({nth}) {{ text-align: {align}; }}"
-            )
-            lines.append(
-                f"#{scope_id} tbody td:nth-child({nth}) {{ text-align: {align}; }}"
-            )
-    return "<style>\n" + "\n".join(lines) + "\n</style>"
-
-
-def _parse_theme_border(theme_styles: List[CSSRule]):
-    val = None
-    sides = set()
-    for sd in theme_styles:
-        if sd.get("selector") == "table":
-            for k, v in sd.get("props", []):
-                if k in {"border-top", "border-right", "border-bottom", "border-left"}:
-                    sides.add(k)
-                    if not val:
-                        val = v
-                elif k == "border" and not val:
-                    val = v
-    if not val:
-        return ("1px", "solid", "#ccc", sides)
-    parts = val.split()
-    thickness = parts[0] if parts else "1px"
-    color = parts[-1] if parts else "#ccc"
-    return (thickness, "solid", color, sides)
-
-
-def _matrix_extrasLeg(
-    theme_styles: List[CSSRule],
-    *,
-    mirror_header_to_index: bool,
-    dashed_corner: bool,
-    header_underline_exclude_index: bool,
-):
-    t, _, color, side_keys = _parse_theme_border(theme_styles)
-    solid = f"{t} solid {color}"
-    dashed = f"{t} dashed {color}"
-
-    extras: List[CSSRule] = []
-    extras.append({"selector": "table", "props": [("border-collapse", "collapse")]})
-    if not side_keys:
-        extras[-1]["props"].append(("border", solid))
-
-    if header_underline_exclude_index:
-        extras.append(
-            {
-                "selector": "thead th:not(:first-child)",
-                "props": [("border-bottom", solid)],
-            }
-        )
-    else:
-        extras.append({"selector": "thead th", "props": [("border-bottom", solid)]})
-
-    extras.append({"selector": "tbody th", "props": [("border-right", solid)]})
-
-    if mirror_header_to_index:
-        col_head = []
-        for sd in theme_styles:
-            if sd.get("selector") == "th.col_heading.level0":
-                col_head = sd.get("props", [])
-                break
-        row_visual = [(k, v) for (k, v) in col_head if not k.startswith("border")]
-        if row_visual:
-            extras.append({"selector": "th.row_heading", "props": row_visual})
-
-    if dashed_corner:
-        extras.append(
-            {
-                "selector": "thead th:first-child",
-                "props": [("border-right", dashed), ("border-bottom", dashed)],
-            }
-        )
-
-    return extras
-
-
 def _matrix_extras(
     *,
     mirror_header_to_index: bool,
     dashed_corner: bool,
     header_underline_exclude_index: bool,
 ) -> str:
-    solid_border = "1px solid var(--dgcv-border-main, #ccc)"
-    dashed_border = "1px dashed var(--dgcv-border-main, #ccc)"
+    main_border = "var(--dgcv-border-width, 1px) solid var(--dgcv-border-main)"
+    utility_border = "var(--dgcv-border-width, 1px) dashed var(--dgcv-border-alt)"
 
-    css_lines = []
-
-    css_lines.append(".dgcv-data-table { border-collapse: collapse; }")
+    css_lines = [
+        ".dgcv-data-table { border-collapse: collapse; }",
+        textwrap.dedent(
+            """
+            .dgcv-data-table th.row_heading {
+                background-color: var(--dgcv-bg-surface) !important;
+                color: var(--dgcv-text-heading) !important;
+                border-right: """
+            + main_border
+            + """;
+                text-shadow: var(--dgcv-text-shadow, none);
+                font-weight: bold;
+            }
+        """
+        ).strip(),
+    ]
 
     if header_underline_exclude_index:
         css_lines.append(
-            f".dgcv-data-table thead th:not(:first-child) {{ border-bottom: {solid_border}; }}"
+            f".dgcv-data-table thead th:not(:first-child) {{ border-bottom: {main_border}; }}"
         )
     else:
         css_lines.append(
-            f".dgcv-data-table thead th {{ border-bottom: {solid_border}; }}"
+            f".dgcv-data-table thead th {{ border-bottom: {main_border}; }}"
         )
 
-    css_lines.append(f".dgcv-data-table tbody th {{ border-right: {solid_border}; }}")
+    if dashed_corner:
+        css_lines.append(
+            textwrap.dedent(f"""
+                .dgcv-data-table thead th:first-child {{
+                    border-right: {utility_border} !important;
+                    border-bottom: {utility_border} !important;
+                }}
+            """).strip()
+        )
 
     if mirror_header_to_index:
-        css_lines.append("""
-        .dgcv-data-table th.row_heading {
-            background-color: var(--dgcv-bg-primary);
-            color: var(--dgcv-text-heading);
-        }
-        """)
-
-    if dashed_corner:
-        css_lines.append(f"""
-        .dgcv-data-table thead th:first-child {{
-            border-right: {dashed_border};
-            border-bottom: {dashed_border};
-        }}
-        """)
+        css_lines.append(
+            ".dgcv-data-table th.row_heading { color: var(--dgcv-text-heading); font-style: italic; }"
+        )
 
     return "\n".join(css_lines)
 
@@ -229,131 +138,32 @@ def _sanitize_html_str(s: str) -> str:
     return s
 
 
-class panel_viewLeg:
-    def __init__(
-        self,
-        *,
-        header: Union[str, Any],
-        primary_text: Optional[Union[str, Any]] = None,
-        itemized_text: Optional[Union[List[Union[str, Any]], tuple]] = None,
-        footer: Optional[Union[str, Any]] = None,
-        theme_styles: Optional[List["CSSRule"]] = None,
-        extra_styles: Optional[List["CSSRule"]] = None,
-        list_variant: str = "bulleted",
-        use_latex: bool = False,
-        sanitize: bool = True,
-        container_id: Optional[str] = None,
-        ul: Union[int, str] = 10,
-        ur: Union[int, str] = 10,
-        lr: Union[int, str] = 10,
-        ll: Union[int, str] = 10,
-    ):
-        self.header = header
-        self.primary_text = primary_text
-        self.itemized_text = list(itemized_text) if itemized_text else []
-        self.footer = footer
-        self.theme_styles = theme_styles or []
-        self.extra_styles = extra_styles or []
-        self.list_variant = list_variant
-        self.use_latex = use_latex
-        self.sanitize = sanitize
-        self.container_id = container_id or f"dgcv-panel-{uuid.uuid4().hex[:8]}"
-        self.ul = f"{ul}px" if isinstance(ul, numbers.Integral) else str(ul)
-        self.ur = f"{ur}px" if isinstance(ur, numbers.Integral) else str(ur)
-        self.lr = f"{lr}px" if isinstance(lr, numbers.Integral) else str(lr)
-        self.ll = f"{ll}px" if isinstance(ll, numbers.Integral) else str(ll)
-
-    def _coerce_block(self, x) -> str:
-        if x is None:
-            return ""
-        if hasattr(x, "to_html"):
-            s = x.to_html()
-        else:
-            s = _coerce_html(x, html_safe=False)
-        if self.sanitize:
-            s = _sanitize_html_str(s)
-        return s
-
-    def _panel_css(self) -> str:
-        base = styles_to_css(merge_styles(self.theme_styles, self.extra_styles))
-        scoped = _scoped_css(self.container_id, base)
-        return scoped
-
-    def _layout_css(self) -> str:
-        cid = self.container_id
-        r_tl, r_tr, r_br, r_bl = self.ul, self.ur, self.lr, self.ll
-        return f"""
-<style>
-#{cid} .dgcv-panel {{
-  border-radius: {r_tl} {r_tr} {r_br} {r_bl};
-  background-color: var(--bg-surface, transparent);
-  border: 1px solid var(--border-color, #ddd);
-  color: var(--text-title, inherit);
-  overflow: hidden;
-}}
-#{cid} .dgcv-panel-head {{ margin: 0; padding: 0.75rem 1rem; }}
-#{cid} .dgcv-panel-title {{ margin: 0; font-size: 1rem; line-height: 1.3; font-weight: 600; color: var(--text-title, inherit); }}
-#{cid} .dgcv-panel-rule {{ border: 0; height: 1px; background: var(--border-color, #ddd); margin: 0; }}
-#{cid} .dgcv-panel-body {{ padding: 0.75rem 1rem; }}
-#{cid} .dgcv-panel-footer {{ padding: 0.5rem 1rem; background: var(--bg-muted, transparent); border-top: 1px solid var(--border-color, #ddd); }}
-#{cid} .dgcv-panel-list {{ margin: 0.5rem 0 0; padding: 0; }}
-#{cid} .dgcv-panel-list ul, #{cid} .dgcv-panel-list ol {{ margin: 0.25rem 0 0 1.25rem; }}
-#{cid} .dgcv-inline {{ display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; padding: 0; margin-top: 0.5rem; }}
-#{cid} .dgcv-chips {{ display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; padding: 0; margin-top: 0.5rem; }}
-#{cid} .dgcv-chip {{ padding: 0.2rem 0.5rem; border-radius: 999px; background: var(--hover-bg, rgba(0,0,0,0.05)); border: 1px solid var(--border-color, #ddd); font-size: 0.9em; }}
-</style>
-""".strip()
-
-    def _header_html(self) -> str:
-        t = self._coerce_block(self.header)
-        return f'<div class="dgcv-panel-head"><h3 class="dgcv-panel-title">{t}</h3></div><hr class="dgcv-panel-rule"/>'
-
-    def _primary_html(self) -> str:
-        if not self.primary_text:
-            return ""
-        return f'<div class="dgcv-panel-primary">{self._coerce_block(self.primary_text)}</div>'
-
-    def _list_html(self) -> str:
-        if not self.itemized_text:
-            return ""
-        items = [self._coerce_block(it) for it in self.itemized_text]
-        if self.list_variant == "numbered":
-            lis = "".join(f"<li>{i}</li>" for i in items)
-            return f'<div class="dgcv-panel-list"><ol>{lis}</ol></div>'
-        if self.list_variant == "inline":
-            lis = "".join(f"<li>{i}</li>" for i in items)
-            return (
-                f'<div class="dgcv-panel-list"><ul class="dgcv-inline">{lis}</ul></div>'
-            )
-        if self.list_variant == "chips":
-            lis = "".join(f'<li class="dgcv-chip">{i}</li>' for i in items)
-            return (
-                f'<div class="dgcv-panel-list"><ul class="dgcv-chips">{lis}</ul></div>'
-            )
-        lis = "".join(f"<li>{i}</li>" for i in items)
-        return f'<div class="dgcv-panel-list"><ul>{lis}</ul></div>'
-
-    def _footer_html(self) -> str:
-        if not self.footer:
-            return ""
-        return f'<div class="dgcv-panel-footer">{self._coerce_block(self.footer)}</div>'
-
-    def to_html(self, *args, **kwargs) -> str:
-        theme_css = self._panel_css()
-        layout_css = self._layout_css()
-        head = self._header_html()
-        body = f'<div class="dgcv-panel-body">{self._primary_html()}{self._list_html()}</div>'
-        foot = self._footer_html()
-        return f'<div id="{self.container_id}">{layout_css}{theme_css}<aside class="dgcv-panel">{head}{body}{foot}</aside></div>'
-
-    def _repr_html_(self) -> str:
-        return self.to_html()
-
-
 # ------------
 
 
 class TableView:
+    """
+    HTML table builder. Renders a styled data table with optional side panel,
+    caption, footer rows, and responsive layout. Theme is supplied via
+    ``theme_css_vars`` (a ``:root {}`` block from ``get_style()``), which gets
+    scoped to the container ID at render time.
+
+    ``extra_css`` is injected after the core styles and is auto-scoped to the
+    container ID, making it the hook for per-callsite overrides. Typical uses:
+    - column width overrides: ``.dgcv-data-table th:nth-child(n)``
+    - tfoot cell styling: ``.dgcv-data-table tfoot td``
+    - side panel layout: ``.dgcv-side-panel``, ``.dgcv-side-scroll-area``
+    - row heading overrides: ``.dgcv-data-table th.row_heading``
+
+    Note: ``extra_css`` scoping uses a regex that does not support nested
+    ``{}`` blocks (e.g. ``@media`` queries). Keep ``extra_css`` flat.
+
+    ``slim=True`` suppresses all theme and layout CSS, emitting only corner
+    radius vars. Intended for embedding inside a stacking builder that supplies
+    the theme context. Rendering a slim component standalone will produce an
+    unstyled output.
+    """
+
     def __init__(
         self,
         columns: List[str],
@@ -388,6 +198,7 @@ class TableView:
         cell_scroll=False,
         show_headers: bool = True,
         hover_mode: str = "row",
+        slim: bool = False,
     ):
         self.columns = columns
         self.rows = rows
@@ -414,6 +225,10 @@ class TableView:
         )
         self.breakpoint_px = breakpoint_px
         self.container_id = container_id or f"dgcv-view-{uuid.uuid4().hex[:8]}"
+        base_id = container_id or f"dgcv-view-{uuid.uuid4().hex[:8]}"
+        self.container_id = (
+            f"{base_id}-{uuid.uuid4().hex[:8]}" if container_id else base_id
+        )
         self.preface_html = preface_html
         self.ul = f"{ul}px" if isinstance(ul, numbers.Integral) else str(ul)
         self.ur = f"{ur}px" if isinstance(ur, numbers.Integral) else str(ur)
@@ -423,6 +238,7 @@ class TableView:
         self.cell_scroll = cell_scroll
         self.show_headers = show_headers
         self.hover_mode = hover_mode
+        self.slim = slim
 
         if column_align:
             name_to_idx = {name: i for i, name in enumerate(columns)}
@@ -481,7 +297,16 @@ class TableView:
             cols.append('<th scope="col" class="row_heading"></th>')
 
         for c_idx, c in enumerate(self.columns):
-            cols.append(self._render_cell(c, tag="th", col_idx=c_idx + 1))
+            cell_data = c
+            if not isinstance(c, dict):
+                cell_data = {"html": c, "attrs": {"class": "col_heading"}}
+            else:
+                cell_data = c.copy()
+                attrs = cell_data.get("attrs", {}).copy()
+                attrs["class"] = f"col_heading {attrs.get('class', '')}".strip()
+                cell_data["attrs"] = attrs
+
+            cols.append(self._render_cell(cell_data, tag="th", col_idx=c_idx + 1))
 
         return "<thead><tr>" + "".join(cols) + "</tr></thead>"
 
@@ -518,7 +343,7 @@ class TableView:
         if not self.caption:
             return ""
         t = _coerce_html(self.caption, html_safe=False)
-        return f'<div class="dgcv-caption-wrapper"><div class="dgcv-table-caption">{t}</div></div>'
+        return f'<div class="dgcv-table-caption">{t}</div>'
 
     def _panel_html(self) -> Optional[str]:
         if self.secondary_panel_html is None:
@@ -533,17 +358,6 @@ class TableView:
     def _theme_and_layout_css(self) -> str:
         cid = self.container_id
         has_panel = bool(self._panel_html())
-
-        scoped_vars = (
-            self.theme_css_vars.replace(":root", f"#{cid}")
-            if self.theme_css_vars
-            else ""
-        )
-        scoped_extra = (
-            self.extra_css.replace(".dgcv-data-table", f"#{cid} .dgcv-data-table")
-            if self.extra_css
-            else ""
-        )
 
         direction = "row" if self.layout == "row" else "column"
         r_tl, r_tr, r_br, r_bl = self.ul, self.ur, self.ll, self.lr
@@ -565,6 +379,33 @@ class TableView:
         else:
             mq_m_tr, mq_m_br, mq_m_bl = r_tr, r_br, r_bl
             mq_s_tl, mq_s_tr, mq_s_br, mq_s_bl = r_tl, r_tr, r_br, r_bl
+
+        if self.slim:
+            return textwrap.dedent(f"""
+                <style>
+                #{cid} {{
+                    --m-r-tr: {m_tr}; --m-r-br: {m_br}; --m-r-bl: {m_bl};
+                    --s-r-tl: {s_tl}; --s-r-tr: {s_tr}; --s-r-br: {s_br}; --s-r-bl: {s_bl};
+                }}
+                @media (max-width: {int(self.breakpoint_px)}px) {{
+                    #{cid} {{
+                        --m-r-tr: {mq_m_tr}; --m-r-br: {mq_m_br}; --m-r-bl: {mq_m_bl};
+                        --s-r-tl: {mq_s_tl}; --s-r-tr: {mq_s_tr}; --s-r-br: {mq_s_br}; --s-r-bl: {mq_s_bl};
+                    }}
+                }}
+                </style>
+            """).strip()
+
+        scoped_vars = (
+            self.theme_css_vars.replace(":root", f"#{cid}")
+            if self.theme_css_vars
+            else ""
+        )
+        scoped_extra = (
+            _scope_extra_css(self.extra_css, self.container_id)
+            if self.extra_css
+            else ""
+        )
 
         r_tl_eff = "0px" if self.caption else r_tl
         f_br, f_bl = (
@@ -595,142 +436,165 @@ class TableView:
         h_txt = "var(--dgcv-text-hover)"
         h_trans = "var(--dgcv-hover-transform, none)"
         h_speed = "var(--dgcv-hover-transition, transform 0.2s, box-shadow 0.2s, background-color 0.2s)"
-        # h_weight = "var(--dgcv-hover-font-weight, bold)"
 
         if self.hover_mode == "cell":
-            hover_css = f"""
-                    #{cid} .dgcv-data-table tbody td, #{cid} .dgcv-data-table tbody th.row_heading {{ transition: {h_speed}; }}
-                    #{cid} .dgcv-data-table tbody td:hover, #{cid} .dgcv-data-table tbody th.row_heading:hover {{ 
-                        background-color: {h_bg} !important; 
-                        color: {h_txt} !important; 
-                        transform: {h_trans}; 
-                    }}"""
+            hover_css = textwrap.dedent(f"""
+                #{cid} .dgcv-data-table tbody td {{ transition: {h_speed}; }}
+                #{cid} .dgcv-data-table tbody td:hover {{ 
+                    background-color: {h_bg} !important; 
+                    color: {h_txt} !important; 
+                    transform: {h_trans}; 
+                }}""").strip()
         elif self.hover_mode == "row":
-            hover_css = f"""
-                    #{cid} .dgcv-data-table tbody tr {{ transition: {h_speed}; }}
-                    #{cid} .dgcv-data-table tbody tr:hover {{ 
-                        background-color: {h_bg} !important; 
-                        color: {h_txt} !important; 
-                        transform: {h_trans}; 
-                    }}"""
+            hover_css = textwrap.dedent(f"""
+                #{cid} .dgcv-data-table tbody tr {{ transition: {h_speed}; }}
+                #{cid} .dgcv-data-table tbody tr:hover td,
+                #{cid} .dgcv-data-table tbody tr:hover th.row_heading {{ 
+                    background-color: {h_bg} !important; 
+                    color: {h_txt} !important; 
+                    transform: {h_trans}; 
+                }}
+                #{cid} .dgcv-data-table tbody tr:hover th.row_heading {{
+                    background-color: var(--dgcv-bg-surface) !important;
+                    color: var(--dgcv-text-heading) !important;
+                    transform: none !important;
+                }}""").strip()
         else:
             hover_css = ""
 
-        return f"""
-<style>
-{scoped_vars}
-#{cid} {{
-    max-width: 100%;
-    overflow-x: hidden;
-    font-family: var(--dgcv-font-family, inherit);
-    --m-r-tr: {m_tr}; --m-r-br: {m_br}; --m-r-bl: {m_bl};
-    --s-r-tl: {s_tl}; --s-r-tr: {s_tr}; --s-r-br: {s_br}; --s-r-bl: {s_bl};
-}}
-#{cid} .dgcv-flex {{ display: flex; flex-direction: {direction}; gap: {gap}px; align-items: flex-start; }}
-#{cid} .dgcv-main {{ flex: 0 1 auto; max-width: 100%; min-width: 0; display: flex; flex-direction: column; }}
-#{cid} .dgcv-side {{ flex: 0 0 {self.side_width}; max-width: 40%; box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; }}
-#{cid} .dgcv-caption-wrapper {{ display: flex; justify-content: flex-start; width: 100%; margin: 0; padding: 0; }}
-#{cid} .phantom {{
-    visibility: hidden;
-    pointer-events: none;
-    border-color: transparent !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    margin-bottom: calc(2*var(--dgcv-border-width, 1px));
-    z-index: -1;
-}}
-#{cid} .dgcv-table-caption {{ 
-    background: var(--dgcv-table-background, var(--dgcv-bg-surface)); 
-    color: var(--dgcv-text-heading); 
-    font-weight: bold; 
-    padding: 8px 20px; 
-    border-top-left-radius: var(--dgcv-border-radius, 12px); 
-    border-top-right-radius: var(--dgcv-border-radius, 12px); 
-    border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ccc); 
-    border-bottom: none; 
-    box-sizing: border-box; 
-    text-align: left; 
-    width: fit-content; 
-    max-width: 100%; 
-    margin: 0;
-    text-shadow: var(--dgcv-text-shadow, none);
-}}
-#{cid} .dgcv-data-table {{ 
-    {scroll_css} 
-    background: var(--dgcv-table-background, var(--dgcv-bg-primary)); 
-    border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ccc); 
-    box-shadow: var(--dgcv-table-shadow, none); 
-    border-radius: {r_tl_eff} var(--m-r-tr) var(--m-r-br) var(--m-r-bl); 
-    overflow: hidden; 
-}}
-#{cid} .dgcv-table-wrap {{ {wrap_css} }}
-#{cid} .dgcv-side-panel {{ 
-    border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ccc); 
-    border-radius: var(--s-r-tl) var(--s-r-tr) var(--s-r-br) var(--s-r-bl);
-    color: var(--dgcv-text_main);
-    overflow: hidden; 
-    background: var(--dgcv-bg-primary, var(--dgcv-table-background)); 
-}}
-{cell_scroll_css}
-#{cid} .dgcv-data-table thead th, #{cid} .dgcv-data-table th.col_heading {{ 
-    background-color: var(--dgcv-header-bg-override, var(--dgcv-bg-surface)); 
-    color: var(--dgcv-text-heading); 
-    border-bottom: 2px solid var(--dgcv-border-main); 
-    padding: 8px 12px; 
-    text-shadow: var(--dgcv-text-shadow, none);
-}}
-#{cid} .dgcv-data-table th.row_heading {{ 
-    background-color: var(--dgcv-row-bg-override, var(--dgcv-bg-surface)); 
-    color: var(--dgcv-text-heading); 
-    padding: 8px 12px; 
-}}
-#{cid} .dgcv-data-table tbody tr {{ 
-    background-color: var(--dgcv-row-bg-override, var(--dgcv-bg-primary)); 
-    color: var(--dgcv-text-main); 
-}}
-#{cid} .dgcv-data-table tbody tr:nth-child(even) {{ 
-    background-color: var(--dgcv-row-bg-override, var(--dgcv-bg-alt)); 
-    color: var(--dgcv-text-alt); 
-}}
-#{cid} .dgcv-data-table tbody td {{ 
-    padding: 8px 12px; 
-    border-bottom: 1px solid var(--dgcv-border-main); 
-}}
-{hover_css}
-#{cid} .dgcv-data-table {tl_left}  {{ border-top-left-radius: {r_tl_eff}; }}
-#{cid} .dgcv-data-table {tl_right} {{ border-top-right-radius: var(--m-r-tr); }}
-#{cid} .dgcv-data-table tfoot tr:last-child td:first-child {{ border-bottom-left-radius: var(--m-r-bl); }}
-#{cid} .dgcv-data-table tbody tr:last-child td:first-child, #{cid} .dgcv-data-table tbody tr:last-child th.row_heading {{ border-bottom-left-radius: {f_bl}; }}
-#{cid} .dgcv-data-table tfoot tr:last-child td:last-child  {{ border-bottom-right-radius: var(--m-r-br); }}
-#{cid} .dgcv-data-table tbody tr:last-child td:last-child  {{ border-bottom-right-radius: {f_br}; }}
-#{cid} *::-webkit-scrollbar {{ height: 8px; width: 8px; }}
-#{cid} *::-webkit-scrollbar-track {{ background: transparent; }}
-#{cid} *::-webkit-scrollbar-thumb {{ 
-    background: var(--dgcv-bg-alt, #ccc); 
-    border-radius: 10px; 
-    border: 2px solid transparent; 
-    background-clip: content-box; 
-}}
-#{cid} *::-webkit-scrollbar-thumb:hover {{ 
-    background-color: var(--dgcv-border-main, #aaa); 
-}}
-@media (max-width: {int(self.breakpoint_px)}px) {{
-    #{cid} .dgcv-flex {{ flex-direction: column; align-items: flex-start; }}
-    #{cid} .dgcv-main, #{cid} .dgcv-side {{ max-width: 100%; width: 100%; }}
-    #{cid} {{
-        --m-r-tr: {mq_m_tr};
-        --m-r-br: {mq_m_br};
-        --m-r-bl: {mq_m_bl};
-        --s-r-tl: {mq_s_tl};
-        --s-r-tr: {mq_s_tr};
-        --s-r-br: {mq_s_br};
-        --s-r-bl: {mq_s_bl};
-    }}
-    #{cid} .phantom {{ display: none; }}
-}}
-{scoped_extra}
-</style>
-""".strip()
+        if has_panel and direction == "row":
+            flex_css = f"""display: grid; grid-template-columns: 1fr {self.side_width}; grid-template-rows: auto 1fr; column-gap: {gap}px; align-items: start;"""
+            main_css = """display: grid; grid-row: 1 / -1; grid-column: 1; grid-template-rows: subgrid;"""
+            side_css = """grid-row: 2; grid-column: 2; box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; max-width: 100%;"""
+        else:
+            flex_css = f"""display: flex; flex-direction: {direction}; gap: {gap}px; align-items: flex-start;"""
+            main_css = """flex: 0 1 auto; max-width: 100%; min-width: 0; display: flex; flex-direction: column;"""
+            side_css = f"""flex: 0 0 {self.side_width}; max-width: 40%; box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch;"""
+
+        or_m_tr = "var(--dgcv-border-radius, var(--m-r-tr))"
+        or_m_br = "var(--dgcv-border-radius, var(--m-r-br))"
+        or_m_bl = "var(--dgcv-border-radius, var(--m-r-bl))"
+        or_s_tl = "var(--dgcv-border-radius, var(--s-r-tl))"
+        or_s_tr = "var(--dgcv-border-radius, var(--s-r-tr))"
+        or_s_br = "var(--dgcv-border-radius, var(--s-r-br))"
+        or_s_bl = "var(--dgcv-border-radius, var(--s-r-bl))"
+        or_tl_eff = _outer_radius(r_tl_eff)
+        or_f_br = _outer_radius(f_br)
+        or_f_bl = _outer_radius(f_bl)
+
+        return textwrap.dedent(f"""
+            <style>
+            {scoped_vars}
+            #{cid} {{
+                max-width: 100%;
+                overflow-x: hidden;
+                font-family: var(--dgcv-font-family, inherit);
+                --m-r-tr: {m_tr}; --m-r-br: {m_br}; --m-r-bl: {m_bl};
+                --s-r-tl: {s_tl}; --s-r-tr: {s_tr}; --s-r-br: {s_br}; --s-r-bl: {s_bl};
+            }}
+            #{cid} .dgcv-flex {{ {flex_css} }}
+            #{cid} .dgcv-main {{ {main_css} }}
+            #{cid} .dgcv-side {{ {side_css} }}
+            #{cid} .dgcv-caption-wrapper {{ display: flex; justify-content: flex-start; align-items: flex-end; width: 100%; margin: 0; padding: 0; }}
+            #{cid} .dgcv-table-caption {{ 
+                background: var(--dgcv-special-background, var(--dgcv-bg-surface)); 
+                color: var(--dgcv-special-text,var(--dgcv-text-heading));
+                font-weight: bold; 
+                padding: 8px 20px; 
+                border-top-left-radius: var(--dgcv-border-radius, 12px); 
+                border-top-right-radius: var(--dgcv-border-radius, 12px); 
+                border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main); 
+                border-bottom: none; 
+                box-sizing: border-box; 
+                text-align: left; 
+                width: fit-content; 
+                max-width: 100%; 
+                margin: 0;
+                text-shadow: var(--dgcv-text-shadow, none);
+            }}
+            #{cid} .dgcv-data-table {{ 
+                {scroll_css} 
+                background: var(--dgcv-special-background, var(--dgcv-bg-surface)); 
+                color: var(--dgcv-special-text,var(--dgcv-text-heading));
+                border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main); 
+                border-image: var(--dgcv-border-image, none);
+                box-shadow: var(--dgcv-table-shadow, none); 
+                border-radius: {or_tl_eff} {or_m_tr} {or_m_br} {or_m_bl}; 
+                overflow: hidden; 
+            }}
+            #{cid} .dgcv-table-wrap {{ {wrap_css} }}
+            #{cid} .dgcv-side-panel {{ 
+                border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main); 
+                border-radius: {or_s_tl} {or_s_tr} {or_s_br} {or_s_bl};
+                color: var(--dgcv-special-text,var(--dgcv-text-heading));
+                overflow: hidden; 
+                background: var(--dgcv-special-background,var(--dgcv-bg-surface)); 
+            }}
+            {cell_scroll_css}
+            #{cid} .dgcv-data-table thead th, #{cid} .dgcv-data-table th.col_heading {{ 
+                background-color: var(--dgcv-bg-surface); 
+                color: var(--dgcv-text-heading); 
+                border-bottom: 2px solid var(--dgcv-border-main); 
+                padding: 8px 12px; 
+                text-shadow: var(--dgcv-text-shadow, none);
+            }}
+            #{cid} .dgcv-data-table th.row_heading {{ 
+                background-color: var(--dgcv-bg-surface) !important; 
+                color: var(--dgcv-text-heading) !important; 
+                padding: 8px 12px; 
+                font-weight: bold;
+                text-shadow: var(--dgcv-text-shadow, none);
+            }}
+            #{cid} .dgcv-data-table tbody td, 
+            #{cid} .dgcv-data-table tbody tr:nth-child(odd) th.row_heading {{ 
+                background-color: var(--dgcv-bg-primary);
+                color: var(--dgcv-text-main);
+            }}
+            #{cid} .dgcv-data-table tbody tr:nth-child(even) td,
+            #{cid} .dgcv-data-table tbody tr:nth-child(even) th.row_heading {{ 
+                background-color: var(--dgcv-bg-alt);
+                color: var(--dgcv-text-alt);
+            }}
+            #{cid} .dgcv-data-table tbody td {{ 
+                padding: 8px 12px; 
+                border-bottom: 1px solid var(--dgcv-border-alt); 
+            }}
+            {hover_css}
+            #{cid} .dgcv-data-table {tl_left}  {{ border-top-left-radius: {or_tl_eff}; }}
+            #{cid} .dgcv-data-table {tl_right} {{ border-top-right-radius: {or_m_tr}; }}
+            #{cid} .dgcv-data-table tfoot tr:last-child td:first-child {{ border-bottom-left-radius: {or_m_bl}; }}
+            #{cid} .dgcv-data-table tbody tr:last-child td:first-child, #{cid} .dgcv-data-table tbody tr:last-child th.row_heading {{ border-bottom-left-radius: {or_f_bl}; }}
+            #{cid} .dgcv-data-table tfoot tr:last-child td:last-child  {{ border-bottom-right-radius: {or_m_br}; }}
+            #{cid} .dgcv-data-table tbody tr:last-child td:last-child  {{ border-bottom-right-radius: {or_f_br}; }}
+            #{cid} *::-webkit-scrollbar {{ height: 8px; width: 8px; }}
+            #{cid} *::-webkit-scrollbar-track {{ background: transparent; }}
+            #{cid} *::-webkit-scrollbar-thumb {{ 
+                background: var(--dgcv-bg-alt); 
+                border-radius: 10px; 
+                border: 2px solid transparent; 
+                background-clip: content-box; 
+            }}
+            #{cid} *::-webkit-scrollbar-thumb:hover {{ 
+                background-color: var(--dgcv-border-main); 
+            }}
+            @media (max-width: {int(self.breakpoint_px)}px) {{
+                #{cid} .dgcv-flex {{ display: flex; flex-direction: column; align-items: flex-start; row-gap: {gap}px; }}
+                #{cid} .dgcv-main, #{cid} .dgcv-side {{ max-width: 100%; width: 100%; }}
+                #{cid} .dgcv-main {{ display: flex; flex-direction: column; grid-row: unset; grid-column: unset; }}
+                #{cid} .dgcv-side {{ grid-row: unset; grid-column: unset; }}
+                #{cid} {{
+                    --m-r-tr: {mq_m_tr};
+                    --m-r-br: {mq_m_br};
+                    --m-r-bl: {mq_m_bl};
+                    --s-r-tl: {mq_s_tl};
+                    --s-r-tr: {mq_s_tr};
+                    --s-r-br: {mq_s_br};
+                    --s-r-bl: {mq_s_bl};
+                }}
+            }}
+            {scoped_extra}
+            </style>
+        """).strip()
 
     def _table_html_only(self) -> str:
         thead = self._thead_html()
@@ -752,14 +616,11 @@ class TableView:
         css_block = self._theme_and_layout_css()
 
         if not panel:
-            return f'<div id="{self.container_id}">{css_block}{preface}<div class="dgcv-table-wrap">{cap_html}{table_html}</div></div>'
-
-        side_spacer = ""
-        if self.caption:
-            t = _coerce_html(self.caption, html_safe=False)
-            side_spacer = (
-                f'<div class="dgcv-caption-wrapper phantom">'
-                f'<div class="dgcv-table-caption">{t}</div>'
+            return (
+                f'<div id="{self.container_id}">'
+                f"{css_block}{preface}"
+                f'<div class="dgcv-caption-wrapper">{cap_html}</div>'
+                f'<div class="dgcv-table-wrap">{table_html}</div>'
                 f"</div>"
             )
 
@@ -767,8 +628,11 @@ class TableView:
             f'<div id="{self.container_id}">'
             f"{css_block}{preface}"
             f'<div class="dgcv-flex">'
-            f'  <div class="dgcv-main"><div class="dgcv-table-wrap">{cap_html}{table_html}</div></div>'
-            f'  <aside class="dgcv-side">{side_spacer}{panel}</aside>'
+            f'  <div class="dgcv-main">'
+            f'    <div class="dgcv-caption-wrapper">{cap_html}</div>'
+            f'    <div class="dgcv-table-wrap">{table_html}</div>'
+            f"  </div>"
+            f'  <aside class="dgcv-side">{panel}</aside>'
             f"</div></div>"
         )
 
@@ -825,12 +689,29 @@ class TableView:
 
 
 class panel_view:
+    """
+    HTML panel builder. Renders a styled card with a header, optional body
+    text, itemized list, and footer. Theme is supplied via ``theme_css_vars``
+    (a ``:root {}`` block from ``get_style()``), scoped to the container ID.
+
+    ``extra_css`` is auto-scoped to the container ID. Typical uses:
+    - panel body layout: ``.dgcv-panel-body``
+    - title sizing: ``.dgcv-panel-title``
+    - chip/inline list styling: ``.dgcv-chip``, ``.dgcv-inline``
+    - footer overrides: ``.dgcv-panel-footer``
+
+    Note: ``extra_css`` scoping does not support nested ``{}`` blocks.
+
+    ``slim=True`` emits only corner radius CSS, for use inside stacking
+    builders. Standalone rendering of a slim panel will be unstyled.
+    """
+
     def __init__(
         self,
         *,
         header: Union[str, Any],
         primary_text: Optional[Union[str, Any]] = None,
-        itemized_text: Optional[Union[List[Union[str, Any]], tuple]] = None,
+        itemized_text: Optional[Union[List[Union[str, Any]], Tuple]] = None,
         footer: Optional[Union[str, Any]] = None,
         theme_css_vars: str = "",
         extra_css: str = "",
@@ -842,6 +723,7 @@ class panel_view:
         ur: Union[int, str] = 10,
         lr: Union[int, str] = 10,
         ll: Union[int, str] = 10,
+        slim: bool = False,
     ):
         self.header = header
         self.primary_text = primary_text
@@ -853,10 +735,15 @@ class panel_view:
         self.use_latex = use_latex
         self.sanitize = sanitize
         self.container_id = container_id or f"dgcv-panel-{uuid.uuid4().hex[:8]}"
+        base_id = container_id or f"dgcv-panel-{uuid.uuid4().hex[:8]}"
+        self.container_id = (
+            f"{base_id}-{uuid.uuid4().hex[:8]}" if container_id else base_id
+        )
         self.ul = f"{ul}px" if isinstance(ul, numbers.Integral) else str(ul)
         self.ur = f"{ur}px" if isinstance(ur, numbers.Integral) else str(ur)
         self.lr = f"{lr}px" if isinstance(lr, numbers.Integral) else str(lr)
         self.ll = f"{ll}px" if isinstance(ll, numbers.Integral) else str(ll)
+        self.slim = slim
 
     def _coerce_block(self, x) -> str:
         if x is None:
@@ -871,7 +758,25 @@ class panel_view:
 
     def _layout_css(self) -> str:
         cid = self.container_id
+
         r_tl, r_tr, r_br, r_bl = self.ul, self.ur, self.lr, self.ll
+
+        if self.slim:
+            return textwrap.dedent(f"""
+                <style>
+                #{cid} .dgcv-panel {{
+                        border-radius: {_outer_radius(r_tl)} {_outer_radius(r_tr)} {_outer_radius(r_br)} {_outer_radius(r_bl)};
+                }}
+                #{cid} .dgcv-panel-head {{
+                    border-top-left-radius: {_outer_radius(f"calc({r_tl} - var(--dgcv-border-width, 1px))")};
+                    border-top-right-radius: {_outer_radius(f"calc({r_tr} - var(--dgcv-border-width, 1px))")};
+                }}
+                #{cid} .dgcv-panel-footer {{
+                    border-bottom-left-radius: {_outer_radius(f"calc({r_bl} - var(--dgcv-border-width, 1px))")};
+                    border-bottom-right-radius: {_outer_radius(f"calc({r_br} - var(--dgcv-border-width, 1px))")};
+                }}
+                </style>
+            """).strip()
 
         scoped_vars = (
             self.theme_css_vars.replace(":root", f"#{cid}")
@@ -879,45 +784,90 @@ class panel_view:
             else ""
         )
         scoped_extra = (
-            self.extra_css.replace(".dgcv-panel", f"#{cid} .dgcv-panel")
+            _scope_extra_css(self.extra_css, self.container_id)
             if self.extra_css
             else ""
         )
 
-        return f"""
-<style>
-{scoped_vars}
-
-#{cid} .dgcv-panel {{
-  border-radius: {r_tl} {r_tr} {r_br} {r_bl};
-  background: var(--dgcv-table-background, var(--dgcv-bg-surface, transparent));
-  box-shadow: var(--dgcv-table-shadow, none);
-  border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ddd);
-  color: var(--dgcv-text-main, inherit);
-  font-family: var(--dgcv-font-family, inherit);
-  overflow: hidden;
-}}
-#{cid} .dgcv-panel-head {{ margin: 0; padding: 0.75rem 1rem; }}
-#{cid} .dgcv-panel-title {{ margin: 0; font-size: 1rem; line-height: 1.3; font-weight: 600; color: var(--dgcv-text-heading, inherit); }}
-#{cid} .dgcv-panel-rule {{ border: 0; height: 1px; background: var(--dgcv-border-main, #ddd); margin: 0; }}
-#{cid} .dgcv-panel-body {{ padding: 0.75rem 1rem; }}
-#{cid} .dgcv-panel-footer {{ padding: 0.5rem 1rem; background: var(--dgcv-bg-alt, transparent); border-top: 1px solid var(--dgcv-border-main, #ddd); }}
-#{cid} .dgcv-panel-list {{ margin: 0.5rem 0 0; padding: 0; }}
-#{cid} .dgcv-panel-list ul, #{cid} .dgcv-panel-list ol {{ margin: 0.25rem 0 0 1.25rem; }}
-#{cid} .dgcv-inline {{ display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; padding: 0; margin-top: 0.5rem; }}
-#{cid} .dgcv-chips {{ display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; padding: 0; margin-top: 0.5rem; }}
-#{cid} .dgcv-chip {{ 
-  padding: 0.2rem 0.5rem; 
-  border-radius: 999px; 
-  background: var(--dgcv-bg-hover, rgba(0,0,0,0.05)); 
-  border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ddd); 
-  color: var(--dgcv-text-hover, inherit);
-  font-size: 0.9em; 
-}}
-
-{scoped_extra}
-</style>
-        """.strip()
+        return textwrap.dedent(f"""
+                <style>
+                {scoped_vars}
+                #{cid} .dgcv-panel {{
+                    border-radius: {r_tl} {r_tr} {r_br} {r_bl};
+                    background: var(--dgcv-special-background, var(--dgcv-bg-surface));
+                    box-shadow: var(--dgcv-table-shadow, none);
+                    border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main);
+                    border-image: var(--dgcv-border-image, none);
+                    color: var(--dgcv-special-text,var(--dgcv-text-heading));
+                    font-family: var(--dgcv-font-family, inherit);
+                    overflow: hidden;
+                }}
+                #{cid} .dgcv-panel-head {{ 
+                    margin: 0; 
+                    padding: 0.75rem 1rem; 
+                    background: var(--dgcv-special-background, var(--dgcv-bg-surface));
+                    border-top-left-radius: calc({r_tl} - var(--dgcv-border-width, 1px));
+                    border-top-right-radius: calc({r_tr} - var(--dgcv-border-width, 1px));
+                }}
+                #{cid} .dgcv-panel-title {{ 
+                    margin: 0; 
+                    font-size: 1rem; 
+                    line-height: 1.3; 
+                    font-weight: 600; 
+                    color: var(--dgcv-special-text,var(--dgcv-text-heading));
+                    text-shadow: var(--dgcv-text-shadow, none);
+                }}
+                #{cid} .dgcv-panel-rule {{ 
+                    border: 0; 
+                    height: 2px; 
+                    background: var(--dgcv-border-main); 
+                    margin: 0; 
+                }}
+                #{cid} .dgcv-panel-body {{ 
+                    padding: 0.75rem 1rem; 
+                }}
+                #{cid} .dgcv-panel-footer {{ 
+                    padding: 0.5rem 1rem; 
+                    background: var(--dgcv-bg-alt); 
+                    color: var(--dgcv-text-alt);
+                    border-top: 1px solid var(--dgcv-border-alt);
+                    border-bottom-left-radius: calc({r_bl} - var(--dgcv-border-width, 1px));
+                    border-bottom-right-radius: calc({r_br} - var(--dgcv-border-width, 1px));
+                }}
+                #{cid} .dgcv-panel-list {{ 
+                    margin: 0.5rem 0 0; 
+                    padding: 0; 
+                }}
+                #{cid} .dgcv-panel-list ul, #{cid} .dgcv-panel-list ol {{ 
+                    margin: 0.25rem 0 0 1.25rem; 
+                }}
+                #{cid} .dgcv-inline {{ 
+                    display: flex; 
+                    flex-wrap: wrap; 
+                    gap: 0.5rem; 
+                    list-style: none; 
+                    padding: 0; 
+                    margin-top: 0.5rem; 
+                }}
+                #{cid} .dgcv-chips {{ 
+                    display: flex; 
+                    flex-wrap: wrap; 
+                    gap: 0.4rem; 
+                    list-style: none; 
+                    padding: 0; 
+                    margin-top: 0.5rem; 
+                }}
+                #{cid} .dgcv-chip {{ 
+                    padding: 0.2rem 0.5rem; 
+                    border-radius: 999px; 
+                    background: var(--dgcv-bg-hover); 
+                    border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-alt); 
+                    color: var(--dgcv-text-hover);
+                    font-size: 0.9em; 
+                }}
+                {scoped_extra}
+                </style>
+            """).strip()
 
     def _header_html(self) -> str:
         t = self._coerce_block(self.header)
@@ -976,6 +926,7 @@ def build_plain_table(
     caption: str = "",
     theme_css_vars: str = "",
     extra_css: str = "",
+    slim: bool = False,
     **kwargs,
 ) -> TableView:
     return TableView(
@@ -985,6 +936,7 @@ def build_plain_table(
         caption=caption,
         theme_css_vars=theme_css_vars,
         extra_css=extra_css,
+        slim=slim,
         **kwargs,
     )
 
@@ -1000,9 +952,9 @@ def build_matrix_table(
     mirror_header_to_index: bool = True,
     dashed_corner: bool = True,
     header_underline_exclude_index: bool = True,
+    slim: bool = False,
     **kwargs,
 ) -> TableView:
-
     matrix_specific_css = _matrix_extras(
         mirror_header_to_index=mirror_header_to_index,
         dashed_corner=dashed_corner,
@@ -1018,5 +970,52 @@ def build_matrix_table(
         caption=caption,
         theme_css_vars=theme_css_vars,
         extra_css=combined_extra_css,
+        slim=slim,
         **kwargs,
     )
+
+
+def _scope_extra_css(css: str, cid: str) -> str:
+    result = []
+    i = 0
+    css = css.strip()
+
+    while i < len(css):
+        while i < len(css) and css[i].isspace():
+            i += 1
+        if i >= len(css):
+            break
+
+        if css[i] == "@":
+            j = css.index("{", i)
+            at_header = css[i:j].strip()
+            i = j + 1
+            depth = 1
+            body_start = i
+            while i < len(css) and depth > 0:
+                if css[i] == "{":
+                    depth += 1
+                elif css[i] == "}":
+                    depth -= 1
+                i += 1
+            body = css[body_start : i - 1].strip()
+            scoped_body = _scope_extra_css(body, cid)
+            result.append(f"{at_header} {{\n{scoped_body}\n}}")
+
+        else:
+            j = css.index("{", i)
+            selector = css[i:j].strip()
+            i = j + 1
+            k = css.index("}", i)
+            declarations = css[i:k].strip()
+            i = k + 1
+            scoped = ", ".join(f"#{cid} {s.strip()}" for s in selector.split(","))
+            result.append(f"{scoped} {{\n    {declarations}\n}}")
+
+    return "\n".join(result)
+
+
+def _outer_radius(r: str) -> str:
+    if r == "0px" or r == "0":
+        return r
+    return f"var(--dgcv-border-radius, {r})"

@@ -209,31 +209,59 @@ def tensor_VS_printer(tp) -> str:
     return out
 
 
+def _coeff_latex(scalar, bypass=None) -> str:
+    if _scalar_is_one(scalar):
+        return "" if bypass != "" else "1"
+    if _scalar_is_minus_one(scalar):
+        return "-" if bypass != "" else "-1"
+    s = _scalar_latex_string(scalar)
+    if coeff_needs_parens_latex(s):
+        return rf"\left({s}\right)"
+    return s
+
+
+def _pwrap_for_dual(base: str) -> str:
+    # only for things like x^2, so x^2^* becomes (x^2)^*
+    # intentionally minimal: basis labels are close to atomic
+    if "^" in base and not base.rstrip().endswith(")"):
+        return rf"\left({base}\right)"
+    return base
+
+
+def tensor_latex_alias(alias) -> str:
+    terms, primary = alias
+    joiner = _shape_joiner("general", "latex")
+    dual_latex = _dual_marker("latex")
+    formatted_terms: list[str] = []
+    for vec, scalar in terms.items():
+        basis_elements = [
+            _process_var_label(vec[1]),
+            rf"{_pwrap_for_dual(_process_var_label(vec[0]))}^{dual_latex}",
+        ]
+        basis = joiner.join(basis_elements)
+
+        c = _coeff_latex(scalar, basis)
+        if c == "":
+            formatted_terms.append(basis)
+        elif c == "-":
+            formatted_terms.append(rf"- {basis}")
+        else:
+            formatted_terms.append(rf"{c} {basis}")
+    out = formatted_terms[0] if formatted_terms else "0"
+    for t in formatted_terms[1:]:
+        out += t if t.startswith("-") else f" + {t}"
+    out = f"{_process_var_label(primary)} = {out}"
+    return out
+
+
 def tensor_latex_helper(tp) -> str:
     terms = tp.coeff_dict
     joiner = _shape_joiner(getattr(tp, "shape", "general"), "latex")
     dual_latex = _dual_marker("latex")
 
-    def coeff_latex(scalar, bypass=None) -> str:
-        if _scalar_is_one(scalar):
-            return "" if bypass != "" else "1"
-        if _scalar_is_minus_one(scalar):
-            return "-" if bypass != "" else "-1"
-        s = _scalar_latex_string(scalar)
-        if coeff_needs_parens_latex(s):
-            return rf"\left({s}\right)"
-        return s
-
     def labler(idx, vsidx) -> str:
         vsl = from_vsr(vsidx)
         return vsl.basis[idx]._repr_latex_(raw=True)
-
-    def _pwrap_for_dual(base: str) -> str:
-        # only for things like x^2, so x^2^* becomes (x^2)^*
-        # intentionally minimal: basis labels are close to atomic
-        if "^" in base and not base.rstrip().endswith(")"):
-            return rf"\left({base}\right)"
-        return base
 
     formatted_terms: list[str] = []
     for vec, scalar in terms.items():
@@ -252,7 +280,7 @@ def tensor_latex_helper(tp) -> str:
         ]
         basis = joiner.join(basis_elements)
 
-        c = coeff_latex(scalar, basis)
+        c = _coeff_latex(scalar, basis)
         if c == "":
             formatted_terms.append(basis)
         elif c == "-":

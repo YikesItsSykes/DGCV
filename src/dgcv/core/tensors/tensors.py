@@ -53,6 +53,7 @@ from ..._aux.printing.printing import (
     lincomb_latex,
     lincomb_plain,
     space_display,
+    tensor_latex_alias,
     tensor_latex_helper,
     tensor_VS_printer,
 )
@@ -711,6 +712,7 @@ class tensorProduct:
         shape: List[str] = None,
         _process_shape_with_accumulation=True,
         _amb_prom=False,
+        _hom_id=None,
     ):
         if not isinstance(coeff_dict, dict):
             raise ValueError("Coefficient dictionary must be a dictionary.")
@@ -768,7 +770,7 @@ class tensorProduct:
         self.vector_spaces = vector_spaces
         self.vector_space = (
             from_vsr(vector_spaces[0]) if len(vector_spaces) > 0 else from_vsr(0)
-        )  ### depricate soon
+        )  ### deprecate soon
         self._vs_spring = spring.keys()
         self._unpromoted_spring = {}
         if replacements:
@@ -787,6 +789,12 @@ class tensorProduct:
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "tensorProduct"
         self._terms = [self] if len(self.coeff_dict) == 1 else None
+        if _hom_id:
+            self._properties = {
+                "_hom_id": _hom_id
+            }  # _hom_id format: [{source_label,{y:x for x,y in zip(coeffs,target_labels)}}, label]
+        else:
+            self._properties = {}
 
     @staticmethod
     def _process_coeffs_dict(
@@ -1178,6 +1186,12 @@ class tensorProduct:
         """
         Defines the LaTeX representation for SymPy's latex() function.
         """
+        if kwargs.get("alias", False) and self._properties.get("_hom_id", False):
+            return (
+                tensor_latex_alias(self._properties["_hom_id"])
+                if raw
+                else f"$\\displaystyle {tensor_latex_alias(self._properties['_hom_id'])}$"
+            )
         return (
             tensor_latex_helper(self)
             if raw
@@ -1185,7 +1199,7 @@ class tensorProduct:
         )
 
     def _repr_latex_(self, raw=False, **kwargs):
-        return self._latex(raw=raw)
+        return self._latex(raw=raw, **kwargs)
 
     def _sympystr(self, printer):
         return self.__repr__()

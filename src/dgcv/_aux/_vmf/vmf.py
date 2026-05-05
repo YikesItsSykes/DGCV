@@ -33,6 +33,7 @@ SPDX-License-Identifier: Apache-2.0
 # -----------------------------------------------------------------------------
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable, Sequence
 
 from .._backends._display_engine import is_rich_displaying_available
@@ -792,7 +793,12 @@ def variableSummary(*args, **kwargs):
 
 
 def vmf_summary(
-    style=None, use_latex=None, complete_report=None, *, plain_text: bool = False
+    theme=None,
+    use_latex=None,
+    complete_report=None,
+    *,
+    plain_text: bool = False,
+    **kwargs,  # supporting the old style kwarg
 ):
     if not is_rich_displaying_available():
         plain_text = True
@@ -812,8 +818,10 @@ def vmf_summary(
         print(out if out else "VMF empty")
         return
 
-    if style is None:
-        style = get_dgcv_settings_registry()["theme"]
+    if theme is None:
+        theme = kwargs.get("style", None) or get_dgcv_settings_registry().get(
+            "theme", "dark"
+        )
     if use_latex is None:
         use_latex = get_dgcv_settings_registry()["use_latex"]
 
@@ -840,44 +848,102 @@ def vmf_summary(
         print("There are no objects currently registered in the dgcv VMF.")
         return
 
-    container_id = "dgcv-vmf-summary"
+    container_id = f"dgcv-vmf-summary-{uuid.uuid4().hex[:8]}"
+    theme_vars, theme_data = get_style(theme, return_theme_data=True)
+    scoped_theme = theme_vars.replace(":root", f"#{container_id}")
+    border_radius = int(
+        theme_data.custom_css_vars.get("--dgcv-border-radius", "12px").replace("px", "")
+    )
+    scoped_theme = theme_vars.replace(":root", f"#{container_id}")
+
     html_parts = []
     total = len(builders)
 
     for i, builder in enumerate(builders):
         is_first = i == 0
         is_last = i == total - 1
-
+        r = border_radius
         if total == 1:
-            corner_kwargs = {"ul": 12, "ur": 12, "ll": 12, "lr": 12}
+            corner_kwargs = {"ul": r, "ur": r, "ll": r, "lr": r}
         elif is_first:
-            corner_kwargs = {"ul": 12, "ur": 12, "ll": 0, "lr": 0}
+            corner_kwargs = {"ul": r, "ur": r, "ll": 0, "lr": 0}
         elif is_last:
-            corner_kwargs = {"ul": 0, "ur": 0, "ll": 12, "lr": 12}
+            corner_kwargs = {"ul": 0, "ur": 0, "ll": r, "lr": r}
         else:
             corner_kwargs = {"ul": 0, "ur": 0, "ll": 0, "lr": 0}
-
-        view = builder(style=style, use_latex=use_latex, **corner_kwargs)
+        view = builder(style=theme, use_latex=use_latex, slim=True, **corner_kwargs)
         html_parts.append(f'<div class="section">{view.to_html()}</div>')
 
     combined_html = f"""
 <div id="{container_id}">
   <style>
-    #{container_id} .stack {{
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      align-items: stretch;
-      width: 100%;
-      margin: 0;
+    {scoped_theme}
+
+    #{container_id} .stack {{ display: flex; flex-direction: column; gap: 16px; align-items: stretch; width: 100%; margin: 0; }}
+    #{container_id} .section {{ width: 100%; }}
+
+    #{container_id} .dgcv-table-wrap {{ overflow-x: auto; max-width: 100%;}}
+    #{container_id} .dgcv-caption-wrapper {{ display: flex; justify-content: flex-start; width: 100%; margin: 0; padding: 0; }}
+
+    #{container_id} .dgcv-table-caption {{ 
+        background: var(--dgcv-special-background, var(--dgcv-bg-surface));
+        color: var(--dgcv-special-text,var(--dgcv-text-heading)); 
+        font-weight: bold; 
+        padding: 8px 20px; 
+        border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main); 
+        border-bottom: none; 
+        box-sizing: border-box; 
+        text-align: left; 
+        width: fit-content; 
+        margin: 0;
+        text-shadow: var(--dgcv-text-shadow, none);
+        border-top-left-radius: 12px; 
+        border-top-right-radius: 12px;
     }}
-    #{container_id} .section {{
-      width: 100%;
+
+    #{container_id} .section:not(:first-child) .dgcv-table-caption {{
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
     }}
-    #{container_id} .section table {{
-      width: 100%;
-      table-layout: fixed;
+
+    #{container_id} .dgcv-data-table {{ 
+        width: 100%;
+        border-collapse: separate; 
+        border-spacing: 0;
+        background: var(--dgcv-special-background, var(--dgcv-bg-surface));
+        border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main); 
+        border-image: var(--dgcv-border-image, none);
+        box-shadow: var(--dgcv-table-shadow, none); 
+        overflow: hidden; 
+        border-top-left-radius: 0; /* Forced square to meet caption tab */
+        border-top-right-radius: var(--m-r-tr);
+        border-bottom-right-radius: var(--m-r-br);
+        border-bottom-left-radius: var(--m-r-bl);
     }}
+
+    #{container_id} .dgcv-data-table thead th, #{container_id} .dgcv-data-table th.col_heading {{ 
+        background-color: var(--dgcv-bg-surface); 
+        color: var(--dgcv-text-heading); 
+        border-bottom: 2px solid var(--dgcv-border-main); 
+        padding: 8px 12px; 
+        text-shadow: var(--dgcv-text-shadow, none);
+    }}
+
+    #{container_id} .dgcv-data-table tbody tr {{ background-color: var(--dgcv-bg-primary); color: var(--dgcv-text-main); }}
+    #{container_id} .dgcv-data-table tbody tr:nth-child(even) {{ background-color: var(--dgcv-bg-alt); color: var(--dgcv-text-alt); }}
+    #{container_id} .dgcv-data-table tbody td {{ padding: 8px 12px; border-bottom: 1px solid var(--dgcv-border-alt); }}
+    #{container_id} .dgcv-data-table td .table-cell {{ overflow-x: visible; white-space: normal; }}
+
+    #{container_id} .dgcv-data-table tr:first-child th:first-child {{ border-top-left-radius: inherit; }}
+    #{container_id} .dgcv-data-table tr:first-child th:last-child {{ border-top-right-radius: var(--m-r-tr); }}
+    #{container_id} .dgcv-data-table tr:last-child td:first-child {{ border-bottom-left-radius: var(--m-r-bl); }}
+    #{container_id} .dgcv-data-table tr:last-child td:last-child {{ border-bottom-right-radius: var(--m-r-br); }}
+
+    #{container_id} .dgcv-data-table tbody tr {{ transition: var(--dgcv-hover-transition, transform 0.2s, box-shadow 0.2s, background-color 0.2s); }}
+    #{container_id} .dgcv-data-table tbody tr:hover {{ background-color: var(--dgcv-bg-hover) !important; color: var(--dgcv-text-hover) !important; transform: var(--dgcv-hover-transform, none); }}
+
+    #{container_id} .dgcv-data-table td, #{container_id} .dgcv-data-table th {{ text-align: left; border-right: 1px solid var(--dgcv-border-main); }}
+    #{container_id} .dgcv-data-table td:last-child, #{container_id} .dgcv-data-table th:last-child {{ border-right: none; }}
   </style>
   <div class="stack">
     {"".join(html_parts)}
@@ -1186,7 +1252,7 @@ def _vmf_plain_fmt_list(xs, *, max_items: int = 10) -> str:
 # -----------------------------------------------------------------------------
 # rich display summary helpers
 # -----------------------------------------------------------------------------
-def _snapshot_coor_(style=None, use_latex=None, **kwargs):
+def _snapshot_coor_(style=None, use_latex=None, slim=False, **kwargs):
     if style is None:
         style = get_dgcv_settings_registry()["theme"]
     if use_latex is None:
@@ -1427,9 +1493,6 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
 .dgcv-data-table td, .dgcv-data-table th {
     text-align: left;
 }
-.dgcv-table-caption {
-    border-bottom: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ccc) !important;
-}
     """
 
     view = build_plain_table(
@@ -1443,13 +1506,14 @@ def _snapshot_coor_(style=None, use_latex=None, **kwargs):
         escape_cells=False,
         escape_headers=True,
         nowrap=False,
+        slim=slim,
         truncate_chars=None,
         **kwargs,
     )
     return view
 
 
-def _snapshot_algebras_(style=None, use_latex=None, **kwargs):
+def _snapshot_algebras_(style=None, use_latex=None, slim=False, **kwargs):
     if style is None:
         style = get_dgcv_settings_registry()["theme"]
     if use_latex is None:
@@ -1525,9 +1589,6 @@ def _snapshot_algebras_(style=None, use_latex=None, **kwargs):
 .dgcv-data-table td, .dgcv-data-table th {
     text-align: left;
 }
-.dgcv-table-caption {
-    border-bottom: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ccc) !important;
-}
     """
 
     view = build_plain_table(
@@ -1542,12 +1603,13 @@ def _snapshot_algebras_(style=None, use_latex=None, **kwargs):
         escape_headers=True,
         nowrap=False,
         truncate_chars=None,
+        slim=slim,
         **kwargs,
     )
     return view
 
 
-def _snapshot_eds_atoms_(style=None, use_latex=None, **kwargs):
+def _snapshot_eds_atoms_(style=None, use_latex=None, slim=False, **kwargs):
     if style is None:
         style = get_dgcv_settings_registry()["theme"]
     if use_latex is None:
@@ -1650,9 +1712,6 @@ def _snapshot_eds_atoms_(style=None, use_latex=None, **kwargs):
     .dgcv-data-table td, .dgcv-data-table th {
         text-align: left;
     }
-    .dgcv-table-caption {
-        border-bottom: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ccc) !important;
-    }
     """
 
     return build_plain_table(
@@ -1666,12 +1725,13 @@ def _snapshot_eds_atoms_(style=None, use_latex=None, **kwargs):
         escape_cells=False,
         escape_headers=True,
         nowrap=False,
+        slim=slim,
         truncate_chars=None,
         **kwargs,
     )
 
 
-def _snapshot_coframes_(style=None, use_latex=None, **kwargs):
+def _snapshot_coframes_(style=None, use_latex=None, slim=False, **kwargs):
     """
     Returns a summary table listing coframes in the VMF scope
     """
@@ -1741,9 +1801,6 @@ def _snapshot_coframes_(style=None, use_latex=None, **kwargs):
     .dgcv-data-table td, .dgcv-data-table th {
         text-align: left;
     }
-    .dgcv-table-caption {
-        border-bottom: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main, #ccc) !important;
-    }
     """
 
     from dgcv._aux.printing._tables import build_plain_table
@@ -1759,6 +1816,7 @@ def _snapshot_coframes_(style=None, use_latex=None, **kwargs):
         escape_cells=False,
         escape_headers=True,
         nowrap=False,
+        slim=slim,
         truncate_chars=None,
         **kwargs,
     )
