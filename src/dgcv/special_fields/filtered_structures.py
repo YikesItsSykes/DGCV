@@ -29,7 +29,6 @@ limitations under the License.
 # -----------------------------------------------------------------------------
 from __future__ import annotations
 
-import copy
 import numbers
 from collections.abc import Iterable
 from typing import Any, Literal, Sequence, Tuple
@@ -90,13 +89,11 @@ class Tanaka_symbol(dgcv_class):
 
     Parameters
     ----------
+        GLA
 
     Methods
     -------
-    prolong
-
-    Examples
-    --------
+        prolong
     """
 
     def __init__(
@@ -134,6 +131,9 @@ class Tanaka_symbol(dgcv_class):
                     raise TypeError("index_threshold must be an integer or None.")
                 self.index_threshold = new_threshold
 
+            def copy(self):
+                return dynamic_dict(self, initial_index=self.index_threshold)
+
         # validation
         def valence_check(tp):
             for j in tp.coeff_dict:
@@ -157,7 +157,7 @@ class Tanaka_symbol(dgcv_class):
                 raise TypeError(
                     "`Tanaka_symbol` expects `GLA` to be a graded Lie algebra, but the supplied `GLA` has no grading assigned."
                 )
-            if len(nonnegParts) != 0:
+            if len(nonnegParts) != 0:  ###!!! patch __init__ to allow this branch
                 if (
                     isinstance(GLA.grading[0], (list, tuple))
                     and max(GLA.grading[0]) >= 0
@@ -167,7 +167,10 @@ class Tanaka_symbol(dgcv_class):
                     )
             if isinstance(nonnegParts, dict):
                 NNPList = list(nonnegParts.values())
-            elif isinstance(nonnegParts, (list, tuple)):
+            elif (
+                isinstance(nonnegParts, (list, tuple))
+                and any(not isinstance(entry, (list, tuple)) for entry in nonnegParts)
+            ) or len(nonnegParts) == 0:
                 NNPList = [nonnegParts]
             else:
                 raise TypeError(
@@ -359,7 +362,9 @@ class Tanaka_symbol(dgcv_class):
 
         if distinguished_subspaces and _validated != retrieve_passkey():
             ds_params = set()
-            total_basis = list(subspace.basis) + sum(NNPList, [])
+            total_basis = list(subspace.basis) + sum(
+                NNPList, []
+            )  # NNPList formatted as tensors
             newDS = []
             _fast_process_DS = []
             _standard_process_DS = []
@@ -378,7 +383,7 @@ class Tanaka_symbol(dgcv_class):
                         or get_dgcv_category(subS) == "algebra_subspace"
                     ):
                         raise TypeError(
-                            "`Tanaka_symbol` expects `distinguished_subspaces` to be a list of lists of algebra_element_class instances or tensor products belonging to the provided basis of the symbol."
+                            "`Tanaka_symbol` expects `distinguished_subspaces` to be a list of lists of algebra_element_class instances or tensor products built from the provided basis of the symbol, or some subspace class."
                         )
                     DSList = []
                     for elem in subS:
@@ -388,7 +393,7 @@ class Tanaka_symbol(dgcv_class):
                             subspace,
                             test_weights=[primary_grading],
                             return_weights=True,
-                        )
+                        )  # weights may have len>1 indicated different weighted components
                         DSList.append(reformElem)
                         if process == "fast" and reformElem in total_basis:
                             newE = (
@@ -633,6 +638,7 @@ class Tanaka_symbol(dgcv_class):
         surface_singularities=None,
         simplify_pivots=None,
     ):  # height must match levels structure
+        distinguished_s_weight_bound = min(distinguished_s_weight_bound, height)
         if len(self._parameters) > 0:
             if surface_singularities is not False:
                 surface_singularities = True
@@ -698,13 +704,13 @@ class Tanaka_symbol(dgcv_class):
                 preBasis = []
                 ambient_basis = []
                 for weight, comp in self._GLA_generators["generators"].items():
+                    kdeg = height + 1 + weight
                     preBasis += [
-                        _fast_tensor_products(k)
-                        @ j  # removed .dual() for fast algorithm
-                        for j in comp
-                        for k in levels[height + 1 + weight]
-                        if height + 1 + weight > distinguished_s_weight_bound
-                        or fast_validate_for_DS(k, j, height + 1 + weight, weight)
+                        stamp(j, k, jidx, kidx, weight, kdeg)
+                        for jidx, j in enumerate(comp)
+                        for kidx, k in enumerate(levels[kdeg])
+                        if kdeg > distinguished_s_weight_bound
+                        or fast_validate_for_DS(k, j, kdeg, weight)
                     ]
 
                 def _iter_expand(elem, nested):
@@ -735,8 +741,9 @@ class Tanaka_symbol(dgcv_class):
                     break
                 ambGE, ambVars = linear_combination(ambient_basis)
                 for w, level in subSData.items():
-                    if height + w + 1 <= distinguished_s_weight_bound:
-                        dsSpanners = subSData[height + w + 1]["spanners"]
+                    current_degree = height + w + 1
+                    if current_degree <= distinguished_s_weight_bound:
+                        dsSpanners = subSData[current_degree]["spanners"]
                         eqns = []
                         esVars = ambVars.copy()
                         for elem in level["spanners"]:
@@ -856,11 +863,17 @@ class Tanaka_symbol(dgcv_class):
                 new_elems = []
                 for subS in fast_DS:
                     if height + 1 in subS:
-                        new_elems += copy.deepcopy(subS[height + 1])
-                        subS[height + 1] = _extract_basis(subS[height + 1] + new_level)
+                        new_elems += [
+                            v for v in subS[height + 1]["spanners"]
+                        ]  ###!!! formerly deepcopy
+                        subS[height + 1] = _extract_basis(
+                            subS[height + 1]["spanners"] + new_level
+                        )
                 for subSData in standard_DS:
                     if height + 1 in subSData:
-                        new_elems += copy.deepcopy(subSData[height + 1]["spanners"])
+                        new_elems += [
+                            v for v in subSData[height + 1]["spanners"]
+                        ]  ###!!! formerly deepcopy
                         subSData[height + 1]["spanners"] = _extract_basis(
                             subSData[height + 1]["spanners"] + new_level
                         )
@@ -1201,11 +1214,15 @@ class Tanaka_symbol(dgcv_class):
                 new_elems = []
                 for subS in fast_DS:
                     if height + 1 in subS:
-                        new_elems += copy.deepcopy(subS[height + 1])
+                        new_elems += [
+                            v for v in subS[height + 1]
+                        ]  ###!!! formerly deepcopy
                         subS[height + 1] = _extract_basis(subS[height + 1] + new_level)
                 for subSData in standard_DS:
                     if height + 1 in subSData:
-                        new_elems += copy.deepcopy(subSData[height + 1]["spanners"])
+                        new_elems += [
+                            v for v in subSData[height + 1]["spanners"]
+                        ]  ###!!! formerly deepcopy
                         subSData[height + 1]["spanners"] = _extract_basis(
                             subSData[height + 1]["spanners"] + new_level
                         )
@@ -1384,8 +1401,10 @@ class Tanaka_symbol(dgcv_class):
             max_report_columns = 5
         if absorb_distinguished_subspaces is True:
             subspace_data = [
-                copy.deepcopy(self._fast_process_DS),
-                copy.deepcopy(self._standard_process_DS),
+                [
+                    directory.copy() for directory in self._standard_process_DS
+                ],  # formerly deepcopy
+                [directory.copy() for directory in self._standard_process_DS],
             ]
             if len(self._slow_process_DS) > 0:
                 dgcv_warning(
@@ -2005,9 +2024,14 @@ def _GAE_to_hom_formatting(elem, nilradical, test_weights=None, return_weights=F
     }:
         if return_weights:
             if get_dgcv_category(elem) == "tensorProduct":
-                return elem, elem.compute_weight(
-                    test_weights=test_weights, _return_mixed_weight_list=True
-                )
+                try:
+                    return elem, elem.compute_weight(
+                        test_weights=test_weights, _return_mixed_weight_list=True
+                    )[0]
+                except Exception:
+                    raise ValueError(
+                        "Unable to process given distinguished subspaces. Cannot infer weights of components in some of the given elements "
+                    )
             else:
                 return elem, []
         return elem

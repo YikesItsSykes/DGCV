@@ -62,6 +62,7 @@ from ..._aux._backends._symbolic_router import (
 )
 from ..._aux._backends._types_and_constants import expr_numeric_types, is_atomic, symbol
 from ..._aux._utilities._config import dgcv_warning, get_dgcv_settings_registry
+from ..._aux._utilities._misc import linear_combination
 from ..._aux._vmf._safeguards import (
     create_key,
     get_dgcv_category,
@@ -1157,12 +1158,10 @@ def annihilator(
     control_distribution: Sequence[Any] | None = None,
     polynomial_bases: bool = False,
     _pass_error_report=None,
-    allow_div_by_zero: bool = False,
+    filter_to_basis_over_number_field: bool = False,
     *,
-    return_parameters: bool = False,
-    register_parameters: bool = False,
-    parameters_label: str | None = None,
     coherent_coordinates_checked: bool = False,
+    **kwargs,
 ):
     """
     Finds annihilators for a given list of vector fields or differential forms.
@@ -1183,9 +1182,8 @@ def annihilator(
         A collection of variables that define the coordinate system in which the annihilator is to be computed.
     polynomial_bases: bool (optional)
         Attempt to scale computed basis elements so that they have polynomial coefficients before returning the list. Can still produce non-nonpolynomial expressions when factoring is not possible.
-    allow_div_by_zero : bool, optional
-        If True, allows the annihilator to be returned without scaling to avoid division by zero (default is False).
-        Scaling to avoid division has more computational overhead but typically simplifies output.
+    filter_to_basis_over_number_field: bool, optional
+        If True, the returned list will be linearly independant over C.
     _pass_error_report : optional
         Internal use parameter for handling error reports in certain edge cases (default is None).
 
@@ -1248,6 +1246,12 @@ def annihilator(
 
     [8*D_x0, -16*x1*D_x2 + 8*D_x3, 8*D_y0, -16*x1*D_y2 + 8*D_y3]
     """
+    if get_dgcv_category(objList) in {
+        "tensor_field",
+        "algebra_element",
+        "subalgebra_element",
+    }:
+        objList = [objList]
     objList = list(objList)
     if not objList:
         return []
@@ -1359,10 +1363,12 @@ def annihilator(
         basis_elems = [allToReal(e) for e in basis_elems]
 
     n = len(basis_elems)
+
     label = create_key(prefix="var")
     vars_list = [symbol(f"{label}{i}") for i in range(n)]
 
     general = sum(u * e for u, e in zip(vars_list, basis_elems))
+    linear_combination
 
     if is_vf_case:
         eqns = [general(vf) for vf in objList]
@@ -1425,5 +1431,8 @@ def annihilator(
         assign = {u: 0 for u in free_vars}
         assign[v] = 1
         out.append(_apply_sol(general_solution, assign, scale=polynomial_bases))
-    out = [elem for elem in out if not _scalar_is_zero(elem)]
+    if filter_to_basis_over_number_field:
+        out = _extract_basis_over_number_field(out)
+    else:
+        out = [elem for elem in out if not _scalar_is_zero(elem)]
     return out

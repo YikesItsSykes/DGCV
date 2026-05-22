@@ -339,8 +339,11 @@ def aDataFromVFWithAnsatz(graded_components, determinacy_order_ansatz=None):
             grading += [weight] * len(component)
             basis += list(component)
     free_symbols = set()
+    coordinates = set()
     for vf in basis:
+        coordinates |= vf.minimal_coordinate_space
         free_symbols |= get_free_symbols(vf)
+    free_symbols = {v for v in free_symbols if v in coordinates}
     vlabel = create_key("var")
     var_dict = {
         k: [symbol(f"{vlabel}{k}_{idx}") for idx in range(len(v))]
@@ -391,7 +394,9 @@ def aDataFromVFWithAnsatz(graded_components, determinacy_order_ansatz=None):
                 if len(prev_eqns) == 0:
                     break
                 eqns += prev_eqns
-            sol = solve_dgcv(eqns, variables, method="linsolve")
+            sol = solve_dgcv(
+                eqns, variables, method="linsolve", pass_to_symbolic_engine=False
+            )
             if not sol:
                 raise RuntimeError(
                     f"Given vector field list is not closed under Lie brackets at indices ({c1}, {c2})."
@@ -555,3 +560,36 @@ def algebraDataFromTensorRep(tensor_list):
                 structure_data[j, k] = -br
 
     return structure_data, tensor_list, params  # filter independants
+
+
+def _external_library_algebra_processing(objs, mul, zero_obst, assume_skew=False):
+    dim = len(objs)
+    sd = array_dgcv(
+        dict(),
+        shape=(dim, dim),
+        null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1)),
+    )
+    genel, variables = linear_combination(objs)
+    for c1, obj1 in enumerate(objs):
+        start = c1 + 1 if assume_skew else 0
+        for c, obj2 in enumerate(objs[start:]):
+            c2 = c + start
+            bracket = mul(obj1, obj2)
+            sol = solve_dgcv(zero_obst(bracket - genel), variables)
+            if len(sol) == 0:
+                raise ValueError(
+                    f"Unable to confirm closure under the given product rule between elements of orders {c1} and {c2}"
+                )
+            sol = sol[0]
+            s_el = matrix_dgcv(
+                {
+                    idx: sol.get(v, 0)
+                    for idx, v in enumerate(variables)
+                    if sol.get(v, 0) != 0
+                },
+                shape=(dim, 1),
+            )
+            sd[c1, c2] = s_el
+            if assume_skew:
+                sd[c2, c1] = -s_el
+    return sd

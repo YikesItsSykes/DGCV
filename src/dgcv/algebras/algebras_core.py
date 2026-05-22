@@ -49,6 +49,7 @@ from .._aux._backends._display_engine import is_rich_displaying_available
 from .._aux._backends._engine import engine_kind, engine_module
 from .._aux._backends._symbolic_router import (
     _scalar_is_zero,
+    as_numer_denom,
     get_free_symbols,
     ratio,
     simplify,
@@ -158,6 +159,11 @@ class algebra_class(dgcv_class):
                     )
                 else:
                     validated_structure_data, params = vsd
+                    if not isinstance(params, set()):
+                        params = set()
+                    params |= get_free_symbols(
+                        validated_structure_data
+                    )  ###!!! fix vsd to remove redundancy
 
             except dgcv_exception_note as e:
                 raise SystemExit(e)
@@ -358,7 +364,16 @@ class algebra_class(dgcv_class):
         self.tensor_decomposition = _markers.get("tensor_decomposition", None)
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "algebra"
-        self._singularities = {}
+        if self._parameters:
+            struct_sing = set()
+            for slot in self.structureData._data.values():
+                for v in slot._data.values():
+                    _, d = as_numer_denom(v)
+                    if get_free_symbols(d):
+                        struct_sing.add(d)
+            self._singularities = {"structure": struct_sing}
+        else:
+            self._singularities = {}
 
         def validate_and_adjust_grading_vector(vector, dimension):
             vector = list(vector)
@@ -1518,18 +1533,18 @@ class algebra_class(dgcv_class):
         if test_weights:
             if not isinstance(test_weights, (list, tuple)):
                 raise TypeError(
-                    f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.). Revieved {test_weights}"
+                    f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.).Recieved {test_weights}"
                 ) from None
             for weight in test_weights:
                 if not isinstance(weight, (list, tuple)):
                     raise TypeError(
-                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.).  Revieved {test_weights}"
+                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.). Recieved {test_weights}"
                     ) from None
                 if self.dimension != len(weight) or not all(
                     [isinstance(j, expr_numeric_types()) for j in weight]
                 ):
                     raise TypeError(
-                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.) of length {self.dimension}. Revieved {test_weights}"
+                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.) of length {self.dimension}.Recieved {test_weights}"
                     ) from None
             GVs = test_weights
         else:
@@ -2047,9 +2062,9 @@ class algebra_class(dgcv_class):
                 current_basis = list(independent_generators)
                 previous_length = len(independent_generators)
             if surface_singularities:
-                self._singularities["derived_series"] = list(
-                    set([v for v in total_sing if get_free_symbols(v)])
-                )
+                self._singularities["derived_series"] = {
+                    v for v in total_sing if get_free_symbols(v)
+                }
             if len(series) > 1 and refAlg._derived_subalg_cache is None:
                 refAlg._derived_subalg_cache = self.subalgebra(
                     series[1], span_warning=False, simplify_basis=True
@@ -2686,9 +2701,9 @@ class algebra_class(dgcv_class):
                     sing = [
                         subs(v, sol[0]) for v in singularities if get_free_symbols(v)
                     ]
-                    refAlg._singularities["radical"] = list(
-                        set([v for v in sing if get_free_symbols(v)])
-                    )
+                    refAlg._singularities["radical"] = {
+                        v for v in sing if get_free_symbols(v)
+                    }
             freeVars = get_free_symbols(genSol)
             if self._parameters:
                 freeVars = {v for v in freeVars if v not in self._parameters}
@@ -2797,13 +2812,10 @@ class algebra_class(dgcv_class):
                     "compute the max. solvable ideal's derived series",
                 )
                 if surface_singularities:
-                    sing += getattr(refAlg, "_singularities", {}).get("radical", [])
-                    self._singularities["LD"] = list(
-                        set(
-                            self._singularities.get("LD", [])
-                            + [v for v in sing if get_free_symbols(v)]
-                        )
-                    )
+                    sing += getattr(refAlg, "_singularities", {}).get("radical", set())
+                    self._singularities["LD"] = self._singularities.get("LD", set()) | {
+                        v for v in sing if get_free_symbols(v)
+                    }
                 if len(rad.basis) > 0:
                     if verbose is True:
                         print(
@@ -2821,14 +2833,11 @@ class algebra_class(dgcv_class):
                     )
                     if surface_singularities:
                         sing += getattr(rad, "_singularities", {}).get(
-                            "derived_series", []
+                            "derived_series", set()
                         )
-                        self._singularities["LD"] = list(
-                            set(
-                                self._singularities.get("LD", [])
-                                + [v for v in sing if get_free_symbols(v)]
-                            )
-                        )
+                        self._singularities["LD"] = self._singularities.get(
+                            "LD", set()
+                        ) | {v for v in sing if get_free_symbols(v)}
 
                     def _compute_complement():
                         local_rad_seq = (
@@ -2941,9 +2950,6 @@ class algebra_class(dgcv_class):
                                     (w + v).subs(sol[0])
                                     for w, v in zip(naiveBasis, basis_modifiers)
                                 ]
-
-                            # this free_variables handling is a redundancy defending against unexpected formatting
-                            # from solver returns. Caution must be taken not to interfere with parameter spaces.
                             free_variables = set()
                             for nb in new_basis:
                                 free_variables |= set.union(
@@ -2959,7 +2965,7 @@ class algebra_class(dgcv_class):
                             )
                             if len(free_variables) > 0:
                                 dgcv_warning(
-                                    f"The Levi decomposition algorithm has a parameter leak issue. surviving params: {free_variables}",
+                                    f"The Levi decomposition algorithm may have a parameter leak issue. surviving params: {free_variables}",
                                     wc_label="debug_log",
                                 )
                                 zeroing = {v: 0 for v in free_variables}
@@ -3026,12 +3032,9 @@ class algebra_class(dgcv_class):
             )
             if surface_singularities is True:
                 new_Levi, simple_ideals, sing = out
-                refAlg._singularities["simple_ideals"] = list(
-                    set(
-                        self._singularities.get("simple_ideals", [])
-                        + [v for v in sing if get_free_symbols(v)]
-                    )
-                )
+                refAlg._singularities["simple_ideals"] = self._singularities.get(
+                    "simple_ideals", set()
+                ) | {v for v in sing if get_free_symbols(v)}
             else:
                 new_Levi, simple_ideals = out
             refAlg._Levi_deco_cache["LD_components"] = (new_Levi, rad)
@@ -3074,9 +3077,7 @@ class algebra_class(dgcv_class):
                     else True,
                 )
                 sol = sol[0]
-                self._singularities["center"] = list(
-                    set([v for v in sing if get_free_symbols(v)])
-                )
+                self._singularities["center"] = {v for v in sing if get_free_symbols(v)}
             else:
                 sol = solve_dgcv(eqns, variables)[0]
             gsol = subs(gene, sol)
@@ -3388,6 +3389,12 @@ class algebra_class(dgcv_class):
             if isinstance(parameter_sub_rules, dict)
             else self.structureData
         )
+        _markers = {
+            "parameters": self._parameters,
+            "_educed_properties": self._educed_properties,
+            "semidirect_decomposition": self.semidirect_decomposition,
+            "tensor_decomposition": self.tensor_decomposition,
+        }
         if register_in_vmf is True:
             from .algebras_secondary import createAlgebra
 
@@ -3398,16 +3405,17 @@ class algebra_class(dgcv_class):
                 grading=grad,
                 return_created_object=True,
                 simplify_products_by_default=simplify_products_by_default,
+                _markers=_markers,
             )
-        else:
-            return algebra_class(
-                sd,
-                grading=grad,
-                simplify_products_by_default=simplify_products_by_default,
-                _label=label,
-                _basis_labels=basis_labels,
-                _calledFromCreator=retrieve_passkey(),
-            )
+        return algebra_class(
+            sd,
+            grading=grad,
+            simplify_products_by_default=simplify_products_by_default,
+            _label=label,
+            _basis_labels=basis_labels,
+            _calledFromCreator=retrieve_passkey(),
+            _markers=_markers,
+        )
 
     def __add__(self, other):
         if _scalar_is_zero(other):
@@ -3714,6 +3722,7 @@ class algebra_class(dgcv_class):
             style=theme,
             use_latex=use_latex,
             extra_support_for_math_in_tables=extra_support_for_math_in_tables,
+            show_singularities=show_singularities,
             full=generate_full_report,
         )
         if return_displayable:
@@ -4631,7 +4640,6 @@ class algebra_subspace_class(dgcv_class):
         self.basis = tuple(filtered_basis)
         self.dimension = len(filtered_basis)
         self.ambient: algebra_class = parent_alg
-
         grading_per_elem = []
         if (
             _internal_lock == retrieve_passkey()
@@ -4749,12 +4757,12 @@ class algebra_subspace_class(dgcv_class):
         if test_weights:
             if not isinstance(test_weights, (list, tuple)):
                 raise TypeError(
-                    f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.). Revieved {test_weights}"
+                    f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.).Recieved {test_weights}"
                 ) from None
             for weight in test_weights:
                 if not isinstance(weight, (list, tuple)):
                     raise TypeError(
-                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.). Revieved {test_weights}"
+                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.).Recieved {test_weights}"
                     ) from None
                 if self.dimension != len(weight) or not all(
                     [isinstance(j, expr_numeric_types()) for j in weight]
@@ -6026,27 +6034,15 @@ def _summary_render_rich(
                                 rank = rankout
                             if divisors:
                                 alg._singularities["subalgebra_ranks"] = (
-                                    alg._singularities.get("subalgebra_ranks", [])
-                                    + list(
-                                        set(
-                                            [v for v in divisors if get_free_symbols(v)]
-                                        )
-                                    )
+                                    alg._singularities.get("subalgebra_ranks", set())
+                                    | {v for v in divisors if get_free_symbols(v)}
                                 )
                                 if alg != refAlg:
                                     refAlg._singularities["subalgebra_ranks"] = (
                                         refAlg._singularities.get(
-                                            "subalgebra_ranks", []
+                                            "subalgebra_ranks", set()
                                         )
-                                        + list(
-                                            set(
-                                                [
-                                                    v
-                                                    for v in divisors
-                                                    if get_free_symbols(v)
-                                                ]
-                                            )
-                                        )
+                                        | {v for v in divisors if get_free_symbols(v)}
                                     )
                         except Exception:
                             pass
@@ -6119,19 +6115,13 @@ def _summary_render_rich(
                             rank = rankout
                         if divisors:
                             refAlg._singularities["subalgebra_ranks"] = (
-                                refAlg._singularities.get("subalgebra_ranks", [])
-                                + list(
-                                    set([v for v in divisors if get_free_symbols(v)])
-                                )
+                                refAlg._singularities.get("subalgebra_ranks", set())
+                                | {v for v in divisors if get_free_symbols(v)}
                             )
                             if refAlg != a:
                                 a._singularities["subalgebra_ranks"] = (
-                                    a._singularities.get("subalgebra_ranks", [])
-                                    + list(
-                                        set(
-                                            [v for v in divisors if get_free_symbols(v)]
-                                        )
-                                    )
+                                    a._singularities.get("subalgebra_ranks", set())
+                                    | {v for v in divisors if get_free_symbols(v)}
                                 )
                     except Exception:
                         pass
@@ -6220,21 +6210,22 @@ def _summary_render_rich(
                 ("simple_ideals", "simple subalgebras"),
                 ("center", "center"),
                 ("subalgebra_ranks", "subalgebra ranks"),
+                ("structure", "structure coefficients"),
             ]
             items_sing = []
             for key, label in type_dict:
                 if (
                     show_singularities is None
                     and key == "subalgebra_ranks"
-                    and len(refAlg._singularities.get(key, [])) > 0
+                    and len(refAlg._singularities.get(key, set())) > 0
                 ):
-                    numb = len(refAlg._singularities.get(key, []))
+                    numb = len(refAlg._singularities.get(key, set()))
                     plur = ("y", "it") if numb == 1 else ("ies", "them")
                     items_sing.append(
                         f"From {label}: {numb} singularit{plur[0]} omitted from report. (set `show_singularities=True` to display {plur[1]}. Warning: typically very long.)"
                     )
                     continue
-                terms = refAlg._singularities.get(key, [])
+                terms = list(refAlg._singularities.get(key, []))
                 if terms:
                     formatted = (
                         LaTeX_list(terms, math_mode="$")
@@ -6469,13 +6460,19 @@ def _indep_check(
     return (False, sing) if surface_singularities else False
 
 
-def _elem_scale(elem):
+def _elem_scale(elem, surface_singularities=False):
     coeffs = getattr(elem, "coeffs", None)
     if isinstance(coeffs, (list, tuple)):
         for c in coeffs:
             if not _scalar_is_zero(c):
                 try:
-                    return elem / c
+                    out = elem / c
+                    if surface_singularities:
+                        if get_free_symbols(c):
+                            return out, [c]
+                        else:
+                            return out, []
+                    return out
                 except Exception:
                     return elem
     return elem
@@ -6494,13 +6491,17 @@ def _basis_builder(
     if _scalar_is_zero(newE):
         return (list(elems), []) if surface_singularities else list(elems)
     if ALBS is True:
-        newE = _elem_scale(newE)
+        newE = _elem_scale(newE, surface_singularities=surface_singularities)
+        if surface_singularities:
+            newE, sing = newE
+    elif surface_singularities:
+        sing = []
     if not isinstance(elems, (list, tuple)):
         raise TypeError(
             f"_basis_builder expects `elems` to be a list, recieved {elems} of type {type(elems)}"
         )
     if len(elems) == 0:
-        out = ([newE], []) if surface_singularities else [newE]
+        out = ([newE], sing) if surface_singularities else [newE]
         return out
     check = _indep_check(
         elems,
@@ -6513,15 +6514,19 @@ def _basis_builder(
         simplify_singularities=simplify_singularities,
     )
     if surface_singularities:
-        check, sing = check
+        check, sing2 = check
     if check is True:
         return (
-            (list(elems) + [newE], sing)
+            (list(elems) + [newE], set(sing) | set(sing2))
             if surface_singularities
             else list(elems) + [newE]
         )
     else:
-        return (list(elems), sing) if surface_singularities else list(elems)
+        return (
+            (list(elems), set(sing) | set(sing2))
+            if surface_singularities
+            else list(elems)
+        )
 
 
 def _extract_basis(

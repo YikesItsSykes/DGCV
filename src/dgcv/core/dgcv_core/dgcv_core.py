@@ -475,6 +475,34 @@ class tensor_field_class(dgcv_class):
     def degree(self):
         return self.total_degree
 
+    @property
+    def minimal_coordinate_space(self):
+        coor = set()
+        for key in self.coeff_dict:
+            deg = len(key) // 3
+            ks, ke = key[:deg], key[2 * deg :]
+            for v, z in zip(ks, ke):
+                variable = self._variable_spaces.get(z, list(range(v)))[v]
+                info = vmf_lookup(
+                    variable,
+                    flattened_relatives=True,
+                )
+                if info.get("sub_type") == "holo":
+                    rels = info.get("flattened_relatives")
+                    coor |= {rels[0], rels[2], rels[3]}
+                elif info.get("sub_type") == "anti":
+                    rels = info.get("flattened_relatives")
+                    coor |= {rels[1], rels[2], rels[3]}
+                elif info.get("sub_type") == "real":
+                    rels = info.get("flattened_relatives")
+                    coor |= {rels[0], rels[1], rels[2]}
+                elif info.get("sub_type") == "imag":
+                    rels = info.get("flattened_relatives")
+                    coor |= {rels[0], rels[1], rels[3]}
+                else:
+                    coor.add(variable)
+        return coor
+
     @staticmethod
     def _is_scalar_coeff_dict(d: Dict[Any, Any]) -> bool:
         return isinstance(d, dict) and (
@@ -8028,7 +8056,7 @@ def conjugate_DGCV(expr, symbolic=False):
         dgcvDeprecationWarning,
         stacklevel=2,
         old_kw="conjugate_DGCV",
-        new_kw="conjugate_DGCV",
+        new_kw="conjugate_dgcv",
         sunset="2026",
     )
     return conjugate_dgcv(expr, symbolic=symbolic)

@@ -1087,7 +1087,7 @@ class tensorProduct:
         test_weights=None,
         _return_mixed_weight_list=False,
         bound_number_of_weights=None,
-    ):
+    ):  ###!!! review
         weights = list(
             set(
                 (
@@ -1137,7 +1137,7 @@ class tensorProduct:
             return other * self
         if not isinstance(other, tensorProduct):
             raise ValueError(
-                f"The other object must be a tensorProduct instance or vector space element related class. Revieved {type(other)} instead."
+                f"The other object must be a tensorProduct instance or vector space element related class. Recieved {type(other)} instead."
             )
 
         new_shape = _infer_shape(self, other, impose_shape=impose_shape)
@@ -2152,7 +2152,7 @@ class tensorProduct:
             return self._contraction_product(other)
         else:
             raise ValueError(
-                f"Unsupported operation for * between the given object types: {type(self)} and {type(other)}; `other` dgcv type is {get_dgcv_category(other)}; DEBUG data: {get_dgcv_category(other)}"
+                f"Unsupported operation for * between the given object types: {type(self)} and {type(other)}; `other` dgcv type is {get_dgcv_category(other)}."
             )
 
     def __rmul__(self, other):
@@ -2169,7 +2169,7 @@ class tensorProduct:
             return other._convert_to_tp()._contraction_product(self)
         else:
             raise ValueError(
-                f"Unsupported operation for * between the given object types: {type(self)} and {type(other)}; `other` dgcv type is {get_dgcv_category(other)}; DEBUG data: {get_dgcv_category(other)}"
+                f"Unsupported operation for * between the given object types: {type(self)} and {type(other)}; `other` dgcv type is {get_dgcv_category(other)}."
             )
 
     def __neg__(self):

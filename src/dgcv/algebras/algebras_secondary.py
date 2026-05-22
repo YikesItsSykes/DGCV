@@ -40,6 +40,7 @@ from typing import List, Optional
 
 from .._aux._backends._symbolic_router import (
     _scalar_is_zero,
+    as_numer_denom,
     clear_denominators,
     get_free_symbols,
     ratio,
@@ -76,7 +77,7 @@ from ..core.base import annotated_container, dgcv_class
 from ..core.combinatorics.combinatorics import carProd
 from ..core.solvers.solvers import solve_dgcv
 from ..core.tensors.tensors import tensorProduct
-from .algebras_aux import _validate_structure_data
+from .algebras_aux import _external_library_algebra_processing, _validate_structure_data
 from .algebras_core import (
     algebra_class,
     algebra_element_class,
@@ -166,6 +167,14 @@ class subalgebra_class(algebra_subspace_class):
         else:
             self.simplify_products_by_default = simplify_products_by_default
         self._registered = self.ambient._registered
+        if self._parameters:
+            struct_sing = set()
+            for slot in self.structureData._data.values():
+                for v in slot._data.values():
+                    _, d = as_numer_denom(v)
+                    if get_free_symbols(d):
+                        struct_sing.add(d)
+            self._singularities = {"structure": struct_sing}
         # cached_properties
         self._jacobi_identity_cache = None
         self._skew_symmetric_cache = None
@@ -366,6 +375,12 @@ class subalgebra_class(algebra_subspace_class):
             grad = None
         else:
             grad = self._grading
+        _markers = {
+            "parameters": self._parameters,
+            "_educed_properties": self._educed_properties,
+            "semidirect_decomposition": self.semidirect_decomposition,
+            "tensor_decomposition": self.tensor_decomposition,
+        }
         if register_in_vmf is True:
             return createAlgebra(
                 self.structureData,
@@ -374,16 +389,17 @@ class subalgebra_class(algebra_subspace_class):
                 grading=grad,
                 return_created_object=True,
                 simplify_products_by_default=simplify_products_by_default,
+                _markers=_markers,
             )
-        else:
-            return algebra_class(
-                self.structureData,
-                grading=grad,
-                simplify_products_by_default=simplify_products_by_default,
-                _label=label,
-                _basis_labels=basis_labels,
-                _calledFromCreator=retrieve_passkey(),
-            )
+        return algebra_class(
+            self.structureData,
+            grading=grad,
+            simplify_products_by_default=simplify_products_by_default,
+            _label=label,
+            _basis_labels=basis_labels,
+            _calledFromCreator=retrieve_passkey(),
+            _markers=_markers,
+        )
 
     def is_skew_symmetric(
         self, verbose=False, _return_proof_path=False, _ignore_caches=False
@@ -3352,6 +3368,7 @@ def createAlgebra(
     assume_Lie_alg: bool = False,
     basis_order_for_supplied_str_eqns=None,
     _simple=None,
+    special_processing_rules: dict = None,
     return_created_object: bool = False,
     forgo_vmf_registry: bool = False,
     simplify_products_by_default: bool = None,
@@ -3378,12 +3395,20 @@ def createAlgebra(
         If not provided, default labels will be generated.
     grading : list of lists or list, optional
         A list specifying the grading(s) of the algebra.
-    format_sparse : bool, optional
-        Whether to use sparse arrays when creating the algebra object.
     process_matrix_rep : bool, optional
         Whether to compute and store the matrix representation of the algebra.
     verbose : bool, optional
         If True, provides information during the creation process.
+    special_processing_rules: dict, optional
+        Use this to pass a list of alebra-like objects from another library (i.e., non-dgcv).
+        The dictionary should have two string labeled keys "mul" and  "zero_obst". These key's
+        values should be callable functions. The value for "mul" must be a function operating
+        on two algebra element parameters that returns a new algebra element (assumed to
+        represent the algebra product). The value for "zero_obst" should be a function
+        operating on single algebra elements, return an iterable of elements that obstruct
+        being zero (e.g., list coeffients from a linear combination of basis elements).
+        At third optional keyworb "assume_skew" is permitted, in which case the algebra structure
+        is computed with skew-shape-aware sparsified formulas.
     """
     if kwargs.get("return_created_obj"):  # old keyword support
         return_created_object = kwargs.get("return_created_obj")
@@ -3565,6 +3590,25 @@ def createAlgebra(
             null_return=freeze_matrix(matrix_dgcv.zeros(0, 1)),
         )
         dimension = 0
+    elif isinstance(special_processing_rules, dict):
+        mul, zero_obst = (
+            special_processing_rules.get("mul"),
+            special_processing_rules.get("zero_obst"),
+        )
+        if not callable(mul) or not callable(zero_obst):
+            raise ("special_processing_rules parameter is in an unsupported format")
+        try:
+            structure_data = _external_library_algebra_processing(
+                obj,
+                mul=mul,
+                zero_obst=zero_obst,
+                assume_skew=special_processing_rules.get("mul", False),
+            )
+            dimension = len(obj)
+        except Exception:
+            raise RuntimeError(
+                "Could not process data recieved in the first parameter and special_processing_rules parameter"
+            )
     elif isinstance(obj, (list, tuple)) and all(
         get_dgcv_category(el) in {"algebra_element", "subalgebra_element"} for el in obj
     ):

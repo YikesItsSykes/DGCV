@@ -532,6 +532,33 @@ class frozen_array_dgcv(array_dgcv):
             }
         return MappingProxyType(self._data_unspooled_cache)
 
+    def __getstate__(self):
+        return {
+            "_data": dict(self._data),
+            "_is_frozen": self._is_frozen,
+            "shape": self.shape,
+            "ndim": self.ndim,
+            "null_return": self.null_return,
+            "_dgcv_class_check": self._dgcv_class_check,
+            "_data_unspooled_cache": (
+                dict(self._data_unspooled_cache)
+                if self._data_unspooled_cache is not None
+                else None
+            ),
+        }
+
+    def __setstate__(self, state):
+        object.__setattr__(self, "_is_frozen", False)
+        object.__setattr__(self, "shape", state["shape"])
+        object.__setattr__(self, "ndim", state["ndim"])
+        object.__setattr__(self, "null_return", state["null_return"])
+        object.__setattr__(self, "_dgcv_class_check", state["_dgcv_class_check"])
+        object.__setattr__(self, "_data", MappingProxyType(state["_data"]))
+        object.__setattr__(
+            self, "_data_unspooled_cache", state["_data_unspooled_cache"]
+        )
+        object.__setattr__(self, "_is_frozen", state["_is_frozen"])
+
 
 def freeze_array(array):
     if isinstance(array, frozen_array_dgcv):
@@ -1661,6 +1688,41 @@ class frozen_matrix_dgcv(matrix_dgcv):
         object.__setattr__(out, "_data_unspooled_cache", None)
         object.__setattr__(out, "_is_frozen", True)
         return out
+
+    def __getstate__(self):
+        return {
+            "_data": dict(self._data),
+            "_is_frozen": self._is_frozen,
+            "shape": self.shape,
+            "ndim": self.ndim,
+            "null_return": self.null_return,
+            "_dgcv_class_check": self._dgcv_class_check,
+            "_dgcv_categories": set(self._dgcv_categories),
+            "_engine_representation": dict(self._engine_representation),
+            "_data_unspooled_cache": (
+                dict(self._data_unspooled_cache)
+                if self._data_unspooled_cache is not None
+                else None
+            ),
+        }
+
+    def __setstate__(self, state):
+        object.__setattr__(self, "_is_frozen", False)
+        object.__setattr__(self, "shape", state["shape"])
+        object.__setattr__(self, "ndim", state["ndim"])
+        object.__setattr__(self, "null_return", state["null_return"])
+        object.__setattr__(self, "_dgcv_class_check", state["_dgcv_class_check"])
+        object.__setattr__(self, "_dgcv_categories", state["_dgcv_categories"])
+        object.__setattr__(self, "_data", MappingProxyType(state["_data"]))
+        object.__setattr__(
+            self,
+            "_engine_representation",
+            MappingProxyType(state["_engine_representation"]),
+        )
+        object.__setattr__(
+            self, "_data_unspooled_cache", state["_data_unspooled_cache"]
+        )
+        object.__setattr__(self, "_is_frozen", state["_is_frozen"])
 
     def __setattr__(self, name, value):
         if getattr(self, "_is_frozen", False):

@@ -738,25 +738,25 @@ def permuteTupleEntries(arg1, arg2):
     return tuple(arg2[arg1[j]] for j in range(len(arg1)))
 
 
-def permuteTuple(arg1, arg2):
+def permuteTuple(lst, perm):
     """
     Apply a permutation to the order of a tuple or list.
 
-    This function takes a tuple or list *arg1* of length *k*, and applies the
-    permutation *arg2* (a permutation of [0, 1, ..., k-1]) to reorder its
+    This function takes a tuple or list *lst* of length *k*, and applies the
+    permutation *perm* (a permutation of [0, 1, ..., k-1]) to reorder its
     elements. The result is returned as a new tuple.
 
     Parameters
     ----------
-    arg1 : tuple or list
+    lst : tuple or list
         A tuple or list of length *k* whose elements will be permuted.
-    arg2 : list
+    perm : list
         A list representing a permutation of [0, 1, ..., k-1].
 
     Returns
     -------
     tuple
-        A new tuple with the elements of *arg1* rearranged according to *arg2*.
+        A new tuple with the elements of *lst* rearranged according to *perm*.
 
     Examples
     --------
@@ -765,21 +765,21 @@ def permuteTuple(arg1, arg2):
 
     Notes
     -----
-    - The length of *arg2* must match the length of *arg1*.
-    - If *arg2* contains invalid indices, the function will raise an error.
+    - The length of *perm* must match the length of *lst*.
+    - If *perm* contains invalid indices, the function will raise an error.
 
     Raises
     ------
     ValueError
-        If the length of *arg2* does not match the length of *arg1*, or if *arg2*
+        If the length of *arg2* does not match the length of *lst*, or if *arg2*
         contains invalid indices.
     """
-    if len(arg1) != len(arg2):
+    if len(lst) != len(perm):
         raise ValueError("The length of arg2 must match the length of arg1.")
-    if not all(0 <= x < len(arg1) for x in arg2):
+    if not all(0 <= x < len(lst) for x in perm):
         raise ValueError("arg2 must contain valid indices for arg1.")
 
-    return tuple(arg1[j] for j in arg2)
+    return tuple(lst[j] for j in perm)
 
 
 def build_nd_array(entries_list, shape, use_lists_instead_of_tuples=False, pad=0):
