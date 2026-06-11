@@ -34,6 +34,7 @@ limitations under the License.
 # imports and broadcasting
 # -----------------------------------------------------------------------------
 
+import html
 import textwrap
 import uuid
 
@@ -45,12 +46,14 @@ from .._aux._utilities._config import (
 )
 from .._aux._utilities._styles import get_style
 from .._aux._vmf._safeguards import check_dgcv_category
+from .._aux._vmf.vmf import order_coordinates
 from .._aux.printing._tables import build_plain_table
 from .._aux.printing.printing._dgcv_display import (
     LaTeX_eqn_system,
     LaTeX_list,
     show,
 )
+from .._aux.printing.printing._string_processing import _strip_displaystyles
 
 __all__ = ["case_tree"]
 
@@ -90,6 +93,8 @@ class case_tree:
         evaluate_with_simplifies=True,
         **kwargs,
     ):
+        legacy_cr = kwargs.pop("case_rules", None)
+
         self.general_equation_system = (
             [] if equation_system is None else equation_system
         )
@@ -120,12 +125,12 @@ class case_tree:
             self.system_variables = set(variables)
         if parameters is None:
             try:
-                params = set()
+                all_symbols = set()
                 for eqn in self.general_equation_system:
-                    params |= set(
-                        filter(lambda x: x not in variables, get_free_symbols(eqn))
-                    )
-                self.system_parameters = params
+                    all_symbols |= get_free_symbols(eqn)
+                self.system_parameters = {
+                    x for x in all_symbols if x not in self.system_variables
+                }
             except Exception:
                 self.system_parameters = set()
         else:
@@ -150,21 +155,67 @@ class case_tree:
         self._subcases = {}
         for k, v in kwargs.items():
             setattr(self, k, v)
-        if "case_rules" not in kwargs:
-            self.case_rules = {}
-        if "_new_case_rules" not in kwargs:
-            self._new_case_rules = self.case_rules
-        elif not isinstance(kwargs["case_rules"], dict):
-            dgcv_warning(
-                "case_tree recieved `case_rules` in an unsuported format, so `case_rules` was ignored.",
-                UserWarning,
-                stacklevel=2,
+        if not isinstance(getattr(self, "_initial_rules", None), dict):
+            self._initial_rules = {}
+        if legacy_cr:
+            self._merge_conditions(
+                self._initial_rules, self._normalize_conditions(legacy_cr), "d"
             )
-            self.case_rules = {}
         self._complete = None
         self._ev_eqn_system = None
         self._free_variables = None
         self._free_parameters = None
+        self._processed_cr = None
+        self._closed_cr = None
+        self._open_cr = None
+
+    @staticmethod
+    def _normalize_conditions(raw):
+        if not isinstance(raw, dict):
+            return {"closed": {}, "open": {}}
+        if "closed" in raw or "open" in raw:
+            return {
+                "closed": dict(raw.get("closed", {})),
+                "open": dict(raw.get("open", {})),
+            }
+        return {"closed": dict(raw), "open": {}}
+
+    @staticmethod
+    def _merge_conditions(store, conditions, source):
+        # source codes: "i" inherited, "d" defining, "c" corollary
+        for e, value in conditions.get("closed", {}).items():
+            if "closed" in store.get(e, {}):
+                raise ValueError(
+                    f"Cannot add a condition to `{e}`: it already carries a closed "
+                    f"condition and is no longer present in the reduced system."
+                )
+            store.setdefault(e, {})["closed"] = (value, source)
+        for e, values in conditions.get("open", {}).items():
+            if "closed" in store.get(e, {}):
+                raise ValueError(
+                    f"Cannot add a condition to `{e}`: it already carries a closed "
+                    f"condition and is no longer present in the reduced system."
+                )
+            if not isinstance(values, (set, frozenset, list, tuple)):
+                values = {values}
+            slot = store.setdefault(e, {})
+            merged = dict(slot.get("open", ()))
+            for value in values:
+                merged[value] = source
+            slot["open"] = tuple(merged.items())
+        return store
+
+    @staticmethod
+    def _backsub_store(store, sub_dict):
+        out = {}
+        for e, slot in store.items():
+            ns = {}
+            if "closed" in slot:
+                ns["closed"] = (subs(slot["closed"][0], sub_dict), "i")
+            if "open" in slot:
+                ns["open"] = tuple((subs(v, sub_dict), "i") for v, _ in slot["open"])
+            out[e] = ns
+        return out
 
     @property
     def _completion_message(self):
@@ -185,7 +236,74 @@ class case_tree:
             self._complete = self.completion_condition(self.reduced_equation_system)
         return self._complete
 
-    def add_case(self, label: str = None, case_rules: dict = None, **kwargs):
+    @property
+    def case_rules(self):
+        if self._processed_cr is None:
+            s = self._internal_simplify
+            out = {}
+            for e, slot in self._initial_rules.items():
+                ns = {}
+                if "closed" in slot:
+                    v, src = slot["closed"]
+                    ns["closed"] = (s(v), src)
+                if "open" in slot:
+                    ns["open"] = tuple((s(v), src) for v, src in slot["open"])
+                out[e] = ns
+            self._processed_cr = out
+        return self._processed_cr
+
+    @property
+    def closed_case_rules(self):
+        if self._closed_cr is None:
+            self._closed_cr = {
+                e: slot["closed"][0]
+                for e, slot in self.case_rules.items()
+                if "closed" in slot
+            }
+        return self._closed_cr
+
+    @property
+    def open_case_rules(self):
+        if self._open_cr is None:
+            self._open_cr = {
+                e: {v for v, _ in slot["open"]}
+                for e, slot in self.case_rules.items()
+                if slot.get("open")
+            }
+        return self._open_cr
+
+    def _condition_strings(self, sources, latex, filter_conditions=None):
+        flt = filter_conditions if callable(filter_conditions) else (lambda x: x)
+        out = []
+        for e, slot in self.case_rules.items():
+            if "closed" in slot:
+                v, src = slot["closed"]
+                if src in sources:
+                    ke, ve = flt(e), flt(v)
+                    out.append(
+                        LaTeX_eqn_system({ke: ve}, math_mode="$")
+                        if latex
+                        else f"{ke} = {ve}"
+                    )
+            for v, src in slot.get("open", ()):
+                if src in sources:
+                    ke, ve = flt(e), flt(v)
+                    out.append(
+                        LaTeX_eqn_system({e: v}, relation=r" \neq ", math_mode="$")
+                        if latex
+                        else f"{ke} \u2260 {ve}"
+                    )
+        return out
+
+    def add_case(
+        self,
+        label: str = None,
+        defining_conditions: dict = None,
+        corollary_conditions: dict = None,
+        **kwargs,
+    ):
+        legacy_cr = kwargs.pop("case_rules", None)
+
         if label is None:
             for idx in range(1, len(self._subcases) + 2):
                 pref = f"_{idx}"
@@ -194,11 +312,9 @@ class case_tree:
                 label = pref
                 break
 
-        if not isinstance(case_rules, dict):
-            case_rules = {}
         verbose = kwargs.get("verbose", None)
         if not isinstance(verbose, bool):
-            verbose = True is getattr(self, "verbose", False)
+            verbose = getattr(self, "verbose", False) is True
         if not isinstance(label, str):
             raise TypeError("The `label` parameter must be a string.")
         if label.isnumeric():
@@ -215,12 +331,21 @@ class case_tree:
             raise ValueError(
                 "subcases cannot be assigned names coinciding with the `case_tree` class' base attributes."
             )
-        new_cr = case_rules
-        cr = {
-            k: subs(v, new_cr) for k, v in getattr(self, "case_rules", {}).items()
-        } | new_cr
-        kwargs["case_rules"] = cr
-        kwargs["_new_case_rules"] = new_cr
+
+        defining = self._normalize_conditions(defining_conditions)
+        if legacy_cr:
+            defining["closed"] = {
+                **defining["closed"],
+                **self._normalize_conditions(legacy_cr)["closed"],
+            }
+        corollary = self._normalize_conditions(corollary_conditions)
+
+        new_closed = {**defining["closed"], **corollary["closed"]}
+        child_rules = self._backsub_store(self.case_rules, new_closed)
+        self._merge_conditions(child_rules, defining, "d")
+        self._merge_conditions(child_rules, corollary, "c")
+
+        kwargs["_initial_rules"] = child_rules
         new_tree = case_tree(
             label=label,
             equation_system=self.general_equation_system,
@@ -230,10 +355,16 @@ class case_tree:
             **{"_simplify_rule": self._internal_simplify, **kwargs},
         )
         setattr(self, label, new_tree)
-        self._subcases[label] = getattr(self, label)
+        self._subcases[label] = new_tree
+        return new_tree
 
-    def add_corollary(self, label: str, case_rules=None):
-        return self.add_case(label=label, case_rules=case_rules, note=r"$\implies $")
+    def add_corollary(self, label: str, corollary_conditions: dict = None, **kwargs):
+        legacy_cr = kwargs.pop("case_rules", None)
+        if corollary_conditions is None and legacy_cr is not None:
+            corollary_conditions = legacy_cr
+        return self.add_case(
+            label=label, corollary_conditions=corollary_conditions, **kwargs
+        )
 
     def remove_case(self, label):
         if label in self._subcases:
@@ -242,13 +373,12 @@ class case_tree:
                 delattr(self, label)
 
     def _repr_latex_(self, raw=False, **kwargs):
-        out = LaTeX_eqn_system(
-            getattr(self, "case_rules", {}),
-            **{"one_line": True, "punctuation": ".", **kwargs},
+        out = self._conditions_str(
+            {"closed": self.closed_case_rules, "open": self.open_case_rules},
+            _punct="",
+            **kwargs,
         )
         if raw is True:
-            from .._aux.printing.printing._string_processing import _strip_displaystyles
-
             out = _strip_displaystyles(out)
         return out
 
@@ -257,7 +387,7 @@ class case_tree:
 
     def show_case_rules(self, plain_text=False, **kwargs):
         if plain_text is True:
-            print(self.case_rules)
+            print({"closed": self.closed_case_rules, "open": self.open_case_rules})
         else:
             show(self._repr_latex_(**kwargs))
 
@@ -266,20 +396,41 @@ class case_tree:
         if self._ev_eqn_system is None:
             if hasattr(self.general_equation_system, "subs"):
                 self._ev_eqn_system = self._internal_simplify(
-                    subs(self.general_equation_system, self.case_rules)
+                    subs(self.general_equation_system, self.closed_case_rules)
                 )
             else:
                 self._ev_eqn_system = [
-                    self._internal_simplify(
-                        subs(x, self.case_rules) for x in self.general_equation_system
-                    )
+                    self._internal_simplify(subs(x, self.closed_case_rules))
+                    for x in self.general_equation_system
                 ]
         return self._ev_eqn_system
 
     @property
+    def variable_constraints(self):
+        params = self.system_parameters
+        return {
+            "closed": {
+                e: v for e, v in self.closed_case_rules.items() if e not in params
+            },
+            "open": {
+                e: vals for e, vals in self.open_case_rules.items() if e not in params
+            },
+        }
+
+    @property
+    def parameter_conditions(self):
+        params = self.system_parameters
+        return {
+            "closed": {e: v for e, v in self.closed_case_rules.items() if e in params},
+            "open": {
+                e: vals for e, vals in self.open_case_rules.items() if e in params
+            },
+        }
+
+    @property
     def free_variables(self):
         if self._free_variables is None:
-            scr = getattr(self, "case_rules", {})
+            scr = self.closed_case_rules
             fvd = {v: subs(v, scr) for v in self.system_variables}
             fv = set()
             for _, v in fvd.items():
@@ -290,7 +441,7 @@ class case_tree:
     @property
     def free_parameters(self):
         if self._free_parameters is None:
-            scr = getattr(self, "case_rules", {})
+            scr = self.closed_case_rules
             fvd = {v: subs(v, scr) for v in self.system_parameters}
             fv = set()
             for v in fvd.values():
@@ -314,30 +465,122 @@ class case_tree:
                 tree_dict[self.label] = "incomplete"
         return tree_dict
 
+    def _conditions_str(self, bucket, plain_text=False, **kwargs):
+        punct = kwargs.pop("_punct", None)
+        if not isinstance(punct, str):
+            punct = ","
+        closed = bucket.get("closed", {})
+        open_rules = bucket.get("open", {})
+        if plain_text:
+            parts = [f"{e} = {v}" for e, v in closed.items()]
+            parts += [f"{e} \u2260 {v}" for e, vals in open_rules.items() for v in vals]
+            return ", ".join(parts)
+        open_list = [(e, v) for e, vals in open_rules.items() for v in vals]
+        if len(open_list) == 0:
+            out = LaTeX_eqn_system(
+                closed, **{"one_line": True, "punctuation": punct, **kwargs}
+            )
+        else:
+            out = LaTeX_eqn_system(
+                closed,
+                **{
+                    "one_line": True,
+                    "punctuation": punct,
+                    "conjuction": " ",
+                    "force_oxford_comma": True,
+                    **kwargs,
+                },
+            )[:-2]
+        if len(open_list) == 1:
+            if len(closed) > 0:
+                if len(closed) == 1 and out[-1:] == ",":
+                    out = out[:-1]
+                out += (
+                    r"\quad\text{and}\quad "
+                    + (
+                        LaTeX_eqn_system(
+                            open_list,
+                            **{
+                                "one_line": True,
+                                "punctuation": punct,
+                                "relation": r"\neq",
+                                **kwargs,
+                            },
+                        )[2:]
+                    )
+                )
+            else:
+                out = LaTeX_eqn_system(
+                    open_list,
+                    **{
+                        "one_line": True,
+                        "punctuation": punct,
+                        "relation": r"\neq",
+                        **kwargs,
+                    },
+                )
+        elif len(open_list) > 1:
+            if len(closed) > 0:
+                out += LaTeX_eqn_system(
+                    open_list,
+                    **{
+                        "one_line": True,
+                        "punctuation": punct,
+                        "relation": r"\neq",
+                        "force_oxford_comma": True,
+                        **kwargs,
+                    },
+                )[2:]
+            else:
+                out = LaTeX_eqn_system(
+                    open_list,
+                    **{
+                        "one_line": True,
+                        "punctuation": punct,
+                        "relation": r"\neq",
+                        **kwargs,
+                    },
+                )
+
+        return out
+
+    def _condition_strings(
+        self, sources, latex, filter_conditions=None, key_filter=None
+    ):
+        flt = filter_conditions if callable(filter_conditions) else (lambda x: x)
+        keep = key_filter if callable(key_filter) else (lambda e: True)
+        out = []
+        for e, slot in self.case_rules.items():
+            if not keep(e):
+                continue
+            if "closed" in slot:
+                v, src = slot["closed"]
+                if src in sources:
+                    ke, ve = flt(e), flt(v)
+                    out.append(
+                        LaTeX_eqn_system({ke: ve}, math_mode="$")
+                        if latex
+                        else f"{ke} = {ve}"
+                    )
+            for v, src in slot.get("open", ()):
+                if src in sources:
+                    ke, ve = flt(e), flt(v)
+                    out.append(
+                        LaTeX_eqn_system({ke: ve}, relation=r" \neq ", math_mode="$")
+                        if latex
+                        else f"{ke} \u2260 {ve}"
+                    )
+        return out
+
     def _verbose_tree(self, filter_conditions=None):
-        branch_conditions = getattr(self, "_new_case_rules", {})
-        if filter_conditions is not None:
-            try:
-                branch_conditions = (
-                    [
-                        f"{filter_conditions(k)}={filter_conditions(v)}"
-                        for k, v in branch_conditions.items()
-                    ]
-                    if isinstance(branch_conditions, dict)
-                    else []
-                )
-            except Exception:
-                dgcv_warning(
-                    "The given value for `filter_conditions` is not in a supported format. It must be a callable function that transforms symbolic expressions (e.g., simplify/allToReal/expand/etc.)"
-                )
-        branch_conditions = (
-            [f"{k}={v}" for k, v in branch_conditions.items()]
-            if isinstance(branch_conditions, dict)
-            else []
+        branch_conditions = self._grouped_branch_conditions(
+            latex=False, filter_conditions=filter_conditions
         )
         tree_dict = {
             self.label: {"branch_conditions": branch_conditions, "descendants": {}}
         }
+        if getattr(self, "note", None) is not None:
+            tree_dict[self.label]["note"] = str(self.note)
         if self._subcases:
             for sc, subtree in self._subcases.items():
                 tree_dict[self.label]["descendants"] |= subtree._verbose_tree(
@@ -354,35 +597,13 @@ class case_tree:
         return tree_dict
 
     def _latex_verbose_tree(self, filter_conditions=None):
-        branch_conditions = getattr(self, "_new_case_rules", {})
-        if filter_conditions is not None:
-            try:
-                branch_conditions = (
-                    [
-                        f"{LaTeX_eqn_system({filter_conditions(k): filter_conditions(v)}, math_mode='$')}"
-                        for k, v in branch_conditions.items()
-                    ]
-                    if isinstance(branch_conditions, dict)
-                    else []
-                )
-            except Exception:
-                dgcv_warning(
-                    "The given value for `filter_conditions` is not in a supported format. It must be a callable function that transforms symbolic expressions (e.g., simplify/allToReal/expand/etc.)"
-                )
-        else:
-            branch_conditions = (
-                [
-                    f"{LaTeX_eqn_system({k: v}, math_mode='$')}"
-                    for k, v in branch_conditions.items()
-                ]
-                if isinstance(branch_conditions, dict)
-                else []
-            )
-
+        branch_conditions = self._grouped_branch_conditions(
+            latex=True, filter_conditions=filter_conditions
+        )
         tree_dict = {
             self.label: {"branch_conditions": branch_conditions, "descendants": {}}
         }
-        if hasattr(self, "note"):
+        if getattr(self, "note", None) is not None:
             tree_dict[self.label]["note"] = str(self.note)
         if self._subcases:
             for sc, subtree in self._subcases.items():
@@ -398,6 +619,18 @@ class case_tree:
             else:
                 tree_dict[self.label]["descendants"] = "incomplete"
         return tree_dict
+
+    def _grouped_branch_conditions(self, latex, filter_conditions=None):
+        params = self.system_parameters
+        return {
+            "parameters": self._condition_strings(
+                {"d"}, latex, filter_conditions, key_filter=lambda e: e in params
+            ),
+            "variables": self._condition_strings(
+                {"d"}, latex, filter_conditions, key_filter=lambda e: e not in params
+            ),
+            "corollaries": self._condition_strings({"c"}, latex, filter_conditions),
+        }
 
     def tree_summary(
         self,
@@ -438,14 +671,14 @@ class case_tree:
                 child_path = ""
             else:
                 display_label = f"{path}.{clean_key}" if path else clean_key
-                connector = "└── " if is_last else "├── "
+                connector = "\u2514\u2500\u2500 " if is_last else "\u251c\u2500\u2500 "
                 line_indent = indent
                 child_path = display_label
 
             if isinstance(value, dict):
                 print(f"{line_indent}{connector}{display_label}")
                 next_indent = (
-                    indent + ("    " if is_last else "│   ") if not root else ""
+                    indent + ("    " if is_last else "\u2502   ") if not root else ""
                 )
                 cls._print_path_tree(value, next_indent, child_path, root=False)
             else:
@@ -481,8 +714,8 @@ class case_tree:
             chunks = textwrap.wrap(raw_text, width=24, break_long_words=True)
             max_w = max(len(c) for c in chunks) if chunks else 0
 
-            prefix = "└── " if is_last else "├── "
-            vertical_gate = "    " if is_last else "│   "
+            prefix = "\u2514\u2500\u2500 " if is_last else "\u251c\u2500\u2500 "
+            vertical_gate = "    " if is_last else "\u2502   "
 
             descendants = value.get("descendants")
             is_dict = isinstance(descendants, dict)
@@ -490,28 +723,24 @@ class case_tree:
 
             for idx, text in enumerate(chunks):
                 if idx == 0:
-                    b_open = "⎡" if len(chunks) > 1 else "["
-                    b_close = "⎤" if len(chunks) > 1 else "]"
+                    b_open = "\u23a1" if len(chunks) > 1 else "["
+                    b_close = "\u23a4" if len(chunks) > 1 else "]"
                     print(
-                        f"{indent}{prefix}{b_open}{text.ljust(max_w)}{b_close}─{display_label}{suffix}"
+                        f"{indent}{prefix}{b_open}{text.ljust(max_w)}{b_close}\u2500{display_label}{suffix}"
                     )
                 else:
-                    b_mid = " ⎢" if idx < len(chunks) - 1 else " ⎣"
-                    b_end = "⎥" if idx < len(chunks) - 1 else "⎦"
+                    b_mid = " \u23a2" if idx < len(chunks) - 1 else " \u23a3"
+                    b_end = "\u23a5" if idx < len(chunks) - 1 else "\u23a6"
 
-                    # If node B has children, add a strut '│' aligned under the label
-                    # The label starts after prefix(4) + brackets(2) + max_w + 1(dash)
                     strut = ""
                     if is_dict:
-                        # Space to get past the box width, then the vertical line
-                        strut = " " * (len(display_label) // 2) + "│"
+                        strut = " " * (len(display_label) // 2) + "\u2502"
 
                     print(
                         f"{indent}{vertical_gate[:3]}{b_mid}{text.ljust(max_w)}{b_end}{strut}"
                     )
 
             if is_dict:
-                # Align next level children under the strut we just created
                 padding_width = (max_w + 3) if chunks else 0
                 next_indent = indent + vertical_gate + (" " * padding_width)
                 cls._print_verbose_tree(value, next_indent, display_label, root=False)
@@ -521,9 +750,7 @@ class case_tree:
         if callable(f):
             return f(self)
         param_count = len(self.system_parameters)
-        if param_count == 0:
-            pass
-        purality_note = "pameter" if param_count == 1 else "pameters"
+        purality_note = "parameter" if param_count == 1 else "parameters"
         print(f"The system is parameterized with {param_count} {purality_note}.")
 
         eqns = self.reduced_equation_system
@@ -531,13 +758,39 @@ class case_tree:
             eqns = {0: eqns}
         else:
             eqns = [var for var in eqns]
-        c_numb = len(self.case_rules)
-        if c_numb == 0:
+
+        param_bucket = self.parameter_conditions
+        var_bucket = self.variable_constraints
+        p_count = len(param_bucket["closed"]) + sum(
+            len(s) for s in param_bucket["open"].values()
+        )
+        v_count = len(var_bucket["closed"]) + sum(
+            len(s) for s in var_bucket["open"].values()
+        )
+
+        def _emit(bucket):
+            if plain_text:
+                print(self._conditions_str(bucket, plain_text=True))
+            else:
+                show(self._conditions_str(bucket, punctuation=","))
+
+        if p_count == 0 and v_count == 0:
             print("The general equation system is")
         else:
-            print("The condition" if c_numb == 1 else "Conditions")
-            self.show_case_rules(punctuation=",", plain_text=plain_text)
-            print("implies" if c_numb == 1 else "imply")
+            if p_count > 0:
+                print(
+                    "Restricting to the subfamily defined by the parameter condition"
+                    + ("" if p_count == 1 else "s")
+                )
+                _emit(param_bucket)
+            if v_count > 0:
+                print(
+                    ("with" if p_count > 0 else "Imposing")
+                    + " the variable constraint"
+                    + ("" if v_count == 1 else "s")
+                )
+                _emit(var_bucket)
+            print("the equation system becomes")
 
         if plain_text:
             print(eqns)
@@ -569,7 +822,7 @@ class case_tree:
                 show(LaTeX_list(self.free_variables, one_line=True, punctuation="."))
         if self.complete:
             print("********** The branch is complete! **********")
-            print(f"     {len(self.free_variables)} dim. parameter space remaining ")
+            print(f"     {len(self.free_parameters)} dim. parameter space remaining ")
 
 
 def _html_style(theme=None, container_id=None, slim=False):
@@ -645,6 +898,75 @@ def _html_style(theme=None, container_id=None, slim=False):
     word-wrap: break-word;
 }}
 
+{scope} .cond-box {{ padding: 0; vertical-align: top; }}
+
+{scope} .cond-compartment {{
+    position: relative;
+    padding: 7px 14px 6px;
+}}
+
+{scope} .cond-compartment::before {{
+    content: "corollaries";
+    display: block;
+    height: 0;
+    visibility: hidden;
+    white-space: nowrap;
+    font-size: 8px;
+    font-style: normal;
+    letter-spacing: 0.5px;
+    text-transform: lowercase;
+    padding: 0 5px;
+    margin-left: 6px;
+    margin-right: min(2px, var(--dgcv-border-width, 1px));
+    box-sizing: content-box;
+}}
+
+{scope} .cond-compartment + .cond-compartment {{
+    border-top-style: solid;
+    border-top-color: var(--dgcv-border-main);
+    border-top-width: min(2px, var(--dgcv-border-width, 1px));
+    border-image: var(--dgcv-border-image, none);
+}}
+
+{scope} .cond-chip {{
+    --computed-border-width: min(2px, var(--dgcv-border-width, 1px));
+    position: absolute;
+    top: 0;
+    left: 6px;
+    transform: translateY(-50%);
+    padding: 0 5px;
+    font-size: 8px;
+    font-style: normal;
+    line-height: 1.2;
+    letter-spacing: 0.5px;
+    text-transform: lowercase;
+    white-space: nowrap;
+    background: var(--dgcv-bg-alt);
+    color: var(--dgcv-text-alt);
+    border-radius: min(4px, var(--dgcv-border-radius, 12px));
+}}
+{scope} .cond-chip::before {{
+    content: "";
+    position: absolute;
+    top: calc(-1 * var(--computed-border-width));
+    left: calc(-1 * var(--computed-border-width));
+    right: calc(-1 * var(--computed-border-width));
+    bottom: 50%;
+    box-sizing: border-box;
+    border-style: solid;
+    border-color: var(--dgcv-border-main);
+    border-width: var(--computed-border-width);
+    border-bottom: none;
+    border-image: var(--dgcv-border-image, none);
+    border-radius: 
+        calc(min(4px, var(--dgcv-border-radius, 12px)) + var(--computed-border-width)) 
+        calc(min(4px, var(--dgcv-border-radius, 12px)) + var(--computed-border-width)) 
+        0 0;
+    pointer-events: none;
+}}
+
+{scope} .cond-content {{ font-size: 12px; }}
+
 {scope} .node-label {{
     font-weight: bold; 
     font-size: 14px; 
@@ -710,12 +1032,28 @@ def _html_style(theme=None, container_id=None, slim=False):
     color: var(--dgcv-text-hover) !important;
     border-color: var(--dgcv-text-hover) !important;
 }}
+{scope} .compound-node:hover .cond-compartment + .cond-compartment {{
+    border-top-color: var(--dgcv-text-hover);
+}}
+{scope} .compound-node:hover .cond-chip {{
+    background: var(--dgcv-bg-hover) !important;
+    color: var(--dgcv-text-hover) !important;
+}}
 {scope} .node-label:hover {{
 background: var(--dgcv-bg-hover);
 color: var(--dgcv-text-hover) !important;
 border-color: var(--dgcv-text-hover) !important;
 }}
-
+{scope} .compound-node:hover .cond-compartment + .cond-compartment {{
+    border-top-color: var(--dgcv-text-hover);
+}}
+{scope} .compound-node:hover .cond-chip {{
+    background: var(--dgcv-bg-hover) !important;
+    color: var(--dgcv-text-hover) !important;
+}}
+{scope} .compound-node:hover .cond-chip::before {{
+    border-color: var(--dgcv-text-hover);
+}}
 {scope} .children-ul {{ margin-left: 10px; }}
     """
     return f"<style>{base_styles}</style>"
@@ -726,8 +1064,6 @@ def _to_html_tree(
 ):
     if not isinstance(data, dict):
         return ""
-    import html
-    import uuid
 
     if is_root and container_id is None:
         container_id = f"tree-{uuid.uuid4().hex[:8]}"
@@ -742,7 +1078,18 @@ def _to_html_tree(
         root_label = "root"
 
     if is_root and root_label in data:
-        res += f'<li><div class="compound-node root-wrapper"><div class="node-label" style="min-width: 10px;">{root_label}</div></div>'
+        root_node = data[root_label] if isinstance(data[root_label], dict) else {}
+        root_note = root_node.get("note")
+        note_html = (
+            f'<div class="note-msg">{html.escape("Note: " + str(root_note))}</div>'
+            if root_note is not None
+            else ""
+        )
+        res += (
+            f'<li><div class="compound-node root-wrapper">'
+            f'<div class="node-label" style="min-width: 10px;">{root_label}</div>'
+            f"{note_html}</div>"
+        )
         res += _to_html_tree(
             data[root_label], "", False, container_id=container_id, slim=slim
         )
@@ -752,12 +1099,18 @@ def _to_html_tree(
         for key, value in items:
             clean_key = str(key).strip("_")
             current_path = f"{path}.{clean_key}" if path else clean_key
-            conds = (
-                value.get("branch_conditions", []) if isinstance(value, dict) else []
-            )
 
-            if isinstance(conds, str):
-                conds = [conds.strip("[]'")]
+            bc = value.get("branch_conditions", {}) if isinstance(value, dict) else {}
+            if isinstance(bc, dict):
+                groups = [
+                    ("parameters", bc.get("parameters", [])),
+                    ("variables", bc.get("variables", [])),
+                    ("corollaries", bc.get("corollaries", [])),
+                ]
+            elif isinstance(bc, str):
+                groups = [(None, [bc.strip("[]'")] if bc else [])]
+            else:
+                groups = [(None, list(bc))]
 
             descendants = value.get("descendants") if isinstance(value, dict) else value
             is_dict = isinstance(descendants, dict)
@@ -765,12 +1118,26 @@ def _to_html_tree(
             res += '<li><div class="compound-node">'
             res += f'<div class="node-label">{html.escape(current_path)}</div>'
 
-            cond_text = (
-                ",\u00a0  ".join(html.escape(str(c)) for c in conds)
-                if any(conds)
-                else "None"
-            )
-            res += f'<div class="cond-box">{cond_text}</div>'
+            inner = ""
+            for chip_label, group_items in groups:
+                if not group_items:
+                    continue
+                body = ",\u00a0  ".join(html.escape(str(c)) for c in group_items)
+                chip = (
+                    f'<span class="cond-chip">{html.escape(chip_label)}</span>'
+                    if chip_label
+                    else ""
+                )
+                inner += (
+                    f'<div class="cond-compartment">{chip}'
+                    f'<div class="cond-content">{body}</div></div>'
+                )
+            if not inner:
+                inner = (
+                    '<div class="cond-compartment">'
+                    '<div class="cond-content">None</div></div>'
+                )
+            res += f'<div class="cond-box">{inner}</div>'
 
             if not is_dict:
                 res += (
@@ -795,6 +1162,7 @@ def _to_html_tree(
 
 
 def _full_tree_html(data, theme=None, root_label=None, slim=False):
+
     cid = f"tree-{uuid.uuid4().hex[:8]}"
     styles = _html_style(theme=theme, container_id=cid, slim=slim)
     tree_html = _to_html_tree(
@@ -804,13 +1172,6 @@ def _full_tree_html(data, theme=None, root_label=None, slim=False):
     return styles + tree_html
 
 
-# def _full_tree_html(data, theme=None, root_label=None):
-#     cid = f"tree-{uuid.uuid4().hex[:8]}"
-#     styles = _html_style(theme=theme, container_id=cid)
-#     tree = _to_html_tree(data, is_root=True, root_label=root_label, container_id=cid)
-#     return styles + tree
-
-
 def _tree_leaves_html(
     tree: case_tree,
     theme=None,
@@ -818,6 +1179,7 @@ def _tree_leaves_html(
     return_displayable=False,
     sort_by: str | list = None,
     reverse=False,
+    hide_variable_constraints: bool = False,
     **kwargs,
 ):
     if not isinstance(theme, str):
@@ -850,47 +1212,60 @@ def _tree_leaves_html(
                 break
         if root is None:
             continue
-        leaves[k]["conditions"] = root.case_rules
+        leaves[k]["var_conditions"] = root.variable_constraints
+        leaves[k]["param_conditions"] = root.parameter_conditions
         leaves[k]["free_vars"] = root.free_variables
         leaves[k]["free_params"] = root.free_parameters
 
     def process_conditions(conds):
+        closed = conds.get("closed", {})
+        open_ = conds.get("open", {})
         eqns = []
-        for k, v in conds.items():
-            if use_latex:
-                eqns.append(LaTeX_eqn_system({k: v}, math_mode="$"))
-            else:
-                eqns.append(str(k) + "=" + str(v))
+        for e in order_coordinates(list(set(closed) | set(open_))):
+            if e in closed:
+                v = closed[e]
+                eqns.append(
+                    LaTeX_eqn_system({e: v}, math_mode="$")
+                    if use_latex
+                    else f"{e} = {v}"
+                )
+            if e in open_:
+                for v in sorted(open_[e], key=str):
+                    LaTeX_eqn_system(
+                        {e: v}, relation=r" \neq ", math_mode="$"
+                    ) if use_latex else f"{e} \u2260 {v}"
         return ", ".join(eqns)
 
     def state(x):
         return "solved" if x.startswith("complete") else "unsolved"
 
-    rows = []
     no_params = len(tree.free_parameters) == 0
+    show_params = not no_params
+    show_var_constraints = not hide_variable_constraints
+
+    headers = ["subcase", "equation state"]
+    if show_params:
+        headers.append("free parameters")
+    headers.append("free variables")
+    if show_params:
+        headers.append("parameter conditions")
+    if show_var_constraints:
+        headers.append("variable constraints")
+
+    rows = []
     for k, v in leaves.items():
-        rows.append(
-            [
-                (k[1:] if k.startswith(".") else k).replace("._", "."),
-                state(v.get("state", "")),
-                str(len(v.get("free_vars", []))),
-            ]
-            + ([] if no_params else [str(len(v.get("free_params", [])))])
-            + [
-                process_conditions(v.get("conditions", [])),
-            ]
-        )
-    headers = (
-        [
-            "subcase",
-            "equation state",
-            "free variables",
+        row = [
+            (k[1:] if k.startswith(".") else k).replace("._", "."),
+            state(v.get("state", "")),
         ]
-        + ([] if no_params else ["free parameters"])
-        + [
-            "conditions",
-        ]
-    )
+        if show_params:
+            row.append(str(len(v.get("free_params", []))))
+        row.append(str(len(v.get("free_vars", []))))
+        if show_params:
+            row.append(process_conditions(v.get("param_conditions", {})))
+        if show_var_constraints:
+            row.append(process_conditions(v.get("var_conditions", {})))
+        rows.append(row)
 
     def sort(rs, property):
         aliases = {
@@ -911,15 +1286,35 @@ def _tree_leaves_html(
             "parameter": "free parameters",
             "param": "free parameters",
             "params": "free parameters",
-            "case_rules": "conditions",
+            "case_rules": "variable constraints",
+            "conditions": "variable constraints",
+            "constraint": "variable constraints",
+            "constraints": "variable constraints",
+            "variable constraint": "variable constraints",
+            "var constraints": "variable constraints",
+            "var constraint": "variable constraints",
+            "parameter condition": "parameter conditions",
+            "param conditions": "parameter conditions",
+            "param condition": "parameter conditions",
         }
-        idxs = {"subcase": 0, "equation state": 1, "free variables": 2}
-        if no_params:
-            idxs |= {"conditions": 3}
-        else:
-            idxs |= {"free parameters": 3, "conditions": 4}
+        idxs = {"subcase": 0, "equation state": 1}
+        pos = 2
+        if show_params:
+            idxs["free parameters"] = pos
+            pos += 1
+        idxs["free variables"] = pos
+        pos += 1
+        if show_params:
+            idxs["parameter conditions"] = pos
+            pos += 1
+        if show_var_constraints:
+            idxs["variable constraints"] = pos
+            pos += 1
         numerics = set(
-            filter(None, {idxs.get("free variables"), idxs.get("free parameters")})
+            filter(
+                lambda i: i is not None,
+                {idxs.get("free variables"), idxs.get("free parameters")},
+            )
         )
         tuple_sort = isinstance(property, (list, tuple))
         if tuple_sort:

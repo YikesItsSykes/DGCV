@@ -35,6 +35,7 @@ from typing import Any, Literal, Sequence, Tuple
 
 from .._aux._backends._display_engine import is_rich_displaying_available
 from .._aux._backends._numeric_router import zeroish
+from .._aux._backends._polynomials import expr_union_primitives
 from .._aux._backends._symbolic_router import (
     clear_denominators,
     conjugate,
@@ -75,6 +76,7 @@ from ..core.vector_fields_and_differential_forms.vector_fields_and_differential_
     LieDerivative,
     _extract_basis_by_wedge_vectorized,
     annihilator,
+    decompose,
 )
 
 __all__ = ["Tanaka_symbol", "distribution"]
@@ -454,7 +456,6 @@ class Tanaka_symbol(dgcv_class):
             self._fast_process_DS = []
             self._standard_process_DS = []
             self._slow_process_DS = []
-
         self._parameters = GLA._parameters | ds_params | _internal_parameters
 
         distinguished_subspaces = newDS
@@ -645,7 +646,12 @@ class Tanaka_symbol(dgcv_class):
         else:
             surface_singularities = False
         if simplify_pivots is None:
+            simplify_ideals = get_dgcv_settings_registry().get(
+                "simplify_singularity_ideals_by_default", True
+            )
             simplify_pivots = surface_singularities
+        else:
+            simplify_ideals = simplify_pivots
         if ADS is None:
             fast_DS = self._fast_process_DS
             standard_DS = self._standard_process_DS
@@ -759,10 +765,15 @@ class Tanaka_symbol(dgcv_class):
                                 pass_to_symbolic_engine=False,
                                 simplify_pivots=simplify_pivots,
                             )
-                            self._singularities["prolongation"] = (
-                                self._singularities.get("prolongation", [])
-                                + [v for v in sing if get_free_symbols(v)]
+                            self._singularities["prolongation"] = expr_union_primitives(
+                                list(self._singularities.get("prolongation", []))
+                                + [v for v in sing if get_free_symbols(v)],
+                                self._parameters,
+                                process_rationals=True,
+                                fail_quietly=True,
+                                bypass=not simplify_ideals,
                             )
+
                         else:
                             sol = solve_dgcv(eqns, esVars, method="linsolve")
                         ambient_basis = []
@@ -826,9 +837,16 @@ class Tanaka_symbol(dgcv_class):
                         pass_to_symbolic_engine=False,
                         simplify_pivots=simplify_pivots,
                     )
-                    self._singularities["prolongation"] = self._singularities.get(
-                        "prolongation", []
-                    ) + [v for v in sing if get_free_symbols(v)]
+
+                    self._singularities["prolongation"] = expr_union_primitives(
+                        list(self._singularities.get("prolongation", []))
+                        + [v for v in sing if get_free_symbols(v)],
+                        self._parameters,
+                        process_rationals=True,
+                        fail_quietly=True,
+                        bypass=not simplify_ideals,
+                    )
+
                 else:
                     solution = solve_dgcv(eqns, tVars, method="linsolve")
 
@@ -927,9 +945,14 @@ class Tanaka_symbol(dgcv_class):
                             pass_to_symbolic_engine=False,
                             simplify_pivots=simplify_pivots,
                         )
-                        self._singularities["prolongation"] = self._singularities.get(
-                            "prolongation", []
-                        ) + [v for v in sing if get_free_symbols(v)]
+                        self._singularities["prolongation"] = expr_union_primitives(
+                            list(self._singularities.get("prolongation", []))
+                            + [v for v in sing if get_free_symbols(v)],
+                            self._parameters,
+                            process_rationals=True,
+                            fail_quietly=True,
+                            bypass=not simplify_ideals,
+                        )
                     else:
                         solution = solve_dgcv(eqns, solVars, method="linsolve")
                     if len(solution) == 0:
@@ -1115,8 +1138,8 @@ class Tanaka_symbol(dgcv_class):
                                 pass_to_symbolic_engine=False,
                             )
                             self._singularities["prolongation"] = (
-                                self._singularities.get("prolongation", [])
-                                + [v for v in sing if get_free_symbols(v)]
+                                self._singularities.get("prolongation", set())
+                                | {v for v in sing if get_free_symbols(v)}
                             )
                         else:
                             sol = solve_dgcv(
@@ -1185,8 +1208,8 @@ class Tanaka_symbol(dgcv_class):
                         pass_to_symbolic_engine=False,
                     )
                     self._singularities["prolongation"] = self._singularities.get(
-                        "prolongation", []
-                    ) + [v for v in sing if get_free_symbols(v)]
+                        "prolongation", set()
+                    ) | {v for v in sing if get_free_symbols(v)}
                 else:
                     solution = solve_dgcv(eqns, tVars, method="linsolve")
 
@@ -1273,8 +1296,8 @@ class Tanaka_symbol(dgcv_class):
                             pass_to_symbolic_engine=False,
                         )
                         self._singularities["prolongation"] = self._singularities.get(
-                            "prolongation", []
-                        ) + [v for v in sing if get_free_symbols(v)]
+                            "prolongation", set()
+                        ) | {v for v in sing if get_free_symbols(v)}
                     else:
                         solution = solve_dgcv(eqns, solVars)
                     if len(solution) == 0:
@@ -1540,11 +1563,11 @@ class Tanaka_symbol(dgcv_class):
                     _internal_singularities=self._singularities,
                 )
                 if surface_singularities is True:
-                    return out, self._singularities.get("prolongation", [])
+                    return out, self._singularities.get("prolongation", set())
                 return out
             else:
                 if surface_singularities is True:
-                    return levels, self._singularities.get("prolongation", [])
+                    return levels, self._singularities.get("prolongation", set())
                 return levels
 
     def summary(
@@ -1564,7 +1587,7 @@ class Tanaka_symbol(dgcv_class):
             dgcvSR.get("extra_support_for_math_in_tables") is True
         )
         params = len(self._parameters) > 0
-        sing = len(self._singularities.get("prolongation", [])) > 0
+        sing = len(self._singularities.get("prolongation", set())) > 0
 
         if use_latex is None:
             use_latex = dgcvSR.get("use_latex", False)
@@ -1624,7 +1647,7 @@ class Tanaka_symbol(dgcv_class):
             if params:
                 lines.append("")
                 lines.append(_header_block(paratitle, inner_width))
-                inner = ", ".join(str(e) for e in self._parameters)
+                inner = ", ".join(str(e) for e in order_coordinates(self._parameters))
                 lines.append(f"• [{inner}]")
             if sing:
                 lines.append("")
@@ -1740,7 +1763,7 @@ class Tanaka_symbol(dgcv_class):
                 )
 
             if params:
-                param_items = [_to_math(e) for e in self._parameters]
+                param_items = [_to_math(e) for e in order_coordinates(self._parameters)]
                 sections.append(
                     _panel_section(
                         "Parameters", [", ".join(param_items)], len(sections) > 0
@@ -2987,7 +3010,22 @@ class distribution(dgcv_class):
             grading=[grading_vec],
             assume_skew=True,
             return_created_object=return_created_object,
+            forgo_vmf_registry=exclude_from_VMF,
         )
+
+    def contains_section(self, section, section_parameters: list = None):
+        if query_dgcv_categories(section, {"vector_field"}):
+            bas = self.vf_basis
+        elif query_dgcv_categories(section, {"differential_form"}):
+            bas = self.df_basis
+        if len(bas) == 0 and section_parameters is None:
+            return section.is_zero
+        indepcheck = decompose(
+            section, bas, assume_basis=True, variables_to_constrain=section_parameters
+        )
+        if section_parameters is None:
+            return len(indepcheck[0]) != 0
+        return len(indepcheck[0]) != 0 and indepcheck[2]
 
     @property
     def _ext_power_class(self):
@@ -2998,28 +3036,25 @@ class distribution(dgcv_class):
     @property
     def characteristic(self):
         if self._characteristic is None:
-            epc = self._ext_power_class
             vfs = self.vf_basis
-            label = create_key("var")
-            vars = [symbol(f"{label}{idx}") for idx in range(len(self.vf_basis))]
-            genVF = sum(c * elem for c, elem in zip(vars, vfs))
-            eqns = []
+            genVF, section_par = linear_combination(vfs)
+            sp_contraints = []
             for vf in vfs:
-                eqns += list(
-                    (wedge(LieDerivative(genVF, vf), epc)).__dgcv_zero_obstr__[0]
+                deco = self.contains_section(
+                    LieDerivative(genVF, vf), section_parameters=section_par
                 )
-            sol = solve_dgcv(eqns, vars)[0]
+                sp_contraints += [k - v for k, v in deco.items()]
+            sol = solve_dgcv(sp_contraints, section_par)[0]
             solution = subs(genVF, sol)
             free_vars = set()
             for val in sol.values():
                 free_vars |= get_free_symbols(val)
-            free_vars = set(vars) & free_vars
-            zeroing = {var: 0 for var in free_vars}
-            char_dist = []
-            for var in free_vars:
-                char_dist.append(
-                    subs(solution, zeroing | {var: 1}).scale_to_polynomial_attempt()
-                )
+            free_vars = set(section_par) & free_vars
+            zeroing = {vari: 0 for vari in free_vars}
+            char_dist = [
+                subs(solution, zeroing | {vari: 1}).scale_to_polynomial_attempt()
+                for vari in free_vars
+            ]
             self._characteristic = char_dist
         return self._characteristic
 
@@ -3160,3 +3195,216 @@ class distribution(dgcv_class):
 
     def __dgcv_conjugate__(self, symbolic=False):
         return self.apply(conjugate, symbolic=symbolic)
+
+
+class filtration_class(dgcv_class):
+    def __init__(self, spanning_vf_sets: list[list]):
+        def sublist_check(sl):
+            return isinstance(sl, (list, set, tuple)) and all(
+                query_dgcv_categories(vf, {"vector_field"}) for vf in sl
+            )
+
+        if not isinstance(spanning_vf_sets, (list, set, tuple)) or not all(
+            sublist_check(sl) for sl in spanning_vf_sets
+        ):
+            raise TypeError(
+                "`filtration init expects `spanning_vf_sets` to be a list of lists of vector fields.`"
+            )
+        spanning_vf_sets = list(spanning_vf_sets)
+        self.depth = len(spanning_vf_sets)
+        if len(spanning_vf_sets) == 0:
+            spanning_vf_sets = [[]]
+        distros = [distribution(spanning_vf_set=spanning_vf_sets[0])]
+        for sl in spanning_vf_sets[1:]:
+            distros.append(distribution(list(distros[-1].vf_basis) + list(sl)))
+        self.distributions = tuple(distros)
+        self.growth_vector = tuple(distro.rank for distro in self.distributions)
+        self._frame_torsion = None
+        self._graded_frame_torsion = None
+        self._singularities = dict()
+        super().__init__()
+
+    @property
+    def vf_basis(self):
+        return self.distributions[-1].vf_basis if self.depth > 0 else []
+
+    @property
+    def associated_graded_bases(self):
+        vfb = self.vf_basis
+        out = [[]]
+        level = 0
+        for idx, vf in enumerate(vfb):
+            if idx < self.growth_vector[level]:
+                out[-1].append(vf)
+                continue
+            gap = min(
+                gvidx - level
+                for gvidx in range(self.depth)
+                if self.growth_vector[gvidx] > self.growth_vector[level]
+            )
+            level += gap
+            if gap > 1:
+                out += [[] for _ in range(gap - 1)]
+            out.append([vf])
+        return out
+
+    @property
+    def frame_torsion(self):
+        if self._frame_torsion is None:
+            vfb = self.vf_basis
+            dim = len(vfb)
+            ft = array_dgcv(
+                dict(),
+                shape=(dim, dim),
+                null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1)),
+            )
+            for c1, vf1 in enumerate(vfb):
+                for c, vf2 in enumerate(vfb[c1 + 1 :]):
+                    c2 = c1 + 1 + c
+                    bracket = LieDerivative(vf1, vf2)
+                    coeffs = decompose(bracket, vfb, assume_basis=True)[0]
+                    if len(coeffs) != dim:
+                        print(type(bracket))
+                        raise ValueError(
+                            f"The filtration's largest level is not involutive. VFs in indices {c1} and {c2} fail bracket closure."
+                        )
+                    coeffs = matrix_dgcv(coeffs)
+                    ft[c1, c2] = coeffs
+                    ft[c2, c1] = -coeffs
+            self._frame_torsion = ft
+        return self._frame_torsion
+
+    @property
+    def associated_graded_frame_torsion(self):
+        if self._graded_frame_torsion is None:
+            ft = self.frame_torsion
+            dim = ft.shape[0]
+            nft = array_dgcv(
+                dict(),
+                shape=(dim, dim),
+                null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1)),
+            )
+
+            def find_level(idx):
+                for level, ldim in enumerate(self.growth_vector):
+                    if idx < ldim:
+                        return level + 1
+                return self.depth
+
+            def trim(clist, level, c1, c2):
+                if level > self.depth:
+                    return matrix_dgcv({}, shape=(dim, 1))
+                l_idx = level - 1
+                if l_idx == 0:
+                    ld, ld_inc = 0, self.growth_vector[l_idx]
+                else:
+                    ld, ld_inc = (
+                        self.growth_vector[l_idx - 1],
+                        self.growth_vector[l_idx],
+                    )
+                part2, part3 = clist[ld:ld_inc], clist[ld_inc:]
+                if any(coef != 0 for coef in part3):
+                    if any(simplify(coef) != 0 for coef in part3):
+                        raise ValueError(
+                            f"The filtration is not compatible with Lie brackets, i.e., [F_i,F_j] is not in F_{{i+j}} for i={-find_level(c1)} and j={-find_level(c2)}. The problem occurs at index pair {(c1, c2)}."
+                        )
+                out = matrix_dgcv(
+                    {idx + ld: coef for idx, coef in enumerate(part2)}, shape=(dim, 1)
+                )
+                return out
+
+            for k, v in ft._data.items():
+                c1, c2 = ft._unspool(k)
+                if c1 > c2:
+                    continue
+                nc = trim(v, find_level(c1) + find_level(c2), c1, c2)
+                nft[c1, c2] = nc
+                nft[c2, c1] = -nc
+            self._graded_frame_torsion = nft
+        return self._graded_frame_torsion
+
+    def nilpotent_approximation(
+        self,
+        approximation_point=None,
+        label=None,
+        basis_labels=None,
+        exclude_from_VMF: bool = None,
+        return_created_object: bool = True,
+        Tanaka_symbol_format: bool = False,
+        randomize_approximation_point=False,
+        **kwargs,
+    ) -> algebra_class | Tanaka_symbol:
+        if exclude_from_VMF is None:
+            exclude_from_VMF = Tanaka_symbol_format
+        if exclude_from_VMF or Tanaka_symbol_format:
+            return_created_object = True
+        agft = self.associated_graded_frame_torsion
+        if randomize_approximation_point:
+            coordinates = get_free_symbols(agft)
+            from random import randint
+
+            approximation_point = dict()
+            for var in coordinates:
+                in1 = randint(1, 20)
+                in2 = randint(in1 + 1, in1 + 20)
+                ins = [in1, in2]
+                idx = randint(0, 1)
+                approximation_point[var] = rational(ins[idx], ins[1 - idx])
+            # Add plain text printing
+            from .._aux.printing.printing._dgcv_display import (
+                LaTeX_eqn_system,
+                show,
+            )
+
+            print("Evaluating nilpotent approximation at the randomly chosen point:")
+            show(LaTeX_eqn_system(approximation_point, one_line=True))
+        if approximation_point is not None:
+            if not isinstance(approximation_point, dict):
+                dgcv_warning(
+                    "approximation_point was given in an unsuported format, and was ignored."
+                )
+            else:
+                agft = subs(agft, approximation_point)
+        grading = []
+        for level, ldim in enumerate(self.growth_vector):
+            if level > 0:
+                ldim = ldim - self.growth_vector[level - 1]
+            grading += [-level - 1 for _ in range(ldim)]
+        if label is None:
+            if basis_labels is not None:
+                dgcv_warning(
+                    "`basis_labels` was provided but no `label` was provided; `basis_labels` is ignored."
+                )
+            printWarning = (
+                "This algebra was initialized via `filtration_class.nilpotent_approximation` with no label; "
+                "automatic labels were assigned. Provide `label=...` (and optionally `basis_labels=...`) to control labeling, "
+                "or use exclude_from_VMF=True to suppress warnings."
+            )
+            childPrintWarning = (
+                "This algebraElement's parent algebra was initialized via `filtration_class.nilpotent_approximation` with no label; "
+                "automatic labels were assigned."
+            )
+            exclusionPolicy = retrieve_passkey() if exclude_from_VMF is True else None
+            outalg = algebra_class(
+                agft,
+                grading=[grading],
+                assume_skew=True,
+                _callLock=retrieve_passkey(),
+                _print_warning=printWarning,
+                _child_print_warning=childPrintWarning,
+                _exclude_from_VMF=exclusionPolicy,
+            )
+        else:
+            outalg = createAlgebra(
+                agft,
+                label,
+                basis_labels=basis_labels,
+                grading=[grading],
+                assume_skew=True,
+                return_created_object=True,
+                forgo_vmf_registry=exclude_from_VMF,
+            )
+        if return_created_object:
+            if Tanaka_symbol_format:
+                return Tanaka_symbol(outalg)
+            return outalg

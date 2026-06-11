@@ -47,6 +47,7 @@ from typing import List, Literal, Optional
 from .._aux._backends._display import latex
 from .._aux._backends._display_engine import is_rich_displaying_available
 from .._aux._backends._engine import engine_kind, engine_module
+from .._aux._backends._polynomials import expr_union_primitives
 from .._aux._backends._symbolic_router import (
     _scalar_is_zero,
     as_numer_denom,
@@ -79,7 +80,7 @@ from .._aux._vmf._safeguards import (
     retrieve_passkey,
     unique_label,
 )
-from .._aux._vmf.vmf import clearVar, listVar
+from .._aux._vmf.vmf import clearVar, listVar, order_coordinates
 from .._aux.printing._tables import build_matrix_table, panel_view
 from .._aux.printing.printing import lincomb_latex, lincomb_plain, space_display
 from .._aux.printing.printing._dgcv_display import show
@@ -159,7 +160,7 @@ class algebra_class(dgcv_class):
                     )
                 else:
                     validated_structure_data, params = vsd
-                    if not isinstance(params, set()):
+                    if not isinstance(params, set):
                         params = set()
                     params |= get_free_symbols(
                         validated_structure_data
@@ -371,6 +372,17 @@ class algebra_class(dgcv_class):
                     _, d = as_numer_denom(v)
                     if get_free_symbols(d):
                         struct_sing.add(d)
+            if get_dgcv_settings_registry().get(
+                "simplify_singularity_ideals_by_default", True
+            ):
+                struct_sing = expr_union_primitives(
+                    struct_sing,
+                    order_coordinates(self._parameters),
+                    process_rationals=True,
+                    fail_quietly=True,
+                )
+            else:
+                struct_sing = list(struct_sing)
             self._singularities = {"structure": struct_sing}
         else:
             self._singularities = {}
@@ -2062,9 +2074,19 @@ class algebra_class(dgcv_class):
                 current_basis = list(independent_generators)
                 previous_length = len(independent_generators)
             if surface_singularities:
-                self._singularities["derived_series"] = {
-                    v for v in total_sing if get_free_symbols(v)
-                }
+                if get_dgcv_settings_registry().get(
+                    "simplify_singularity_ideals_by_default", True
+                ):
+                    refAlg._singularities["derived_series"] = expr_union_primitives(
+                        [v for v in total_sing if get_free_symbols(v)],
+                        order_coordinates(refAlg._parameters),
+                        process_rationals=True,
+                        fail_quietly=True,
+                    )
+                else:
+                    refAlg._singularities["derived_series"] = [
+                        v for v in total_sing if get_free_symbols(v)
+                    ]
             if len(series) > 1 and refAlg._derived_subalg_cache is None:
                 refAlg._derived_subalg_cache = self.subalgebra(
                     series[1], span_warning=False, simplify_basis=True
@@ -2698,12 +2720,18 @@ class algebra_class(dgcv_class):
             else:
                 genSol = subs(genElem, sol[0])
                 if surface_singularities:
-                    sing = [
-                        subs(v, sol[0]) for v in singularities if get_free_symbols(v)
-                    ]
-                    refAlg._singularities["radical"] = {
-                        v for v in sing if get_free_symbols(v)
-                    }
+                    sing = [subs(v, sol[0]) for v in singularities]
+                    sing = [v for v in sing if get_free_symbols(v)]
+                    if get_dgcv_settings_registry().get(
+                        "simplify_singularity_ideals_by_default", True
+                    ):
+                        sing = expr_union_primitives(
+                            sing,
+                            order_coordinates(refAlg._parameters),
+                            process_rationals=True,
+                            fail_quietly=True,
+                        )
+                    refAlg._singularities["radical"] = sing
             freeVars = get_free_symbols(genSol)
             if self._parameters:
                 freeVars = {v for v in freeVars if v not in self._parameters}
@@ -2812,10 +2840,20 @@ class algebra_class(dgcv_class):
                     "compute the max. solvable ideal's derived series",
                 )
                 if surface_singularities:
-                    sing += getattr(refAlg, "_singularities", {}).get("radical", set())
-                    self._singularities["LD"] = self._singularities.get("LD", set()) | {
+                    sing += getattr(refAlg, "_singularities", {}).get("radical", [])
+                    new_sing = refAlg._singularities.get("LD", []) + [
                         v for v in sing if get_free_symbols(v)
-                    }
+                    ]
+                    if get_dgcv_settings_registry().get(
+                        "simplify_singularity_ideals_by_default", True
+                    ):
+                        new_sing = expr_union_primitives(
+                            new_sing,
+                            order_coordinates(refAlg._parameters),
+                            process_rationals=True,
+                            fail_quietly=True,
+                        )
+                    refAlg._singularities["LD"] = new_sing
                 if len(rad.basis) > 0:
                     if verbose is True:
                         print(
@@ -2835,9 +2873,19 @@ class algebra_class(dgcv_class):
                         sing += getattr(rad, "_singularities", {}).get(
                             "derived_series", set()
                         )
-                        self._singularities["LD"] = self._singularities.get(
-                            "LD", set()
-                        ) | {v for v in sing if get_free_symbols(v)}
+                        new_sing = refAlg._singularities.get("LD", []) + [
+                            v for v in sing if get_free_symbols(v)
+                        ]
+                        if get_dgcv_settings_registry().get(
+                            "simplify_singularity_ideals_by_default", True
+                        ):
+                            new_sing = expr_union_primitives(
+                                new_sing,
+                                order_coordinates(refAlg._parameters),
+                                process_rationals=True,
+                                fail_quietly=True,
+                            )
+                        refAlg._singularities["LD"] = new_sing
 
                     def _compute_complement():
                         local_rad_seq = (
@@ -3032,9 +3080,19 @@ class algebra_class(dgcv_class):
             )
             if surface_singularities is True:
                 new_Levi, simple_ideals, sing = out
-                refAlg._singularities["simple_ideals"] = self._singularities.get(
-                    "simple_ideals", set()
-                ) | {v for v in sing if get_free_symbols(v)}
+                new_sing = refAlg._singularities.get("simple_ideals", []) + [
+                    v for v in sing if get_free_symbols(v)
+                ]
+                if get_dgcv_settings_registry().get(
+                    "simplify_singularity_ideals_by_default", True
+                ):
+                    new_sing = expr_union_primitives(
+                        new_sing,
+                        order_coordinates(refAlg._parameters),
+                        process_rationals=True,
+                        fail_quietly=True,
+                    )
+                refAlg._singularities["simple_ideals"] = new_sing
             else:
                 new_Levi, simple_ideals = out
             refAlg._Levi_deco_cache["LD_components"] = (new_Levi, rad)
@@ -3045,14 +3103,16 @@ class algebra_class(dgcv_class):
     def center(
         self,
         from_subalg=None,
-        surface_singularities: bool = False,
-        simplify_singularities=None,
+        surface_singularities: bool = None,
+        simplify_singularities: bool = None,
         format_as_subalgebra=True,
     ):
         if get_dgcv_category(from_subalg) == "subalgebra":
             refAlg = from_subalg
         else:
             refAlg = self
+        if surface_singularities is None:
+            surface_singularities = True if refAlg._parameters else False
         if refAlg._center_cache is None:
             if refAlg.dimension == 0:
                 refAlg._center_cache = refAlg.subalgebra([])
@@ -3064,7 +3124,7 @@ class algebra_class(dgcv_class):
                 [gene * elem for elem in refAlg.basis]
                 if refAlg.is_skew_symmetric()
                 else [gene * elem for elem in refAlg.basis]
-                + [gene * elem for elem in refAlg.basis]
+                + [elem * gene for elem in refAlg.basis]
             )
             if surface_singularities is True:
                 sol, sing = solve_dgcv(
@@ -3077,14 +3137,26 @@ class algebra_class(dgcv_class):
                     else True,
                 )
                 sol = sol[0]
-                self._singularities["center"] = {v for v in sing if get_free_symbols(v)}
+                if get_dgcv_settings_registry().get(
+                    "simplify_singularity_ideals_by_default", True
+                ):
+                    refAlg._singularities["center"] = expr_union_primitives(
+                        [v for v in sing if get_free_symbols(v)],
+                        order_coordinates(refAlg._parameters),
+                        process_rationals=True,
+                        fail_quietly=True,
+                    )
+                else:
+                    refAlg._singularities["center"] = [
+                        v for v in sing if get_free_symbols(v)
+                    ]
             else:
                 sol = solve_dgcv(eqns, variables)[0]
             gsol = subs(gene, sol)
             fv = set()
             vset = set(variables)
             for v in variables:
-                fv |= filter(lambda x: x not in vset, get_free_symbols(sol.get(v)))
+                fv |= {x for x in get_free_symbols(sol.get(v)) if x in vset}
             if len(fv) == 0:
                 refAlg._center_cache = refAlg.subalgebra([])
             else:
@@ -5489,6 +5561,15 @@ def _summary_warm_caches(
                 progress_message=None,
                 _on_timed_update=_on_timed_update,
             )
+            _timed_progress_call(
+                lambda: refAlg.center(),
+                timed=True,
+                threshold_s=thr,
+                step_desc="computing the center",
+                continue_desc=progress_message,
+                progress_message=None,
+                _on_timed_update=_on_timed_update,
+            )
     except Exception:
         pass
 
@@ -5942,7 +6023,7 @@ def _summary_render_rich(
 
     def _build_basic_panel(corner_kwargs):
         label = (
-            "the subalgebra family"
+            ("the subalgebra family" if subAlg else "the algebra family")
             if params
             else ("the subalgebra" if subAlg else algebra_name)
         )
@@ -5985,6 +6066,24 @@ def _summary_render_rich(
         ).to_html()
 
     sections.append(("panel", _build_basis_panel))
+
+    if getattr(refAlg, "_center_cache", None):
+
+        def _center_panel(corner_kwargs):
+            IT = []
+            center = getattr(refAlg, "_center_cache", None)
+            PT = center._repr_latex_(raw=False)
+            return panel_view(
+                header="Center",
+                primary_text=PT,
+                itemized_text=IT,
+                theme_css_vars="",
+                extra_css="",
+                slim=True,
+                **corner_kwargs,
+            ).to_html()
+
+        sections.append(("panel", _center_panel))
 
     ld = getattr(refAlg, "_Levi_deco_cache", None)
     if getattr(refAlg, "_lie_algebra_cache", None) is True and isinstance(ld, dict):
@@ -6033,17 +6132,35 @@ def _summary_render_rich(
                             else:
                                 rank = rankout
                             if divisors:
-                                alg._singularities["subalgebra_ranks"] = (
-                                    alg._singularities.get("subalgebra_ranks", set())
-                                    | {v for v in divisors if get_free_symbols(v)}
-                                )
-                                if alg != refAlg:
-                                    refAlg._singularities["subalgebra_ranks"] = (
-                                        refAlg._singularities.get(
-                                            "subalgebra_ranks", set()
-                                        )
-                                        | {v for v in divisors if get_free_symbols(v)}
+                                new_sing = list(
+                                    alg._singularities.get("subalgebra_ranks", [])
+                                ) + [v for v in divisors if get_free_symbols(v)]
+                                if get_dgcv_settings_registry().get(
+                                    "simplify_singularity_ideals_by_default", True
+                                ):
+                                    new_sing = expr_union_primitives(
+                                        new_sing,
+                                        order_coordinates(alg._parameters),
+                                        process_rationals=True,
+                                        fail_quietly=True,
                                     )
+                                alg._singularities["subalgebra_ranks"] = new_sing
+                                if alg != refAlg:
+                                    new_sing = list(
+                                        refAlg._singularities.get(
+                                            "subalgebra_ranks", []
+                                        )
+                                    ) + [v for v in divisors if get_free_symbols(v)]
+                                    if get_dgcv_settings_registry().get(
+                                        "simplify_singularity_ideals_by_default", True
+                                    ):
+                                        new_sing = expr_union_primitives(
+                                            new_sing,
+                                            order_coordinates(refAlg._parameters),
+                                            process_rationals=True,
+                                            fail_quietly=True,
+                                        )
+                                    refAlg._singularities["subalgebra_ranks"] = new_sing
                         except Exception:
                             pass
                         IC = (
@@ -6114,15 +6231,33 @@ def _summary_render_rich(
                         else:
                             rank = rankout
                         if divisors:
-                            refAlg._singularities["subalgebra_ranks"] = (
-                                refAlg._singularities.get("subalgebra_ranks", set())
-                                | {v for v in divisors if get_free_symbols(v)}
-                            )
-                            if refAlg != a:
-                                a._singularities["subalgebra_ranks"] = (
-                                    a._singularities.get("subalgebra_ranks", set())
-                                    | {v for v in divisors if get_free_symbols(v)}
+                            new_sing = list(
+                                refAlg._singularities.get("subalgebra_ranks", [])
+                            ) + [v for v in divisors if get_free_symbols(v)]
+                            if get_dgcv_settings_registry().get(
+                                "simplify_singularity_ideals_by_default", True
+                            ):
+                                new_sing = expr_union_primitives(
+                                    new_sing,
+                                    order_coordinates(refAlg._parameters),
+                                    process_rationals=True,
+                                    fail_quietly=True,
                                 )
+                            refAlg._singularities["subalgebra_ranks"] = new_sing
+                            if refAlg != a:
+                                new_sing = list(
+                                    a._singularities.get("subalgebra_ranks", [])
+                                ) + [v for v in divisors if get_free_symbols(v)]
+                                if get_dgcv_settings_registry().get(
+                                    "simplify_singularity_ideals_by_default", True
+                                ):
+                                    new_sing = expr_union_primitives(
+                                        new_sing,
+                                        order_coordinates(a._parameters),
+                                        process_rationals=True,
+                                        fail_quietly=True,
+                                    )
+                                a._singularities["subalgebra_ranks"] = new_sing
                     except Exception:
                         pass
                     rows2.append(
@@ -6425,6 +6560,7 @@ def _indep_check(
             eqn,
             variables,
             print_solve_stats=print_solve_stats,
+            method=method,
             return_divisors=True,
             pass_to_symbolic_engine=False,
             simplify_pivots=simplify_singularities

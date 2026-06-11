@@ -33,22 +33,31 @@ def zip_sum(*args, init=0):
 
 def linear_combination(
     elements,
-    prefix: str = None,
+    coef_label: str = None,
     separate_real_and_imag_parts=False,
     coefficient_assumptions=None,
+    **kwargs,
 ):
     if separate_real_and_imag_parts:
         imag = imag_unit()
-        prefr, prefi = prefix + "r" or "_dgcvr_", prefix + "i" or "_dgcvi_"
-        suff = uuid.uuid4().hex[:6]
-        vlr, vli = prefr + suff, prefi + suff
+        if isinstance(coef_label, str):
+            vl = coef_label
+            vlr, vli = coef_label + "r", coef_label + "i"
+        else:
+            prefix = kwargs.pop("prefix", None) or "_dgcvvar_"
+            prefr, prefi = prefix + "r" or "_dgcvr_", prefix + "i" or "_dgcvi_"
+            suff = uuid.uuid4().hex[:6]
+            vlr, vli = prefr + suff, prefi + suff
         n, ad = len(elements), {"real": True}
         vr = [symbol(f"{vlr}{x}", assumptions=ad) for x in range(n)]
         vi = [symbol(f"{vli}{x}", assumptions=ad) for x in range(n)]
         v = [a + imag * b for a, b in zip(vr, vi)]
         return zip_sum(v, elements), vr, vi
-    pref = prefix or "_dgcvvar_"
-    vl = pref + uuid.uuid4().hex[:6]
+    if isinstance(coef_label, str):
+        vl = coef_label
+    else:
+        pref = kwargs.pop("prefix", None) or "_dgcvvar_"
+        vl = pref + uuid.uuid4().hex[:6]
     v = [
         symbol(f"{vl}{x}", assumptions=coefficient_assumptions)
         for x in range(len(elements))

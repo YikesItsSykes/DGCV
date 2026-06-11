@@ -94,6 +94,7 @@ def set_dgcv_settings(
     force_rich_display: bool | None = None,
     conjugation_prefix: str | None = None,
     fallback_conjugate_prefix: str | None = None,
+    simplify_singularity_ideals_by_default: str | None = None,
     **kwargs,
 ):
     if kwargs.pop("quick_notebook", False):
@@ -292,6 +293,11 @@ def set_dgcv_settings(
             "ask_before_overwriting_objects_in_vmf",
             ask_before_overwriting_objects_in_vmf,
         )
+    if simplify_singularity_ideals_by_default is not None:
+        _apply_keyval(
+            "simplify_singularity_ideals_by_default",
+            simplify_singularity_ideals_by_default is True,
+        )
 
     if forgo_warnings is not None:
         _apply_keyval("forgo_warnings", forgo_warnings)
@@ -479,6 +485,7 @@ def reset_dgcv_settings():
             "DEBUG": False,
             "print_style": "readable",
             "force_rich_display": False,
+            "simplify_singularity_ideals_by_default": True,
             "__": dict(),
         }
     )

@@ -497,18 +497,62 @@ def space_display(
         k = max_dim // 2
         return words[:k] + ["..."] + words[-k:]
 
+    def format_suffix(sub: str) -> str:
+        if sub == "negative":
+            return "-"
+        if sub == "positive":
+            return "+"
+        if re.fullmatch(r"m\d+", sub):
+            return f"-{sub[1:]}"
+        if re.fullmatch(r"[a-zA-Z]+", sub) and len(sub) > 1:
+            return rf"\text{{{sub}}}"
+        return sub
+
     def _label_tex(label0: str | None, *, mathfrak: bool) -> str:
         if not label0:
             return unlabeled_tex
-
         s = str(label0)
 
-        if "_" in s:
-            main, sub = s.split("_", 1)
-            main_conv = convert_to_greek(main)
-            if mathfrak and main.islower() and main_conv == main:
-                main_conv = rf"\mathfrak{{{main}}}"
-            return rf"{main_conv}_{{{sub}}}"
+        idx_double = s.find("__")
+        idx_single = -1
+        i = 0
+        while i < len(s):
+            if s[i] == "_":
+                if i + 1 < len(s) and s[i + 1] == "_":
+                    i += 2
+                    continue
+                idx_single = i
+                break
+            i += 1
+
+        if idx_single != -1 or idx_double != -1:
+            if idx_single != -1 and idx_double != -1:
+                if idx_single < idx_double:
+                    main = s[:idx_single]
+                    sub = s[idx_single + 1 : idx_double]
+                    sup = s[idx_double + 2 :]
+                else:
+                    main = s[:idx_double]
+                    sup = s[idx_double + 2 : idx_single]
+                    sub = s[idx_single + 1 :]
+                main_conv = convert_to_greek(main)
+                if mathfrak and main.islower() and main_conv == main:
+                    main_conv = rf"\mathfrak{{{main}}}"
+                return rf"{main_conv}_{{{format_suffix(sub)}}}^{{{format_suffix(sup)}}}"
+
+            elif idx_double != -1:
+                main, sup = s[:idx_double], s[idx_double + 2 :]
+                main_conv = convert_to_greek(main)
+                if mathfrak and main.islower() and main_conv == main:
+                    main_conv = rf"\mathfrak{{{main}}}"
+                return rf"{main_conv}^{{{format_suffix(sup)}}}"
+
+            else:
+                main, sub = s[:idx_single], s[idx_single + 1 :]
+                main_conv = convert_to_greek(main)
+                if mathfrak and main.islower() and main_conv == main:
+                    main_conv = rf"\mathfrak{{{main}}}"
+                return rf"{main_conv}_{{{format_suffix(sub)}}}"
 
         if s[-1].isdigit():
             head = "".join(ch for ch in s if ch.isalpha())

@@ -576,6 +576,26 @@ def _as_coeff_vector_form(tf, K, syslbl="__dgcv_par__"):
     )
 
 
+def _extract_basis_over_function_ring(objs, dimension_hint=None):
+    try:
+        if len(objs) == 0:
+            return objs
+        basis = [objs[0]]
+        for obj in objs[1:]:
+            if dimension_hint is not None and len(basis) == dimension_hint:
+                break
+            deco = decompose(obj, basis)[0]
+            if len(deco) == len(basis):
+                continue
+            basis.append(obj)
+        return basis
+
+    except Exception:
+        raise ValueError(
+            "Could not extract basis. Likely the given objects do not adhere vector space axioms in supported formats."
+        )
+
+
 def _extract_basis_by_wedge_vectorized(
     objs,
     *,
@@ -786,6 +806,8 @@ def decompose(
     return_parameters: bool = False,
     new_parameters_label: str | None = None,
     only_check_decomposability: bool = False,
+    variables_to_constrain: list = None,
+    assume_VTC_linear: bool = False,
     _pass_error_report=None,
     _hand_off=None,
     *,
@@ -859,10 +881,19 @@ def decompose(
 
     if not return_parameters and not assume_basis:
         basis = _extract_basis_by_wedge_vectorized(basis)
+    if only_check_decomposability and variables_to_constrain:
+        dgcv_warning(
+            "only_check_decomposability=True disables variables_to_constrain, as variables_to_constrain undermines the intended computation savings of only_check_decomposability."
+        )
+    if not (
+        isinstance(variables_to_constrain, (list, tuple))
+        and all(is_atomic(x) for x in variables_to_constrain)
+    ):
+        variables_to_constrain = None
 
     n = len(basis)
     if n == 0:
-        if only_check_decomposability is True:
+        if only_check_decomposability is True or variables_to_constrain:
             ob = getattr(obj, "__dgcv_zero_obstr__", None)
             if ob is None:
                 raise TypeError(
@@ -870,27 +901,16 @@ def decompose(
                 )
             eqns, _ = ob
             eqns = list(eqns or [])
+            if variables_to_constrain:
+                sol = solve_dgcv(eqns, variables_to_constrain)
+                if len(sol) > 0:
+                    return [], basis, sol
             return bool(eqns) and all(_scalar_is_zero(e) for e in eqns)
         return ([], basis)
-
-    label = create_key(prefix="var")
-    vars = [symbol(f"{label}{i}") for i in range(n)]
-
-    try:
-        system = obj
-        for v, e in zip(vars, basis):
-            system = system - v * e
-    except Exception as exc:
-        msg = (
-            "`decompose` could not form the residual `obj - sum(var_i * basis_i)` "
-            f"for obj type {type(obj).__name__} and basis element types "
-            f"{[type(b).__name__ for b in basis]}. "
-            "This usually means the objects do not support compatible addition/subtraction "
-            "and scalar multiplication."
-        )
-        if _pass_error_report == retrieve_passkey():
-            return msg + f" Original error: {exc!r}"
-        raise TypeError(msg) from exc
+    gen_combo, variables = linear_combination(basis)
+    if variables_to_constrain:
+        variables = list(variables) + list(variables_to_constrain)
+    system = obj - gen_combo
 
     ob = getattr(system, "__dgcv_zero_obstr__", None)
     if ob is None:
@@ -898,7 +918,10 @@ def decompose(
     eqns, _ = ob
     eqns = list(eqns or [])
 
-    solutions = solve_dgcv(eqns, vars, method="linsolve")
+    if variables_to_constrain and not assume_VTC_linear:
+        solutions = solve_dgcv(eqns, variables, method="solve")
+    else:
+        solutions = solve_dgcv(eqns, variables, method="linsolve")
 
     if not solutions:
         if only_check_decomposability is True:
@@ -908,18 +931,36 @@ def decompose(
                 f"`decompose` found no solution for equations {eqns} in variables {vars} "
                 f"against a spanning family of length {original_length}."
             )
-        return ([], basis)
+        return ([], basis, solutions) if variables_to_constrain else ([], basis)
 
     if only_check_decomposability is True:
         return True
 
     sol0 = solutions[0]
-    decomp_coeffs = [sol0.get(v, v) for v in vars]
+    decomp_coeffs = [sol0.get(v, v) for v in variables]
+    if variables_to_constrain:
+        vtc_solutions = {v: sol0.get(v, v) for v in variables_to_constrain}
 
     free = set()
     for expr in decomp_coeffs:
         free |= set(get_free_symbols(expr) or ())
-
+    if variables_to_constrain:
+        for expr in vtc_solutions.values():
+            free |= set(get_free_symbols(expr) or ())
+    if len(free) > len(variables):
+        if variables_to_constrain:
+            vtcset = set(variables_to_constrain)
+            compset = {x for x in free if x not in vtcset}
+        else:
+            compset = free
+        free = {x for x in variables if x in compset}
+    else:
+        if variables_to_constrain:
+            vtcset = set(variables_to_constrain)
+            compset = {x for x in variables if x not in vtcset}
+        else:
+            compset = variables
+        free = {x for x in free if x in variables}
     if return_parameters and free:
         free = tuple(free)
         if register_parameters:
@@ -941,8 +982,14 @@ def decompose(
 
         subs_dict = {v: p for v, p in zip(free, params)}
         decomp_coeffs = [subs(c, subs_dict) for c in decomp_coeffs]
+        if variables_to_constrain:
+            vtc_solutions = {k: subs(v, subs_dict) for k, v in vtc_solutions.items()}
 
-    return (decomp_coeffs, basis)
+    return (
+        (decomp_coeffs, basis, vtc_solutions)
+        if variables_to_constrain
+        else (decomp_coeffs, basis)
+    )
 
 
 def _decompose_over_number_field(

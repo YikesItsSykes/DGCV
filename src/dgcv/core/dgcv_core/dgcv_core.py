@@ -371,6 +371,7 @@ class tensor_field_class(dgcv_class):
         self._coordinate_format = None
         self._free_symbols = None
         self._coeff_free_symbols = None
+        self._coef_profile = None
         self._max_degree = None
         self._min_degree = None
         self._validated_format: Literal[
@@ -644,6 +645,25 @@ class tensor_field_class(dgcv_class):
                 fs |= get_free_symbols(v)
             self._coeff_free_symbols = fs
         return self._coeff_free_symbols
+
+    @property
+    def coef_profile(self):
+        """Returns a set of variable types present in the coeffs (among, standard, real, hol, sym, mixed). "mixed" is included if and only if there are mixed complex coordinate types (e.g., real+holo or holo+sym, etc.)"""
+        if self._coef_profile is None:
+            atoms = self.coeff_free_symbols
+            out = set()
+            type_dict = {"imag": "real", "anti": "sym"}
+            standard = set()
+            for atom in atoms:
+                new_type = vmf_lookup(atom)["sub_type"]
+                if new_type == "standard":
+                    standard = {"standard"}
+                    continue
+                out.add(type_dict.get(new_type, new_type))
+                if len(out) > 1:
+                    out |= {"mixed"}
+            self._coef_profile = standard | out
+        return self._coef_profile
 
     @property
     def _compute_nd_decomp(self):
@@ -2693,7 +2713,29 @@ class tensor_field_class(dgcv_class):
 
     @property
     def __dgcv_zero_obstr__(self):
-        return self.coeff_dict.values(), self.coeff_free_symbols
+        cp = self.coef_profile
+        cfs = self.coeff_free_symbols
+        if "mixed" in cp:
+            if "real" in cp:
+
+                def check(x):
+                    st = vmf_lookup(x)["sub_type"]
+                    return st == "standard" or st == "real" or st == "imag"
+
+                exprs = (allToReal(expr) for expr in self.coeff_dict.values())
+                cfs = {x for x in cfs if check(x)}
+            else:
+
+                def check(x):
+                    st = vmf_lookup(x)["sub_type"]
+                    return st == "standard" or st == "holo"
+
+                exprs = (symToHol(expr) for expr in self.coeff_dict.values())
+                cfs = {x for x in cfs if check(x)}
+        else:
+            exprs = self.coeff_dict.values()
+
+        return exprs, cfs
 
     def __eq__(self, other):
         if not isinstance(other, self.__class__):

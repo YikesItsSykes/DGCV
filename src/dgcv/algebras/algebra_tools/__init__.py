@@ -19,6 +19,7 @@ SPDX-License-Identifier: Apache-2.0
 from .algebra_tools import (
     Levi_decomposition,
     adjoint_representation,
+    center,
     derivations,
     derived_subalgebra,
     generate_subalgebra,
@@ -34,6 +35,7 @@ from .algebra_tools import (
 __all__ = [
     "Levi_decomposition",
     "adjoint_representation",
+    "center",
     "derivations",
     "derived_subalgebra",
     "generate_subalgebra",

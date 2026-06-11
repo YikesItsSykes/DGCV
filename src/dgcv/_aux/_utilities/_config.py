@@ -369,6 +369,7 @@ dgcv_settings_registry = {
     },
     "DEBUG": False,
     "force_rich_display": False,
+    "simplify_singularity_ideals_by_default": True,
     "__": dict(),
 }
 vs_registry = []

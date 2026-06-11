@@ -208,15 +208,20 @@ def LaTeX_eqn_system(
     bare_latex=False,
     punctuation=None,
     add_period=False,
+    conjuction: str = None,
     verbose: bool = False,
+    force_oxford_comma: bool = False,
 ):
     if verbose:
         _toggle_or_set_verbosity(setting=1)  # enable temp verbosity
+    list_format = False
     if isinstance(eqn_dict, (list, tuple)):
-        eqn_dict = {k: 0 for k in eqn_dict}
-        list_format = True
+        if all(isinstance(elem, (list, tuple)) and len(elem) == 2 for elem in eqn_dict):
+            list_format = True
+        else:
+            rhs_only_format = True
     else:
-        list_format = False
+        rhs_only_format = False
 
     if add_period is True:
         punct = "."
@@ -224,35 +229,49 @@ def LaTeX_eqn_system(
         punct = punctuation
     else:
         punct = ""
+    if not isinstance(conjuction, str):
+        conjuction = "and"
 
     if bare_latex is True:
         joiner = r", "
         boundary = ""
-        penultim = r",\quad\text{and}\quad "
+        penultim = (
+            joiner
+            if conjuction.strip() == ""
+            else rf",\quad\text{{{conjuction}}}\quad "
+        )
     elif math_mode == "$":
         joiner = "$, $"
         boundary = "$"
-        penultim = "$, and $"
+        penultim = joiner if conjuction.strip() == "" else f"$, {{{conjuction}}} $"
     elif one_line is True:
         joiner = r", \quad "
         boundary = "$$"
-        penultim = r",\quad\text{and}\quad "
+        penultim = (
+            joiner
+            if conjuction.strip() == ""
+            else rf",\quad\text{{{conjuction}}}\quad "
+        )
     else:
         joiner = r",$$ $$ "
         boundary = "$$"
-        penultim = r",$$ and $$"
+        penultim = joiner if conjuction.strip() == "" else f",$$ {{{conjuction}}} $$"
 
     if list_format is True:
         kv_pairs = [
-            f"0{relation}{right_prefix}{LaTeX(k)}{right_suffix}"
-            for k in eqn_dict.keys()
+            f"{left_prefix}{LaTeX(k)}{left_suffix}{relation}{right_prefix}{LaTeX(v)}{right_suffix}"
+            for k, v in eqn_dict
+        ]
+    elif rhs_only_format is True:
+        kv_pairs = [
+            f"0{relation}{right_prefix}{LaTeX(k)}{right_suffix}" for k in eqn_dict
         ]
     else:
         kv_pairs = [
             f"{left_prefix}{LaTeX(k)}{left_suffix}{relation}{right_prefix}{LaTeX(v)}{right_suffix}"
             for k, v in eqn_dict.items()
         ]
-
+    oxc = ", " if force_oxford_comma else ""
     if verbose:
         _toggle_or_set_verbosity()  # disable temp verbosity
     if len(kv_pairs) == 0:
@@ -264,7 +283,8 @@ def LaTeX_eqn_system(
             return (
                 boundary
                 + kv_pairs[0]
-                + r"\quad\text{and}\quad "
+                + oxc
+                + (r"\quad " if conjuction.strip() == "" else r"\quad\text{and}\quad ")
                 + kv_pairs[1]
                 + punct
                 + boundary
@@ -274,7 +294,8 @@ def LaTeX_eqn_system(
                 boundary
                 + kv_pairs[0]
                 + boundary
-                + "and"
+                + oxc
+                + (" " if conjuction.strip() == "" else "and")
                 + boundary
                 + kv_pairs[1]
                 + punct
@@ -284,7 +305,12 @@ def LaTeX_eqn_system(
             return (
                 boundary
                 + kv_pairs[0]
-                + r" \quad \text{ and }\quad "
+                + oxc
+                + (
+                    r"\quad "
+                    if conjuction.strip() == ""
+                    else r" \quad \text{ and }\quad "
+                )
                 + kv_pairs[1]
                 + punct
                 + boundary
@@ -293,7 +319,8 @@ def LaTeX_eqn_system(
             boundary
             + kv_pairs[0]
             + boundary
-            + "and"
+            + oxc
+            + (" " if conjuction.strip() == "" else "and")
             + boundary
             + kv_pairs[1]
             + punct

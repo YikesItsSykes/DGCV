@@ -654,6 +654,7 @@ def _coeff_dict_formatter(
         "preProcessMinDataToHol": dict(),
         "preProcessMinDataToReal": dict(),
     }
+    print(f"DEBUG: {varSpace}")
     if _varSpace_type == "real":
         for var in varSpace:
             varStr = str(var)
@@ -717,10 +718,12 @@ def _coeff_dict_formatter(
                             holVar = var
                             exhaust1.remove(var)
                             antiholVar = cousin
+                            print(f"DEBUG1: {holVar}, {antiholVar}")
                         else:
                             holVar = cousin
                             exhaust1.remove(var)
                             antiholVar = var
+                            print(f"DEBUG2: {holVar}, {antiholVar}")
                         realVar = parent["variable_relatives"][varStr][
                             "complex_family"
                         ][2]

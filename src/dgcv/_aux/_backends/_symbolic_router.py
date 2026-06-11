@@ -217,10 +217,7 @@ def ratio(x, y=1):
 
     if kind == "sage":
         sage = eng
-        if isinstance(x, (float, complex)) or isinstance(y, (float, complex)):
-            return sage(x) / sage(y)
         return sage(x) / sage(y)
-
     return x / y
 
 
@@ -310,17 +307,11 @@ def as_numer_denom(expr):
     if callable(f):
         return f()
     if kind == "sympy":
-        if f is None:
-            try:
-                sp = engine_module()
-                expr = sp.sympify(expr)
-                return expr.as_numer_denom()
-            except Exception:
-                pass
-        elif callable(f):
-            return f()
-        else:
-            return expr, one()
+        try:
+            sp = engine_module()
+            return sp.sympify(expr).as_numer_denom()
+        except Exception:
+            pass
 
     if kind == "sage":
         f = getattr(expr, "numerator", None)
@@ -364,7 +355,7 @@ def gcd_routed(*exprs):
             return exprs[0]
         return gcd_routed(engine_module().gcd(exprs[0], exprs[1]), *exprs[2:])
     except Exception:
-        return math.prod(exprs)
+        return one()
 
 
 def ilcm(*ints):
@@ -387,10 +378,9 @@ def ilcm(*ints):
         sage = engine_module()
         fn = getattr(sage, "lcm", None)
         if fn is not None:
-            return fn(ints)
-        # fallback
-        return math.lcm(*ints)
+            from functools import reduce
 
+            return reduce(fn, ints)
     return math.lcm(*ints)
 
 
@@ -443,9 +433,12 @@ def expand(expr, **kwargs):
             return expr
 
     if kind == "sage":
-        # Sage has .expand() on symbolic expressions; if it wasn't callable above,
-        # just return expr unchanged.
-        return expr
+        f = getattr(expr, "expand", None)
+        if callable(f):
+            try:
+                return f(**kwargs)
+            except TypeError:
+                return f()
 
     return expr
 
@@ -469,8 +462,12 @@ def factor(expr, **kwargs):
         return sp.factor(expr, **kwargs)
 
     if kind == "sage":
-        # If Sage supports .factor() on the symbolic expressions/ring elements then
-        # it was caught above already.
+        f = getattr(expr, "factor", None)
+        if callable(f):
+            try:
+                return f(**kwargs)
+            except TypeError:
+                return f()
         return expr
 
     return expr
@@ -495,8 +492,12 @@ def cancel(expr, **kwargs):
         return sp.cancel(expr, **kwargs)
 
     if kind == "sage":
-        # no sage solution yet
-        return expr
+        f = getattr(expr, "cancel", None)
+        if callable(f):
+            try:
+                return f(**kwargs)
+            except TypeError:
+                return f()
 
     return expr
 
@@ -505,15 +506,17 @@ def defloat(expr, *, heuristic=False, **kwargs):
     """
     Attempt to coerce floating point numbers within expressions to exact symbolic ratios.
 
-    This should not be relied apon for exact computation programmatically. Instead, it is intended as a convenience utility for copy/pasting printed math, as printed expressions tipically format exact ratios into syntax that compiles with floating point numbers.
+    This should not be relied upon for exact computation programmatically. Instead, it is intended as a convenience utility for copy/pasting printed math, as printed expressions tipically format exact ratios into syntax that compiles with floating point numbers.
     """
     if isinstance(expr, list):
-        return [defloat(inner, heuristic=False, **kwargs) for inner in expr]
+        return [defloat(inner, heuristic=heuristic, **kwargs) for inner in expr]
     if isinstance(expr, tuple):
-        return tuple(defloat(inner, heuristic=False, **kwargs) for inner in expr)
+        return tuple(defloat(inner, heuristic=heuristic, **kwargs) for inner in expr)
     if isinstance(expr, dict):
         return {
-            defloat(k, heuristic=False, **kwargs): defloat(v, heuristic=False, **kwargs)
+            defloat(k, heuristic=heuristic, **kwargs): defloat(
+                v, heuristic=False, **kwargs
+            )
             for k, v in expr.items()
         }
     f = getattr(expr, "__dgcv_apply__", None)
@@ -524,6 +527,13 @@ def defloat(expr, *, heuristic=False, **kwargs):
         return engine_module().nsimplify(expr)
     if kind == "sage":
         return _sage_defloat(expr, heuristic=heuristic)
+
+    # fallback
+    f = getattr(expr, "as_integer_ratio", None)
+    if callable(f):
+        n, d = f()
+        return Fraction(n, d)
+    return expr
 
 
 def _sage_defloat(expr, *, heuristic=False, **kwargs):

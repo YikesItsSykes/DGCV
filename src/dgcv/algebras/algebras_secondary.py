@@ -38,6 +38,7 @@ from __future__ import annotations
 import numbers
 from typing import List, Optional
 
+from .._aux._backends._polynomials import expr_union_primitives
 from .._aux._backends._symbolic_router import (
     _scalar_is_zero,
     as_numer_denom,
@@ -71,7 +72,7 @@ from .._aux._vmf._safeguards import (
     validate_label,
     validate_label_list,
 )
-from .._aux._vmf.vmf import clearVar, listVar
+from .._aux._vmf.vmf import clearVar, listVar, order_coordinates
 from ..core.arrays.arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ..core.base import annotated_container, dgcv_class
 from ..core.combinatorics.combinatorics import carProd
@@ -174,6 +175,17 @@ class subalgebra_class(algebra_subspace_class):
                     _, d = as_numer_denom(v)
                     if get_free_symbols(d):
                         struct_sing.add(d)
+            if get_dgcv_settings_registry().get(
+                "simplify_singularity_ideals_by_default", True
+            ):
+                struct_sing = expr_union_primitives(
+                    struct_sing,
+                    order_coordinates(self._parameters),
+                    process_rationals=True,
+                    fail_quietly=True,
+                )
+            else:
+                struct_sing = list(struct_sing)
             self._singularities = {"structure": struct_sing}
         # cached_properties
         self._jacobi_identity_cache = None

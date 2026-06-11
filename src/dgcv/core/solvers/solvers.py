@@ -448,6 +448,11 @@ def _dgcv_linsolve(
             expr = _as_zero_expr(eq)
             coeffs = [diff(expr, v) for v in vars_]
             c0 = subs(expr, base0)
+            if all(_is_zero(c) for c in coeffs) and not _is_zero(c0):
+                if return_divisors:
+                    return ([], [c0]) if get_free_symbols(c0) else ([], [])
+                else:
+                    return []
 
             if validate:
                 vars_set = set(vars_)
@@ -657,14 +662,14 @@ def solve_dgcv(
 
     def _engine_linsolve(eqns_, vars_):
         if mod is None:
-            return []
+            return None
         fn = getattr(mod, "linsolve", None)
         if not callable(fn):
-            return []
+            return None
         try:
             sols = fn(eqns_, tuple(vars_))
         except Exception:
-            return []
+            return None
         return _linsolve_to_dicts(sols, tuple(vars_))
 
     def _engine_solve(eqns_, vars_):
@@ -694,9 +699,11 @@ def solve_dgcv(
 
     preformatted_solutions = []
     divisors = []
+    custom_succeeded = False
+    engine_linsolve_ran = False
 
     def _run_custom_linsolve():
-        nonlocal preformatted_solutions, divisors
+        nonlocal preformatted_solutions, divisors, custom_succeeded
         try:
             if return_divisors:
                 preformatted_solutions, d = _dgcv_linsolve(
@@ -717,15 +724,19 @@ def solve_dgcv(
                     allow_underdetermined_solution=allow_underdetermined_solution,
                     simplify_pivots=simplify_pivots,
                 )
+            custom_succeeded = True
         except Exception:
             preformatted_solutions = []
+            custom_succeeded = False
 
     def _run_engine_linsolve():
-        nonlocal preformatted_solutions
+        nonlocal preformatted_solutions, engine_linsolve_ran
         try:
-            preformatted_solutions = _engine_linsolve(processed_eqns, system_vars)
+            res = _engine_linsolve(processed_eqns, system_vars)
         except Exception:
-            preformatted_solutions = []
+            res = None
+        engine_linsolve_ran = res is not None
+        preformatted_solutions = res or []
 
     def _run_engine_solve():
         nonlocal preformatted_solutions
@@ -747,16 +758,24 @@ def solve_dgcv(
     elif method == "linsolve":
         if not pass_to_symbolic_engine:
             _run_custom_linsolve()
-        if not preformatted_solutions:
+        if not custom_succeeded and not preformatted_solutions:
             _run_engine_linsolve()
-        if not preformatted_solutions:
+        if (
+            not custom_succeeded
+            and not engine_linsolve_ran
+            and not preformatted_solutions
+        ):
             _run_engine_solve()
     else:
         if not pass_to_symbolic_engine:
             _run_custom_linsolve()
-        if not preformatted_solutions:
+        if not custom_succeeded and not preformatted_solutions:
             _run_engine_linsolve()
-        if not preformatted_solutions:
+        if (
+            not custom_succeeded
+            and not engine_linsolve_ran
+            and not preformatted_solutions
+        ):
             _run_engine_solve()
 
     solutions_formatted = [

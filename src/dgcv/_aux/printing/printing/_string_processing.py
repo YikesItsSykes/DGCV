@@ -178,8 +178,23 @@ def _format_label_with_hi_low(
     text, explicit_superscripts, explicit_subscripts = split_explicit_indices(text)
     base_part, inline_superscripts, inline_subscripts = split_implicit_indices(text)
 
-    superscripts = inline_superscripts + explicit_superscripts
-    subscripts = inline_subscripts + explicit_subscripts
+    def format_suffix(word: str) -> str:
+        if word == "negative":
+            return "-"
+        if word == "positive":
+            return "+"
+        if re.fullmatch(r"m\d+", word):
+            return f"-{word[1:]}"
+        if re.fullmatch(r"[a-zA-Z]+", word) and len(word) > 1:
+            return rf"\text{{{word}}}"
+        return word
+
+    superscripts = [
+        format_suffix(word) for word in inline_superscripts + explicit_superscripts
+    ]
+    subscripts = [
+        format_suffix(word) for word in inline_subscripts + explicit_subscripts
+    ]
 
     if not superscripts and not subscripts and "_" not in text and infer_suffix:
         m = re.match(r"^(.*?)(\d+)$", base_part)
