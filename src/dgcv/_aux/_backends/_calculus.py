@@ -32,6 +32,14 @@ def diff(expr, *args, **kwargs):
                 i += 1
         return res
 
+    f = getattr(expr, "__dgcv_apply__", None)
+    if f:
+
+        def locdiff(locexpr):
+            return diff(locexpr, *args, **kwargs)
+
+        return f(locdiff)
+
     kind = engine_kind()
     if kind == "sympy":
         return _get_sympy_module().diff(expr, *args, **kwargs)

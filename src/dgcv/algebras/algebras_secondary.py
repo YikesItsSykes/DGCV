@@ -187,6 +187,11 @@ class subalgebra_class(algebra_subspace_class):
             else:
                 struct_sing = list(struct_sing)
             self._singularities = {"structure": struct_sing}
+        else:
+            self._singularities = {}
+        known_s = kwargs.get("_known_singularities", False)
+        if known_s:
+            self._singularities |= known_s
         # cached_properties
         self._jacobi_identity_cache = None
         self._skew_symmetric_cache = None
@@ -390,8 +395,8 @@ class subalgebra_class(algebra_subspace_class):
         _markers = {
             "parameters": self._parameters,
             "_educed_properties": self._educed_properties,
-            "semidirect_decomposition": self.semidirect_decomposition,
-            "tensor_decomposition": self.tensor_decomposition,
+            "semidirect_decomposition": getattr(self, "semidirect_decomposition", None),
+            "tensor_decomposition": getattr(self, "tensor_decomposition", None),
         }
         if register_in_vmf is True:
             return createAlgebra(
@@ -1477,6 +1482,15 @@ class subalgebra_element(dgcv_class):
             if simplify(j) != 0:
                 return False
         return True
+
+    @property
+    def __dgcv_zero_obstr__(self):
+        cfs = []
+        cfvars = set()
+        for cf in self.coeff_dict.values():
+            cfs.append(cf)
+            cfvars |= get_free_symbols(cf)
+        return cfs, cfvars
 
     def _si_wrap(self, obj):
         if self.algebra.simplify_products_by_default is True:
@@ -3684,7 +3698,7 @@ def createAlgebra(
                     _markers["_educed_properties"]["is_skew"] = t_message
                     _markers["_educed_properties"]["satisfies_Jacobi_ID"] = t_message
                 structure_data = vsd[0]
-                if len(vsd) > 2:
+                if len(vsd) > 2 and grading is None:
                     grading = vsd[2]
                 _markers["parameters"] = vsd[1]
                 simplify_products_by_default = (

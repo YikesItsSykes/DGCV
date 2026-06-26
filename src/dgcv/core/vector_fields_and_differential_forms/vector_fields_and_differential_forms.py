@@ -922,7 +922,6 @@ def decompose(
         solutions = solve_dgcv(eqns, variables, method="solve")
     else:
         solutions = solve_dgcv(eqns, variables, method="linsolve")
-
     if not solutions:
         if only_check_decomposability is True:
             return False

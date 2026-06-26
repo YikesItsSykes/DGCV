@@ -1718,24 +1718,16 @@ class Tanaka_symbol(dgcv_class):
                 return str(e)
 
             def _panel_section(title, items_html, include_divider):
+                # Clean, semantic layout nodes with no presentation styling properties
                 divider = (
-                    "<div style='border-top: 2px solid var(--dgcv-border-main);'></div>"
-                    if include_divider
-                    else ""
+                    "<div class='dgcv-side-divider'></div>" if include_divider else ""
                 )
+
+                lis = "".join(f"<li>{item}</li>" for item in items_html)
                 return (
-                    divider
-                    + f"<div style='padding: 12px; border-bottom: 1px solid var(--dgcv-border-main); "
-                    f"color: var(--dgcv-text-main); font-weight: bold;'>{title}</div>"
-                    + "<ul style='margin: 0; padding: 0; list-style: none; overflow-y: visible; "
-                    "height: fit-content; color: var(--dgcv-text-main);'>"
-                    + "".join(
-                        f"<li style='overflow-x: auto; overflow-y: hidden; white-space: nowrap; "
-                        f"padding: 8px; border-bottom: 1px solid var(--dgcv-border-main); "
-                        f"display: list-item; list-style-type: disc; list-style-position: inside;'>{item}</li>"
-                        for item in items_html
-                    )
-                    + "</ul>"
+                    f"{divider}"
+                    f"<div class='dgcv-side-title'>{title}</div>"
+                    f"<ul class='dgcv-side-list'>{lis}</ul>"
                 )
 
             sections = []
@@ -1782,11 +1774,16 @@ class Tanaka_symbol(dgcv_class):
                     )
                 )
 
-            secondary_panel_html = (
-                "<div class='dgcv-side-panel' style='height: fit-content;'>"
-                + "".join(sections)
-                + "</div>"
-            )
+            raw_content = "".join(sections)
+
+            if "--plaque-fill" in (theme_vars or ""):
+                content_html = f"<div class='dgcv-side-plaque'>{raw_content}</div>"
+            else:
+                content_html = raw_content
+
+            secondary_panel_html = f"<div class='dgcv-side-panel'>{content_html}</div>"
+
+        # All structural presentation rules cleanly centralized inside one target block
         extra_css = """
 .dgcv-data-table th:nth-child(1), .dgcv-data-table td:nth-child(1),
 .dgcv-data-table th:nth-child(2), .dgcv-data-table td:nth-child(2) {
@@ -1795,18 +1792,54 @@ class Tanaka_symbol(dgcv_class):
 }
 .dgcv-side-panel {
     border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main);
-    background-color: var(--dgcv-bg-primary);
-    color: var(--dgcv-text-main);
+    background: var(--dgcv-special-background, var(--dgcv-bg-surface));
+    color: var(--dgcv-special-text, var(--dgcv-text-heading));
     padding: 12px;
     height: 100%;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
 }
+.dgcv-side-plaque {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: var(--plaque-fill);
+    border-radius: inherit;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: var(--dgcv-border-width, 1px) solid var(--plaque-border, var(--dgcv-border-main));
+}
+.dgcv-side-divider {
+    border-top: calc(var(--dgcv-border-width, 1px) * 2) solid var(--dgcv-border-main);
+}
+.dgcv-side-title {
+    padding: 12px;
+    border-bottom: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main);
+    font-weight: bold;
+}
+.dgcv-side-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: visible;
+    height: fit-content;
+}
+.dgcv-side-list li {
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    padding: 8px;
+    border-bottom: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main);
+    display: list-item;
+    list-style-type: disc;
+    list-style-position: inside;
+}
 .dgcv-side-scroll-area { overflow-x: auto; width: 100%; }
 .dgcv-side-panel h3 { margin: 0; font-weight: bold; font-size: 1.1em; }
 .dgcv-side-panel hr { border: 0; border-top: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main); margin: 8px 0; }
-.dgcv-side-panel ul { margin: 8px 0 0 20px; padding: 0; }
 .dgcv-data-table tfoot td {
     text-align: left;
     font-weight: bold;
@@ -2460,6 +2493,7 @@ class distribution(dgcv_class):
         find_basis: bool = False,
         find_polynomial_spanners=False,
         assume_starting_objs_polynomial=False,
+        assume_spanning_sections_linearly_indep=False,
         formatting: None | Literal["complex", "real"] = None,
         dimension_hint=None,
     ):
@@ -2468,6 +2502,8 @@ class distribution(dgcv_class):
         checks when extracting a basis. Only set this to a known upper bound on possible
         distribution rank or else computed basis may be wrong.
         """
+        if assume_spanning_sections_linearly_indep:
+            _assume_minimal_Data = retrieve_passkey()
         if spanning_vf_set is not None:
             if not isinstance(spanning_vf_set, (list, tuple)):
                 raise TypeError(
@@ -2594,7 +2630,7 @@ class distribution(dgcv_class):
         self._characteristic = None
         self._ext_power_class_cache = None
         self.formatting = formatting
-        self._canonical_form = None
+        self._anticanonical_bundle = None
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "distribution"
 
@@ -2633,14 +2669,14 @@ class distribution(dgcv_class):
         return tuple()
 
     @property
-    def canonical_form(self):
-        if self._canonical_form is None:
+    def anticanonical_bundle(self):
+        if self._anticanonical_bundle is None:
             vf_basis = self.vf_basis
             if len(vf_basis) == 0:
-                self._canonical_form = tensor_field_class(coeff_dict={tuple(): 1})
+                self._anticanonical_bundle = tensor_field_class(coeff_dict={tuple(): 1})
             else:
-                self._canonical_form = wedge(*vf_basis)
-        return self._canonical_form
+                self._anticanonical_bundle = wedge(*vf_basis)
+        return self._anticanonical_bundle
 
     @property
     def rank(self):
@@ -3013,7 +3049,12 @@ class distribution(dgcv_class):
             forgo_vmf_registry=exclude_from_VMF,
         )
 
-    def contains_section(self, section, section_parameters: list = None):
+    def contains_section(
+        self,
+        section,
+        section_parameters: list = None,
+        linear_section_parameters: bool = False,
+    ):
         if query_dgcv_categories(section, {"vector_field"}):
             bas = self.vf_basis
         elif query_dgcv_categories(section, {"differential_form"}):
@@ -3021,7 +3062,11 @@ class distribution(dgcv_class):
         if len(bas) == 0 and section_parameters is None:
             return section.is_zero
         indepcheck = decompose(
-            section, bas, assume_basis=True, variables_to_constrain=section_parameters
+            section,
+            bas,
+            assume_basis=True,
+            variables_to_constrain=section_parameters,
+            assume_VTC_linear=linear_section_parameters,
         )
         if section_parameters is None:
             return len(indepcheck[0]) != 0
@@ -3040,8 +3085,11 @@ class distribution(dgcv_class):
             genVF, section_par = linear_combination(vfs)
             sp_contraints = []
             for vf in vfs:
+                bracket = LieDerivative(genVF, vf)
                 deco = self.contains_section(
-                    LieDerivative(genVF, vf), section_parameters=section_par
+                    bracket,
+                    section_parameters=section_par,
+                    linear_section_parameters=True,
                 )
                 sp_contraints += [k - v for k, v in deco.items()]
             sol = solve_dgcv(sp_contraints, section_par)[0]
@@ -3198,7 +3246,11 @@ class distribution(dgcv_class):
 
 
 class filtration_class(dgcv_class):
-    def __init__(self, spanning_vf_sets: list[list]):
+    def __init__(
+        self,
+        spanning_vf_sets: list[list],
+        assume_spanning_sections_linearly_indep=False,
+    ):
         def sublist_check(sl):
             return isinstance(sl, (list, set, tuple)) and all(
                 query_dgcv_categories(vf, {"vector_field"}) for vf in sl
@@ -3214,9 +3266,19 @@ class filtration_class(dgcv_class):
         self.depth = len(spanning_vf_sets)
         if len(spanning_vf_sets) == 0:
             spanning_vf_sets = [[]]
-        distros = [distribution(spanning_vf_set=spanning_vf_sets[0])]
+        distros = [
+            distribution(
+                spanning_vf_set=spanning_vf_sets[0],
+                assume_spanning_sections_linearly_indep=assume_spanning_sections_linearly_indep,
+            )
+        ]
         for sl in spanning_vf_sets[1:]:
-            distros.append(distribution(list(distros[-1].vf_basis) + list(sl)))
+            distros.append(
+                distribution(
+                    list(distros[-1].vf_basis) + list(sl),
+                    assume_spanning_sections_linearly_indep=assume_spanning_sections_linearly_indep,
+                )
+            )
         self.distributions = tuple(distros)
         self.growth_vector = tuple(distro.rank for distro in self.distributions)
         self._frame_torsion = None

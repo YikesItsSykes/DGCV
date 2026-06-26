@@ -234,6 +234,7 @@ class TableView:
         self.ur = f"{ur}px" if isinstance(ur, numbers.Integral) else str(ur)
         self.lr = f"{lr}px" if isinstance(lr, numbers.Integral) else str(lr)
         self.ll = f"{ll}px" if isinstance(ll, numbers.Integral) else str(ll)
+        self.has_plaque_fill = "--plaque-fill" in (theme_css_vars or "")
         self.table_scroll = table_scroll
         self.cell_scroll = cell_scroll
         self.show_headers = show_headers
@@ -343,6 +344,11 @@ class TableView:
         if not self.caption:
             return ""
         t = _coerce_html(self.caption, html_safe=False)
+        theme_vars = self.theme_css_vars or ""
+
+        if "--plaque-fill" in theme_vars:
+            return f'<div class="dgcv-table-caption"><span class="dgcv-plaque">{t}</span></div>'
+
         return f'<div class="dgcv-table-caption">{t}</div>'
 
     def _panel_html(self) -> Optional[str]:
@@ -530,6 +536,9 @@ class TableView:
                 overflow: hidden; 
                 background: var(--dgcv-special-background,var(--dgcv-bg-surface)); 
             }}
+            #{cid} .dgcv-side-plaque {{
+                border-radius: calc({or_s_tl} - 12px) calc({or_s_tr} - 12px) calc({or_s_br} - 12px) calc({or_s_bl} - 12px);
+            }}
             {cell_scroll_css}
             #{cid} .dgcv-data-table thead th, #{cid} .dgcv-data-table th.col_heading {{ 
                 background-color: var(--dgcv-bg-surface); 
@@ -576,6 +585,39 @@ class TableView:
             }}
             #{cid} *::-webkit-scrollbar-thumb:hover {{ 
                 background-color: var(--dgcv-border-main); 
+            }}
+#{cid} .dgcv-table-caption {{ 
+                background: var(--dgcv-special-background, var(--dgcv-bg-surface));
+                color: var(--dgcv-special-text, var(--dgcv-text-heading)); 
+                font-weight: bold; 
+                padding: 8px 20px; 
+                border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main); 
+                border-bottom: none; 
+                box-sizing: border-box; 
+                text-align: left; 
+                width: fit-content; 
+                margin: 0;
+                text-shadow: var(--dgcv-text-shadow, none);
+                border-top-left-radius: 12px; 
+                border-top-right-radius: 12px;
+            }}
+            #{cid} .dgcv-table-caption .dgcv-plaque {{
+                display: inline-block;
+                background: var(--plaque-fill);
+                padding: 4px 10px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+                border: var(--dgcv-border-width, 1px) solid var(--plaque-border, var(--dgcv-border-main));
+                border-bottom: none;
+                border-top-left-radius: calc(12px - 4px);
+                border-top-right-radius: calc(12px - 4px);
+            }}
+            #{cid} .section:not(:first-child) .dgcv-table-caption {{
+                border-top-left-radius: 0;
+                border-top-right-radius: 0;
+            }}
+            #{cid} .section:not(:first-child) .dgcv-table-caption .dgcv-plaque {{
+                border-top-left-radius: 0;
+                border-top-right-radius: 0;
             }}
             @media (max-width: {int(self.breakpoint_px)}px) {{
                 #{cid} .dgcv-flex {{ display: flex; flex-direction: column; align-items: flex-start; row-gap: {gap}px; }}
@@ -724,6 +766,9 @@ class panel_view:
         lr: Union[int, str] = 10,
         ll: Union[int, str] = 10,
         slim: bool = False,
+        plaque_fill: Optional[str] = None,
+        plaque_border: Optional[str] = None,
+        plaque_content: bool = False,
     ):
         self.header = header
         self.primary_text = primary_text
@@ -744,6 +789,11 @@ class panel_view:
         self.lr = f"{lr}px" if isinstance(lr, numbers.Integral) else str(lr)
         self.ll = f"{ll}px" if isinstance(ll, numbers.Integral) else str(ll)
         self.slim = slim
+        self.plaque_fill = plaque_fill or ("--plaque-fill" in (theme_css_vars or ""))
+        self.plaque_border = plaque_border or (
+            "--plaque-border" in (theme_css_vars or "")
+        )
+        self.plaque_content = plaque_content
 
     def _coerce_block(self, x) -> str:
         if x is None:
@@ -824,7 +874,18 @@ class panel_view:
                     margin: 0; 
                 }}
                 #{cid} .dgcv-panel-body {{ 
-                    padding: 0.75rem 1rem; 
+                    padding: 0.75rem 1rem;
+                    min-width: 0;
+                    overflow: hidden; 
+                }}
+                #{cid} .dgcv-panel-primary {{
+                    min-width: 0;
+                    max-width: 100%;
+                }}
+                #{cid} .dgcv-panel-primary table, 
+                #{cid} .dgcv-panel-primary pre, 
+                #{cid} .dgcv-panel-primary code {{
+                    max-width: 100%;
                 }}
                 #{cid} .dgcv-panel-footer {{ 
                     padding: 0.5rem 1rem; 
@@ -871,6 +932,26 @@ class panel_view:
 
     def _header_html(self) -> str:
         t = self._coerce_block(self.header)
+
+        if self.plaque_fill:
+            styles = [
+                "display: inline-block;",
+                "background: var(--plaque-fill);",
+                "padding: 4px 10px;",
+                f"border-radius: {self.ul} 0 0 0;",
+                "box-shadow: 0 1px 3px rgba(0,0,0,0.1);",
+            ]
+
+            if self.plaque_border:
+                styles.append(
+                    "border: var(--dgcv-border-width, 1px) solid var(--plaque-border);"
+                )
+
+            style_str = " ".join(styles)
+            title_html = f'<h3 class="dgcv-panel-title"><span class="dgcv-plaque" style="{style_str}">{t}</span></h3>'
+
+            return f'<div class="dgcv-panel-head" style="padding: 0.75rem 0.75rem 0.5rem 0.75rem;">{title_html}</div><hr class="dgcv-panel-rule"/>'
+
         return f'<div class="dgcv-panel-head"><h3 class="dgcv-panel-title">{t}</h3></div><hr class="dgcv-panel-rule"/>'
 
     def _primary_html(self) -> str:
@@ -906,8 +987,44 @@ class panel_view:
     def to_html(self, *args, **kwargs) -> str:
         layout_css = self._layout_css()
         head = self._header_html()
-        body = f'<div class="dgcv-panel-body">{self._primary_html()}{self._list_html()}</div>'
+
+        r_bl = f"calc({self.ll} - var(--dgcv-border-width, 1px))"
+        r_br = f"calc({self.lr} - var(--dgcv-border-width, 1px))"
+
+        # Standard non-plaque styling layout
+        body_styles = [
+            "box-sizing: border-box;",
+            "width: calc(100% - 1.5rem);",
+            "margin: 0 0.75rem;",
+            "padding: 0;",
+        ]
+
+        if self.plaque_fill and self.plaque_content:
+            body_styles = [
+                "display: block;",  # Guarantees block layout behavior
+                "box-sizing: border-box;",
+                "width: calc(100% - 1.5rem);",
+                "max-width: calc(100% - 1.5rem);",
+                "margin: 0.5rem 0.75rem 0.75rem 0.75rem;",
+                "padding: 0.5rem 1rem 0.75rem 1rem;",
+                "background: var(--plaque-fill);",
+                f"border-radius: 0 0 {r_br} {r_bl};",
+                "box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);",
+                "overflow-x: auto;",
+                "overflow-y: hidden;",
+            ]
+            if self.plaque_border:
+                body_styles.append(
+                    "border: var(--dgcv-border-width, 1px) solid var(--plaque-border);"
+                )
+
+        body_style_str = f' style="{" ".join(body_styles)}"'
+
+        panel_body_override = ' style="margin-left: 0; padding-left: 0; padding-right: 0; overflow: hidden; min-width: 0;"'
+
+        body = f'<div class="dgcv-panel-body"{panel_body_override}><div{body_style_str}>{self._primary_html()}{self._list_html()}</div></div>'
         foot = self._footer_html()
+
         return f'<div id="{self.container_id}">{layout_css}<aside class="dgcv-panel">{head}{body}{foot}</aside></div>'
 
     def _repr_html_(self) -> str:
@@ -953,6 +1070,7 @@ def build_matrix_table(
     dashed_corner: bool = True,
     header_underline_exclude_index: bool = True,
     slim: bool = False,
+    panel_content: bool = False,
     **kwargs,
 ) -> TableView:
     matrix_specific_css = _matrix_extras(
@@ -962,6 +1080,9 @@ def build_matrix_table(
     )
 
     combined_extra_css = matrix_specific_css + "\n" + extra_css
+
+    if panel_content:
+        kwargs["table_attrs"] = 'style="table-layout: auto;"'
 
     return TableView(
         columns=columns,

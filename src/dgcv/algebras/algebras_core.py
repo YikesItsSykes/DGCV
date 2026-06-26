@@ -44,7 +44,8 @@ from functools import lru_cache
 from html import escape as _esc
 from typing import List, Literal, Optional
 
-from .._aux._backends._display import latex
+from .._aux._backends._calculus import diff
+from .._aux._backends._display import fast_printable, latex
 from .._aux._backends._display_engine import is_rich_displaying_available
 from .._aux._backends._engine import engine_kind, engine_module
 from .._aux._backends._polynomials import expr_union_primitives
@@ -934,9 +935,10 @@ class algebra_class(dgcv_class):
         for i in range(dim):
             for j in range(i, dim):
                 for k in range(dim):
-                    if not _scalar_is_zero(
-                        self.structureData[i, j][k] + self.structureData[j, i][k]
-                    ):
+                    expr = self.structureData[i, j][k] + self.structureData[j, i][k]
+                    if get_free_symbols(expr):  ###!!! optimize
+                        expr = simplify(expr)
+                    if not _scalar_is_zero(expr):
                         return False, (i, j, k)
         return True, None
 
@@ -1009,7 +1011,10 @@ class algebra_class(dgcv_class):
                 lower_k = j + 1 if skew else 0
                 for k in range(lower_k, dim):
                     ai, aj, ak = basis[i], basis[j], basis[k]
-                    if not (ai * aj * ak + aj * ak * ai + ak * ai * aj).is_zero:
+                    expr = ai * aj * ak + aj * ak * ai + ak * ai * aj
+                    if get_free_symbols(expr):  ###!!! optimize
+                        expr = simplify(expr)
+                    if not expr.is_zero:
                         fail_list.append((i, j, k))
         if fail_list:
             return False, fail_list
@@ -1419,6 +1424,7 @@ class algebra_class(dgcv_class):
         elements,
         return_structure_data=False,
         check_linear_independence=False,
+        surface_singularities=None,
     ):
         """
         Checks if a set of elements is a subspace is a subalgebra. `check_linear_independence` will additional verify if provided spanning elements are a basis.
@@ -1444,9 +1450,13 @@ class algebra_class(dgcv_class):
         """
 
         # Perform linear independence check
+        if surface_singularities is None and self._parameters:
+            surface_singularities = True
         filtered_elem = self.filter_independent_elements(
-            elements, surface_singularities=False
+            elements, surface_singularities=surface_singularities
         )
+        if surface_singularities:
+            filtered_elem, sing = filtered_elem
         new_dim = len(filtered_elem)
         linearly_independent = len(elements) == len(filtered_elem)
         closed_under_product = True
@@ -1456,6 +1466,8 @@ class algebra_class(dgcv_class):
                 shape=(new_dim, new_dim),
                 null_return=freeze_matrix(matrix_dgcv.zeros(new_dim, 1)),
             )
+        if not isinstance(return_structure_data, bool):
+            return_structure_data = False
         for count, elem in enumerate(filtered_elem):
             if closed_under_product is False:
                 break
@@ -1463,14 +1475,30 @@ class algebra_class(dgcv_class):
             for j in range(lIdx, new_dim):
                 if closed_under_product is False:
                     break
-                if not isinstance(return_structure_data, bool):
-                    return_structure_data = False
                 ic = _indep_check(
                     filtered_elem,
                     elem * filtered_elem[j],
                     return_decomp_coeffs=return_structure_data,
+                    surface_singularities=surface_singularities,
                 )
-                passCheck = ic if return_structure_data is False else ic[0]
+                if surface_singularities:
+                    passCheck, new_sing = (
+                        ic if return_structure_data is False else (ic[0], ic[2])
+                    )
+                    if passCheck is True:
+                        ic = _indep_check(
+                            filtered_elem,
+                            elem * filtered_elem[j],
+                            return_decomp_coeffs=return_structure_data,
+                            surface_singularities=True,
+                            _force_eqn_simiplify=True,
+                        )
+                        passCheck, new_sing = (
+                            ic if return_structure_data is False else (ic[0], ic[2])
+                        )
+                    sing += new_sing
+                else:
+                    passCheck = ic if return_structure_data is False else ic[0]
                 if passCheck is True:
                     closed_under_product = False
                     structure_data = None
@@ -1483,15 +1511,18 @@ class algebra_class(dgcv_class):
                     if self.is_skew_symmetric():
                         structure_data[j, count] = -coeff_array
         if return_structure_data:
-            return {
+            out = {
                 "linearly_independent": linearly_independent,
                 "closed_under_product": closed_under_product,
                 "structure_data": structure_data,
             }
-        if check_linear_independence:
-            return linearly_independent and closed_under_product
+        elif check_linear_independence:
+            out = linearly_independent and closed_under_product
         else:
-            return closed_under_product
+            out = closed_under_product
+        if surface_singularities:
+            return out, sing
+        return out
 
     def compute_weight(self, element, test_weights=None, flatten_weights=False):
         return self.check_element_weight(
@@ -2543,8 +2574,12 @@ class algebra_class(dgcv_class):
         span_warning=True,
         simplify_basis=False,
         simplify_products_by_default=None,
+        surface_singularities=None,
     ):
         from .algebras_secondary import subalgebra_class
+
+        if surface_singularities is None and self._parameters:
+            surface_singularities = True
 
         if simplify_products_by_default is None:
             simplify_products_by_default = self.simplify_products_by_default
@@ -2608,7 +2643,26 @@ class algebra_class(dgcv_class):
                 _compressed_structure_data=structureData,
                 _internal_lock=retrieve_passkey(),
             )
-        testStruct = self.is_subspace_subalgebra(basis, return_structure_data=True)
+        testStruct = self.is_subspace_subalgebra(
+            basis,
+            return_structure_data=True,
+            surface_singularities=surface_singularities,
+        )
+        if surface_singularities:
+            testStruct, sing = testStruct
+            new_sing = [v for v in sing if get_free_symbols(v)]
+            if get_dgcv_settings_registry().get(
+                "simplify_singularity_ideals_by_default", True
+            ):
+                new_sing = expr_union_primitives(
+                    new_sing,
+                    order_coordinates(self._parameters),
+                    process_rationals=True,
+                    fail_quietly=True,
+                )
+            ks = {"basis": new_sing}
+        else:
+            ks = None
         if testStruct["closed_under_product"] is not True:
             raise TypeError(
                 "The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead."
@@ -2622,6 +2676,7 @@ class algebra_class(dgcv_class):
             span_warning=span_warning,
             simplify_basis=simplify_basis,
             simplify_products_by_default=simplify_products_by_default,
+            _known_singularities=ks,
         )
 
     def new_alg_from_subalgebra(
@@ -2890,7 +2945,7 @@ class algebra_class(dgcv_class):
                     def _compute_complement():
                         local_rad_seq = (
                             rad_seq[:-1] if rad_seq else []
-                        )  ###!!! note convension
+                        )  ###!!! note convention
                         local_rad_seq.append([])
 
                         discrep = refAlg.dimension - len(local_rad_seq[0])
@@ -2899,7 +2954,27 @@ class algebra_class(dgcv_class):
                         for elem in refAlg.basis:
                             if len(naiveBasis) == discrep:
                                 break
-                            if _indep_check(augment_NB, elem):
+                            indep = _indep_check(
+                                augment_NB,
+                                elem,
+                                surface_singularities=surface_singularities,
+                            )
+                            if surface_singularities:
+                                indep, sing = indep
+                                new_sing = refAlg._singularities.get("LD", []) + [
+                                    v for v in sing if get_free_symbols(v)
+                                ]
+                                if get_dgcv_settings_registry().get(
+                                    "simplify_singularity_ideals_by_default", True
+                                ):
+                                    new_sing = expr_union_primitives(
+                                        new_sing,
+                                        order_coordinates(refAlg._parameters),
+                                        process_rationals=True,
+                                        fail_quietly=True,
+                                    )
+                                refAlg._singularities["LD"] = new_sing
+                            if indep:
                                 augment_NB.append(elem)
                                 naiveBasis.append(elem)
                         ss_dim = len(naiveBasis)
@@ -2935,16 +3010,49 @@ class algebra_class(dgcv_class):
                                 for idx2 in range(idx1 + 1, ss_dim):
                                     w1, w2 = naiveBasis[idx1], naiveBasis[idx2]
                                     lb = w1 * w2
+                                    surfacing = (
+                                        True
+                                        if refAlg._parameters or surface_singularities
+                                        else False
+                                    )
                                     lb_decomp = _indep_check(
                                         naiveBasis + local_rad_seq[idx],
                                         lb,
                                         return_decomp_coeffs=True,
+                                        surface_singularities=surfacing,
                                     )
                                     if lb_decomp[0] is True:
                                         dgcv_warning(
-                                            f"The Levi decomposition algorithm encountered a bug. The element {lb} is supposed to be in the span of {naiveBasis + local_rad_seq[idx]}. This occured during the {get_dgcv_category(refAlg)} case with {len(refAlg._parameters) if refAlg._parameters else 0} parameter{'s' if refAlg._parameters and len(refAlg._parameters) != 1 else ''} in the system.",
+                                            "The Levi decomposition algorithm encountered a bug caused by solver failing to recognize a zero. Retrying now with a heavier simplify filter.",
                                             wc_label="debug_log",
                                         )
+                                        lb_decomp = _indep_check(
+                                            naiveBasis + local_rad_seq[idx],
+                                            lb,
+                                            return_decomp_coeffs=True,
+                                            surface_singularities=surfacing,
+                                            _force_eqn_simiplify=True,
+                                        )
+
+                                    if surfacing:
+                                        new_sing = refAlg._singularities.get(
+                                            "LD", []
+                                        ) + [
+                                            v
+                                            for v in lb_decomp[2]
+                                            if get_free_symbols(v)
+                                        ]
+                                        if get_dgcv_settings_registry().get(
+                                            "simplify_singularity_ideals_by_default",
+                                            True,
+                                        ):
+                                            new_sing = expr_union_primitives(
+                                                new_sing,
+                                                order_coordinates(refAlg._parameters),
+                                                process_rationals=True,
+                                                fail_quietly=True,
+                                            )
+                                        refAlg._singularities["LD"] = new_sing
                                     lb_decomp = lb_decomp[1][0]
                                     leading_coeffs[(idx1, idx2)] = [
                                         lb_decomp.get(idx, 0) for idx in range(ss_dim)
@@ -3006,23 +3114,16 @@ class algebra_class(dgcv_class):
                                         for j in nb.coeff_dict.values()
                                     ]
                                 )
-                            free_variables = set(
-                                filter(
-                                    lambda x: x not in self._parameters, free_variables
-                                )
-                            )
+                            free_variables = {
+                                x for x in free_variables if x in variables
+                            }
                             if len(free_variables) > 0:
-                                dgcv_warning(
-                                    f"The Levi decomposition algorithm may have a parameter leak issue. surviving params: {free_variables}",
-                                    wc_label="debug_log",
-                                )
                                 zeroing = {v: 0 for v in free_variables}
                                 target = next(iter(free_variables))
                                 new_basis = [
                                     subs(bv, {**zeroing, target: 1}) for bv in new_basis
                                 ]
                             naiveBasis = new_basis
-
                         return self.subalgebra(
                             naiveBasis, span_warning=True, simplify_basis=True
                         )
@@ -4294,6 +4395,15 @@ class algebra_element_class(dgcv_class):
                 return False
         return True
 
+    @property
+    def __dgcv_zero_obstr__(self):
+        cfs = []
+        cfvars = set()
+        for cf in self.coeff_dict.values():
+            cfs.append(cf)
+            cfvars |= get_free_symbols(cf)
+        return cfs, cfvars
+
     def subs(self, subsData):
         newCoeffs = {idx: subs(j, subsData) for idx, j in self.coeff_dict.items()}
         return algebra_element_class(self.algebra, newCoeffs, self.valence)
@@ -4904,11 +5014,20 @@ class algebra_subspace_class(dgcv_class):
     def __getitem__(self, index):
         return self.basis[index]
 
-    def is_subalgebra(self, return_structure_data=False):
+    def is_subalgebra(
+        self, return_structure_data=False, surface_singularities=None
+    ):  ###!!! add structure data branch
+        if surface_singularities is None and self._parameters:
+            surface_singularities = True
         if self._is_subalgebra is None:
-            self._is_subalgebra = self.ambient.is_subspace_subalgebra(
-                self.filtered_basis
+            out = self.ambient.is_subspace_subalgebra(
+                self.filtered_basis, surface_singularities=surface_singularities
             )
+            if surface_singularities:
+                self._is_subalgebra, _ = out
+            else:
+                self._is_subalgebra = out
+
         return self._is_subalgebra
 
     def __str__(self):
@@ -4916,8 +5035,9 @@ class algebra_subspace_class(dgcv_class):
         return "span{" + ", ".join(str(e) for e in b) + "}"
 
     def _repr_latex_(self, raw: bool = False, **kwargs):
+        """verbose=True keyword will override elision formatting in output."""
         b = getattr(self, "basis", None) or []
-        if len(b) > 6:
+        if len(b) > 6 and not kwargs.pop("verbose", False):
             inner = [
                 b[idx]._repr_latex_(raw=True)
                 if idx < 2
@@ -5045,7 +5165,7 @@ class algebra_subspace_class(dgcv_class):
 # -----------------------------------------------------------------------------
 # utilities
 # -----------------------------------------------------------------------------
-def _commutant_eigenspace_vectors(
+def _commutant_eigenspace_vectors_old(
     solMat,
     *,
     tries=30,
@@ -5149,6 +5269,21 @@ def _commutant_eigenspace_vectors(
     ) from last_err
 
 
+def _commutant_eigenspace_vectors(mat, parameters):
+    dim = mat.shape[0]
+    prefix = f"dgcvvar_{uuid.uuid4().hex[:6]}_"
+    coords = matrix_dgcv([symbol(f"{prefix}{idx}") for idx in range(dim)])
+    image = mat * coords
+    trajectories = [diff(image, para) for para in parameters]
+    eigenspaces = []
+    for traj in trajectories:
+        total_vars = get_free_symbols(traj)
+        pars = {x for x in total_vars if x in coords}
+        zeroing = {par: 0 for par in pars}
+        eigenspaces.append([subs(traj, {**zeroing, par: 1}) for par in pars])
+    return eigenspaces
+
+
 def decompose_semisimple_algebra(
     alg,
     assume_semisimple=False,
@@ -5212,22 +5347,13 @@ def decompose_semisimple_algebra(
             return out, sing
         return out
 
-    _, _, eigspaces = _commutant_eigenspace_vectors(
-        solMat, tries=40, bound=max(100, 10 * n)
-    )
-
-    def _coeffs_to_element(coeffs):
-        return sum((c * e for c, e in zip(coeffs, alg.basis)), 0 * alg.basis[0])
+    eigspaces = _commutant_eigenspace_vectors(solMat, free_vars)
 
     simples = []
-    for _, vecs in eigspaces:
+    for vecs in eigspaces:
         new_basis = []
         for v in vecs:
-            if isinstance(v, matrix_dgcv):
-                coeffs = [v[i, 0] for i in range(v.nrows)]
-            else:
-                coeffs = list(v)
-            new_basis.append(_coeffs_to_element(coeffs))
+            new_basis.append(zip_sum(v, alg.basis))
 
         if not new_basis:
             continue
@@ -5787,6 +5913,9 @@ def _summary_render_rich(
         def _repr_html_(self):
             return self._html
 
+    uses_plaque = "--plaque-fill" in theme_data.custom_css_vars
+    uses_plaque_border = "--plaque-border" in theme_data.custom_css_vars
+
     # for _stack_many
     if theme_data.custom_css_vars.get("--dgcv-special-background", None):
         panel_bg = "var(--dgcv-special-background)"
@@ -5822,12 +5951,12 @@ def _summary_render_rich(
             #{container_id} .dgcv-panel-body {{ padding: 0.75rem 1rem; overflow-x: auto; width: 100%; box-sizing: border-box; }}
             #{container_id} .dgcv-panel-list ul {{ margin: 0.25rem 0 0 1.25rem; color: {text_bg}; }}
             #{container_id} .dgcv-panel-footer {{ padding: 0.5rem 1rem; background: var(--dgcv-bg-alt); color: var(--dgcv-text-alt); border-top: 1px solid var(--dgcv-border-alt); }}
-            #{container_id} .dgcv-data-table {{ width: 100%; border-collapse: collapse; background: {panel_bg}; color: {text_bg}; }}
+            #{container_id} .dgcv-data-table {{ width: 100%; border-collapse: collapse; background: var(--dgcv-bg-primary); color: var(--dgcv-text-main); margin: 0; }}
             #{container_id} .dgcv-data-table td, #{container_id} .dgcv-data-table th {{ border-right: 1px solid var(--dgcv-border-main); padding: 8px 12px; }}
             #{container_id} .dgcv-data-table thead th {{ background-color: var(--dgcv-bg-surface); color: var(--dgcv-text-heading); border-bottom: 3px solid var(--dgcv-border-main); }}
             #{container_id} .dgcv-data-table th.row_heading {{ background-color: var(--dgcv-bg-surface) !important; color: var(--dgcv-text-heading) !important; font-weight: bold; }}
             #{container_id} .dgcv-data-table tr:nth-child(even) {{ background-color: var(--dgcv-bg-alt); color: var(--dgcv-text-alt); }}
-            #{container_id} .dgcv-table-wrap {{ padding: 4px 0; }}
+            #{container_id} .dgcv-table-wrap {{ overflow-x: auto; max-width: 100%; box-sizing: border-box; padding: 0; margin: 0; }}
             #{container_id} .dgcv-table-wrap > table.dgcv-data-table {{ min-width: 40rem; width: 100%; table-layout: fixed; }}
             #{container_id} .dgcv-data-table tbody tr {{
                 transition: var(--dgcv-hover-transition, transform 0.2s, box-shadow 0.2s, background-color 0.2s);
@@ -6033,6 +6162,9 @@ def _summary_render_rich(
             theme_css_vars="",
             extra_css="",
             slim=True,
+            plaque_fill=uses_plaque,
+            plaque_border=uses_plaque_border,
+            plaque_content=True,
             **corner_kwargs,
         ).to_html()
 
@@ -6055,6 +6187,7 @@ def _summary_render_rich(
             nowrap=False,
             dashed_corner=False,
             slim=True,
+            panel_content=True,
         )
         return panel_view(
             header="Basis and assigned grading(s)",
@@ -6062,6 +6195,9 @@ def _summary_render_rich(
             theme_css_vars="",
             extra_css="",
             slim=True,
+            plaque_fill=uses_plaque,
+            plaque_border=uses_plaque_border,
+            plaque_content=False,
             **corner_kwargs,
         ).to_html()
 
@@ -6072,7 +6208,7 @@ def _summary_render_rich(
         def _center_panel(corner_kwargs):
             IT = []
             center = getattr(refAlg, "_center_cache", None)
-            PT = center._repr_latex_(raw=False)
+            PT = center._repr_latex_(raw=False, verbose=True)
             return panel_view(
                 header="Center",
                 primary_text=PT,
@@ -6080,6 +6216,9 @@ def _summary_render_rich(
                 theme_css_vars="",
                 extra_css="",
                 slim=True,
+                plaque_fill=uses_plaque,
+                plaque_border=uses_plaque_border,
+                plaque_content=True,
                 **corner_kwargs,
             ).to_html()
 
@@ -6204,6 +6343,9 @@ def _summary_render_rich(
                 theme_css_vars="",
                 extra_css="",
                 slim=True,
+                plaque_fill=uses_plaque,
+                plaque_border=uses_plaque_border,
+                plaque_content=True,
                 **corner_kwargs,
             ).to_html()
 
@@ -6290,6 +6432,9 @@ def _summary_render_rich(
                     theme_css_vars="",
                     extra_css="",
                     slim=True,
+                    plaque_fill=uses_plaque,
+                    plaque_border=uses_plaque_border,
+                    plaque_content=False,
                     **corner_kwargs,
                 ).to_html()
 
@@ -6330,6 +6475,9 @@ def _summary_render_rich(
                             theme_css_vars="",
                             extra_css="",
                             slim=True,
+                            plaque_fill=uses_plaque,
+                            plaque_border=uses_plaque_border,
+                            plaque_content=False,
                             **corner_kwargs,
                         ).to_html()
 
@@ -6348,18 +6496,26 @@ def _summary_render_rich(
                 ("structure", "structure coefficients"),
             ]
             items_sing = []
+            max_operands = 1000
             for key, label in type_dict:
-                if (
-                    show_singularities is None
-                    and key == "subalgebra_ranks"
-                    and len(refAlg._singularities.get(key, set())) > 0
-                ):
-                    numb = len(refAlg._singularities.get(key, set()))
-                    plur = ("y", "it") if numb == 1 else ("ies", "them")
-                    items_sing.append(
-                        f"From {label}: {numb} singularit{plur[0]} omitted from report. (set `show_singularities=True` to display {plur[1]}. Warning: typically very long.)"
-                    )
-                    continue
+                if show_singularities is not True:
+                    sings = refAlg._singularities.get(key, set())
+                    printable = True
+                    for sing in sings:
+                        node_count = fast_printable(
+                            sing, max_nodes=max_operands, return_count=True
+                        )
+                        max_operands -= node_count
+                        if max_operands < 0:
+                            printable = False
+                            break
+                    if not printable:
+                        numb = len(sings)
+                        plur = ("y", "it") if numb == 1 else ("ies", "them")
+                        items_sing.append(
+                            f"From {label}: {numb} singularit{plur[0]} omitted from report. (set `show_singularities=True` to display {plur[1]}. Warning: typically very long.)"
+                        )
+                        continue
                 terms = list(refAlg._singularities.get(key, []))
                 if terms:
                     formatted = (
@@ -6374,6 +6530,9 @@ def _summary_render_rich(
                 theme_css_vars="",
                 extra_css="",
                 slim=True,
+                plaque_fill=uses_plaque,
+                plaque_border=uses_plaque_border,
+                plaque_content=True,
                 **corner_kwargs,
             ).to_html()
 
@@ -6540,6 +6699,7 @@ def _indep_check(
     _solve_variables=None,
     surface_singularities=False,
     simplify_singularities=None,
+    _force_eqn_simiplify=False,
 ):
     if not isinstance(elems, (list, tuple)) or len(elems) == 0:
         if return_decomp_coeffs:
@@ -6555,6 +6715,9 @@ def _indep_check(
     else:
         variables = _solve_variables[: len(elems)]
     eqn = sum(c * elem for c, elem in zip(variables, elems)) - newE
+    if _force_eqn_simiplify:
+        eqn = simplify(eqn)
+
     if surface_singularities:
         sol, sing = solve_dgcv(
             eqn,

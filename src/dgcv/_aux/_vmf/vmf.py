@@ -885,13 +885,12 @@ def vmf_summary(
     #{container_id} .dgcv-table-wrap {{ overflow-x: auto; max-width: 100%;}}
     #{container_id} .dgcv-caption-wrapper {{ display: flex; justify-content: flex-start; width: 100%; margin: 0; padding: 0; }}
 
-    #{container_id} .dgcv-table-caption {{ 
+    #{container_id} .section .dgcv-table-caption {{ 
         background: var(--dgcv-special-background, var(--dgcv-bg-surface));
-        color: var(--dgcv-special-text,var(--dgcv-text-heading)); 
+        color: var(--dgcv-special-text, var(--dgcv-text-heading)); 
         font-weight: bold; 
         padding: 8px 20px; 
         border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main); 
-        border-bottom: none; 
         box-sizing: border-box; 
         text-align: left; 
         width: fit-content; 
@@ -900,11 +899,24 @@ def vmf_summary(
         border-top-left-radius: 12px; 
         border-top-right-radius: 12px;
     }}
-
+    #{container_id} .section .dgcv-table-caption .dgcv-plaque {{
+        display: inline-block;
+        background: var(--plaque-fill);
+        padding: 4px 10px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        border: var(--dgcv-border-width, 1px) solid var(--plaque-border, var(--dgcv-border-main));
+        border-top-left-radius: calc(12px - 4px);
+        border-top-right-radius: calc(12px - 4px);
+    }}
     #{container_id} .section:not(:first-child) .dgcv-table-caption {{
         border-top-left-radius: 0;
         border-top-right-radius: 0;
     }}
+    #{container_id} .section:not(:first-child) .dgcv-table-caption .dgcv-plaque {{
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+    }}
+
 
     #{container_id} .dgcv-data-table {{ 
         width: 100%;
@@ -915,7 +927,7 @@ def vmf_summary(
         border-image: var(--dgcv-border-image, none);
         box-shadow: var(--dgcv-table-shadow, none); 
         overflow: hidden; 
-        border-top-left-radius: 0; /* Forced square to meet caption tab */
+        border-top-left-radius: 0;
         border-top-right-radius: var(--m-r-tr);
         border-bottom-right-radius: var(--m-r-br);
         border-bottom-left-radius: var(--m-r-bl);
@@ -944,6 +956,35 @@ def vmf_summary(
 
     #{container_id} .dgcv-data-table td, #{container_id} .dgcv-data-table th {{ text-align: left; border-right: 1px solid var(--dgcv-border-main); }}
     #{container_id} .dgcv-data-table td:last-child, #{container_id} .dgcv-data-table th:last-child {{ border-right: none; }}
+    #{container_id} .dgcv-flex {{ 
+        display: grid; 
+        grid-template-columns: 1fr 340px; 
+        grid-template-rows: auto 1fr; 
+        column-gap: 10px; 
+        align-items: start; 
+    }}
+    #{container_id} .dgcv-main {{ display: grid; grid-row: 1 / -1; grid-column: 1; grid-template-rows: subgrid; }}
+    #{container_id} .dgcv-side {{ grid-row: 2; grid-column: 2; box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; max-width: 100%; }}
+    #{container_id} .dgcv-side-panel {{
+        border: var(--dgcv-border-width, 1px) solid var(--dgcv-border-main);
+        background: var(--dgcv-special-background, var(--dgcv-bg-surface));
+        color: var(--dgcv-special-text, var(--dgcv-text-heading));
+        border-radius: var(--s-r-tl) var(--s-r-tr) var(--s-r-br) var(--s-r-bl);
+        padding: 12px;
+        height: 100%;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+    }}
+    #{container_id} .dgcv-side-plaque {{
+        border-radius: calc(var(--s-r-tl) - 12px) calc(var(--s-r-tr) - 12px) calc(var(--s-r-br) - 12px) calc(var(--s-r-bl) - 12px);
+    }}
+    @media (max-width: 900px) {{
+        #{container_id} .dgcv-flex {{ display: flex; flex-direction: column; align-items: flex-start; row-gap: 10px; }}
+        #{container_id} .dgcv-main, #{container_id} .dgcv-side {{ max-width: 100%; width: 100%; }}
+        #{container_id} .dgcv-main {{ display: flex; flex-direction: column; grid-row: unset; grid-column: unset; }}
+        #{container_id} .dgcv-side {{ grid-row: unset; grid-column: unset; }}
+    }}
   </style>
   <div class="stack">
     {"".join(html_parts)}

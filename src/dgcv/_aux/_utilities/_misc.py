@@ -36,6 +36,7 @@ def linear_combination(
     coef_label: str = None,
     separate_real_and_imag_parts=False,
     coefficient_assumptions=None,
+    initialIndex: int = 1,
     **kwargs,
 ):
     if separate_real_and_imag_parts:
@@ -49,8 +50,14 @@ def linear_combination(
             suff = uuid.uuid4().hex[:6]
             vlr, vli = prefr + suff, prefi + suff
         n, ad = len(elements), {"real": True}
-        vr = [symbol(f"{vlr}{x}", assumptions=ad) for x in range(n)]
-        vi = [symbol(f"{vli}{x}", assumptions=ad) for x in range(n)]
+        vr = [
+            symbol(f"{vlr}{x}", assumptions=ad)
+            for x in range(initialIndex, initialIndex + n)
+        ]
+        vi = [
+            symbol(f"{vli}{x}", assumptions=ad)
+            for x in range(initialIndex, initialIndex + n)
+        ]
         v = [a + imag * b for a, b in zip(vr, vi)]
         return zip_sum(v, elements), vr, vi
     if isinstance(coef_label, str):
@@ -60,6 +67,6 @@ def linear_combination(
         vl = pref + uuid.uuid4().hex[:6]
     v = [
         symbol(f"{vl}{x}", assumptions=coefficient_assumptions)
-        for x in range(len(elements))
+        for x in range(initialIndex, initialIndex + len(elements))
     ]
     return zip_sum(v, elements), v

@@ -79,6 +79,7 @@ from ..._aux._backends._types_and_constants import (
     rational,
     symbol,
     verify_conjugate_re_im_free,
+    verify_conjugates_free,
     zero,
 )
 from ..._aux._utilities._config import (
@@ -2728,9 +2729,14 @@ class tensor_field_class(dgcv_class):
 
                 def check(x):
                     st = vmf_lookup(x)["sub_type"]
-                    return st == "standard" or st == "holo"
+                    return st == "standard" or st == "holo" or st == "anti"
 
-                exprs = (symToHol(expr) for expr in self.coeff_dict.values())
+                def guarded_conv(x):
+                    if verify_conjugates_free(x):
+                        return x
+                    return allToSym(x)
+
+                exprs = (guarded_conv(expr) for expr in self.coeff_dict.values())
                 cfs = {x for x in cfs if check(x)}
         else:
             exprs = self.coeff_dict.values()

@@ -106,3 +106,34 @@ def latex(expr, **kwargs) -> str:
 
     finally:
         _exit_guard(expr)
+
+
+def fast_printable(expr, max_nodes=500, return_count=False):
+
+    is_sympy = _is_sympy_obj(expr)
+
+    count = 0
+    stack = [expr]
+
+    while stack:
+        current = stack.pop()
+        count += 1
+        if count > max_nodes:
+            if return_count:
+                return count
+            return False
+
+        if is_sympy:
+            if hasattr(current, "args") and current.args:
+                stack.extend(current.args)
+        else:  # assuming sage
+            if hasattr(current, "operands"):
+                try:
+                    ops = current.operands()
+                    if ops:
+                        stack.extend(ops)
+                except (AttributeError, TypeError):
+                    pass
+    if return_count:
+        return count
+    return True

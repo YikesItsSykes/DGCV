@@ -792,7 +792,7 @@ def array_VS_printer(A, _repr=False):
             )
             lines.append("[" + row_str + "]")
         head = f"{A.__class__.__name__}("
-        return head + "\n" + "\n".join(lines) + "\n )"
+        return head + ", ".join(lines) + ")"
     return f"{A.__class__.__name__}(shape={shape}, ndim={len(shape)})"
 
 

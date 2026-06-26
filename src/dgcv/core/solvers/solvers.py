@@ -20,6 +20,7 @@ import random
 
 from ..._aux._backends._calculus import diff
 from ..._aux._backends._engine import _get_sage_module, engine_kind, engine_module
+from ..._aux._backends._polynomials import expr_union_primitives
 from ..._aux._backends._symbolic_router import get_free_symbols, simplify, subs
 from ..._aux._backends._types_and_constants import (
     expr_numeric_types,
@@ -32,6 +33,7 @@ from ..._aux._backends._types_and_constants import (
 )
 from ..._aux._utilities._config import get_dgcv_settings_registry
 from ..._aux._vmf._safeguards import create_key
+from ..._aux._vmf.vmf import order_coordinates
 from ...eds.eds import (
     _equation_formatting,
     _sympy_to_abstract_ZF,
@@ -62,7 +64,7 @@ def normalize_equations_and_vars(eqns, vars_to_solve):
                 formatted += list(neqn[0])
             except Exception as solve_exception:
                 raise RuntimeError(
-                    "Equations data provided to `solve_dgcv` were in an unsupported format"
+                    "Equations data provided to `solve_dgcv` were in an unsupported format."
                 ) from solve_exception
     eqns = formatted
 
@@ -524,7 +526,15 @@ def solve_dgcv(
     sample_if_overdetermined=False,
     allow_underdetermined_solution=True,
     simplify_pivots=False,
+    surface_singularities=False,
 ):
+    """surface_singularities=True will trigger a suite of behavior overrides consistent with
+    `dgcv`'s general singularity threading conventions; in particular, the equation system is assumed to be linear and the solve engine used is `dgcv`'s custom algorithm rather than dispatching to any other connected libraries; simplify_pivots gets automatically set to True, as does return_divisors. A cursory singularity normalization pass also gets applied before singularites are returned.
+    """
+    if surface_singularities is True:
+        simplify_pivots = True
+        return_divisors = True
+        pass_to_symbolic_engine = False
     if pass_to_symbolic_engine is None:
         pass_to_symbolic_engine = (
             get_dgcv_settings_registry().get(
@@ -792,6 +802,20 @@ def solve_dgcv(
     )
 
     if return_divisors:
+        present_atoms = set()
+        returnables = []
+        for v in divisors:
+            atoms = get_free_symbols(v)
+            if atoms:
+                returnables.append(v)
+                present_atoms |= atoms
+        if surface_singularities:
+            divisors = expr_union_primitives(
+                returnables,
+                order_coordinates(present_atoms),
+                process_rationals=True,
+                fail_quietly=True,
+            )
         if verbose:
             return solutions_formatted, system_vars, extra_vars, divisors
         return solutions_formatted, divisors
