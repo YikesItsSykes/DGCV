@@ -3455,6 +3455,7 @@ def createAlgebra(
         symbolData = obj.export_algebra_data(
             _internal_call_lock=retrieve_passkey(),
             preserve_negative_part_basis=preserve_negative_part_basis,
+            try_hard=True,
         )
         if isinstance(symbolData, str):
             raise TypeError(

@@ -5687,15 +5687,16 @@ def _summary_warm_caches(
                 progress_message=None,
                 _on_timed_update=_on_timed_update,
             )
-            _timed_progress_call(
-                lambda: refAlg.center(),
-                timed=True,
-                threshold_s=thr,
-                step_desc="computing the center",
-                continue_desc=progress_message,
-                progress_message=None,
-                _on_timed_update=_on_timed_update,
-            )
+            if full:
+                _timed_progress_call(
+                    lambda: refAlg.center(),
+                    timed=True,
+                    threshold_s=thr,
+                    step_desc="computing the center",
+                    continue_desc=progress_message,
+                    progress_message=None,
+                    _on_timed_update=_on_timed_update,
+                )
     except Exception:
         pass
 

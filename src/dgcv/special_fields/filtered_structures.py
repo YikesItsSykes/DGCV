@@ -57,7 +57,7 @@ from .._aux._vmf._safeguards import (
     query_dgcv_categories,
     retrieve_passkey,
 )
-from .._aux._vmf.vmf import clearVar, listVar, order_coordinates
+from .._aux._vmf.vmf import order_coordinates
 from .._aux.printing._tables import build_plain_table
 from .._aux.printing.printing._dgcv_display import LaTeX, show
 from ..algebras.algebras_core import (
@@ -1946,7 +1946,10 @@ class Tanaka_symbol(dgcv_class):
         return "\n".join(result)
 
     def export_algebra_data(
-        self, preserve_negative_part_basis=True, _internal_call_lock=None
+        self,
+        preserve_negative_part_basis=True,
+        _internal_call_lock=None,
+        try_hard=False,
     ):
         grading_vec = []
         indexBands = dict()
@@ -1976,7 +1979,7 @@ class Tanaka_symbol(dgcv_class):
         def flatToLayered(idx):
             return indexBands[idx]
 
-        def bracket_decomp(idx1, idx2):
+        def bracket_decomp(idx1, idx2, try_hard=False):
             w1, sId1 = flatToLayered(idx1)
             w2, sId2 = flatToLayered(idx2)
             newElem = (
@@ -1999,11 +2002,22 @@ class Tanaka_symbol(dgcv_class):
                     return "NoSol"
             general_elem, tVars = linear_combination(ambient_basis)
             eqns = [newElem - general_elem]
-            sol = solve_dgcv(eqns, tVars)
+            sol = solve_dgcv(eqns, tVars, method="linsolve")
             if len(sol) == 0:
-                return "NoSol"
-            coeffVec = [var.subs(sol[0]) for var in tVars]
-            clearVar(*listVar(temporary_only=True), report=False)
+                if try_hard:
+                    dgcv_warning(
+                        "symbol --> algebra method failed to find structure eqns with fast default algorithm"
+                    )
+                    sol = solve_dgcv(
+                        [simplify(eqn) for eqn in eqns],
+                        tVars,
+                        method="linsolve",
+                    )
+                    if len(sol) == 0:
+                        return "NoSol"
+                else:
+                    return "NoSol"
+            coeffVec = [sol[0].get(var, var) for var in tVars]
 
             #   newWeight should be in complimentWeights by construction
             start = [0] * complimentWeights[newWeight][0]
@@ -2017,7 +2031,7 @@ class Tanaka_symbol(dgcv_class):
         )
         for j in range(dimen):
             for k in range(j + 1, dimen):
-                bracket_data = bracket_decomp(k, j)
+                bracket_data = bracket_decomp(k, j, try_hard=try_hard)
                 if bracket_data == "NoSol":
                     warningStr = f"due to failure to confirm if the symbol data is closed under brackets between basis elements {j} and {k}."
                     if _internal_call_lock != retrieve_passkey():
@@ -3070,7 +3084,17 @@ class distribution(dgcv_class):
         )
         if section_parameters is None:
             return len(indepcheck[0]) != 0
-        return len(indepcheck[0]) != 0 and indepcheck[2]
+        out = len(indepcheck[0]) != 0 and indepcheck[2]
+        if isinstance(out, bool):  # DEBUG
+            from .._aux._utilities._config import get_globals
+
+            get_globals()["DEBUG"] = (
+                section,
+                bas,
+                section_parameters,
+                linear_section_parameters,
+            )
+        return out
 
     @property
     def _ext_power_class(self):
