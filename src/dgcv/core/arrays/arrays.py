@@ -25,7 +25,7 @@ from numbers import Integral
 from types import MappingProxyType
 
 from ..._aux._backends._engine import engine_kind, engine_module
-from ..._aux._backends._exact_arith import exact_reciprocal
+from ..._aux._backends._exact_arith import exact_reciprocal, ratio
 from ..._aux._backends._symbolic_router import (
     _scalar_is_zero,
     conjugate,
@@ -225,6 +225,33 @@ class array_dgcv(dgcv_class):
             return flat, shape
 
         raise TypeError(f"Unsupported array_data type: {type(array_data)}")
+
+    def slice(self, index_value_pairs):
+        """
+        The index_value_pairs should be a dict of whose
+        keys are indices, and whose values is the index value. The
+        pairs [(i_1,v_1), (i_2,v_2),...] indicate taking the cross
+        section of the array where entry index i_j is fixed at
+        i_j=v_j for all j.
+        """
+        former_shape = tuple(self.shape)
+        remaining_indices = [
+            j for j in range(len(former_shape)) if j not in index_value_pairs
+        ]
+        new_shape = tuple(former_shape[j] for j in remaining_indices)
+        newarray = array_dgcv({}, shape=new_shape)
+        for k, v in self._data.items():
+            uk = self._unspool(k)
+            nk = []
+            for count, idx in enumerate(uk):
+                if count not in index_value_pairs:
+                    nk.append(idx)
+                elif index_value_pairs[count] != idx:
+                    nk = None
+                    break
+            if nk is not None:
+                newarray[tuple(nk)] = v
+        return newarray
 
     def __str__(self):
         return array_VS_printer(self)
@@ -685,7 +712,9 @@ class matrix_dgcv(array_dgcv):
         rows = []
         for i in range(self.nrows):
             rows.append(str(self.row(i)))
-        return "matrix_dgcv([\n  " + ",\n  ".join(rows) + "\n])"
+        if get_variable_registry().get("print_style", None) == "readable":
+            return "matrix_dgcv([\n  " + ",\n  ".join(rows) + "\n])"
+        return "matrix_dgcv([ " + ", ".join(rows) + "])"
 
     def __repr__(self):
         nr = (
@@ -974,7 +1003,7 @@ class matrix_dgcv(array_dgcv):
             for i in range(k + 1, n):
                 aik = A[i][k]
                 for j in range(k + 1, n):
-                    A[i][j] = (A[i][j] * pivot - aik * A[k][j]) / prev_pivot
+                    A[i][j] = ratio((A[i][j] * pivot - aik * A[k][j]), prev_pivot)
                 A[i][k] = 0
 
             prev_pivot = pivot

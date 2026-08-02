@@ -112,8 +112,9 @@ def _dolbeault_relevant_atoms(form, *, want: str):
     return tuple(out)
 
 
-def Del(arg1):
-    obj = arg1
+def Del(obj):
+    if get_dgcv_category(obj) == "array":
+        return obj.apply(Del)
     if get_dgcv_category(obj) != "tensor_field":
         if isinstance(obj, expr_numeric_types()):
             obj = makeZeroForm(obj, dgcvType="complex")
@@ -140,8 +141,9 @@ def Del(arg1):
     return accumulation
 
 
-def DelBar(arg1):
-    obj = arg1
+def DelBar(obj):
+    if get_dgcv_category(obj) == "array":
+        return obj.apply(DelBar)
     if get_dgcv_category(obj) != "tensor_field":
         if isinstance(obj, expr_numeric_types()):
             obj = makeZeroForm(obj, dgcvType="complex")

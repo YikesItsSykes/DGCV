@@ -39,7 +39,9 @@ def _scalar_is_zero(x) -> bool:
     if x is None:
         return False
 
-    z = getattr(x, "is_zero", None)
+    z = getattr(x, "is_literal_zero", None)
+    if z is None:
+        z = getattr(x, "is_zero", None)
     if z is True:
         return True
     if z is False:

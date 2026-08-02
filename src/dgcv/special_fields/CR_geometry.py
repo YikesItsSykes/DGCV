@@ -96,7 +96,7 @@ from ..core.vector_fields_and_differential_forms.vector_fields_and_differential_
     get_VF,
 )
 from .complex_structures import Del, DelBar
-from .filtered_structures import distribution
+from .filtered_structures import distribution, filtration_class
 
 __all__ = [
     "CR_structure",
@@ -323,6 +323,7 @@ class CR_structure(dgcv_class):
         self._graph_format_cache = None
         self._LFM = None
         self._Freeman_filtration = None
+        self._Freeman_filtration_list = None
         self._real_def_eqns_cache = None
         self._symmetries = dict()
 
@@ -365,13 +366,15 @@ class CR_structure(dgcv_class):
     def CR_distribution(self):
         if self._CR_distribution is None:
             t_basis = self.tangent_bundle.vf_basis
-            canonf = self.tangent_bundle.canonical_form
+            canonf = self.tangent_bundle.anticanonical_bundle
             Jt_basis = [complex_struct_op(vf) for vf in t_basis]
             vl = create_key("var")
             variables = [symbol(f"{vl}{idx}") for idx in range(len(Jt_basis))]
             gen_elem = sum(v * elem for v, elem in zip(variables, Jt_basis))
             obst = wedge(gen_elem, canonf)
-            sol = solve_dgcv(expand(obst), variables, method="linsolve")
+            sol = solve_dgcv(
+                expand(obst), variables, method="linsolve", simplify_result=False
+            )
             gen_sol = subs(gen_elem, sol[0])
             free_vars = set()
             for expr in sol[0].values():
@@ -525,7 +528,7 @@ class CR_structure(dgcv_class):
         if applied to other vector fields however.
         """
         if self._levi_2form is None:
-            self._levi_2form = matrix_dgcv(
+            self._levi_2form = (2 / imag_unit()) * matrix_dgcv(
                 [Del(DelBar(rho)) for rho in self.flattened_defining_equations]
             )
         out = self._levi_2form.apply(lambda x: x.__call__(vf1, vf2))
@@ -557,7 +560,12 @@ class CR_structure(dgcv_class):
             dgcv_warning(
                 "This CR structure was not set up in `graph format`, so the computed Levi form value has not been restricted to the submanifold. Suggestion: provide structure data in `graph format` or use `Levi_form_skew_unrestricted` instead."
             )
-        return subs(self.Levi_form_skew_unrestricted, self._graph_format_restriction)
+        return subs(
+            self.Levi_form_skew_unrestricted(
+                vf1, vf2, format_scalar_as_vector=format_scalar_as_vector
+            ),
+            self._graph_format_restriction,
+        )
 
     def Levi_form_unrestricted(self, vf1, vf2, format_scalar_as_vector=False):
         """
@@ -635,12 +643,14 @@ class CR_structure(dgcv_class):
                 level = level_list[0]
                 v_trunc = variables[: len(level)]
                 general_elem = sum(v * elem for v, elem in zip(v_trunc, level))
-                new_c_form = wedge(pair.canonical_form, *level)
+                new_c_form = wedge(pair.anticanonical_bundle, *level)
                 eqns = [
                     wedge(LieDerivative(general_elem, vf), new_c_form)
                     for vf in pair.vf_basis
                 ]
-                solution = solve_dgcv(eqns, v_trunc, method="linsolve")
+                solution = solve_dgcv(
+                    eqns, v_trunc, method="linsolve", simplify_result=False
+                )
                 gen_solution = subs(general_elem, solution[0])
                 free_vars, var_set = set(), set(v_trunc)
                 for expr in solution[0].values():
@@ -666,13 +676,14 @@ class CR_structure(dgcv_class):
 
             filtration_bases = descent(levels, antihol, local_vars)
             alligned_bases = filtration_bases[:1]
+            shortened_alligneds = list(alligned_bases)
             if len(filtration_bases) > 1:
                 obstruction = wedge(*filtration_bases[0])
                 if obstruction is None:
                     obstruction = tensor_field_class(coeff_dict={tuple(): 1})
                 dim = len(filtration_bases[0])
                 for basis in filtration_bases[1:]:
-                    current_basis = list(alligned_bases[0])
+                    current_basis, new_elems = list(alligned_bases[0]), []
                     new_dim = len(basis)
                     discrep = new_dim - dim
                     dim = new_dim
@@ -684,9 +695,15 @@ class CR_structure(dgcv_class):
                             continue
                         discrep += -1
                         current_basis.append(elem)
+                        new_elems.append(elem)
                         obstruction = test
                     alligned_bases = [current_basis] + alligned_bases
-            self._Freeman_filtration = [
+                    shortened_alligneds.append(new_elems)
+
+            self._Freeman_filtration = filtration_class(
+                shortened_alligneds, assume_spanning_sections_linearly_indep=True
+            )
+            self._Freeman_filtration_list = [
                 distribution(
                     base,
                     assume_compatibility=True,
@@ -697,6 +714,14 @@ class CR_structure(dgcv_class):
             ]
 
         return self._Freeman_filtration
+
+    @property
+    def Freeman_filtration_list(self):
+        if self._Freeman_filtration_list is None:
+            self._Freeman_filtration_list = list(self.Freeman_filtration.distributions)[
+                ::-1
+            ]
+        return self._Freeman_filtration_list
 
     @property
     def nondegeneracy_order(self):
@@ -1012,7 +1037,9 @@ def findWeightedCRSymmetries(
         )
         coef_eqns.extend([allToReal(c) for c in P.get_coeffs(formatting="unformatted")])
 
-    solutions = solve_dgcv(coef_eqns, unknowns_t, method="linsolve")
+    solutions = solve_dgcv(
+        coef_eqns, unknowns_t, method="linsolve", simplify_result=False
+    )
 
     if not solutions:
         if len(tan_obst_list) == 0 or all(

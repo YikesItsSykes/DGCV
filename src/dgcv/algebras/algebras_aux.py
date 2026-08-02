@@ -55,6 +55,7 @@ from ..core.dgcv_core.dgcv_core import VF_bracket
 from ..core.solvers.solvers import solve_dgcv
 from ..core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
     _extract_basis_by_wedge_vectorized,
+    decompose,
 )
 
 
@@ -79,6 +80,7 @@ def _validate_structure_data(
     process_tensor_rep=False,
     determinacy_order_ansatz=None,
     dimension=None,
+    process_with_decompose=False,
 ):
     if process_tensor_rep:
         # try:
@@ -119,7 +121,9 @@ def _validate_structure_data(
         if len(data) > 0:
             if all(query_dgcv_categories(obj, {"vector_field"}) for obj in data):
                 return aDataFromVFWithAnsatz(
-                    data, determinacy_order_ansatz=determinacy_order_ansatz
+                    data,
+                    determinacy_order_ansatz=determinacy_order_ansatz,
+                    process_with_decompose=process_with_decompose,
                 )
             elif all(query_dgcv_categories(obj, {"matrix"}) for obj in data):
                 return algebraDataFromMatRep(data), "matrix"
@@ -145,7 +149,9 @@ def _validate_structure_data(
             ):
                 try:
                     return aDataFromVFWithAnsatz(
-                        data, determinacy_order_ansatz=determinacy_order_ansatz
+                        data,
+                        determinacy_order_ansatz=determinacy_order_ansatz,
+                        process_with_decompose=process_with_decompose,
                     )
                 except Exception:
                     raise TypeError(
@@ -327,7 +333,9 @@ def _validate_structure_data(
         raise ValueError(f"Invalid structure data format: {type(data)} - {e}")
 
 
-def aDataFromVFWithAnsatz(graded_components, determinacy_order_ansatz=None):
+def aDataFromVFWithAnsatz(
+    graded_components, determinacy_order_ansatz=None, process_with_decompose=False
+):
     if not isinstance(graded_components, dict):
         grading = None
         basis = graded_components  # assumed to be iterable
@@ -375,34 +383,47 @@ def aDataFromVFWithAnsatz(graded_components, determinacy_order_ansatz=None):
                 genelement = 0
                 variables = [symbol("_dgcv_var_")]
             liebracket = VF_bracket(vf1, vf2)
-            eqns = [
-                eqn
-                for eqn in (liebracket - (genelement)).coeff_dict.values()
-                if eqn != 0
-            ]
-            prev_eqns = eqns
-            for _ in range(order_bound):
-                p_e = prev_eqns
-                prev_eqns = []
-                for j in p_e:
-                    for var in free_symbols:
-                        neqn = diff(
-                            j, var
-                        )  ###!!! may be good to prune free_symbols here
-                        if neqn != 0:
-                            prev_eqns.append(neqn)
-                if len(prev_eqns) == 0:
-                    break
-                eqns += prev_eqns
-            sol = solve_dgcv(
-                eqns, variables, method="linsolve", pass_to_symbolic_engine=False
-            )
-            if not sol:
-                raise RuntimeError(
-                    f"Given vector field list is not closed under Lie brackets at indices ({c1}, {c2})."
+            if process_with_decompose:
+                if genelement == 0:
+                    sol = {}
+                else:
+                    coeff_vals = decompose(
+                        liebracket, graded_components[new_weight], assume_basis=True
+                    )[0]
+                    sol = {vari: val for vari, val in zip(variables, coeff_vals)}
+            else:
+                eqns = [
+                    eqn
+                    for eqn in (liebracket - (genelement)).coeff_dict.values()
+                    if eqn != 0
+                ]
+                prev_eqns = eqns
+                for _ in range(order_bound):
+                    p_e = prev_eqns
+                    prev_eqns = []
+                    for j in p_e:
+                        for var in free_symbols:
+                            neqn = diff(
+                                j, var
+                            )  ###!!! may be good to prune free_symbols here
+                            if neqn != 0:
+                                prev_eqns.append(neqn)
+                    if len(prev_eqns) == 0:
+                        break
+                    eqns += prev_eqns
+                sol = solve_dgcv(
+                    eqns,
+                    variables,
+                    method="linsolve",
+                    pass_to_symbolic_engine=False,
+                    simplify_result=False,
                 )
+                if not sol:
+                    raise RuntimeError(
+                        f"Given vector field list is not closed under Lie brackets at indices ({c1}, {c2})."
+                    )
 
-            sol = sol[0]
+                sol = sol[0]
             counter, result = 0, (matrix_dgcv.zeros(dim, 1))
             for idx in range(dim):
                 weight = 0 if grading is None else grading[idx]
@@ -479,7 +500,7 @@ def algebraDataFromMatRep(mat_list):
         if len(bracketVals) == 1 and _scalar_is_zero(bracketVals[0]):
             return
 
-        solLoc = solve_dgcv(bracketVals, variables)
+        solLoc = solve_dgcv(bracketVals, variables, simplify_result=False)
         if len(solLoc) > 0:
             soll = solLoc[0]
             coeffs = matrix_dgcv.zeros(indexRangeCap, 1)
@@ -532,7 +553,9 @@ def algebraDataFromTensorRep(tensor_list):
         if k < j:
             return
         product = (tensor_list[j] * tensor_list[k]) - gen_elem
-        solutions = solve_dgcv(product, variables, method="linsolve")
+        solutions = solve_dgcv(
+            product, variables, method="linsolve", simplify_result=False
+        )
         if len(solutions) > 0:
             sol_values = solutions[0]
             coeffs = matrix_dgcv.zeros(dim, 1)
@@ -575,7 +598,9 @@ def _external_library_algebra_processing(objs, mul, zero_obst, assume_skew=False
         for c, obj2 in enumerate(objs[start:]):
             c2 = c + start
             bracket = mul(obj1, obj2)
-            sol = solve_dgcv(zero_obst(bracket - genel), variables)
+            sol = solve_dgcv(
+                zero_obst(bracket - genel), variables, simplify_result=False
+            )
             if len(sol) == 0:
                 raise ValueError(
                     f"Unable to confirm closure under the given product rule between elements of orders {c1} and {c2}"

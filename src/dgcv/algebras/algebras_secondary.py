@@ -38,10 +38,8 @@ from __future__ import annotations
 import numbers
 from typing import List, Optional
 
-from .._aux._backends._polynomials import expr_union_primitives
 from .._aux._backends._symbolic_router import (
     _scalar_is_zero,
-    as_numer_denom,
     clear_denominators,
     get_free_symbols,
     ratio,
@@ -72,7 +70,7 @@ from .._aux._vmf._safeguards import (
     validate_label,
     validate_label_list,
 )
-from .._aux._vmf.vmf import clearVar, listVar, order_coordinates
+from .._aux._vmf.vmf import clearVar, listVar
 from ..core.arrays.arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ..core.base import annotated_container, dgcv_class
 from ..core.combinatorics.combinatorics import carProd
@@ -80,6 +78,9 @@ from ..core.solvers.solvers import solve_dgcv
 from ..core.tensors.tensors import tensorProduct
 from .algebras_aux import _external_library_algebra_processing, _validate_structure_data
 from .algebras_core import (
+    _algebra_methods,
+    _flatten_structure_data,
+    _harvest_structure_singularities,
     algebra_class,
     algebra_element_class,
     algebra_subspace_class,
@@ -100,7 +101,9 @@ __all__ = [
 # -----------------------------------------------------------------------------
 # algebra classes
 # -----------------------------------------------------------------------------
-class subalgebra_class(algebra_subspace_class):
+
+
+class subalgebra_class(_algebra_methods, algebra_subspace_class):
     def __init__(
         self,
         basis,
@@ -121,15 +124,13 @@ class subalgebra_class(algebra_subspace_class):
             _grading=grading,
             _internal_lock=_internal_lock,
             span_warning=span_warning,
-            simplify_basis=False,
+            simplify_basis=simplify_basis,
         )
-
-        _markers["_educed_properties"] = dict()
 
         basis = self.filtered_basis
         self.structureData = None
 
-        if _internal_lock == retrieve_passkey():
+        if _internal_lock == retrieve_passkey() and simplify_basis is False:
             if _compressed_structure_data is not None:
                 self.structureData = _compressed_structure_data
         if self.structureData is None:
@@ -147,19 +148,17 @@ class subalgebra_class(algebra_subspace_class):
             )
             for count, elem in enumerate(basis)
         ]
-        if all(elem in self.ambient for elem in basis):
+        amb_index = self.ambient._basis_index
+        if all(elem in amb_index for elem in basis):
             self.basis_labels = [elem.__str__() for elem in self.basis]
         else:
             self.basis_labels = [f"_e_{j + 1}" for j in range(self.dimension)]
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "subalgebra"
 
-        sdd = dict()
-        for idx, val in self.structureData._data.items():
-            idx1, idx2 = self.structureData._unspool(idx)
-            for idx3, v in val._data.items():
-                sdd[(idx1, idx2, idx3)] = v
-        self.structureDataDict = sdd
+        self.structureDataDict = _flatten_structure_data(
+            self.structureData, _source="subalgebra_class"
+        )
         if (
             simplify_products_by_default is True
             or self.ambient.simplify_products_by_default is True
@@ -169,24 +168,11 @@ class subalgebra_class(algebra_subspace_class):
             self.simplify_products_by_default = simplify_products_by_default
         self._registered = self.ambient._registered
         if self._parameters:
-            struct_sing = set()
-            for slot in self.structureData._data.values():
-                for v in slot._data.values():
-                    _, d = as_numer_denom(v)
-                    if get_free_symbols(d):
-                        struct_sing.add(d)
-            if get_dgcv_settings_registry().get(
-                "simplify_singularity_ideals_by_default", True
-            ):
-                struct_sing = expr_union_primitives(
-                    struct_sing,
-                    order_coordinates(self._parameters),
-                    process_rationals=True,
-                    fail_quietly=True,
+            self._singularities = {
+                "structure": _harvest_structure_singularities(
+                    self.structureData, self._parameters
                 )
-            else:
-                struct_sing = list(struct_sing)
-            self._singularities = {"structure": struct_sing}
+            }
         else:
             self._singularities = {}
         known_s = kwargs.get("_known_singularities", False)
@@ -199,7 +185,14 @@ class subalgebra_class(algebra_subspace_class):
         self._killing_form = None
         self._derived_subalg_cache = None
         self._derived_series_cache = None
+        self._derived_series_terminated = None
+        self._derived_series_depth = None
         self._lower_central_series_cache = None
+        self._lower_central_series_terminated = None
+        self._lower_central_series_depth = None
+        self._center_cache = None
+        self._grading_compatible = None
+        self._grading_report = None
         self._radical_cache = None
         self._Levi_deco_cache = None
         self._is_semisimple_cache = None
@@ -209,6 +202,9 @@ class subalgebra_class(algebra_subspace_class):
         self._is_solvable_cache = None
         self._rank_approximation = None
         self._graded_components = None
+        self._basis_index_cache = None
+        self._structure_data_slices = None
+        self._structure_rows_cache = None
         self._educed_properties = dict()
         ep = getattr(self.ambient, "_educed_properties", dict())
         t_message = "True by inheritance: parent algebra --> subalgebra"
@@ -229,15 +225,10 @@ class subalgebra_class(algebra_subspace_class):
     def zero_element(self):
         return subalgebra_element(self, {}, 1)
 
-    def _structure_data_slice(self, idx):
-        mat_data = dict()
-        for k, v in self.structureDataDict.items():
-            if k[0] == idx:
-                mat_data[(k[1], k[2])] = v
-        return mat_data
-
-    def __contains__(self, item):
-        return item in self.basis
+    def _verbose_subject(self):
+        if self.ambient.label is None:
+            return "The subalgebra"
+        return f"The subalgebra in {self.ambient.label}"
 
     def __iter__(self):
         return iter(self.basis)
@@ -245,13 +236,16 @@ class subalgebra_class(algebra_subspace_class):
     def __getitem__(self, indices):
         if isinstance(indices, numbers.Integral):
             return self.basis[indices]
-        elif isinstance(indices, list):
+        elif isinstance(indices, (list, tuple)):
             if len(indices) == 1:
                 return self.basis[indices[0]]
-            elif isinstance(indices, list) and len(indices) == 2:
+            elif len(indices) == 2:
                 return self.structureData[indices[0], indices[1]]
-            elif isinstance(indices, list) and len(indices) == 3:
+            elif len(indices) == 3:
                 return self.structureData[indices[0], indices[1]][indices[2]]
+            raise TypeError(
+                f"Expected one, two, or three indices. Received {len(indices)}: {indices}"
+            ) from None
         else:
             raise TypeError(
                 f"To access a subalgebra element or structure data component, provide one index for an element from the basis, two indices for a list of coefficients from the product  of two basis elements, or 3 indices for the corresponding entry in the structure array. Instead of an integer of list of integers, the following was given: {indices}"
@@ -263,15 +257,15 @@ class subalgebra_class(algebra_subspace_class):
 
     def _set_product_protocol(self):
         if self.simplify_products_by_default is None:
+            number_type = numbers.Number
             if any(
-                not isinstance(j, numbers.Number)
-                for j in self.structureDataDict.values()
+                not isinstance(j, number_type) for j in self.structureDataDict.values()
             ):
                 self.simplify_products_by_default = True
             else:
                 self.simplify_products_by_default = False
         elif self.simplify_products_by_default is not True:
-            self.simplify_products_by_default is False
+            self.simplify_products_by_default = False
 
     def __eq__(self, other):
         if not isinstance(other, subalgebra_class):
@@ -393,8 +387,8 @@ class subalgebra_class(algebra_subspace_class):
         else:
             grad = self._grading
         _markers = {
-            "parameters": self._parameters,
-            "_educed_properties": self._educed_properties,
+            "parameters": set(self._parameters),
+            "_educed_properties": dict(self._educed_properties),
             "semidirect_decomposition": getattr(self, "semidirect_decomposition", None),
             "tensor_decomposition": getattr(self, "tensor_decomposition", None),
         }
@@ -417,332 +411,6 @@ class subalgebra_class(algebra_subspace_class):
             _calledFromCreator=retrieve_passkey(),
             _markers=_markers,
         )
-
-    def is_skew_symmetric(
-        self, verbose=False, _return_proof_path=False, _ignore_caches=False
-    ):
-        """
-        Checks if the algebra is skew-symmetric.
-        """
-        if not self._registered and verbose:
-            if self._callLock == retrieve_passkey() and isinstance(
-                self._print_warning, str
-            ):
-                print(self._print_warning)
-            else:
-                print(
-                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
-                )
-
-        if (
-            isinstance(self._educed_properties.get("is_skew", None), str)
-            and _ignore_caches is False
-        ):
-            t_message = self._educed_properties.get("is_skew", None)
-            self._skew_symmetric_cache = (True, None)
-        else:
-            t_message = ""
-
-        if self._skew_symmetric_cache is None or _ignore_caches is True:
-            result, failure = self._check_skew_symmetric()
-            self._skew_symmetric_cache = (result, failure)
-        else:
-            result, failure = self._skew_symmetric_cache
-
-        if verbose:
-            if result:
-                if self.ambient.label is None:
-                    print("The algebra is skew-symmetric.")
-                else:
-                    print(f"The subalgebra in {self.ambient.label} is skew-symmetric.")
-            else:
-                i, j, k = failure
-                print(
-                    f"Skew symmetry fails for basis elements {i}, {j}, at coefficient index {k}."
-                )
-        if _return_proof_path is True:
-            return result, t_message
-        return result
-
-    def _check_skew_symmetric(self):
-        for i in range(self.dimension):
-            for j in range(i, self.dimension):
-                for k in range(self.dimension):
-                    vector_sum_element = (
-                        self.structureData[i, j][k] + self.structureData[j, i][k]
-                    )
-                    if vector_sum_element != 0:
-                        return False, (i, j, k)
-        return True, None
-
-    def satisfies_jacobi_identity(
-        self, verbose=False, _return_proof_path=False, _ignore_caches=False
-    ):
-        """
-        Checks if the algebra satisfies the Jacobi identity.
-        Includes a warning for unregistered instances only if verbose=True.
-        """
-        if not self._registered and verbose:
-            if self._callLock == retrieve_passkey() and isinstance(
-                self._print_warning, str
-            ):
-                print(self._print_warning)
-            else:
-                print(
-                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
-                )
-
-        if (
-            isinstance(self._educed_properties.get("satisfies_Jacobi_ID", None), str)
-            and _ignore_caches is False
-        ):
-            t_message = self._educed_properties.get("satisfies_Jacobi_ID", None)
-            self._jacobi_identity_cache = (True, None)
-        else:
-            t_message = ""
-
-        if self._jacobi_identity_cache is None or _ignore_caches is True:
-            result, fail_list = self._check_jacobi_identity()
-            self._jacobi_identity_cache = (result, fail_list)
-        else:
-            result, fail_list = self._jacobi_identity_cache
-
-        if verbose:
-            if result:
-                if self.ambient.label is None:
-                    print("The subalgebra satisfies the Jacobi identity.")
-                else:
-                    print(
-                        f"The subalgebra in {self.ambient.label} satisfies the Jacobi identity."
-                    )
-            else:
-                print(f"Jacobi identity fails for the following triples: {fail_list}")
-
-        if _return_proof_path is True:
-            return result, t_message
-        return result
-
-    def _check_jacobi_identity(self):
-        skew = self.is_skew_symmetric()
-        fail_list = []
-        for i in range(self.dimension):
-            lower_j = i + 1 if skew else 0
-            for j in range(lower_j, self.dimension):
-                lower_k = j + 1 if skew else 0
-                for k in range(lower_k, self.dimension):
-                    if not (
-                        self.basis[i] * self.basis[j] * self.basis[k]
-                        + self.basis[j] * self.basis[k] * self.basis[i]
-                        + self.basis[k] * self.basis[i] * self.basis[j]
-                    ).is_zero:
-                        fail_list.append((i, j, k))
-        if fail_list:
-            return False, fail_list
-        return True, None
-
-    def _warn_associativity_assumption(self, method_name):
-        """
-        Issues a warning that the method assumes the algebra is associative.
-
-        Parameters
-        ----------
-        method_name : str
-            The name of the method assuming associativity.
-
-        Notes
-        -----
-        - This helper method is intended for internal use.
-        - Use it in methods where associativity is assumed but not explicitly verified.
-        """
-        dgcv_warning(
-            f"{method_name} assumes the subalgebra is associative. "
-            "If it is not then unexpected results may occur."
-        )
-
-    def is_Lie_algebra(
-        self,
-        verbose=False,
-        return_bool=True,
-        _return_proof_path=False,
-        _ignore_caches=False,
-        *,
-        _timed_reporting: bool | None = None,
-        _reporting_threshold_s: float = 10,
-        _progress_message: str | None = None,
-        _on_timed_update=None,
-    ):
-        if not self._registered and verbose:
-            if self._callLock == retrieve_passkey() and isinstance(
-                self._print_warning, str
-            ):
-                print(self._print_warning)
-            else:
-                print(
-                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
-                )
-
-        if isinstance(self._educed_properties.get("is_Lie_algebra", None), str):
-            t_message = self._educed_properties.get("is_Lie_algebra", None)
-            self._lie_algebra_cache = True
-            self._jacobi_identity_cache = True
-            self._skew_symmetric_cache = True
-        else:
-            t_message = ""
-
-        timed = bool(_timed_reporting) if _timed_reporting is not None else False
-        threshold = float(_reporting_threshold_s)
-
-        if self._lie_algebra_cache is not None and _ignore_caches is False:
-            if verbose and not timed:
-                print(
-                    f"Cached result: {'Previously verified the subalgebra is a Lie algebra' if self._lie_algebra_cache else 'Previously verified the subalgebra is not a Lie algebra'}."
-                )
-            if _return_proof_path is True:
-                return self._lie_algebra_cache, t_message
-            return self._lie_algebra_cache
-
-        def _call_with_optional_timing(fn, **kwargs):
-            if not callable(fn):
-                return fn
-            if timed:
-                kwargs.setdefault("_timed_reporting", True)
-                kwargs.setdefault("_reporting_threshold_s", threshold)
-                kwargs.setdefault("_progress_message", _progress_message)
-                kwargs.setdefault("_on_timed_update", _on_timed_update)
-            try:
-                return fn(**kwargs)
-            except TypeError:
-                kwargs.pop("_timed_reporting", None)
-                kwargs.pop("_reporting_threshold_s", None)
-                kwargs.pop("_progress_message", None)
-                kwargs.pop("_on_timed_update", None)
-                return fn(**kwargs)
-
-        ok_skew = _call_with_optional_timing(
-            self.is_skew_symmetric,
-            verbose=verbose,
-            _ignore_caches=_ignore_caches,
-        )
-        if not ok_skew:
-            self._lie_algebra_cache = False
-            if return_bool is True:
-                if _return_proof_path is True:
-                    return False, t_message
-                return False
-            return
-
-        ok_jacobi = _call_with_optional_timing(
-            self.satisfies_jacobi_identity,
-            verbose=verbose,
-            _ignore_caches=_ignore_caches,
-        )
-        if not ok_jacobi:
-            self._lie_algebra_cache = False
-            if return_bool is True:
-                if _return_proof_path is True:
-                    return False, t_message
-                return False
-            return
-
-        if self._lie_algebra_cache is None or _ignore_caches is True:
-            self._lie_algebra_cache = True
-
-        if verbose and not timed:
-            if self.ambient.label is None:
-                print("The algebra is a Lie algebra.")
-            else:
-                print(f"The subalgebra in {self.ambient.label} is a Lie algebra.")
-
-        if return_bool is True:
-            if _return_proof_path is True:
-                return self._lie_algebra_cache, t_message
-            return self._lie_algebra_cache
-
-    def _require_lie_algebra(self, method_name):
-        """
-        Checks that the subalgebra is a Lie algebra before proceeding.
-        """
-        if not self.is_Lie_algebra():
-            raise ValueError(
-                f"{method_name} can only be applied to Lie algebras."
-            ) from None
-
-    def is_semisimple(self, verbose=False, return_bool=True):
-        """
-        Checks if the algebra is semisimple.
-        Nothing is returned if return_bool=False is set.
-        """
-        if not self.ambient._registered and verbose:
-            if self.ambient._callLock == retrieve_passkey() and isinstance(
-                self.ambient._print_warning, str
-            ):
-                print(self.ambient._print_warning)
-            else:
-                print(
-                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
-                )
-
-        if self._is_simple_cache is True:
-            self._is_semisimple_cache = True
-
-        if self._is_semisimple_cache is not None:
-            if verbose:
-                print(
-                    f"Cached result: {f'Previously verified {self.label} is a semisimple Lie algebra' if self._is_semisimple_cache else f'Previously verified {self.label} is not a semisimple Lie algebra.'}."
-                )
-            if return_bool is True:
-                return self._is_semisimple_cache
-            else:
-                return
-
-        if not self.is_Lie_algebra(verbose=verbose):
-            self._is_semisimple_cache = False
-            if return_bool is True:
-                return False
-            else:
-                return
-
-        if verbose is True:
-            print("Progress update: computing determinant of the Killing form...")
-        det = simplify(killingForm(self).det())  ###!!! Optimize, removing simplify
-
-        if verbose:
-            if det != 0:
-                self._is_semisimple_cache = True
-                self._educed_properties["special_type"] = "semisimple"
-                self._is_nilpotent_cache = False
-                self._is_solvable_cache = False
-                print("The subalgebra is semisimple.")
-            else:
-                self._is_semisimple_cache = False
-                self._is_simple_cache = False
-                print("The subalgebra is not semisimple.")
-        if return_bool is True:
-            return det != 0
-
-    def is_simple(self, verbose=False, bypass_semisimple_check=False):
-        if bypass_semisimple_check is False and self._is_semisimple_cache is None:
-            self.is_semisimple(verbose=verbose)
-        if self._is_simple_cache is None:
-            self.compute_simple_subalgebras(verbose=verbose)
-            if self._Levi_deco_cache["LD_components"][1].dimension == 0:
-                self._is_semisimple_cache = True
-                self._is_nilpotent_cache = False
-                self._is_solvable_cache = False
-                if len(self._Levi_deco_cache["simple_ideals"]) == 1:
-                    self._is_simple_cache = True
-                    self._educed_properties["special_type"] = "simple"
-                else:
-                    self._is_simple_cache = False
-                    self._educed_properties["special_type"] = "semisimple"
-            else:
-                self._is_semisimple_cache = False
-                self._is_simple_cache = False
-                if self._Levi_deco_cache["LD_components"][0].dimension == 0:
-                    self._is_solvable_cache = True
-                    if self._educed_properties["special_type"] is None:
-                        self._educed_properties["special_type"] = "solvable"
-        return self._is_simple_cache
 
     def is_subspace_subalgebra(
         self, elements, return_structure_data=False, check_linear_independence=False
@@ -785,7 +453,13 @@ class subalgebra_class(algebra_subspace_class):
         )
 
     def filter_independent_elements(
-        self, elements, apply_light_basis_simplification=False
+        self,
+        elements,
+        apply_light_basis_simplification=False,
+        return_indices: bool = False,
+        surface_singularities: bool = False,
+        simplify_singularities: bool = None,
+        force_heavy_solve: bool = False,
     ):
         """
         Filters a set of elements to retain only a linearly independent subset.
@@ -800,15 +474,27 @@ class subalgebra_class(algebra_subspace_class):
         list
             A subset of the input elements that are linearly independent and unique.
         """
-        idx_list = self.ambient.filter_independent_elements(
+        out = self.ambient.filter_independent_elements(
             [elem.ambient_rep for elem in elements],
             apply_light_basis_simplification=apply_light_basis_simplification,
             return_indices=True,
+            surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
+            force_heavy_solve=force_heavy_solve,
         )
-        return [elements[idx] for idx in idx_list]
+        if surface_singularities:
+            idx_list, sing = out
+        else:
+            idx_list = out
+        if return_indices is True:
+            return (idx_list, sing) if surface_singularities else idx_list
+        filtered = [elements[idx] for idx in idx_list]
+        return (filtered, sing) if surface_singularities else filtered
 
-    def is_in_span(self, element, subspace_elements):
-        return self.ambient.is_in_span(element, subspace_elements)
+    def is_in_span(self, element, subspace_elements, assume_basis=False):
+        return self.ambient.is_in_span(
+            element, subspace_elements, assume_basis=assume_basis
+        )
 
     def compute_center(self, for_associative_alg=False, assume_Lie_algebra=False):
         """
@@ -836,7 +522,7 @@ class subalgebra_class(algebra_subspace_class):
         """
 
         if for_associative_alg is True:
-            assume_Lie_algebra is False
+            assume_Lie_algebra = False
         elif assume_Lie_algebra is False and not self.is_Lie_algebra():
             raise ValueError(
                 "This algebra is not a Lie algebra. To compute the center for an associative algebra, set for_associative_alg=True."
@@ -845,19 +531,17 @@ class subalgebra_class(algebra_subspace_class):
         el, temp_vars = linear_combination(self.basis)
 
         if for_associative_alg:
-            eqns = sum(
-                [
-                    list((el * other - other * el).coeff_dict.values())
-                    for other in self.basis
-                ],
-                [],
-            )
+            eqns = [
+                v
+                for other in self.basis
+                for v in (el * other - other * el).coeff_dict.values()
+            ]
         else:
-            eqns = sum(
-                [list((el * other).coeff_dict.values()) for other in self.basis], []
-            )
+            eqns = [v for other in self.basis for v in (el * other).coeff_dict.values()]
 
-        solutions = solve_dgcv(eqns, temp_vars, method="linslove")
+        solutions = solve_dgcv(
+            eqns, temp_vars, method="linsolve", simplify_result=False
+        )
         if not solutions:
             dgcv_warning(
                 "The internal solver (which depends on which symbolic engine is defaults in dgcv settings) returned no solutions, indicating that this computation of the center failed, as solutions do exist. An empty list is being returned."
@@ -866,297 +550,35 @@ class subalgebra_class(algebra_subspace_class):
 
         el_sol = el.subs(solutions[0])
 
-        free_variables = tuple(
-            set.union(*[get_free_symbols(j) for j in el_sol.coeff_dict.values()])
-        )
+        free_variable_set = set()
+        for j in el_sol.coeff_dict.values():
+            free_variable_set |= set(get_free_symbols(j))
+        if not free_variable_set:
+            return []
+        free_variables = tuple(sorted(free_variable_set, key=str))
+        zeroing = {v: 0 for v in free_variables}
 
         return_list = []
         for var in free_variables:
-            basis_element = el_sol.subs({var: 1}).subs(
-                [(other_var, 0) for other_var in free_variables if other_var != var]
-            )
-            return_list.append(basis_element)
+            return_list.append(el_sol.subs({**zeroing, var: 1}))
 
         return return_list  ###!!! return subalgebra instead
 
-    def compute_derived_algebra(self, from_subalg=None):
-        if from_subalg is None:
-            from_subalg = self
-        return self.ambient.compute_derived_algebra(from_subalg=from_subalg)
-
-    def lower_central_series(
-        self,
-        max_depth=None,
-        format_as_subalgebras=False,
-        from_subalg=None,
-        align_nested_bases=False,
-    ):
-        if from_subalg is None:
-            from_subalg = self
-        return self.ambient.lower_central_series(
-            max_depth=max_depth,
-            format_as_subalgebras=format_as_subalgebras,
-            from_subalg=from_subalg,
-            align_nested_bases=align_nested_bases,
-        )
-
-    def derived_series(
-        self,
-        max_depth=None,
-        format_as_subalgebras=False,
-        from_subalg=None,
-        align_nested_bases=False,
-        surface_singularities=False,
-        simplify_singularities=None,
-    ):
-        if from_subalg is None:
-            from_subalg = self
-        return self.ambient.derived_series(
-            max_depth=max_depth,
-            format_as_subalgebras=format_as_subalgebras,
-            from_subalg=from_subalg,
-            align_nested_bases=align_nested_bases,
-            surface_singularities=surface_singularities,
-            simplify_singularities=simplify_singularities,
-        )
-
-    def is_nilpotent(self, **kwargs):
-        """
-        Checks if the algebra is nilpotent.
-
-        Returns
-        -------
-        bool
-            True if the algebra is nilpotent, False otherwise.
-        """
-        if self._is_nilpotent_cache is None:
-            series = self.lower_central_series()
-            if (
-                len(series[-1]) < 2
-            ):  # to allow different conventions for formatting a trivial level basis
-                self._is_nilpotent_cache = True
-                self._educed_properties["special_type"] = "nilpotent"
-                self._is_semisimple_cache = False
-                self._is_simple_cache = False
-            else:
-                self._is_nilpotent_cache = False
-                self._is_abelian_cache = True
-        return self._is_nilpotent_cache
-
-    def is_solvable(self, **kwargs):
-        """
-        Checks if the algebra is solvable.
-
-        Returns
-        -------
-        bool
-            True if the algebra is solvable, False otherwise.
-        """
-        if self._is_solvable_cache is None:
-            if self._is_nilpotent_cache is None:
-                series = self.derived_series()
-                if (
-                    len(series[-1]) < 2
-                ):  # to allow different conventions for formatting a trivial level basis
-                    self._is_solvable_cache = True
-                    self._is_semisimple_cache = False
-                    self._is_simple_cache = False
-                    self._educed_properties["special_type"] = "solvable"
-                else:
-                    self._is_solvable_cache = False
-                    self._is_abelian_cache = False
-                    self._is_nilpotent_cache = False
-            else:
-                self._is_solvable_cache = self._is_nilpotent_cache
-        return self._is_solvable_cache
-
-    def is_abelian(self, **kwargs):
-        if self._is_abelian_cache is None:
-            self._is_abelian_cache = all(
-                elem == 0 for elem in self.structureDataDict.values()
-            )
-            if self._is_abelian_cache is True:
-                self._educed_properties["special_type"] = "abelian"
-                self._is_nilpotent_cache = True
-                self._is_solvable_cache = True
-                self._is_semisimple_cache = False
-                self._is_simple_cache = False
-        return self._is_abelian_cache
-
-    def _require_lie_algebra(self, method_name):
-        if not self.is_Lie_algebra():
-            raise ValueError(
-                f"{method_name} can only be applied to Lie algebras."
-            ) from None
-
-    def radical(
-        self,
-        from_subalg=None,
-        assume_Lie_algebra=False,
-        surface_singularities=False,
-        simplify_singularities=None,
-    ):
-        if from_subalg is None:
-            from_subalg = self
-        return self.ambient.radical(
-            from_subalg=from_subalg,
-            assume_Lie_algebra=assume_Lie_algebra,
-            surface_singularities=surface_singularities,
-            simplify_singularities=simplify_singularities,
-        )
-
-    def center(
-        self,
-        from_subalg=None,
-        surface_singularities=False,
-        format_as_subalgebra=True,
-        simplify_singularities=None,
-    ):
-        if from_subalg is None:
-            from_subalg = self
-        return self.ambient.center(
-            from_subalg=from_subalg,
-            surface_singularities=surface_singularities,
-            simplify_singularities=simplify_singularities,
-            format_as_subalgebra=format_as_subalgebra,
-        )
-
     def killing_form_product(self, elem1, elem2, assume_Lie_algebra=False):
-        if not self.contains(elem1, strict_types=True) or not self.contains(
-            elem2, strict_types=True
-        ):
+        coeffs1 = self.contains(elem1, return_basis_coeffs=True, strict_types=True)
+        coeffs2 = self.contains(elem2, return_basis_coeffs=True, strict_types=True)
+        if coeffs1 is False or coeffs2 is False:
             raise TypeError(
-                "algebra_class.killing_form_product only operates on algebra elements from the dispatching algebra"
+                "subalgebra_class.killing_form_product only operates on algebra elements from the dispatching subalgebra"
             )
-        kf = killingForm(self, assume_Lie_algebra=assume_Lie_algebra)
-        vec1 = matrix_dgcv(elem1.coeff_dict, shape=(self.dimension, 1))
-        vec2 = matrix_dgcv(elem2.coeff_dict, shape=(1, self.dimension))
+        if self._killing_form is None:
+            self._killing_form = killingForm(
+                self, assume_Lie_algebra=assume_Lie_algebra
+            )
+        kf = self._killing_form
+        vec1 = matrix_dgcv(coeffs1, shape=(self.dimension, 1))
+        vec2 = matrix_dgcv(coeffs2, shape=(1, self.dimension))
         return (vec2 * kf * vec1)[0]
-
-    @property
-    def graded_components(self):
-        if self._graded_components is None:
-            gradings = sorted(list(set([tuple(j) for j in zip(*self.grading)])))
-            gc = {}
-            for key in gradings:
-                gc[key] = self.weighted_component(key)
-            self._graded_components = gc
-        return self._graded_components
-
-    def compute_graded_component_wrt_weight_index(self, idx=0):
-        if idx not in range(len(self.grading)):
-            dgcv_warning(
-                "The provided index is out of range. `compute_graded_component_wrt_weight_index` is using 0 instead."
-            )
-            idx = 0
-        wc = dict()
-        for idxs, comp in self.graded_components.items():
-            wc[idxs[idx]] = wc.get(idxs[idx], self.subspace([])) + comp
-        return wc
-
-    def grading_summary(self):
-        from .._aux.printing.printing._dgcv_display import show
-
-        gradingNumber = len(self.grading)
-        graded_components = self.graded_components
-        # gradings = sorted(list(set([tuple(j) for j in zip(*self.grading)])))
-        # graded_components = {}
-        # for key in gradings:
-        #     graded_components[key] = self.weighted_component(key)
-        pref = self._repr_latex_(abbrev=True).replace("$", "")
-        if "_" in pref:
-            prefi = f"\\left({pref} \\right)_"
-        else:
-            prefi = f"{pref}_"
-        strings = []
-        for k, v in graded_components.items():
-            inner = "".join(str(j) for j in k)
-            latex = v._repr_latex_()
-            latex = latex.replace("$", "").replace("\\displaystyle", "")
-            strings.append(f" $$ {prefi}{{{inner}}} = {latex},$$")
-        if len(strings) > 1:
-            strings.insert(-1, "and")
-        strings[-1] = strings[-1][:-3] + ".$$"
-        if gradingNumber == 0:
-            show(f"The algebra ${pref}$ has no assigend grading.")
-        else:
-            if gradingNumber == 1:
-                gradPhrase = "graded"
-            elif gradingNumber == 2:
-                gradPhrase = "bi-graded"
-            elif gradingNumber == 3:
-                gradPhrase = "tri-graded"
-            else:
-                gradPhrase = f"{gradingNumber}-graded"
-            show(
-                f"The algebra ${pref}$ has {gradPhrase} components: {' '.join(strings)}"
-            )
-
-    def weighted_component(
-        self,
-        weights,
-        test_weights=None,
-        trust_test_weight_format=False,
-        from_subalg=None,
-    ):
-        if from_subalg is None:
-            from_subalg = self
-        return self.ambient.weighted_component(
-            weights,
-            test_weights=test_weights,
-            trust_test_weight_format=trust_test_weight_format,
-            from_subalg=from_subalg,
-        )
-
-    def compute_simple_subalgebras(self, verbose=False):
-        _ = self.Levi_decomposition(decompose_semisimple_fully=True, verbose=verbose)
-        return self._Levi_deco_cache["simple_ideals"]
-
-    def Levi_decomposition(
-        self,
-        decompose_semisimple_fully=False,
-        _bust_cache=False,
-        assume_Lie_algebra=False,
-        verbose=False,
-        surface_singularities=None,
-        simplify_singularities=None,
-        _timed_reporting: bool | None = None,
-        _reporting_threshold_s: float = 10,
-        _progress_message: str | None = None,
-        _on_timed_update=None,
-    ):
-        return self.ambient.Levi_decomposition(
-            from_subalg=self,
-            decompose_semisimple_fully=decompose_semisimple_fully,
-            verbose=verbose,
-            _bust_cache=_bust_cache,
-            assume_Lie_algebra=assume_Lie_algebra,
-            surface_singularities=surface_singularities,
-            simplify_singularities=simplify_singularities,
-            _timed_reporting=_timed_reporting,
-            _reporting_threshold_s=_reporting_threshold_s,
-            _progress_message=_progress_message,
-            _on_timed_update=_on_timed_update,
-        )
-
-    def approximate_rank(
-        self,
-        check_semisimple=False,
-        assume_semisimple=False,
-        _use_cache=False,
-        surface_singularities=False,
-        simplify_singularities=None,
-        **kwargs,
-    ):
-        return self.ambient.approximate_rank(
-            check_semisimple=check_semisimple,
-            assume_semisimple=assume_semisimple,
-            _use_cache=_use_cache,
-            from_subalg=self,
-            surface_singularities=surface_singularities,
-            simplify_singularities=simplify_singularities,
-            **kwargs,
-        )
 
     def direct_sum(
         self,
@@ -1176,6 +598,7 @@ class subalgebra_class(algebra_subspace_class):
             "algebra_subspace",
             "vector_subspace",
         }:
+            numeric_types = expr_numeric_types()
             _markers = {"sum": True, "lockKey": retrieve_passkey()}
             if build_all_gradings is not True:
                 grad1 = self.grading[:1] or [[0] * self.dimension]
@@ -1192,7 +615,7 @@ class subalgebra_class(algebra_subspace_class):
             if isinstance(grading, (list, tuple)):
                 if all(isinstance(elem, (list, tuple)) for elem in grading):
                     grading = [list(elem) for elem in grading] + builtG
-                elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
+                elif all(isinstance(elem, numeric_types) for elem in grading):
                     grading = [list(grading)] + builtG
                 elif grading is not None:
                     dgcv_warning(
@@ -1229,24 +652,6 @@ class subalgebra_class(algebra_subspace_class):
         else:
             return NotImplemented
 
-    def __add__(self, other):
-        if other == 0 or getattr(other, "is_zero", False):
-            return self
-        if get_dgcv_category(other) in {
-            "algebra",
-            "vectorspace",
-            "subalgebra",
-            "algebra_subspace",
-            "vector_subspace",
-        }:
-            return self.direct_sum(other)
-        return NotImplemented
-
-    def __radd__(self, other):
-        if other == 0 or getattr(other, "is_zero", False):
-            return self
-        return NotImplemented
-
     def tensor_product(
         self,
         other,
@@ -1258,6 +663,7 @@ class subalgebra_class(algebra_subspace_class):
         simplify_products_by_default=None,
         build_all_gradings=False,
     ):
+        numeric_types = expr_numeric_types()
         if get_dgcv_category(other) in {
             "algebra",
             "vectorspace",
@@ -1284,7 +690,7 @@ class subalgebra_class(algebra_subspace_class):
             if isinstance(grading, (list, tuple)):
                 if all(isinstance(elem, (list, tuple)) for elem in grading):
                     grading = [list(elem) for elem in grading] + builtG
-                elif all(isinstance(elem, expr_numeric_types()) for elem in grading):
+                elif all(isinstance(elem, numeric_types) for elem in grading):
                     grading = [list(grading)] + builtG
                 elif grading is not None:
                     dgcv_warning(
@@ -1360,10 +766,28 @@ class subalgebra_class(algebra_subspace_class):
                     _calledFromCreator=retrieve_passkey(),
                     _markers=_markers,
                 )
-        elif isinstance(other, expr_numeric_types()):
+        elif isinstance(other, numeric_types):
             return self._convert_to_tp().__matmul__(other)
         else:
             return NotImplemented
+
+    def __add__(self, other):
+        if _scalar_is_zero(other):
+            return self
+        if get_dgcv_category(other) in {
+            "algebra",
+            "vectorspace",
+            "subalgebra",
+            "algebra_subspace",
+            "vector_subspace",
+        }:
+            return self.direct_sum(other)
+        return NotImplemented
+
+    def __radd__(self, other):
+        if _scalar_is_zero(other):
+            return self
+        return NotImplemented
 
     def __matmul__(self, other):
         if get_dgcv_category(other) in {
@@ -1379,15 +803,7 @@ class subalgebra_class(algebra_subspace_class):
     def __rmatmul__(self, other):
         if isinstance(other, expr_numeric_types()):
             return self._convert_to_tp().__rmatmul__(other)
-
-    def summary(self, generate_full_report=False, style=None, use_latex=None):
-        return self.ambient.summary(
-            generate_full_report=generate_full_report,
-            style=style,
-            use_latex=use_latex,
-            _from_subalg=self,
-            _IL=retrieve_passkey(),
-        )
+        return NotImplemented
 
 
 class subalgebra_element(dgcv_class):
@@ -1398,7 +814,7 @@ class subalgebra_element(dgcv_class):
             raise ValueError(f"valence must be 0 or 1, got {valence!r}")
         self.valence = valence
         if isinstance(coeff_dict, dict):
-            {k: v for k, v in coeff_dict.items() if not _scalar_is_zero(v)}
+            coeff_dict = {k: v for k, v in coeff_dict.items() if not _scalar_is_zero(v)}
         elif isinstance(coeff_dict, (list, tuple)):
             coeff_dict = {
                 k: v for k, v in enumerate(coeff_dict) if not _scalar_is_zero(v)
@@ -1479,7 +895,14 @@ class subalgebra_element(dgcv_class):
     @property
     def is_zero(self):
         for j in self.coeff_dict.values():
-            if simplify(j) != 0:
+            if not _scalar_is_zero(simplify(j)):
+                return False
+        return True
+
+    @property
+    def is_literal_zero(self):
+        for j in self.coeff_dict.values():
+            if not _scalar_is_zero(j):
                 return False
         return True
 
@@ -1538,11 +961,10 @@ class subalgebra_element(dgcv_class):
             self.algebra,
             new_dict,
             self.valence,
-            format_sparse=self.is_sparse,
         )
 
     def __add__(self, other):
-        if getattr(other, "is_zero", False) or other == 0:
+        if _scalar_is_zero(other):
             return self
         if get_dgcv_category(other) == "subalgebra_element":
             if self.algebra == other.algebra and self.valence == other.valence:
@@ -1567,7 +989,7 @@ class subalgebra_element(dgcv_class):
         return self.ambient_rep.__add__(other)
 
     def __radd__(self, other):
-        if getattr(other, "is_zero", False) or other == 0:
+        if _scalar_is_zero(other):
             return self
         if isinstance(other, expr_numeric_types()):
             return self._convert_to_tp().__radd__(other)
@@ -1721,7 +1143,7 @@ class subalgebra_element(dgcv_class):
         return weighted_components
 
     def terms(self):
-        return [c * self.algebra.basis[idx] for idx, c in self.coeff_dict()]
+        return [c * self.algebra.basis[idx] for idx, c in self.coeff_dict.items()]
 
     def dual_pairing(self, other):
         return self._convert_to_tp().dual_pairing(other)
@@ -3401,6 +2823,7 @@ def createAlgebra(
     initial_basis_index=1,
     allow_natural_basis_reordering: bool | None = None,
     jet_determinacy_order_ansatz: int = None,
+    process_with_decompose=False,
     _basis_labels_parent=None,
     _markers={},
     **kwargs,
@@ -3623,7 +3046,9 @@ def createAlgebra(
             special_processing_rules.get("zero_obst"),
         )
         if not callable(mul) or not callable(zero_obst):
-            raise ("special_processing_rules parameter is in an unsupported format")
+            raise TypeError(
+                "special_processing_rules parameter is in an unsupported format"
+            )
         try:
             structure_data = _external_library_algebra_processing(
                 obj,
@@ -3676,6 +3101,7 @@ def createAlgebra(
                 assume_Lie_alg=assume_Lie_alg,
                 basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,
                 determinacy_order_ansatz=jet_determinacy_order_ansatz,
+                process_with_decompose=process_with_decompose,
             )
             if vsd[-1] == "matrix":
                 t_message = "True by construction: list of matrices --> `createAlgebra`"

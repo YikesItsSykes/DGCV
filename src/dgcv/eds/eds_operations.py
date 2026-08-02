@@ -101,7 +101,7 @@ def transform_coframe(
 
         new_extD = extDer(df, original_coframe)
         eqns = [new_extD - general_elem]
-        solution = solve_dgcv(eqns, cVars)
+        solution = solve_dgcv(eqns, cVars, simplify_result=False)
         if len(solution) > 1:
             raise ValueError("The given coframe transformation rule is not invertible")
         if len(solution) < 1:

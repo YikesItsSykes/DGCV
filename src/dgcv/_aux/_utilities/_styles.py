@@ -3342,6 +3342,295 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-hover-transition": "all 0.3s ease",
         },
     ),
+    "clownfish_reef": ThemeConfig(
+        bg_primary="#0e2433",
+        bg_surface="#16344a",
+        bg_alt="#112c3f",
+        bg_hover="#f3533a",
+        text_main="#eaf4f8",
+        text_heading="#ff9280",
+        text_hover="#0b1d28",
+        text_alt="#7fa6ba",
+        border_main="#285b7a",
+        border_alt="#1d4661",
+        bg_action="#f3533a",
+        text_on_action="#ffffff",
+        bg_action_hover="#ff6b52",
+        bg_error="#d13b4f",
+        text_on_error="#ffffff",
+        bg_success="#22a86b",
+        text_on_success="#ffffff",
+        font_family="Helvetica, sans-serif",
+        custom_css_vars={
+            "--dgcv-border-width": "1px",
+            "--dgcv-special-text": "#ff826e",
+            "--dgcv-special-background": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cg%3E%3C!-- Dense High-Contrast Bubbles --%3E%3Ccircle cx='20' cy='30' r='4' fill='%234ce3d0' fill-opacity='0.45'/%3E%3Ccircle cx='19' cy='28' r='1' fill='%23ffffff' fill-opacity='0.7'/%3E%3Ccircle cx='155' cy='55' r='6' fill='%234ce3d0' fill-opacity='0.35'/%3E%3Ccircle cx='153' cy='52' r='2' fill='%23ffffff' fill-opacity='0.6'/%3E%3Ccircle cx='95' cy='110' r='3' fill='%234ce3d0' fill-opacity='0.45'/%3E%3Ccircle cx='45' cy='145' r='5.5' fill='%234ce3d0' fill-opacity='0.35'/%3E%3Ccircle cx='43' cy='142' r='1.5' fill='%23ffffff' fill-opacity='0.6'/%3E%3C!-- Clownfish 1 (Mid-size, Swimming Left) --%3E%3Cg transform='translate%28100, 20%29 scale%280.8%29' opacity='0.55'%3E%3Cpath d='M3.5,23 C-4,31 -5,35 -8,33 C-4,21 -4,9 -8,-3 C-5,-5 -4,1 3.5,9' fill='%23f3533a'/%3E%3Cpath d='M-5,25 C-8,31 -8,33 -8,33 C-6,25 -6,17 -8,-3 C-8,-3 -8,-1 -5,5' fill='%2311293a'/%3E%3Cpath d='M40,10 C24,1 5,12 3,16 C3,16 5,19 3,24 C5,28 24,39 40,30 C50,25 55,15 40,10 Z' fill='%23f3533a'/%3E%3Cpath d='M25,10 C21,11 19,27 21,30 C25,29 29,14 25,10 Z M12,12 C10,14 9,23 11,26 C14,25 15,16 12,12 Z' fill='%23ffffff'/%3E%3Ccircle cx='34' cy='17' r='1.5' fill='%2311293a'/%3E%3C/g%3E%3C!-- Clownfish 2 (Tiny, Background, Swimming Right) --%3E%3Cg transform='translate%2830, 85%29 scale%28-0.5, 0.5%29' opacity='0.35'%3E%3Cpath d='M3.5,23 C-4,31 -5,35 -8,33 C-4,21 -4,9 -8,-3 C-5,-5 -4,1 3.5,9' fill='%23f3533a'/%3E%3Cpath d='M40,10 C24,1 5,12 3,16 C3,16 5,19 3,24 C5,28 24,39 40,30 C50,25 55,15 40,10 Z' fill='%23f3533a'/%3E%3Cpath d='M25,10 C21,11 19,27 21,30 C25,29 29,14 25,10 Z M12,12 C10,14 9,23 11,26 C14,25 15,16 12,12 Z' fill='%23ffffff'/%3E%3Ccircle cx='34' cy='17' r='1.5' fill='%2311293a'/%3E%3C/g%3E%3C!-- Clownfish 3 (Large, Foreground, Swimming Right) --%3E%3Cg transform='translate%28135, 125%29 scale%28-1, 1%29' opacity='0.6'%3E%3Cpath d='M3.5,23 C-4,31 -5,35 -8,33 C-4,21 -4,9 -8,-3 C-5,-5 -4,1 3.5,9' fill='%23f3533a'/%3E%3Cpath d='M-5,25 C-8,31 -8,33 -8,33 C-6,25 -6,17 -8,-3 C-8,-3 -8,-1 -5,5' fill='%2311293a'/%3E%3Cpath d='M40,10 C24,1 5,12 3,16 C3,16 5,19 3,24 C5,28 24,39 40,30 C50,25 55,15 40,10 Z' fill='%23f3533a'/%3E%3Cpath d='M25,10 C21,11 19,27 21,30 C25,29 29,14 25,10 Z M12,12 C10,14 9,23 11,26 C14,25 15,16 12,12 Z' fill='%23ffffff'/%3E%3Ccircle cx='34' cy='17' r='1.5' fill='%2311293a'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\"), linear-gradient(135deg, rgba(243, 83, 58, 0.22) 0%, rgba(14, 36, 51, 0) 75%), #0e2433",
+            "--plaque-fill": "#112c3f",
+            "--plaque-border": "#f3533a",
+            "--dgcv-table-shadow": "0 0 30px rgba(243, 83, 58, 0.2), inset 0 1px 2px rgba(255, 146, 128, 0.25)",
+            "--dgcv-hover-transform": "translateY(-1px)",
+            "--dgcv-hover-transition": "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+        },
+    ),
+    "meadow_day": ThemeConfig(
+        bg_primary="#FFFFFF",
+        bg_surface="#ECE9D8",
+        bg_alt="#F2F0E4",
+        bg_hover="#316AC5",
+        text_main="#000000",
+        text_heading="#0A246A",
+        text_hover="#FFFFFF",
+        text_alt="#171713",
+        border_main="#63819F",
+        border_alt="#C8C4B4",
+        bg_action="#245EDC",
+        text_on_action="#FFFFFF",
+        bg_action_hover="#0B3FA8",
+        bg_error="#B0362B",
+        text_on_error="#FFFFFF",
+        bg_success="#3B7A28",
+        text_on_success="#FFFFFF",
+        font_family="Tahoma, 'Trebuchet MS', Verdana, Geneva, sans-serif",
+        custom_css_vars={
+            "--dgcv-border-width": "1px",
+            "--dgcv-special-background": (
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'"
+                "%3E %3Cfilter id='g' x='0' y='0' width='100%' height='100%' color-interpolation-filters="
+                "'sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' seed='5"
+                "' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 "
+                "0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0.30 0 0 0 -0.14'/%3E %3C/filter%3E %3Crect width='160' "
+                "height='160' filter='url%28%23g%29'/%3E %3C/svg%3E"
+                '") 0 0 / 160px 160px repeat, '
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='xMi"
+                "dYMax slice'%3E %3Cdefs%3E %3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E %3C"
+                "stop offset='0' stop-color='%231E62AC'/%3E %3Cstop offset='0.30' stop-color='%232E76C0'/"
+                "%3E %3Cstop offset='0.58' stop-color='%235F9FD6'/%3E %3Cstop offset='0.80' stop-color='%"
+                "23A8CCE8'/%3E %3Cstop offset='1' stop-color='%23D8E7F2'/%3E %3C/linearGradient%3E %3Clin"
+                "earGradient id='haze' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset='0' stop-color='%23D"
+                "CEAF5' stop-opacity='0'/%3E %3Cstop offset='1' stop-color='%23DCEAF5' stop-opacity='0.62"
+                "'/%3E %3C/linearGradient%3E %3ClinearGradient id='turf' gradientUnits='userSpaceOnUse' x"
+                "1='0' y1='272' x2='0' y2='470'%3E %3Cstop offset='0' stop-color='%23B3CE73'/%3E %3Cstop "
+                "offset='0.16' stop-color='%238CB656'/%3E %3Cstop offset='0.52' stop-color='%236A9842'/%3"
+                "E %3Cstop offset='1' stop-color='%23496E30'/%3E %3C/linearGradient%3E %3ClinearGradient "
+                "id='far' gradientUnits='userSpaceOnUse' x1='0' y1='326' x2='0' y2='430'%3E %3Cstop offse"
+                "t='0' stop-color='%23A3BA90'/%3E %3Cstop offset='1' stop-color='%238AA06D'/%3E %3C/linea"
+                "rGradient%3E %3ClinearGradient id='cfade' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset="
+                "'0' stop-color='%23FFFFFF' stop-opacity='0.55'/%3E %3Cstop offset='0.16' stop-color='%23"
+                "FFFFFF' stop-opacity='1'/%3E %3Cstop offset='0.68' stop-color='%23FFFFFF' stop-opacity='"
+                "1'/%3E %3Cstop offset='0.98' stop-color='%23000000' stop-opacity='0'/%3E %3C/linearGradi"
+                "ent%3E %3Cmask id='cmask'%3E%3Crect x='0' y='0' width='800' height='340' fill='url%28%23"
+                "cfade%29'/%3E%3C/mask%3E %3Cfilter id='cloud' x='0' y='0' width='100%' height='100%' col"
+                "or-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0."
+                "0055 0.019' numOctaves='5' seed='3' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix"
+                " in='n' type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 -2.9 0 0 0 1.62' result='m'/"
+                "%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter "
+                "id='cshade' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E"
+                " %3CfeTurbulence type='fractalNoise' baseFrequency='0.0055 0.019' numOctaves='5' seed='3"
+                "' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 "
+                "0 0 0.72 0 0 0 0 0.76 0 0 0 0 0.82 -2.2 0 0 0 1.05' result='m'/%3E %3CfeOffset in='m' dx"
+                "='0' dy='9' result='o'/%3E %3CfeComposite in='o' in2='SourceGraphic' operator='in'/%3E %"
+                "3C/filter%3E %3Cfilter id='mottle' x='0' y='0' width='100%' height='100%' color-interpol"
+                "ation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.014 0.045' "
+                "numOctaves='4' seed='11' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' typ"
+                "e='matrix' values='0 0 0 0 0.20 0 0 0 0 0.29 0 0 0 0 0.11 0.62 0 0 0 -0.20' result='m'/%"
+                "3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter i"
+                "d='blades' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E "
+                "%3CfeTurbulence type='fractalNoise' baseFrequency='0.09 0.55' numOctaves='3' seed='19' s"
+                "titchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0"
+                " 0.83 0 0 0 0 0.90 0 0 0 0 0.55 0.50 0 0 0 -0.22' result='m'/%3E %3CfeComposite in='m' i"
+                "n2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3ClinearGradient id='near' gradientU"
+                "nits='userSpaceOnUse' x1='0' y1='318' x2='0' y2='504'%3E %3Cstop offset='0' stop-color='"
+                "%2360843A'/%3E %3Cstop offset='0.22' stop-color='%23547630'/%3E %3Cstop offset='0.60' st"
+                "op-color='%2342602A'/%3E %3Cstop offset='1' stop-color='%23344C22'/%3E %3C/linearGradien"
+                "t%3E %3Cfilter id='nmottle' x='0' y='0' width='100%' height='100%' color-interpolation-f"
+                "ilters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.010 0.032' numOcta"
+                "ves='4' seed='23' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matr"
+                "ix' values='0 0 0 0 0.15 0 0 0 0 0.23 0 0 0 0 0.08 0.58 0 0 0 -0.19' result='m'/%3E %3Cf"
+                "eComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter id='nbla"
+                "des' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeT"
+                "urbulence type='fractalNoise' baseFrequency='0.055 0.32' numOctaves='3' seed='29' stitch"
+                "Tiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.74"
+                " 0 0 0 0 0.84 0 0 0 0 0.48 0.46 0 0 0 -0.20' result='m'/%3E %3CfeComposite in='m' in2='S"
+                "ourceGraphic' operator='in'/%3E %3C/filter%3E %3CclipPath id='nearclip'%3E %3Cpath d='M "
+                "-4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320 L 804,504 L -4,504 Z'/%3E %3C"
+                "/clipPath%3E %3CclipPath id='hillclip'%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C"
+                " 332,276 420,300 520,320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z'/%3E %3C/clipPat"
+                "h%3E %3C/defs%3E %3Crect x='0' y='0' width='800' height='500' fill='url%28%23sky%29'/%3E"
+                " %3Crect x='0' y='0' width='800' height='340' fill='%23FFFFFF' filter='url%28%23cshade%2"
+                "9' mask='url%28%23cmask%29' opacity='0.85'/%3E %3Crect x='0' y='0' width='800' height='3"
+                "40' fill='%23FFFFFF' filter='url%28%23cloud%29' mask='url%28%23cmask%29'/%3E %3Crect x='"
+                "0' y='240' width='800' height='160' fill='url%28%23haze%29'/%3E %3Cpath d='M -4,352 C 88"
+                ",338 200,330 300,330 C 432,330 560,336 804,349 L 804,504 L -4,504 Z' fill='url%28%23far%"
+                "29'/%3E %3Cpath d='M -4,352 C 88,338 200,330 300,330 C 432,330 560,336 804,349' fill='no"
+                "ne' stroke='%23C2D4A8' stroke-width='2' opacity='0.5'/%3E %3Cpath d='M -4,318 C 52,296 1"
+                "22,278 212,277 C 332,276 420,300 520,320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z'"
+                " fill='url%28%23turf%29'/%3E %3Cg clip-path='url%28%23hillclip%29'%3E %3Crect x='0' y='2"
+                "60' width='800' height='244' fill='%23FFFFFF' filter='url%28%23mottle%29'/%3E %3Crect x="
+                "'0' y='260' width='800' height='244' fill='%23FFFFFF' filter='url%28%23blades%29' opacit"
+                "y='0.55'/%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,320 C 63"
+                "0,342 720,360 804,378' fill='none' stroke='%23D2E39B' stroke-width='7' opacity='0.35'/%3"
+                "E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,320 C 630,342 720,3"
+                "60 804,378' fill='none' stroke='%23E2EEB4' stroke-width='2.5' opacity='0.55'/%3E %3C/g%3"
+                "E %3Cpath d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320 L 804,504 L -4"
+                ",504 Z' fill='url%28%23near%29'/%3E %3Cg clip-path='url%28%23nearclip%29'%3E %3Crect x='"
+                "0' y='300' width='800' height='204' fill='%23FFFFFF' filter='url%28%23nmottle%29'/%3E %3"
+                "Crect x='0' y='300' width='800' height='204' fill='%23FFFFFF' filter='url%28%23nblades%2"
+                "9' opacity='0.5'/%3E %3Cpath d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804"
+                ",320' fill='none' stroke='%23A9C95C' stroke-width='8' opacity='0.22'/%3E %3Cpath d='M -4"
+                ",463 C 130,443 280,417 400,395 C 530,371 690,344 804,320' fill='none' stroke='%23C3DC84'"
+                " stroke-width='2.5' opacity='0.5'/%3E %3C/g%3E %3C/svg%3E"
+                '") center 58% / cover no-repeat, '
+                "linear-gradient(to bottom, #1E62AC 0%, #2E76C0 30%, #5F9FD6 58%, "
+                "#A8CCE8 80%, #D8E7F2 100%) center / cover no-repeat, "
+                "#5F9FD6"
+            ),
+            "--dgcv-special-text": "#0A246A",
+            "--plaque-fill": "#ECE9D8",
+            "--plaque-border": "#0A246A",
+            "--dgcv-table-shadow": "0 2px 6px rgba(10, 36, 106, 0.28)",
+            "--dgcv-text-shadow": "none",
+            "--dgcv-hover-transform": "none",
+            "--dgcv-hover-transition": "background-color 90ms linear, color 90ms linear",
+        },
+    ),
+    "meadow_dusk": ThemeConfig(
+        bg_primary="#131A28",
+        bg_surface="#1D2739",
+        bg_alt="#17202F",
+        bg_hover="#7FB0EA",
+        text_main="#DEE5F0",
+        text_heading="#F2C078",
+        text_hover="#0E1522",
+        text_alt="#D6DDE9",
+        border_main="#6B7C97",
+        border_alt="#333E55",
+        bg_action="#6FA3E4",
+        text_on_action="#0E1522",
+        bg_action_hover="#8FBBF0",
+        bg_error="#A6453C",
+        text_on_error="#FFEDE8",
+        bg_success="#3E6B34",
+        text_on_success="#E6F2DE",
+        font_family="Tahoma, 'Trebuchet MS', Verdana, Geneva, sans-serif",
+        custom_css_vars={
+            "--dgcv-border-width": "1px",
+            "--dgcv-special-background": (
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'"
+                "%3E %3Cfilter id='g' x='0' y='0' width='100%' height='100%' color-interpolation-filters="
+                "'sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' seed='5"
+                "' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 "
+                "0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0.34 0 0 0 -0.16'/%3E %3C/filter%3E %3Crect width='160' "
+                "height='160' filter='url%28%23g%29'/%3E %3C/svg%3E"
+                '") 0 0 / 160px 160px repeat, '
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='xMi"
+                "dYMax slice'%3E %3Cdefs%3E %3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E %3C"
+                "stop offset='0' stop-color='%23101833'/%3E %3Cstop offset='0.28' stop-color='%231E2748'/"
+                "%3E %3Cstop offset='0.52' stop-color='%233A3560'/%3E %3Cstop offset='0.70' stop-color='%"
+                "236E4462'/%3E %3Cstop offset='0.86' stop-color='%23B45F53'/%3E %3Cstop offset='1' stop-c"
+                "olor='%23E89A5C'/%3E %3C/linearGradient%3E %3CradialGradient id='glow' cx='0.5' cy='0.5'"
+                " r='0.5'%3E %3Cstop offset='0' stop-color='%23FFC078' stop-opacity='0.70'/%3E %3Cstop of"
+                "fset='0.45' stop-color='%23F09A5E' stop-opacity='0.34'/%3E %3Cstop offset='1' stop-color"
+                "='%23E8834E' stop-opacity='0'/%3E %3C/radialGradient%3E %3ClinearGradient id='cloudcol' "
+                "gradientUnits='userSpaceOnUse' x1='0' y1='24' x2='0' y2='352'%3E %3Cstop offset='0' stop"
+                "-color='%232E3352'/%3E %3Cstop offset='0.42' stop-color='%235B4666'/%3E %3Cstop offset='"
+                "0.74' stop-color='%23B06A5C'/%3E %3Cstop offset='1' stop-color='%23F0A96E'/%3E %3C/linea"
+                "rGradient%3E %3ClinearGradient id='haze' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset='"
+                "0' stop-color='%23E8945C' stop-opacity='0'/%3E %3Cstop offset='1' stop-color='%23E8945C'"
+                " stop-opacity='0.34'/%3E %3C/linearGradient%3E %3ClinearGradient id='turf' gradientUnits"
+                "='userSpaceOnUse' x1='0' y1='272' x2='0' y2='470'%3E %3Cstop offset='0' stop-color='%234"
+                "1522F'/%3E %3Cstop offset='0.16' stop-color='%23334325'/%3E %3Cstop offset='0.52' stop-c"
+                "olor='%2325341C'/%3E %3Cstop offset='1' stop-color='%231A2614'/%3E %3C/linearGradient%3E"
+                " %3ClinearGradient id='far' gradientUnits='userSpaceOnUse' x1='0' y1='326' x2='0' y2='43"
+                "0'%3E %3Cstop offset='0' stop-color='%236B6274'/%3E %3Cstop offset='1' stop-color='%2354"
+                "4E63'/%3E %3C/linearGradient%3E %3ClinearGradient id='near' gradientUnits='userSpaceOnUs"
+                "e' x1='0' y1='318' x2='0' y2='504'%3E %3Cstop offset='0' stop-color='%231B2614'/%3E %3Cs"
+                "top offset='0.22' stop-color='%23151E10'/%3E %3Cstop offset='0.60' stop-color='%2310170C"
+                "'/%3E %3Cstop offset='1' stop-color='%230B1108'/%3E %3C/linearGradient%3E %3ClinearGradi"
+                "ent id='mglow' gradientUnits='userSpaceOnUse' x1='0' y1='268' x2='0' y2='470'%3E %3Cstop"
+                " offset='0' stop-color='%23FFB86E' stop-opacity='0.30'/%3E %3Cstop offset='0.38' stop-co"
+                "lor='%23F09A5E' stop-opacity='0.12'/%3E %3Cstop offset='1' stop-color='%23E8834E' stop-o"
+                "pacity='0'/%3E %3C/linearGradient%3E %3ClinearGradient id='cfade' x1='0' y1='0' x2='0' y"
+                "2='1'%3E %3Cstop offset='0' stop-color='%23FFFFFF' stop-opacity='0.6'/%3E %3Cstop offset"
+                "='0.18' stop-color='%23FFFFFF' stop-opacity='1'/%3E %3Cstop offset='0.80' stop-color='%2"
+                "3FFFFFF' stop-opacity='1'/%3E %3Cstop offset='1' stop-color='%23000000' stop-opacity='0'"
+                "/%3E %3C/linearGradient%3E %3Cmask id='cmask'%3E%3Crect x='0' y='0' width='800' height='"
+                "352' fill='url%28%23cfade%29'/%3E%3C/mask%3E %3Cfilter id='cloud' x='0' y='0' width='100"
+                "%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNois"
+                "e' baseFrequency='0.0055 0.019' numOctaves='5' seed='3' stitchTiles='stitch' result='n'/"
+                "%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 -2.9 0 0"
+                " 0 1.62' result='m'/%3E %3CfeComposite in='SourceGraphic' in2='m' operator='in'/%3E %3C/"
+                "filter%3E %3Cfilter id='cshade' x='0' y='0' width='100%' height='100%' color-interpolati"
+                "on-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.0055 0.019' nu"
+                "mOctaves='5' seed='3' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='"
+                "matrix' values='0 0 0 0 0.10 0 0 0 0 0.10 0 0 0 0 0.18 -2.2 0 0 0 1.05' result='m'/%3E %"
+                "3CfeOffset in='m' dx='0' dy='-8' result='o'/%3E %3CfeComposite in='o' in2='SourceGraphic"
+                "' operator='in'/%3E %3C/filter%3E %3Cfilter id='mottle' x='0' y='0' width='100%' height="
+                "'100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFre"
+                "quency='0.014 0.045' numOctaves='4' seed='11' stitchTiles='stitch' result='n'/%3E %3CfeC"
+                "olorMatrix in='n' type='matrix' values='0 0 0 0 0.05 0 0 0 0 0.08 0 0 0 0 0.04 0.60 0 0 "
+                "0 -0.20' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/"
+                "filter%3E %3Cfilter id='blades' x='0' y='0' width='100%' height='100%' color-interpolati"
+                "on-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.09 0.55' numOc"
+                "taves='3' seed='19' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='ma"
+                "trix' values='0 0 0 0 0.92 0 0 0 0 0.68 0 0 0 0 0.38 0.42 0 0 0 -0.22' result='m'/%3E %3"
+                "CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter id='nm"
+                "ottle' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3Cf"
+                "eTurbulence type='fractalNoise' baseFrequency='0.010 0.032' numOctaves='4' seed='23' sti"
+                "tchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0"
+                ".03 0 0 0 0 0.05 0 0 0 0 0.02 0.58 0 0 0 -0.19' result='m'/%3E %3CfeComposite in='m' in2"
+                "='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter id='nblades' x='0' y='0' widt"
+                "h='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fract"
+                "alNoise' baseFrequency='0.055 0.32' numOctaves='3' seed='29' stitchTiles='stitch' result"
+                "='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.62 0 0 0 0 0.45 0 0 0 0"
+                " 0.24 0.40 0 0 0 -0.22' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operato"
+                "r='in'/%3E %3C/filter%3E %3CclipPath id='nearclip'%3E %3Cpath d='M -4,463 C 130,443 280,"
+                "417 400,395 C 530,371 690,344 804,320 L 804,504 L -4,504 Z'/%3E %3C/clipPath%3E %3CclipP"
+                "ath id='hillclip'%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,"
+                "320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z'/%3E %3C/clipPath%3E %3C/defs%3E %3Cr"
+                "ect x='0' y='0' width='800' height='500' fill='url%28%23sky%29'/%3E %3Cellipse cx='300' "
+                "cy='330' rx='430' ry='150' fill='url%28%23glow%29'/%3E %3Crect x='0' y='0' width='800' h"
+                "eight='352' fill='%230C1026' filter='url%28%23cshade%29' mask='url%28%23cmask%29' opacit"
+                "y='0.8'/%3E %3Crect x='0' y='0' width='800' height='352' fill='url%28%23cloudcol%29' fil"
+                "ter='url%28%23cloud%29' mask='url%28%23cmask%29'/%3E %3Crect x='0' y='250' width='800' h"
+                "eight='160' fill='url%28%23haze%29'/%3E %3Cpath d='M -4,352 C 88,338 200,330 300,330 C 4"
+                "32,330 560,336 804,349 L 804,504 L -4,504 Z' fill='url%28%23far%29'/%3E %3Cpath d='M -4,"
+                "352 C 88,338 200,330 300,330 C 432,330 560,336 804,349' fill='none' stroke='%23E0A882' s"
+                "troke-width='2' opacity='0.45'/%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,27"
+                "6 420,300 520,320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z' fill='url%28%23turf%29"
+                "'/%3E %3Cg clip-path='url%28%23hillclip%29'%3E %3Crect x='0' y='260' width='800' height="
+                "'244' fill='%23FFFFFF' filter='url%28%23mottle%29'/%3E %3Crect x='0' y='260' width='800'"
+                " height='244' fill='%23FFFFFF' filter='url%28%23blades%29' opacity='0.30'/%3E %3Cpath d="
+                "'M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,320 C 630,342 720,360 804,378' "
+                "fill='none' stroke='%23F0A45E' stroke-width='6' opacity='0.28'/%3E %3Cpath d='M -4,318 C"
+                " 52,296 122,278 212,277 C 332,276 420,300 520,320 C 630,342 720,360 804,378' fill='none'"
+                " stroke='%23FFCE92' stroke-width='2' opacity='0.55'/%3E %3C/g%3E %3Cpath d='M -4,463 C 1"
+                "30,443 280,417 400,395 C 530,371 690,344 804,320 L 804,504 L -4,504 Z' fill='url%28%23ne"
+                "ar%29'/%3E %3Cg clip-path='url%28%23nearclip%29'%3E %3Crect x='0' y='300' width='800' he"
+                "ight='204' fill='%23FFFFFF' filter='url%28%23nmottle%29'/%3E %3Crect x='0' y='300' width"
+                "='800' height='204' fill='%23FFFFFF' filter='url%28%23nblades%29' opacity='0.28'/%3E %3C"
+                "path d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320' fill='none' stroke"
+                "='%23E09455' stroke-width='7' opacity='0.20'/%3E %3Cpath d='M -4,463 C 130,443 280,417 4"
+                "00,395 C 530,371 690,344 804,320' fill='none' stroke='%23F7BC7C' stroke-width='2' opacit"
+                "y='0.45'/%3E %3C/g%3E %3Crect x='0' y='268' width='800' height='236' fill='url%28%23mglo"
+                "w%29'/%3E %3C/svg%3E"
+                '") center 58% / cover no-repeat, '
+                "linear-gradient(to bottom, #101833 0%, #1E2748 28%, #3A3560 52%, "
+                "#6E4462 70%, #B45F53 86%, #E89A5C 100%) center / cover no-repeat, "
+                "#3A3560"
+            ),
+            "--dgcv-special-text": "#F2C078",
+            "--plaque-fill": "#1D2739",
+            "--plaque-border": "#F2C078",
+            "--dgcv-table-shadow": "0 2px 10px rgba(0, 0, 0, 0.55)",
+            "--dgcv-text-shadow": "none",
+            "--dgcv-hover-transform": "none",
+            "--dgcv-hover-transition": "background-color 90ms linear, color 90ms linear",
+        },
+    ),
 }
 
 

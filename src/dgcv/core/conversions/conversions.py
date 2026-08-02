@@ -287,11 +287,17 @@ def allToSym(expr, skipVar=None, convert_everything: bool = True, variables_scop
     )
 
 
-def cleanUpConjugation(arg1, skipVar=None):
+def cleanUpConjugation(arg1, skipVar=None, variables_scope=None):
     return realToSym(
-        symToReal(arg1, skipVar=skipVar, convert_everything=False),
+        symToReal(
+            arg1,
+            skipVar=skipVar,
+            convert_everything=False,
+            variables_scope=variables_scope,
+        ),
         skipVar=skipVar,
         convert_everything=False,
+        variables_scope=variables_scope,
     )
 
 

@@ -791,8 +791,8 @@ def array_VS_printer(A, _repr=False):
                 ("" if _repr else "∅") if x is None else form(x) for x in row
             )
             lines.append("[" + row_str + "]")
-        head = f"{A.__class__.__name__}("
-        return head + ", ".join(lines) + ")"
+        head = f"{A.__class__.__name__}(["
+        return head + ", ".join(lines) + "])"
     return f"{A.__class__.__name__}(shape={shape}, ndim={len(shape)})"
 
 

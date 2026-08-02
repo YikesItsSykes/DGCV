@@ -44,7 +44,6 @@ from functools import lru_cache
 from html import escape as _esc
 from typing import List, Literal, Optional
 
-from .._aux._backends._calculus import diff
 from .._aux._backends._display import fast_printable, latex
 from .._aux._backends._display_engine import is_rich_displaying_available
 from .._aux._backends._engine import engine_kind, engine_module
@@ -108,7 +107,2239 @@ __all__ = [
 # -----------------------------------------------------------------------------
 # Algebra classes
 # -----------------------------------------------------------------------------
-class algebra_class(dgcv_class):
+
+
+class _vector_space_methods:
+    """
+    Shared basis and grading-level operations for `dgcv` vector-space-like
+    classes.
+
+    Notes
+    -----
+    Host classes must provide `basis`, `dimension`, `grading`, `_gradingNumber`,
+    `ambient` and `_verbose_subject`.
+    Cache attributes default to None, so a host that does not initialize them
+    still resolves.
+    """
+
+    _basis_index_cache = None
+    _graded_components = None
+
+    @property
+    def _basis_index(self):
+        if self._basis_index_cache is None:
+            index_map = dict()
+            for idx, elem in enumerate(self.basis):
+                if elem not in index_map:
+                    index_map[elem] = idx
+            self._basis_index_cache = index_map
+        return self._basis_index_cache
+
+    def __contains__(self, item):
+        try:
+            return item in self._basis_index
+        except TypeError:
+            return False
+
+    def _weight_coordinates(self, element):
+        coeffs = self.contains(element, return_basis_coeffs=True)
+        if coeffs is False:
+            raise TypeError(
+                f"Input to `check_element_weight` must belong to the {self._dgcv_category} instance whose `check_element_weight` is being called."
+            ) from None
+        return coeffs
+
+    def check_element_weight(self, element, test_weights=None, flatten_weights=False):
+        """
+        Determines the weight vector of an element with respect to the grading vectors. Weight can instead be computed against another grading vector passed as a list of weights via the keyword `test_weights`.
+
+        Parameters
+        ----------
+        element : (sub)algebra_element_class
+            The element to analyze, given in the host's own basis coordinates.
+        test_weights : list of scalars, optional (default: None)
+        flatten_weights : bool, optional (default: False)
+            If True, returns the contents of a length-1 list rather than the list.
+
+        Returns
+        -------
+        tuple or weight value
+            Weights corresponding to the grading vectors of this instance (or to `test_weights` if provided). Each entry is a scalar, the string 'AllW' if the element is zero, or 'NoW' if the element is not homogeneous.
+
+        Notes
+        -----
+        - 'AllW' (All Weights) is returned for zero elements, which are compatible with all weights.
+        - 'NoW' (No Weights) is returned for non-homogeneous elements.
+        """
+        if not test_weights and self._gradingNumber == 0:
+            raise ValueError(
+                f"This {self._dgcv_category} instance has no assigned grading vectors to test weighting w.r.t.."
+            ) from None
+        if element.is_zero:
+            return tuple(["AllW"] * self._gradingNumber)
+        if not test_weights and getattr(element, "_known_weight", None) is not None:
+            if flatten_weights is True and len(element._known_weight) == 1:
+                return element._known_weight[0]
+            return element._known_weight
+        if test_weights:
+            numeric_types = expr_numeric_types()
+            if not isinstance(test_weights, (list, tuple)):
+                raise TypeError(
+                    f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int, float, etc.). Received {test_weights}"
+                ) from None
+            for weight in test_weights:
+                if not isinstance(weight, (list, tuple)):
+                    raise TypeError(
+                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int, float, etc.). Received {test_weights}"
+                    ) from None
+                if self.dimension != len(weight) or not all(
+                    isinstance(j, numeric_types) for j in weight
+                ):
+                    raise TypeError(
+                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int, float, etc.) of length {self.dimension}. Received {test_weights}"
+                    ) from None
+            GVs = test_weights
+        else:
+            GVs = self.grading
+        coeff_indices = tuple(self._weight_coordinates(element))
+        if not coeff_indices:
+            weights = ["NoW"] * len(GVs)
+        else:
+            weights = []
+            for grading_vector in GVs:
+                first = grading_vector[coeff_indices[0]]
+                homogeneous = True
+                for i in coeff_indices:
+                    if grading_vector[i] != first:
+                        homogeneous = False
+                        break
+                weights.append(first if homogeneous else "NoW")
+        if not test_weights:
+            element._known_weight = tuple(weights)
+        if flatten_weights and len(weights) == 1:
+            return weights[0]
+        return tuple(weights)
+
+    def _verbose_subject(self):
+        raise NotImplementedError
+
+    def update_grading(self, new_weight_vectors_list, replace_instead_of_add=False):
+        if isinstance(new_weight_vectors_list, (list, tuple)):
+            if all(isinstance(elem, (list, tuple)) for elem in new_weight_vectors_list):
+                if replace_instead_of_add is True:
+                    self.grading = [tuple(elem) for elem in new_weight_vectors_list]
+                else:
+                    grad = list(self.grading) + [
+                        tuple(elem) for elem in new_weight_vectors_list
+                    ]
+                    self.grading = grad
+            else:
+                raise TypeError(
+                    f"update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}"
+                )
+        else:
+            raise TypeError(
+                f"update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}"
+            )
+
+    def compute_weight(self, element, test_weights=None, flatten_weights=False):
+        return self.check_element_weight(
+            element, test_weights=test_weights, flatten_weights=flatten_weights
+        )
+
+    def weighted_component(
+        self,
+        weights,
+        test_weights=None,
+        trust_test_weight_format=False,
+    ):
+        numeric_types = expr_numeric_types()
+        if isinstance(weights, (set, dict)):
+            weights = list(weights)
+        if isinstance(weights, (list, tuple)):
+            if all(isinstance(weight, numeric_types) for weight in weights):
+                weights = [(weight,) for weight in weights]
+            elif not all(isinstance(weight, (list, tuple)) for weight in weights):
+                raise ValueError(
+                    "The `weights` parameter in `algebra_class.weighted_component` must be a list/tuple of weights/multi-weights. If giving a single multi-weight, it should be a length-1 list/tuple of lists/tuples, as otherwise a bare mult-weight tuple will be interpreted as a list of singleton weights."
+                ) from None
+            else:
+                weights = [tuple(weight) for weight in weights]
+        else:
+            raise ValueError(
+                f"The `weights` parameter in `algebra_class.weighted_component` must be a list/tuple of weights/multi-weights. If giving a single multi-weight, it should be a length-1 list/tuple of lists/tuples, as otherwise a bare mult-weight tuple will be interpreted as a list of singleton weights. Instead received{weights}"
+            ) from None
+        try:
+            weight_lookup = set(weights)
+        except TypeError:
+            weight_lookup = weights
+        if test_weights is None:
+            test_weights = self.grading
+        elif trust_test_weight_format is False:
+            if not isinstance(test_weights, (list, tuple)) or not all(
+                isinstance(j, (list, tuple)) and len(j) == self.dimension
+                for j in test_weights
+            ):
+                raise TypeError(
+                    "The `test_weights` parameter in `algebra_class.weighted_component` must be a list/tuple of lists/tuples that length matches `algebra_class.dimension` and whose elements are weight values representing weights elements in `algebra_class.basis`."
+                )
+        component = []
+        for idx, elem in enumerate(self.basis):
+            elem_weight = tuple(vector[idx] for vector in test_weights)
+            if elem_weight in weight_lookup or all(w == "AllW" for w in elem_weight):
+                component.append(elem)
+        return algebra_subspace_class(component, parent_algebra=self)
+
+    @property
+    def graded_components(self):
+        if self._graded_components is None:
+            basis = self.basis
+            buckets = dict()
+            for idx, weight in enumerate(zip(*self.grading)):
+                key = tuple(weight)
+                elem = basis[idx]
+                elem._known_weight = key
+                bucket = buckets.get(key)
+                if bucket is None:
+                    buckets[key] = [elem]
+                else:
+                    bucket.append(elem)
+            try:
+                keys = sorted(buckets)
+            except TypeError:
+                keys = sorted(buckets, key=lambda k: tuple(str(w) for w in k))
+            self._graded_components = {
+                key: algebra_subspace_class(buckets[key], parent_algebra=self)
+                for key in keys
+            }
+        return self._graded_components
+
+    def compute_graded_component_wrt_weight_index(self, idx=0):
+        if idx not in range(len(self.grading)):
+            dgcv_warning(
+                "The provided index is out of range. `compute_graded_component_wrt_weight_index` is using 0 instead."
+            )
+            idx = 0
+        wc = dict()
+        for idxs, comp in self.graded_components.items():
+            key = idxs[idx]
+            if key in wc:
+                wc[key] = wc[key] + comp
+            else:
+                wc[key] = self.subspace([]) + comp
+        return wc
+
+    def grading_summary(self):
+        from .._aux.printing.printing._dgcv_display import show
+
+        gradingNumber = len(self.grading)
+        graded_components = self.graded_components
+        pref = self._repr_latex_(abbrev=True).replace("$", "")
+        if "_" in pref:
+            prefi = f"\\left({pref} \\right)_"
+        else:
+            prefi = f"{pref}_"
+        strings = []
+        for k, v in graded_components.items():
+            inner = "".join(str(j) for j in k)
+            latex = v._repr_latex_().replace("$", "").replace(r"\displaystyle", "")
+            strings.append(f"$$ {prefi}{{{inner}}} = {latex},$$")
+        if gradingNumber == 0 or not strings:
+            show(f"The algebra ${pref}$ has no assigned grading.")
+        else:
+            if len(strings) > 1:
+                strings.insert(-1, "and")
+            strings[-1] = strings[-1][:-3] + ".$$"
+            if gradingNumber == 1:
+                gradPhrase = "graded"
+            elif gradingNumber == 2:
+                gradPhrase = "bi-graded"
+            elif gradingNumber == 3:
+                gradPhrase = "tri-graded"
+            else:
+                gradPhrase = f"{gradingNumber}-graded"
+            show(
+                f"The algebra ${pref}$ has {gradPhrase} components: {' '.join(strings)}"
+            )
+
+    def filter_independent_elements(
+        self,
+        elements,
+        apply_light_basis_simplification=False,
+        return_indices: bool = False,
+        surface_singularities: bool = False,
+        simplify_singularities: bool = None,
+        force_heavy_solve: bool = False,
+    ):
+        """
+        Filters a set of elements to retain only a linearly independent subset.
+
+        Parameters
+        ----------
+        elements : list of algebra_element_class
+            The set of elements to filter.
+
+        Returns
+        -------
+        list of algebra_element_class
+            A subset of the input elements that are linearly independent and unique.
+        """
+        warning_message = ""
+        remain_subalg = True
+        subalg = None
+        if not isinstance(elements, (list, tuple)):
+            warning_message += (
+                "\n The given value for `elements` is not a list or tuple"
+            )
+        else:
+            nonAE, wrongAlgebra, correct = [], [], []
+            typeCheck = {"algebra_element", "subalgebra_element"}
+            for elem in elements:
+                if elem == 0:
+                    continue
+                if remain_subalg is True:
+                    if get_dgcv_category(elem) == "algebra_element":
+                        remain_subalg = False
+                    elif get_dgcv_category(elem) == "subalgebra_element":
+                        if subalg is None:
+                            subalg = elem.algebra
+                        elif subalg != elem.algebra:
+                            remain_subalg = False
+                if get_dgcv_category(elem) not in typeCheck:
+                    nonAE.append(elem)
+                elif (
+                    get_dgcv_category(elem) == "algebra_element"
+                    and elem.algebra != self
+                ) or (
+                    get_dgcv_category(elem) == "subalgebra_element"
+                    and elem.algebra.ambient != self
+                ):
+                    wrongAlgebra.append(elem)
+                else:
+                    correct.append(elem)
+            elements = correct
+            if len(nonAE) > 0:
+                warning_message += f"\n • These list elements are not `algebra_element` or `subalgebra_element` type: {nonAE}"
+            if len(wrongAlgebra) > 0:
+                warning_message += f"\n • These list elements are `algebra_element` or `subalgebra_element` type, but belong to a different, unrelated algebra: {wrongAlgebra}"
+        if warning_message:
+            raise ValueError(
+                "The `algebra` method `filter_independent_elements` can only be applied to lists of elements belong to the parent algebra the method is called from or any its subalgebras. Given data has the following problems:"
+                + warning_message
+            ) from None
+
+        if remain_subalg is False:
+            elements = [
+                (
+                    elem.ambient_rep
+                    if get_dgcv_category(elem) == "subalgebra_element"
+                    else elem
+                )
+                for elem in elements
+            ]
+        else:
+            elements = list(elements)
+
+        if return_indices is True:
+            out = _extract_basis(
+                elements,
+                ALBS=apply_light_basis_simplification,
+                return_indices=True,
+                surface_singularities=surface_singularities,
+                simplify_singularities=simplify_singularities,
+                force_heavy_solve=force_heavy_solve,
+            )
+            if surface_singularities:
+                _, idxs, sing = out
+            else:
+                _, idxs = out
+            return (idxs, sing) if surface_singularities else idxs
+        return _extract_basis(
+            elements,
+            ALBS=apply_light_basis_simplification,
+            surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
+            force_heavy_solve=force_heavy_solve,
+        )
+
+    def is_in_span(self, element, subspace_elements, assume_basis=False):
+        """
+        Checks if a given algebra_element_class is in the span of subspace_elements.
+
+        Parameters
+        ----------
+        element : algebra_element_class
+            The element to check.
+        subspace_elements : list
+            A list of algebra_element_class instances representing the subspace they span.
+        assume_basis : bool, optional
+            If True, returns the wedge product rather than a bool. Note a *zero*
+            wedge indicates the element is in the span.
+
+        Returns
+        -------
+        bool
+            True if the element is in the span of subspace_elements, False otherwise.
+        """
+        if (
+            not isinstance(subspace_elements, (list, tuple))
+            or len(subspace_elements) == 0
+        ):
+            return _scalar_is_zero(element)
+        if assume_basis:
+            return wedge(element, *subspace_elements)
+        combo, variables = linear_combination(subspace_elements)
+        diff = element - combo
+        eqns = list(diff.coeff_dict.values())
+        sol2 = solve_dgcv(eqns, variables, method="linsolve", simplify_result=False)
+        return bool(sol2)
+
+    def subspace(self, basis: list | tuple = [], grading=None, span_warning=True):
+        if grading is None:
+            grading = self.grading
+        return algebra_subspace_class(
+            basis, parent_algebra=self, test_weights=grading, span_warning=span_warning
+        )
+
+
+class _algebra_methods(_vector_space_methods):
+    """
+    Shared method implementations for `dgcv` algebra-like classes.
+
+    Notes
+    -----
+    Host classes must provide `dimension`, `basis`, `structureData`,
+    `structureDataDict`, `grading`, `_gradingNumber`, `_educed_properties`,
+    `_parameters`, `_registered`, `ambient`, `_dgcv_category` and
+    `_verbose_subject`. Cache attributes default to None here, so a host that
+    does not initialize them still resolves.
+    """
+
+    _skew_symmetric_cache = None
+    _jacobi_identity_cache = None
+    _lie_algebra_cache = None
+    _is_semisimple_cache = None
+    _is_simple_cache = None
+    _is_nilpotent_cache = None
+    _is_solvable_cache = None
+    _is_abelian_cache = None
+    _killing_form = None
+    _Levi_deco_cache = None
+    _lower_central_series_cache = None
+    _lower_central_series_terminated = None
+    _lower_central_series_depth = None
+    _derived_series_cache = None
+    _derived_series_terminated = None
+    _derived_series_depth = None
+    _derived_subalg_cache = None
+    _radical_cache = None
+    _center_cache = None
+    _grading_compatible = None
+    _grading_report = None
+    _rank_approximation = None
+    _structure_data_slices = None
+    _structure_rows_cache = None
+
+    @property
+    def _structure_rows(self):
+        if self._structure_rows_cache is None:
+            rows = dict()
+            for (i, j, k), v in self.structureDataDict.items():
+                row = rows.get((i, j))
+                if row is None:
+                    rows[(i, j)] = {k: v}
+                else:
+                    row[k] = v
+            self._structure_rows_cache = rows
+        return self._structure_rows_cache
+
+    def is_skew_symmetric(
+        self,
+        verbose=False,
+        _return_proof_path=False,
+        _ignore_caches=False,
+        *,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+    ):
+        """
+        Checks if the algebra is skew-symmetric.
+        """
+        if verbose and not self._registered:
+            if self.ambient._callLock == retrieve_passkey() and isinstance(
+                self.ambient._print_warning, str
+            ):
+                print(self.ambient._print_warning)
+            else:
+                print(
+                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
+                )
+
+        educed = self._educed_properties.get("is_skew", None)
+        if isinstance(educed, str) and _ignore_caches is False:
+            t_message = educed
+            self._skew_symmetric_cache = (True, None)
+        else:
+            t_message = ""
+
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+
+        cached = self._skew_symmetric_cache
+        if cached is not None and _ignore_caches is False:
+            result, failure = cached
+        else:
+            result, failure = _timed_progress_call(
+                self._check_skew_symmetric,
+                timed=timed,
+                threshold_s=float(_reporting_threshold_s),
+                step_desc="checking skew symmetry of the structure constants",
+                continue_desc=_progress_message,
+                progress_message=None,
+                _on_timed_update=_on_timed_update,
+            )
+            self._skew_symmetric_cache = (result, failure)
+
+        if verbose and not timed:
+            if result:
+                print(f"{self._verbose_subject()} is skew-symmetric.")
+            else:
+                i, j, k = failure
+                print(
+                    f"Skew symmetry fails for basis elements {i}, {j}, at coefficient index {k}."
+                )
+        if _return_proof_path is True:
+            return result, t_message
+        return result
+
+    def _check_skew_symmetric(self):
+        sdd = self.structureDataDict
+        candidates = {(i, j, k) if i <= j else (j, i, k) for i, j, k in sdd}
+        for i, j, k in sorted(candidates):
+            expr = sdd.get((i, j, k), 0) + sdd.get((j, i, k), 0)
+            if _scalar_is_zero(expr):
+                continue
+            if get_free_symbols(expr) and _scalar_is_zero(simplify(expr)):
+                continue
+            return False, (i, j, k)
+        return True, None
+
+    def satisfies_jacobi_identity(
+        self,
+        verbose=False,
+        _return_proof_path=False,
+        _ignore_caches=False,
+        *,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+    ):
+        """
+        Checks if the algebra satisfies the Jacobi identity.
+        Includes a warning for unregistered instances only if verbose=True.
+        """
+        if not self._registered and verbose:
+            if self.ambient._callLock == retrieve_passkey() and isinstance(
+                self.ambient._print_warning, str
+            ):
+                print(self.ambient._print_warning)
+            else:
+                print(
+                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
+                )
+
+        if (
+            isinstance(self._educed_properties.get("satisfies_Jacobi_ID", None), str)
+            and _ignore_caches is False
+        ):
+            t_message = self._educed_properties.get("satisfies_Jacobi_ID", None)
+            self._jacobi_identity_cache = (True, None)
+        else:
+            t_message = ""
+
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+        threshold = float(_reporting_threshold_s)
+
+        if self._jacobi_identity_cache is None or _ignore_caches is True:
+            result, fail_list = _timed_progress_call(
+                self._check_jacobi_identity,
+                timed=timed,
+                threshold_s=threshold,
+                step_desc="checking the Jacobi identity",
+                continue_desc=_progress_message,
+                progress_message=None,
+                _on_timed_update=_on_timed_update,
+            )
+            self._jacobi_identity_cache = (result, fail_list)
+        else:
+            result, fail_list = self._jacobi_identity_cache
+
+        if verbose and not timed:
+            if result:
+                print(f"{self._verbose_subject()} satisfies the Jacobi identity.")
+            else:
+                print(f"Jacobi identity fails for the following triples: {fail_list}")
+
+        if _return_proof_path is True:
+            return result, t_message
+        return result
+
+    def Jacobi_identities(self):
+        skew, dim, basis = self.is_skew_symmetric(), self.dimension, self.basis
+        JI_list = []
+        for i in range(dim):
+            lower_j = i + 1 if skew else 0
+            for j in range(lower_j, dim):
+                lower_k = j + 1 if skew else 0
+                for k in range(lower_k, dim):
+                    ai, aj, ak = basis[i], basis[j], basis[k]
+                    JI_list.append(ai * aj * ak + aj * ak * ai + ak * ai * aj)
+        return JI_list
+
+    def _check_jacobi_identity(self):
+        skew, dim = self.is_skew_symmetric(), self.dimension
+        rows = self._structure_rows
+        if skew:
+            candidates = set()
+            for a, b in rows:
+                lo, hi = (a, b) if a < b else (b, a)
+                if lo == hi:
+                    continue
+                for c in range(dim):
+                    if c == lo or c == hi:
+                        continue
+                    candidates.add(tuple(sorted((lo, hi, c))))
+            triples = sorted(candidates)
+        else:
+            triples = (
+                (i, j, k)
+                for i in range(dim)
+                for j in range(dim)
+                for k in range(dim)
+                if (i, j) in rows or (j, k) in rows or (k, i) in rows
+            )
+        fail_list = []
+        for i, j, k in triples:
+            acc = dict()
+            for a, b, c in ((i, j, k), (j, k, i), (k, i, j)):
+                left = rows.get((a, b))
+                if not left:
+                    continue
+                for m, cm in left.items():
+                    right = rows.get((m, c))
+                    if not right:
+                        continue
+                    for n, cn in right.items():
+                        acc[n] = acc.get(n, 0) + cm * cn
+            for expr in acc.values():
+                if _scalar_is_zero(expr):
+                    continue
+                if get_free_symbols(expr) and _scalar_is_zero(simplify(expr)):
+                    continue
+                fail_list.append((i, j, k))
+                break
+        if fail_list:
+            return False, fail_list
+        return True, None
+
+    def _warn_associativity_assumption(self, method_name):
+        """
+        Issues a warning that the method assumes the algebra is associative.
+
+        Parameters
+        ----------
+        method_name : str
+            The name of the method assuming associativity.
+
+        Notes
+        -----
+        - helper method intended for internal use
+        """
+        dgcv_warning(
+            f"{method_name} assumes the algebra is associative. "
+            "If it is not then unexpected results may occur."
+        )
+
+    def is_lie_algebra(self, verbose=False, return_bool=True):
+        dgcv_warning(
+            "`is_lie_algebra` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library.",
+            dgcvDeprecationWarning,
+            stacklevel=2,
+            old_kw="is_lie_algebra",
+            new_kw="is_Lie_algebra",
+            sunset="2026",
+        )
+        return self.is_Lie_algebra(verbose=verbose, return_bool=return_bool)
+
+    def is_Lie_algebra(
+        self,
+        verbose=False,
+        return_bool=True,
+        _return_proof_path=False,
+        _ignore_caches=False,
+        *,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+    ):
+        if not self._registered and verbose:
+            if self.ambient._callLock == retrieve_passkey() and isinstance(
+                self.ambient._print_warning, str
+            ):
+                print(self.ambient._print_warning)
+            else:
+                print(
+                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
+                )
+
+        if isinstance(self._educed_properties.get("is_Lie_algebra", None), str):
+            t_message = self._educed_properties.get("is_Lie_algebra", None)
+            self._lie_algebra_cache = True
+            self._jacobi_identity_cache = (True, None)
+            self._skew_symmetric_cache = (True, None)
+        else:
+            t_message = ""
+
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+        threshold = float(_reporting_threshold_s)
+
+        if self._lie_algebra_cache is not None and _ignore_caches is False:
+            if verbose and not timed:
+                print(
+                    f"Cached result: Previously verified "
+                    f"{self._verbose_subject()} is"
+                    f"{'' if self._lie_algebra_cache else ' not'} a Lie algebra."
+                )
+            if _return_proof_path is True:
+                return self._lie_algebra_cache, t_message
+            return self._lie_algebra_cache
+
+        ok_skew = self.is_skew_symmetric(
+            verbose=verbose,
+            _ignore_caches=_ignore_caches,
+            _timed_reporting=timed,
+            _reporting_threshold_s=threshold,
+            _progress_message="check the Jacobi identity",
+            _on_timed_update=_on_timed_update,
+        )
+        if not ok_skew:
+            self._lie_algebra_cache = False
+            if return_bool is True:
+                if _return_proof_path is True:
+                    return False, t_message
+                return False
+            return
+
+        ok_jacobi = self.satisfies_jacobi_identity(
+            verbose=verbose,
+            _ignore_caches=_ignore_caches,
+            _timed_reporting=timed,
+            _reporting_threshold_s=threshold,
+            _progress_message=_progress_message,
+            _on_timed_update=_on_timed_update,
+        )
+        if not ok_jacobi:
+            self._lie_algebra_cache = False
+            if return_bool is True:
+                if _return_proof_path is True:
+                    return False, t_message
+                return False
+            return
+
+        if self._lie_algebra_cache is None or _ignore_caches is True:
+            self._lie_algebra_cache = True
+
+        if verbose and not timed:
+            print(f"{self._verbose_subject()} is a Lie algebra.")
+
+        if return_bool is True:
+            if _return_proof_path is True:
+                return self._lie_algebra_cache, t_message
+            return self._lie_algebra_cache
+
+    def _require_lie_algebra(self, method_name):
+        """
+        Checks that the algebra is a Lie algebra before proceeding.
+
+        Parameters
+        ----------
+        method_name : str
+            The name of the method requiring a Lie algebra.
+
+        Raises
+        ------
+        ValueError
+            If the algebra is not a Lie algebra.
+        """
+        if not self.is_Lie_algebra():
+            raise ValueError(
+                f"{method_name} can only be applied to Lie algebras."
+            ) from None
+
+    def is_semisimple(
+        self,
+        verbose=False,
+        return_bool=True,
+        _return_proof_path=False,
+        _ignore_caches=False,
+        *,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+    ):
+        """
+        Checks if the algebra is semisimple.
+        Nothing is returned if return_bool=False is set.
+        """
+        if not self._registered and verbose:
+            if self.ambient._callLock == retrieve_passkey() and isinstance(
+                self.ambient._print_warning, str
+            ):
+                print(self.ambient._print_warning)
+            else:
+                print(
+                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
+                )
+
+        if (
+            isinstance(self._educed_properties.get("is_simple", None), str)
+            and _ignore_caches is False
+        ):
+            t_message = self._educed_properties.get("is_simple", None)
+            self._is_simple_cache = True
+            self._is_semisimple_cache = True
+            self._educed_properties["special_type"] = "simple"
+            self._is_nilpotent_cache = False
+            self._is_solvable_cache = False
+        elif (
+            isinstance(self._educed_properties.get("is_semisimple", None), str)
+            and _ignore_caches is False
+        ):
+            t_message = self._educed_properties.get("is_semisimple", None)
+            self._is_semisimple_cache = True
+            self._educed_properties["special_type"] = (
+                self._educed_properties.get("special_type", None) or "semisimple"
+            )
+            self._is_nilpotent_cache = False
+            self._is_solvable_cache = False
+        else:
+            t_message = ""
+
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+        threshold = float(_reporting_threshold_s)
+
+        if self._is_semisimple_cache is None and _ignore_caches is False:
+            if self._is_simple_cache is True:
+                self._is_semisimple_cache = True
+                self._is_solvable_cache = False
+                self._is_abelian_cache = False
+                self._is_nilpotent_cache = False
+            elif self._Levi_deco_cache is not None:
+                LC, MSI = self._Levi_deco_cache["LD_components"]
+                if getattr(MSI, "dimension", None) == 0 and self.dimension > 0:
+                    self._is_semisimple_cache = True
+                    self._is_solvable_cache = False
+                    self._is_abelian_cache = False
+                    self._is_nilpotent_cache = False
+                elif getattr(MSI, "dimension", None) != 0:
+                    self._is_semisimple_cache = False
+                    self._is_simple_cache = False
+                    if getattr(LC, "dimension", None) == 0:
+                        self._is_solvable_cache = True
+                        self._educed_properties["special_type"] = "solvable"
+                    else:
+                        self._is_solvable_cache = False
+                        self._is_nilpotent_cache = False
+                        self._is_abelian_cache = False
+
+        if self._is_semisimple_cache is not None and _ignore_caches is False:
+            if verbose and not timed:
+                print(
+                    f"Cached result: Previously verified "
+                    f"{self._verbose_subject()} is"
+                    f"{'' if self._is_semisimple_cache else ' not'} a semisimple Lie algebra."
+                )
+            if return_bool is True:
+                if _return_proof_path is True:
+                    return self._is_semisimple_cache, t_message
+                return self._is_semisimple_cache
+            if _return_proof_path is True:
+                return t_message
+            return
+
+        ok_lie = self.is_Lie_algebra(
+            verbose=verbose,
+            _ignore_caches=_ignore_caches,
+            _timed_reporting=timed,
+            _reporting_threshold_s=threshold,
+            _progress_message=_progress_message,
+            _on_timed_update=_on_timed_update,
+        )
+
+        if not ok_lie:
+            self._is_semisimple_cache = False
+            if return_bool is True:
+                if _return_proof_path is True:
+                    return False, "not a Lie algebra"
+                return False
+            if _return_proof_path is True:
+                return "not a Lie algebra"
+            return
+
+        def _killing_det():
+            if self._killing_form is None:
+                self._killing_form = killingForm(self)
+            return simplify(self._killing_form.det())
+
+        det = _timed_progress_call(
+            _killing_det,
+            timed=timed,
+            threshold_s=threshold,
+            step_desc="computing determinant of the Killing form",
+            continue_desc=_progress_message,
+            progress_message=None,
+            _on_timed_update=_on_timed_update,
+        )
+
+        iz = getattr(det, "is_zero", None)
+        if iz is True:
+            det_is_zero = True
+        elif callable(iz):
+            try:
+                det_is_zero = bool(iz())
+            except Exception:
+                det_is_zero = _scalar_is_zero(det)
+        else:
+            det_is_zero = _scalar_is_zero(det)
+
+        det_is_nonzero = not det_is_zero
+
+        if det_is_nonzero:
+            self._is_semisimple_cache = True
+            self._educed_properties["special_type"] = "semisimple"
+            self._is_nilpotent_cache = False
+            self._is_solvable_cache = False
+        else:
+            self._is_semisimple_cache = False
+            self._is_simple_cache = False
+
+        if verbose and not timed:
+            print(
+                f"{self._verbose_subject()} is"
+                f"{'' if det_is_nonzero else ' not'} semisimple."
+            )
+
+        if return_bool is True:
+            if _return_proof_path is True:
+                return det_is_nonzero, t_message
+            return det_is_nonzero
+
+    def is_simple(
+        self,
+        verbose=False,
+        bypass_semisimple_check=False,
+        _return_proof_path=False,
+        _ignore_caches=False,
+        *,
+        surface_singularities=False,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+    ):
+        if isinstance(self._educed_properties.get("is_simple", None), str):
+            t_message = self._educed_properties.get("is_simple", None)
+            self._is_simple_cache = True
+            self._is_semisimple_cache = True
+            self._educed_properties["special_type"] = "simple"
+            self._is_nilpotent_cache = False
+            self._is_solvable_cache = False
+        else:
+            t_message = ""
+
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+        threshold = float(_reporting_threshold_s)
+
+        if bypass_semisimple_check is False and self._is_semisimple_cache is None:
+            self.is_semisimple(
+                verbose=verbose,
+                _ignore_caches=_ignore_caches,
+                _timed_reporting=timed,
+                _reporting_threshold_s=threshold,
+                _progress_message=_progress_message,
+                _on_timed_update=_on_timed_update,
+            )
+
+        if self._is_simple_cache is None:
+            self.compute_simple_subalgebras(
+                verbose=verbose,
+                surface_singularities=surface_singularities,
+                _timed_reporting=timed,
+                _reporting_threshold_s=threshold,
+                _progress_message=_progress_message,
+                _on_timed_update=_on_timed_update,
+            )
+
+            if self._Levi_deco_cache["LD_components"][1].dimension == 0:
+                self._is_semisimple_cache = True
+                self._is_nilpotent_cache = False
+                self._is_solvable_cache = False
+                if len(self._Levi_deco_cache["simple_ideals"]) == 1:
+                    self._is_simple_cache = True
+                    self._educed_properties["special_type"] = "simple"
+                else:
+                    self._is_simple_cache = False
+                    self._educed_properties["special_type"] = "semisimple"
+            else:
+                self._is_semisimple_cache = False
+                self._is_simple_cache = False
+                if self._Levi_deco_cache["LD_components"][0].dimension == 0:
+                    self._is_solvable_cache = True
+                    if self._educed_properties.get("special_type", None) is None:
+                        self._educed_properties["special_type"] = "solvable"
+
+        if _return_proof_path is True:
+            return self._is_simple_cache, t_message
+        return self._is_simple_cache
+
+    def is_nilpotent(
+        self,
+        *,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+        **kwargs,
+    ):
+        """
+        Checks if the algebra is nilpotent.
+
+        Returns
+        -------
+        bool
+            True if the algebra is nilpotent, False otherwise.
+        """
+        if kwargs:
+            dgcv_warning(
+                f"`{type(self).__name__}.is_nilpotent` received unexpected keyword "
+                f"argument(s) {sorted(kwargs)}, which were ignored."
+            )
+        if self._is_nilpotent_cache is None and self._is_abelian_cache is True:
+            self._is_nilpotent_cache = True
+        if self._is_nilpotent_cache is None:
+            _timed_progress_call(
+                self.lower_central_series,
+                timed=bool(_timed_reporting) if _timed_reporting is not None else False,
+                threshold_s=float(_reporting_threshold_s),
+                step_desc="computing the lower central series",
+                continue_desc=_progress_message,
+                progress_message=None,
+                _on_timed_update=_on_timed_update,
+            )
+            if getattr(self, "_lower_central_series_terminated", None) is True:
+                self._is_nilpotent_cache = True
+                self._educed_properties["special_type"] = "nilpotent"
+                self._is_semisimple_cache = False
+                self._is_simple_cache = False
+            else:
+                self._is_nilpotent_cache = False
+                self._is_abelian_cache = False
+        return self._is_nilpotent_cache
+
+    def is_solvable(
+        self,
+        *,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+        **kwargs,
+    ):
+        """
+        Checks if the algebra is solvable.
+
+        Returns
+        -------
+        bool
+            True if the algebra is solvable, False otherwise.
+        """
+        if kwargs:
+            dgcv_warning(
+                f"`{type(self).__name__}.is_solvable` received unexpected keyword "
+                f"argument(s) {sorted(kwargs)}, which were ignored."
+            )
+        if self._is_solvable_cache is None:
+            if self._is_nilpotent_cache is None or self._is_nilpotent_cache is False:
+                _timed_progress_call(
+                    self.derived_series,
+                    timed=bool(_timed_reporting)
+                    if _timed_reporting is not None
+                    else False,
+                    threshold_s=float(_reporting_threshold_s),
+                    step_desc="computing the derived series",
+                    continue_desc=_progress_message,
+                    progress_message=None,
+                    _on_timed_update=_on_timed_update,
+                )
+                if getattr(self, "_derived_series_terminated", None) is True:
+                    self._is_solvable_cache = True
+                    self._is_semisimple_cache = False
+                    self._is_simple_cache = False
+                    self._educed_properties["special_type"] = "solvable"
+                else:
+                    self._is_solvable_cache = False
+                    self._is_abelian_cache = False
+                    self._is_nilpotent_cache = False
+            else:
+                self._is_solvable_cache = self._is_nilpotent_cache
+        return self._is_solvable_cache
+
+    def is_abelian(
+        self,
+        *,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+        **kwargs,
+    ):
+        if kwargs:
+            dgcv_warning(
+                f"`{type(self).__name__}.is_abelian` received unexpected keyword "
+                f"argument(s) {sorted(kwargs)}, which were ignored."
+            )
+        if self._is_abelian_cache is None:
+            if self._educed_properties.get("special_type", None) == "abelian":
+                self._is_abelian_cache = True
+                self._is_nilpotent_cache = True
+                self._is_solvable_cache = True
+                self._is_semisimple_cache = False
+                self._is_simple_cache = False
+            else:
+                self._is_abelian_cache = _timed_progress_call(
+                    lambda: all(
+                        _scalar_is_zero(elem)
+                        for elem in self.structureDataDict.values()
+                    ),
+                    timed=bool(_timed_reporting)
+                    if _timed_reporting is not None
+                    else False,
+                    threshold_s=float(_reporting_threshold_s),
+                    step_desc="checking whether every structure constant vanishes",
+                    continue_desc=_progress_message,
+                    progress_message=None,
+                    _on_timed_update=_on_timed_update,
+                )
+                if self._is_abelian_cache is True:
+                    self._educed_properties["special_type"] = "abelian"
+                    self._is_nilpotent_cache = True
+                    self._is_solvable_cache = True
+                    self._is_semisimple_cache = False
+                    self._is_simple_cache = False
+        return self._is_abelian_cache
+
+    def compute_simple_subalgebras(
+        self,
+        verbose: bool = False,
+        *,
+        surface_singularities=False,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+    ):
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+        threshold = float(_reporting_threshold_s)
+        self.Levi_decomposition(
+            decompose_semisimple_fully=True,
+            verbose=verbose,
+            _timed_reporting=timed,
+            _reporting_threshold_s=threshold,
+            _progress_message=_progress_message,
+            _on_timed_update=_on_timed_update,
+            surface_singularities=surface_singularities,
+        )
+        return self._Levi_deco_cache["simple_ideals"]
+
+    def compute_derived_algebra(self):
+        """
+        Computes the derived algebra (commutator subalgebra) for Lie algebras.
+
+        Returns
+        -------
+        algebra
+            A new algebra instance representing the derived algebra.
+
+        Raises
+        ------
+        ValueError
+            If the algebra is not a Lie algebra or if the derived algebra cannot be computed.
+
+        Notes
+        -----
+        - This method only applies to Lie algebras.
+        - The derived algebra is generated by all products [x, y] = x * y, where * is the Lie bracket.
+        """
+        self._set_product_protocol()
+
+        ###!!!
+        # self._require_lie_algebra("compute_derived_algebra")
+
+        if self._derived_subalg_cache is None:
+            commutators = []
+            basis = self.basis
+            dim = len(basis)
+            skew = self.is_skew_symmetric()
+            for j in range(dim):
+                el1 = basis[j]
+                lIdx = j + 1 if skew else 0
+                for k in range(lIdx, dim):
+                    commutators.append(el1 * basis[k])
+            self._derived_subalg_cache = self.subalgebra(
+                commutators, span_warning=False, simplify_basis=True
+            )
+        return self._derived_subalg_cache
+
+    def lower_central_series(
+        self,
+        max_depth=None,
+        format_as_subalgebras=False,
+        align_nested_bases=False,
+    ):
+        """
+        Computes the lower central series of the algebra (or given subalgebra).
+
+        Parameters
+        ----------
+        max_depth : int, optional
+            Maximum depth to compute the series. Defaults to the dimension of the algebra.
+
+        Returns
+        -------
+        list of lists
+            A list where each entry contains the basis for that level of the lower central series.
+
+        Notes
+        -----
+        - The lower central series is defined as:
+            g_1 = g,
+            g_{k+1} = [g_k, g]
+        """
+        self._set_product_protocol()
+        scoped_basis = list(self.basis)
+        requested_depth = (
+            max(self.dimension, 1) if max_depth is None else int(max_depth)
+        )
+        cached_depth = getattr(self, "_lower_central_series_depth", None)
+        cache_usable = self._lower_central_series_cache is not None and (
+            getattr(self, "_lower_central_series_terminated", None) is True
+            or (cached_depth is not None and cached_depth >= requested_depth)
+        )
+        if not cache_usable:
+            series = []
+            current_basis = scoped_basis
+            previous_length = len(current_basis)
+            terminated = False
+
+            for _ in range(requested_depth):
+                series.append(current_basis)
+
+                lower_central = []
+                for el1 in current_basis:
+                    for el2 in scoped_basis:
+                        commutator = el1 * el2
+                        lower_central.append(commutator)
+                independent_generators = self.filter_independent_elements(
+                    lower_central, apply_light_basis_simplification=True
+                )
+                if len(independent_generators) == 0:
+                    if len(scoped_basis) > 0:
+                        series.append([])
+                    terminated = True
+                    break
+                if len(independent_generators) == previous_length:
+                    break
+                current_basis = independent_generators
+                previous_length = len(independent_generators)
+            if len(series) > 1 and self._derived_subalg_cache is None:
+                self._derived_subalg_cache = self.subalgebra(
+                    series[1], span_warning=False, simplify_basis=True
+                )
+            self._lower_central_series_cache = (
+                series,
+                False,
+            )  # series, alignment bool
+            self._lower_central_series_terminated = terminated
+            self._lower_central_series_depth = requested_depth
+        if align_nested_bases is True and self._lower_central_series_cache[1] is False:
+            if len(self._lower_central_series_cache[0]) > 0 and get_dgcv_category(
+                self._lower_central_series_cache[0][0]
+            ) in {"algebra", "subalgebra"}:
+                ser = [list(alg.basis) for alg in self._lower_central_series_cache[0]]
+            else:
+                ser = self._lower_central_series_cache[0]
+            new_series = [ser[-1]]
+            depth = len(ser)
+            for idx in range(1, depth):
+                old_level = ser[depth - 1 - idx]
+                discrep = len(old_level) - len(ser[depth - idx])
+                new_level = list(new_series[0])
+                for idx2 in range(len(old_level)):
+                    if discrep == 0:
+                        break
+                    elem = old_level[-1 - idx2]
+                    if _indep_check(ser[depth - idx], elem):
+                        new_level.insert(0, elem)
+                        discrep += -1
+                new_series.insert(0, new_level)
+            self._lower_central_series_cache = (
+                new_series,
+                True,
+            )  # series, alignment bool
+        if format_as_subalgebras:
+            if len(self._lower_central_series_cache[0]) > 0 and isinstance(
+                self._lower_central_series_cache[0][0], list
+            ):
+                self._lower_central_series_cache = (
+                    [
+                        self.subalgebra(sa, span_warning=False)
+                        for sa in self._lower_central_series_cache[0]
+                    ],
+                    self._lower_central_series_cache[1],
+                )
+            returnSer = self._lower_central_series_cache[0]
+        else:
+            if len(self._lower_central_series_cache[0]) > 0 and get_dgcv_category(
+                self._lower_central_series_cache[0][0]
+            ) in {"algebra", "subalgebra"}:
+                returnSer = [
+                    list(alg.basis) for alg in self._lower_central_series_cache[0]
+                ]
+            else:
+                returnSer = self._lower_central_series_cache[0]
+        return returnSer
+
+    def derived_series(
+        self,
+        max_depth=None,
+        format_as_subalgebras=False,
+        align_nested_bases=False,
+        surface_singularities=False,
+        simplify_singularities=None,
+        force_heavy_solve=False,
+    ):
+        """
+        Computes the derived series of the algebra.
+
+        Parameters
+        ----------
+        max_depth : int, optional
+            Maximum depth to compute the series. Defaults to the dimension of the algebra.
+
+        Returns
+        -------
+        list of lists
+            A list where each entry contains the basis for that level of the derived series.
+
+        Notes
+        -----
+        - The derived series is defined as:
+            g^{(1)} = g,
+            g^{(k+1)} = [g^{(k)}, g^{(k)}]
+        """
+
+        self._set_product_protocol()
+        scoped_basis = list(self.basis)
+        requested_depth = (
+            max(self.dimension, 1) if max_depth is None else int(max_depth)
+        )
+        cached_depth = getattr(self, "_derived_series_depth", None)
+        cached_heavy = getattr(self, "_derived_series_heavy", False)
+        cache_usable = (
+            self._derived_series_cache is not None
+            and (cached_heavy or not force_heavy_solve)
+            and (
+                getattr(self, "_derived_series_terminated", None) is True
+                or (cached_depth is not None and cached_depth >= requested_depth)
+            )
+        )
+        if not cache_usable:
+            series = []
+            current_basis = scoped_basis
+            previous_length = len(current_basis)
+            total_sing = []
+            terminated = False
+            for _ in range(requested_depth):
+                series.append(list(current_basis))
+
+                derived = []
+                level_len = len(current_basis)
+                for count in range(level_len):
+                    el1 = current_basis[count]
+                    start = count + 1 if self.is_skew_symmetric() else 0
+                    for idx2 in range(start, level_len):
+                        derived.append(el1 * current_basis[idx2])
+                out = self.filter_independent_elements(
+                    derived,
+                    apply_light_basis_simplification=True,
+                    surface_singularities=surface_singularities,
+                    simplify_singularities=simplify_singularities,
+                    force_heavy_solve=force_heavy_solve,
+                )
+                if surface_singularities:
+                    independent_generators, sing = out
+                    total_sing += sing
+                else:
+                    independent_generators = out
+                if len(independent_generators) == 0:
+                    if len(scoped_basis) > 0:
+                        series.append([])
+                    terminated = True
+                    break
+                if len(independent_generators) == previous_length:
+                    break
+
+                if force_heavy_solve:
+                    independent_generators = [
+                        simplify(gen) for gen in independent_generators
+                    ]
+                current_basis = list(independent_generators)
+                previous_length = len(independent_generators)
+            if surface_singularities:
+                if get_dgcv_settings_registry().get(
+                    "simplify_singularity_ideals_by_default", True
+                ):
+                    self._singularities["derived_series"] = expr_union_primitives(
+                        [v for v in total_sing if get_free_symbols(v)],
+                        order_coordinates(self._parameters),
+                        process_rationals=True,
+                        fail_quietly=True,
+                    )
+                else:
+                    self._singularities["derived_series"] = [
+                        v for v in total_sing if get_free_symbols(v)
+                    ]
+            if len(series) > 1 and self._derived_subalg_cache is None:
+                self._derived_subalg_cache = self.subalgebra(
+                    series[1], span_warning=False, simplify_basis=True
+                )
+            self._derived_series_cache = (series, False)  # series, alignment bool
+            self._derived_series_terminated = terminated
+            self._derived_series_depth = requested_depth
+            self._derived_series_heavy = bool(force_heavy_solve)
+        if align_nested_bases is True and self._derived_series_cache[1] is False:
+            if len(self._derived_series_cache[0]) > 0 and get_dgcv_category(
+                self._derived_series_cache[0][0]
+            ) in {"algebra", "subalgebra"}:
+                ser = [list(alg.basis) for alg in self._derived_series_cache[0]]
+            else:
+                ser = self._derived_series_cache[0]
+            depth = len(ser)
+            new_series = [] if depth == 0 else [ser[-1]]
+            build_step = 1
+            if (
+                len(new_series) == 1
+                and len(new_series[0]) == 1
+                and getattr(new_series[0][0], "is_zero", False)
+            ):
+                new_series.insert(0, ser[-2])
+                build_step = 2
+            for idx in range(build_step, depth):
+                old_level = ser[depth - 1 - idx]
+                discrep = len(old_level) - len(ser[depth - idx])
+                new_level = list(new_series[0])
+                for idx2 in range(len(old_level)):
+                    if discrep == 0:
+                        break
+                    elem = old_level[-1 - idx2]
+                    if _indep_check(
+                        ser[depth - idx],
+                        elem,
+                        force_heavy_solve=force_heavy_solve,
+                    ):
+                        new_level.insert(0, elem)
+                        discrep += -1
+                new_series.insert(0, new_level)
+            self._derived_series_cache = (new_series, True)  # series, alignment bool
+        if format_as_subalgebras:
+            if len(self._derived_series_cache[0]) > 0 and isinstance(
+                self._derived_series_cache[0][0], list
+            ):
+                self._derived_series_cache = (
+                    [
+                        self.subalgebra(sa, span_warning=False)
+                        for sa in self._derived_series_cache[0]
+                    ],
+                    self._derived_series_cache[1],
+                )
+            returnSer = self._derived_series_cache[0]
+        else:
+            if len(self._derived_series_cache[0]) > 0 and get_dgcv_category(
+                self._derived_series_cache[0][0]
+            ) in {"algebra", "subalgebra"}:
+                returnSer = [list(alg.basis) for alg in self._derived_series_cache[0]]
+            else:
+                returnSer = self._derived_series_cache[0]
+        return returnSer
+
+    def radical(
+        self,
+        assume_Lie_algebra=False,
+        surface_singularities=False,
+        simplify_singularities=None,
+        force_heavy_solve=False,
+    ):
+        if (
+            self._radical_cache is not None
+            and force_heavy_solve
+            and not getattr(self, "_radical_heavy", False)
+        ):
+            self._radical_cache = None
+        if self._radical_cache is None and self.dimension == 0:
+            self._radical_cache = self.subalgebra([], span_warning=False)
+            self._radical_heavy = True
+        elif self._radical_cache is None:
+            da = self.compute_derived_algebra()
+            genElem, variables = linear_combination(self.basis_in_ambient_alg)
+            amb = self.ambient
+            if amb._killing_form is None:
+                amb._killing_form = killingForm(
+                    amb, assume_Lie_algebra=assume_Lie_algebra
+                )
+            amb_dim = amb.dimension
+            kf_gen = amb._killing_form * matrix_dgcv(
+                genElem.coeff_dict, shape=(amb_dim, 1)
+            )
+            eqns = [
+                (matrix_dgcv(elem.coeff_dict, shape=(1, amb_dim)) * kf_gen)[0]
+                for elem in da.basis_in_ambient_alg
+            ]
+            solve_kwargs = _solve_weight_kwargs(
+                force_heavy_solve, surface_singularities, simplify_singularities
+            )
+            if surface_singularities:
+                sol, singularities = solve_dgcv(eqns, variables, **solve_kwargs)
+            else:
+                sol = solve_dgcv(eqns, variables, **solve_kwargs)
+            if len(sol) == 0:
+                raise RuntimeError("failed to compute radical.")
+            else:
+                genSol = subs(genElem, sol[0])
+                if surface_singularities:
+                    sing = [subs(v, sol[0]) for v in singularities]
+                    sing = [v for v in sing if get_free_symbols(v)]
+                    if get_dgcv_settings_registry().get(
+                        "simplify_singularity_ideals_by_default", True
+                    ):
+                        sing = expr_union_primitives(
+                            sing,
+                            order_coordinates(self._parameters),
+                            process_rationals=True,
+                            fail_quietly=True,
+                        )
+                    self._singularities["radical"] = sing
+            freeVars = get_free_symbols(genSol)
+            if self._parameters:
+                freeVars = {v for v in freeVars if v not in self._parameters}
+            if len(freeVars) != 0:
+                freeVars = sorted(freeVars, key=str)
+                zeroing = {v: 0 for v in freeVars}
+                radSpanners = [genSol.subs({**zeroing, var: 1}) for var in freeVars]
+            else:
+                radSpanners = []
+            if force_heavy_solve:
+                radSpanners = [simplify(sp) for sp in radSpanners]
+            self._radical_cache = self.subalgebra(radSpanners, span_warning=False)
+            self._radical_heavy = bool(force_heavy_solve)
+            clearVar(*listVar(temporary_only=True), report=False)
+        return self._radical_cache
+
+    def Levi_decomposition(
+        self,
+        decompose_semisimple_fully=False,
+        _bust_cache=False,
+        assume_Lie_algebra=False,
+        verbose=False,
+        surface_singularities=None,
+        simplify_singularities=None,
+        force_heavy_solve=False,
+        _timed_reporting: bool | None = None,
+        _reporting_threshold_s: float = 10,
+        _progress_message: str | None = None,
+        _on_timed_update=None,
+    ):
+        timed = bool(_timed_reporting) if _timed_reporting is not None else False
+        threshold = float(_reporting_threshold_s)
+
+        def _time_call(fn, step_desc: str, continue_desc: str | None):
+            return _timed_progress_call(
+                fn,
+                timed=timed,
+                threshold_s=threshold,
+                step_desc=step_desc,
+                continue_desc=continue_desc,
+                progress_message=None,
+                _on_timed_update=_on_timed_update,
+            )
+
+        if _bust_cache:
+            self._radical_cache = None
+            self._derived_series_cache = None
+            self._lower_central_series_cache = None
+            self._derived_subalg_cache = None
+        if surface_singularities is None:
+            surface_singularities = True if self._parameters else False
+        surface_singularities = bool(surface_singularities)
+        if surface_singularities:
+            sing = []
+        if self._Levi_deco_cache is None:
+            if self._educed_properties.get("special_type", None) in {
+                "simple",
+                "semisimple",
+            }:
+                self._Levi_deco_cache = {
+                    "LD_components": (self, self.subalgebra([])),
+                    "simple_ideals": None,
+                }
+            elif self._educed_properties.get("special_type", None) in {
+                "nilpotent",
+                "solvable",
+                "abelian",
+            }:
+                self._Levi_deco_cache = {
+                    "LD_components": (self.subalgebra([]), self),
+                    "simple_ideals": None,
+                }
+            else:
+                if verbose is True:
+                    print("Deriving (or retrieving) maximal solvable ideal...")
+
+                rad = _time_call(
+                    lambda: self.radical(
+                        assume_Lie_algebra=assume_Lie_algebra,
+                        surface_singularities=surface_singularities,
+                        simplify_singularities=simplify_singularities,
+                        force_heavy_solve=force_heavy_solve,
+                    ),
+                    "deriving the maximal solvable ideal",
+                    "compute the max. solvable ideal's derived series",
+                )
+                if surface_singularities:
+                    sing += getattr(self, "_singularities", {}).get("radical", [])
+                    new_sing = self._singularities.get("LD", []) + [
+                        v for v in sing if get_free_symbols(v)
+                    ]
+                    if get_dgcv_settings_registry().get(
+                        "simplify_singularity_ideals_by_default", True
+                    ):
+                        new_sing = expr_union_primitives(
+                            new_sing,
+                            order_coordinates(self._parameters),
+                            process_rationals=True,
+                            fail_quietly=True,
+                        )
+                    self._singularities["LD"] = new_sing
+                if len(rad.basis) > 0:
+                    if verbose is True:
+                        print(
+                            "Finding a semisimple complement to the max. solvable ideal..."
+                        )
+
+                    rad_seq = _time_call(
+                        lambda: rad.derived_series(
+                            align_nested_bases=True,
+                            surface_singularities=surface_singularities,
+                            simplify_singularities=simplify_singularities,
+                            force_heavy_solve=force_heavy_solve,
+                        ),
+                        "computing the max. solvable ideal's derived series",
+                        "compute a semisimple complement to the maximal solvable ideal",
+                    )
+                    if surface_singularities:
+                        sing += getattr(rad, "_singularities", {}).get(
+                            "derived_series", set()
+                        )
+                        new_sing = self._singularities.get("LD", []) + [
+                            v for v in sing if get_free_symbols(v)
+                        ]
+                        if get_dgcv_settings_registry().get(
+                            "simplify_singularity_ideals_by_default", True
+                        ):
+                            new_sing = expr_union_primitives(
+                                new_sing,
+                                order_coordinates(self._parameters),
+                                process_rationals=True,
+                                fail_quietly=True,
+                            )
+                        self._singularities["LD"] = new_sing
+
+                    def _compute_complement():
+                        local_rad_seq = list(rad_seq) if rad_seq else []
+                        if local_rad_seq and local_rad_seq[-1] == []:
+                            local_rad_seq = local_rad_seq[:-1]  ###!!! note convention
+                        local_rad_seq.append([])
+
+                        discrep = self.dimension - len(local_rad_seq[0])
+                        naiveBasis = []
+                        augment_NB = list(local_rad_seq[0])
+                        for elem in self.basis:
+                            if len(naiveBasis) == discrep:
+                                break
+                            indep = _indep_check(
+                                augment_NB,
+                                elem,
+                                surface_singularities=surface_singularities,
+                                force_heavy_solve=force_heavy_solve,
+                            )
+                            if surface_singularities:
+                                indep, sing = indep
+                                new_sing = self._singularities.get("LD", []) + [
+                                    v for v in sing if get_free_symbols(v)
+                                ]
+                                if get_dgcv_settings_registry().get(
+                                    "simplify_singularity_ideals_by_default", True
+                                ):
+                                    new_sing = expr_union_primitives(
+                                        new_sing,
+                                        order_coordinates(self._parameters),
+                                        process_rationals=True,
+                                        fail_quietly=True,
+                                    )
+                                self._singularities["LD"] = new_sing
+                            if indep:
+                                augment_NB.append(elem)
+                                naiveBasis.append(elem)
+                        ss_dim = len(naiveBasis)
+
+                        for idx in range(len(local_rad_seq)):
+                            if idx == len(local_rad_seq) - 1:
+                                compare_set = local_rad_seq[idx]
+                                quot_set = []
+                                rad_discrep = len(local_rad_seq[idx])
+                            else:
+                                rad_discrep = len(local_rad_seq[idx]) - len(
+                                    local_rad_seq[idx + 1]
+                                )
+                                compare_set = local_rad_seq[idx][:rad_discrep]
+                                quot_set = local_rad_seq[idx][rad_discrep:]
+                            compLen = len(compare_set)
+
+                            variables = []
+                            basis_modifiers = []
+                            for count in range(len(naiveBasis)):
+                                if compLen > 0:
+                                    w_sum, w_vars = linear_combination(
+                                        compare_set, prefix=f"_v_{count}_"
+                                    )
+                                    variables += w_vars
+                                    basis_modifiers.append(w_sum)
+                                else:
+                                    basis_modifiers.append(0 * naiveBasis[0])
+
+                            leading_coeffs = {}
+                            trailing_coeffs = {}
+                            eqns = []
+                            for idx1 in range(ss_dim):
+                                for idx2 in range(idx1 + 1, ss_dim):
+                                    w1, w2 = naiveBasis[idx1], naiveBasis[idx2]
+                                    lb = w1 * w2
+                                    surfacing = (
+                                        True
+                                        if self._parameters or surface_singularities
+                                        else False
+                                    )
+                                    lb_decomp = _indep_check(
+                                        naiveBasis + local_rad_seq[idx],
+                                        lb,
+                                        return_decomp_coeffs=True,
+                                        surface_singularities=surfacing,
+                                        force_heavy_solve=force_heavy_solve,
+                                    )
+                                    if lb_decomp[0] is True and not force_heavy_solve:
+                                        dgcv_warning(
+                                            "The Levi decomposition algorithm encountered a bug caused by solver failing to recognize a zero. Retrying now with the heavier solve algorithm.",
+                                            wc_label="debug_log",
+                                        )
+                                        lb_decomp = _indep_check(
+                                            naiveBasis + local_rad_seq[idx],
+                                            lb,
+                                            return_decomp_coeffs=True,
+                                            surface_singularities=surfacing,
+                                            _force_eqn_simiplify=True,
+                                            force_heavy_solve=True,
+                                        )
+
+                                    if surfacing:
+                                        new_sing = self._singularities.get("LD", []) + [
+                                            v
+                                            for v in lb_decomp[2]
+                                            if get_free_symbols(v)
+                                        ]
+                                        if get_dgcv_settings_registry().get(
+                                            "simplify_singularity_ideals_by_default",
+                                            True,
+                                        ):
+                                            new_sing = expr_union_primitives(
+                                                new_sing,
+                                                order_coordinates(self._parameters),
+                                                process_rationals=True,
+                                                fail_quietly=True,
+                                            )
+                                        self._singularities["LD"] = new_sing
+                                    if lb_decomp[0] is True:
+                                        raise RuntimeError(
+                                            "the dgcv Levi decomposition algorithm could "
+                                            "not express a bracket of complement basis "
+                                            f"elements {idx1} and {idx2} within the span "
+                                            f"of the naive complement and level {idx} of "
+                                            f"{len(local_rad_seq) - 1} of the radical's "
+                                            "derived series. Either the linear solver "
+                                            "failed to recognize a vanishing expression, "
+                                            "or an earlier step produced a naive "
+                                            "complement that does not complement the "
+                                            f"radical (complement dimension {ss_dim}, "
+                                            f"expected {discrep}; comparison set size "
+                                            f"{compLen}, level size {rad_discrep})."
+                                        )
+                                    lb_decomp = lb_decomp[1][0]
+                                    leading_coeffs[(idx1, idx2)] = [
+                                        lb_decomp.get(idx, 0) for idx in range(ss_dim)
+                                    ]
+                                    trailing_coeffs[(idx1, idx2)] = [
+                                        lb_decomp.get(idx, 0)
+                                        for idx in range(ss_dim, ss_dim + compLen)
+                                    ]
+
+                            for idxs in leading_coeffs:
+                                oldV_sum = zip_sum(trailing_coeffs[idxs], compare_set)
+                                vTerms_sum = -zip_sum(
+                                    leading_coeffs[idxs], basis_modifiers
+                                )
+                                newV = (
+                                    naiveBasis[idxs[0]] * basis_modifiers[idxs[1]]
+                                    - naiveBasis[idxs[1]] * basis_modifiers[idxs[0]]
+                                )
+                                qTerms_sum, t_vars = linear_combination(
+                                    quot_set, prefix=f"tv_{idxs[0]}_{idxs[1]}_"
+                                )
+                                variables += t_vars
+                                eqns.append(oldV_sum + vTerms_sum + qTerms_sum + newV)
+                            if force_heavy_solve:
+                                eqns = [simplify(eqn) for eqn in eqns]
+                            solve_kwargs = _solve_weight_kwargs(
+                                force_heavy_solve,
+                                surface_singularities,
+                                simplify_singularities,
+                            )
+                            if surface_singularities:
+                                sol, _ = solve_dgcv(eqns, variables, **solve_kwargs)
+                            else:
+                                sol = solve_dgcv(eqns, variables, **solve_kwargs)
+                            if len(sol) == 0:
+                                if not all(
+                                    getattr(eqn, "is_zero", False) for eqn in eqns
+                                ):
+                                    dgcv_warning(
+                                        f"eqn: {eqns},\\n variables{variables},\\n sol: {sol}",
+                                        wc_label="debug_log",
+                                    )
+                                    raise RuntimeError(
+                                        "solver failed during the dgcv Levi decomposition algorithm."
+                                    )
+                                new_basis = list(naiveBasis)
+                            else:
+                                new_basis = [
+                                    (w + v).subs(sol[0])
+                                    for w, v in zip(naiveBasis, basis_modifiers)
+                                ]
+                            free_variables = set()
+                            for nb in new_basis:
+                                for j in nb.coeff_dict.values():
+                                    free_variables |= set(get_free_symbols(j))
+                            free_variables = {
+                                x for x in free_variables if x in variables
+                            }
+                            if len(free_variables) > 0:
+                                zeroing = {v: 0 for v in free_variables}
+                                target = next(iter(free_variables))
+                                new_basis = [
+                                    subs(bv, {**zeroing, target: 1}) for bv in new_basis
+                                ]
+                            if force_heavy_solve:
+                                new_basis = [simplify(bv) for bv in new_basis]
+                            naiveBasis = new_basis
+                        return self.ambient.subalgebra(
+                            naiveBasis, span_warning=True, simplify_basis=True
+                        )
+
+                    Levi_component = _time_call(
+                        _compute_complement,
+                        "computing a semisimple complement to the max. solvable ideal",
+                        "decompose the semisimple component into simple ideals"
+                        if decompose_semisimple_fully
+                        else _progress_message,
+                    )
+                else:
+                    Levi_component = self
+
+                self._Levi_deco_cache = {
+                    "LD_components": (Levi_component, rad),
+                    "simple_ideals": None,
+                }
+
+        if (
+            decompose_semisimple_fully is True
+            and self._Levi_deco_cache.get("LD_components", None) is not None
+            and self._Levi_deco_cache.get("simple_ideals", 1) is None
+        ):
+            if verbose is True:
+                print("Decomposing semisimple subalgebra into simple subalgebras...")
+
+            Levi_component, rad = self._Levi_deco_cache.get("LD_components", None)
+
+            def _decompose_semisimple():
+                simples = decompose_semisimple_algebra(
+                    Levi_component,
+                    format_as_lists_of_elements=True,
+                    surface_singularities=surface_singularities,
+                    simplify_singularities=simplify_singularities,
+                )
+                if surface_singularities:
+                    simples, sing = simples
+                new_basis = []
+                simple_ideals = []
+                for comp in simples:
+                    new_basis += comp
+                    simple_ideals.append(
+                        Levi_component.subalgebra(comp, simplify_basis=True)
+                    )
+                new_Levi = Levi_component.subalgebra(new_basis)
+                if surface_singularities:
+                    return new_Levi, tuple(simple_ideals), sing
+                return new_Levi, tuple(simple_ideals)
+
+            out = _time_call(
+                _decompose_semisimple,
+                "decomposing algebra into simple ideals",
+                _progress_message,
+            )
+            if surface_singularities:
+                new_Levi, simple_ideals, sing = out
+                new_sing = self._singularities.get("simple_ideals", []) + [
+                    v for v in sing if get_free_symbols(v)
+                ]
+                if get_dgcv_settings_registry().get(
+                    "simplify_singularity_ideals_by_default", True
+                ):
+                    new_sing = expr_union_primitives(
+                        new_sing,
+                        order_coordinates(self._parameters),
+                        process_rationals=True,
+                        fail_quietly=True,
+                    )
+                self._singularities["simple_ideals"] = new_sing
+            else:
+                new_Levi, simple_ideals = out
+            self._Levi_deco_cache["LD_components"] = (new_Levi, rad)
+            self._Levi_deco_cache["simple_ideals"] = simple_ideals
+
+        return self._Levi_deco_cache.get("LD_components", None)
+
+    def center(
+        self,
+        surface_singularities: bool = None,
+        simplify_singularities: bool = None,
+        format_as_subalgebra=True,
+    ):
+        if surface_singularities is None:
+            surface_singularities = True if self._parameters else False
+        if self._center_cache is None:
+            if self.dimension == 0:
+                self._center_cache = self.subalgebra([])
+                if format_as_subalgebra:
+                    return self._center_cache
+                return self._center_cache.basis
+            gene, variables = linear_combination(self.basis)
+            eqns = [gene * elem for elem in self.basis]
+            if not self.is_skew_symmetric():
+                eqns += [elem * gene for elem in self.basis]
+            if surface_singularities is True:
+                sol, sing = solve_dgcv(
+                    eqns,
+                    variables,
+                    return_divisors=True,
+                    pass_to_symbolic_engine=False,
+                    simplify_pivots=simplify_singularities
+                    if simplify_singularities is not None
+                    else True,
+                    simplify_result=False,
+                )
+                if not sol:
+                    raise RuntimeError("failed to compute the center.") from None
+                sol = sol[0]
+                if get_dgcv_settings_registry().get(
+                    "simplify_singularity_ideals_by_default", True
+                ):
+                    self._singularities["center"] = expr_union_primitives(
+                        [v for v in sing if get_free_symbols(v)],
+                        order_coordinates(self._parameters),
+                        process_rationals=True,
+                        fail_quietly=True,
+                    )
+                else:
+                    self._singularities["center"] = [
+                        v for v in sing if get_free_symbols(v)
+                    ]
+            else:
+                sol = solve_dgcv(eqns, variables, simplify_result=False)
+                if not sol:
+                    raise RuntimeError("failed to compute the center.") from None
+                sol = sol[0]
+            gsol = subs(gene, sol)
+            fv = set()
+            vset = set(variables)
+            for v in variables:
+                fv |= {x for x in get_free_symbols(sol.get(v)) if x in vset}
+            if len(fv) == 0:
+                self._center_cache = self.subalgebra([])
+            else:
+                fv = sorted(fv, key=str)
+                zeroing = {v: 0 for v in fv}
+                self._center_cache = self.subalgebra(
+                    [subs(gsol, {**zeroing, v: 1}) for v in fv]
+                )
+        if format_as_subalgebra:
+            return self._center_cache
+        return self._center_cache.basis
+
+    def approximate_rank(
+        self,
+        check_semisimple=False,
+        assume_semisimple=False,
+        _use_cache=False,
+        surface_singularities=False,
+        simplify_singularities=None,
+    ):
+        if self.dimension == 0:
+            self._rank_approximation = 0
+            if surface_singularities:
+                return 0, []
+            return 0
+        if check_semisimple is True:
+            ssc = self.is_semisimple()
+            if ssc is True:
+                assume_semisimple = True
+            elif assume_semisimple is True:
+                print(
+                    "approximate_rank received parameters `check_semisimple=True` and `assume_semisimple=True`, but the semisimple check returned false. The algorithm is proceeding with the `assume_semisimple` logic applied, but this is likely not wanted, and should be prevented by setting those parameters differently. Note, just setting `check_semisimple=True` is enough to use optimized algorithms in the event that the semisimple check returns true, whereas `assume_semisimple` should only be used in applications where forgoing the semisimple check entirely is wanted."
+                )
+        if _use_cache and self._rank_approximation is not None:
+            if surface_singularities:
+                return self._rank_approximation, []
+            return self._rank_approximation
+        power = (
+            1
+            if (assume_semisimple or self._is_semisimple_cache is True)
+            else self.dimension
+        )
+        get_slice = self._structure_data_slice
+        elem = matrix_dgcv(get_slice(0), shape=self.structureData.shape)  # test element
+        bound = max(100, 10 * self.dimension)
+        for idx in range(1, self.dimension):
+            elem2 = get_slice(idx)
+            elem += random.randint(1, bound) * matrix_dgcv(
+                elem2, shape=self.structureData.shape
+            )
+        rank_result = fast_rank(
+            elem**power,
+            surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
+        )
+        if surface_singularities:
+            rank, divisors = rank_result
+        else:
+            rank = rank_result
+        rank = self.dimension - rank
+        if not isinstance(rank, numbers.Integral):
+            dgcv_warning(
+                "`approximate_rank` obtained a non-integral rank "
+                f"({rank}); the cached rank approximation was left unchanged."
+            )
+        elif (
+            not isinstance(self._rank_approximation, numbers.Integral)
+            or self._rank_approximation > rank
+        ):
+            self._rank_approximation = rank
+        if surface_singularities:
+            return self._rank_approximation, divisors
+        return self._rank_approximation
+
+    def summary(
+        self,
+        generate_full_report: bool = False,
+        generate_partial_report: bool = False,
+        theme=None,
+        use_latex=None,
+        *,
+        plain_text: bool = False,
+        return_displayable: bool = False,
+        show_singularities: bool | None = None,
+        interrupt_to_partial_report: bool = True,
+        force_heavy_solve: bool = False,
+        _reporting_threshold_s: float = 7.0,
+        **kwargs,
+    ):
+        dgcvSR = get_dgcv_settings_registry()
+
+        if not isinstance(theme, str):
+            theme = kwargs.get("style", None)
+            if theme is None:
+                theme = dgcvSR.get("theme", "dark")
+        if use_latex is None:
+            use_latex = dgcvSR.get("use_latex")
+
+        if (plain_text is False) and (not is_rich_displaying_available()):
+            plain_text = True
+
+        extra_support_for_math_in_tables = bool(
+            dgcvSR.get("extra_support_for_math_in_tables")
+        )
+
+        subAlg = get_dgcv_category(self) == "subalgebra"
+        parentAlg = self.ambient
+
+        if use_latex and not plain_text:
+            algebra_name, algebra_name_cap = _alg_name_latex(parentAlg)
+        else:
+            algebra_name = (
+                parentAlg.label if getattr(parentAlg, "label", None) else "the algebra"
+            )
+            algebra_name_cap = (
+                parentAlg.label if getattr(parentAlg, "label", None) else "The algebra"
+            )
+
+        reporting = bool(generate_full_report or generate_partial_report)
+        threshold = float(_reporting_threshold_s)
+        updates_printed = 0
+        interrupted = False
+
+        def _on_update():
+            nonlocal updates_printed
+            updates_printed += 1
+
+        if reporting:
+            try:
+                _summary_warm_caches(
+                    self,
+                    subAlg=subAlg,
+                    reporting_threshold_s=threshold,
+                    progress_message="finish building the summary",
+                    full=generate_full_report,
+                    force_heavy_solve=force_heavy_solve,
+                    _on_timed_update=_on_update,
+                )
+            except KeyboardInterrupt:
+                if interrupt_to_partial_report is False:
+                    raise
+                interrupted = True
+                updates_printed += 1
+                try:
+                    clearVar(*listVar(temporary_only=True), report=False)
+                except Exception:
+                    pass
+                print(
+                    "\nInterrupted. Rendering the report from results computed so far. "
+                    "Results already cached are retained, so re-running summary resumes "
+                    "from where this left off."
+                )
+
+        report_full = generate_full_report and not interrupted
+
+        if plain_text:
+            out = _timed_progress_call(
+                lambda: _summary_render_plain(
+                    parentAlg,
+                    self,
+                    subAlg=subAlg,
+                    algebra_name=algebra_name,
+                    algebra_name_cap=algebra_name_cap,
+                ),
+                timed=reporting,
+                threshold_s=threshold,
+                step_desc="rendering the summary",
+                continue_desc=None,
+                progress_message=None,
+                _on_timed_update=_on_update,
+            )
+            if updates_printed:
+                print()
+            if return_displayable:
+                return out
+            print(out)
+            return
+
+        out = _timed_progress_call(
+            lambda: _summary_render_rich(
+                refAlg=self,
+                subAlg=subAlg,
+                algebra_name=algebra_name,
+                algebra_name_cap=algebra_name_cap,
+                style=theme,
+                use_latex=use_latex,
+                extra_support_for_math_in_tables=extra_support_for_math_in_tables,
+                show_singularities=show_singularities,
+                full=report_full,
+            ),
+            timed=reporting,
+            threshold_s=threshold,
+            step_desc="rendering the summary",
+            continue_desc=None,
+            progress_message=None,
+            _on_timed_update=_on_update,
+        )
+        if updates_printed:
+            print()
+        if return_displayable:
+            return out
+        show(out)
+
+    def _structure_data_slice(self, idx):
+        slices = self._structure_data_slices
+        if slices is None:
+            slices = dict()
+            for (i, j, k), v in self.structureDataDict.items():
+                slot = slices.get(i)
+                if slot is None:
+                    slices[i] = {(j, k): v}
+                else:
+                    slot[(j, k)] = v
+            self._structure_data_slices = slices
+        slot = slices.get(idx)
+        return dict(slot) if slot else dict()
+
+    def _weight_coordinates(self, element):
+        if (
+            get_dgcv_category(element) == "subalgebra_element"
+            and element.algebra != self
+            and element.algebra.ambient == self
+        ):
+            element = element.ambient_rep
+        if get_dgcv_category(element) not in {"algebra_element", "subalgebra_element"}:
+            raise TypeError(
+                f"Input to `check_element_weight` must be an algebra element belonging to the {self._dgcv_category} instance whose `check_element_weight` is being called."
+            ) from None
+        if element.algebra != self:
+            raise TypeError(
+                f"Input to `check_element_weight` must be an algebra element belonging to the {self._dgcv_category} instance whose `check_element_weight` is being called."
+            ) from None
+        return element.coeff_dict
+
+
+class algebra_class(_algebra_methods, dgcv_class):
     def __init__(
         self,
         structure_data,
@@ -132,11 +2363,7 @@ class algebra_class(dgcv_class):
     ):
         if isinstance(structure_data, numbers.Integral):
             if structure_data >= 0:
-                structure_data = array_dgcv(
-                    dict(),
-                    shape=(structure_data, structure_data),
-                    null_return=freeze_matrix(matrix_dgcv.zeros(structure_data, 1)),
-                )
+                structure_data = _structure_array(dict(), structure_data)
         if _calledFromCreator == retrieve_passkey():
             validated_structure_data = structure_data
             params = _markers.get("parameters", set())
@@ -169,17 +2396,79 @@ class algebra_class(dgcv_class):
 
             except dgcv_exception_note as e:
                 raise SystemExit(e)
-        # validated_structure_data = tuple(map(tuple, validated_structure_data))
         self.structureData = validated_structure_data
         self.dimension = self.structureData.shape[0]
-        # self.structureData = tuple(
-        #     tuple(tuple(inner) for inner in middle)
-        #     for middle in validated_structure_data
-        # )
         self._parameters = params
         self._tex_label = None
         self._tex_basis_labels = None
         self._educed_properties = dict()
+
+        def _assign_composite_labels():
+            # If not registered, pick collision-free labels here; otherwise trust provided labels
+            if _markers.get("registered", None) is False:
+                incoming_tex_label = _markers.get("_tex_label", None)
+                if incoming_tex_label is None:
+                    self.label = unique_label(_label)
+                    self._tex_label = None
+                else:
+                    self.label, self._tex_label = unique_label(
+                        _label, tex_label=incoming_tex_label
+                    )
+
+                incoming_basis = list(_basis_labels or [])
+                incoming_tex_basis = list(_markers.get("_tex_basis_labels", []) or [])
+                have_tex_basis = len(incoming_basis) > 0 and len(
+                    incoming_tex_basis
+                ) == len(incoming_basis)
+
+                new_basis = []
+                new_tex_basis = [] if have_tex_basis else None
+                batch_protected = set()
+                if isinstance(self.label, str):
+                    batch_protected.add(self.label)
+                for idx, base_lbl in enumerate(incoming_basis):
+                    candidate = base_lbl
+                    if have_tex_basis:
+                        base_tex = incoming_tex_basis[idx]
+                        final_lbl, final_tex = unique_label(
+                            candidate, tex_label=base_tex, protected=batch_protected
+                        )
+                        new_basis.append(final_lbl)
+                        new_tex_basis.append(final_tex)
+                        batch_protected.add(final_lbl)
+                    else:
+                        final_lbl = unique_label(candidate, protected=batch_protected)
+                        new_basis.append(final_lbl)
+                        batch_protected.add(final_lbl)
+
+                self.basis_labels = new_basis
+                if have_tex_basis:
+                    self._tex_basis_labels = new_tex_basis
+                elif self._tex_label is not None:
+                    self._tex_basis_labels = [
+                        f"{self._tex_label}_{{{i + 1}}}" for i in range(self.dimension)
+                    ]
+            else:
+                self.label = _label
+                self.basis_labels = _basis_labels
+                if not self.basis_labels:
+                    base = (
+                        self.label
+                        if isinstance(self.label, str) and self.label
+                        else "_e"
+                    )
+                    self.basis_labels = [
+                        f"{base}{i + 1}" for i in range(self.dimension)
+                    ]
+                if _markers.get("_tex_label", None) is not None:
+                    self._tex_label = _markers["_tex_label"]
+                if _markers.get("_tex_basis_labels", None) is not None:
+                    self._tex_basis_labels = _markers["_tex_basis_labels"]
+                elif self._tex_label is not None and self._tex_basis_labels is None:
+                    self._tex_basis_labels = [
+                        f"{self._tex_label}_{{{i + 1}}}" for i in range(self.dimension)
+                    ]
+
         if _calledFromCreator == retrieve_passkey():
             if isinstance(_markers.get("_educed_properties", None), dict):
                 self._educed_properties = _markers.get("_educed_properties", dict())
@@ -198,139 +2487,8 @@ class algebra_class(dgcv_class):
                 else:
                     self.label = _label
                     self.basis_labels = _basis_labels
-            elif _markers.get("sum", False):
-                # If not registered, pick collision-free labels here; otherwise trust provided labels
-                if _markers.get("registered", None) is False:
-                    incoming_tex_label = _markers.get("_tex_label", None)
-                    if incoming_tex_label is None:
-                        self.label = unique_label(_label)
-                        self._tex_label = None
-                    else:
-                        self.label, self._tex_label = unique_label(
-                            _label, tex_label=incoming_tex_label
-                        )
-
-                    incoming_basis = list(_basis_labels or [])
-                    incoming_tex_basis = list(
-                        _markers.get("_tex_basis_labels", []) or []
-                    )
-                    have_tex_basis = len(incoming_basis) > 0 and len(
-                        incoming_tex_basis
-                    ) == len(incoming_basis)
-
-                    new_basis = []
-                    new_tex_basis = [] if have_tex_basis else None
-                    batch_protected = set()
-                    if isinstance(self.label, str):
-                        batch_protected.add(self.label)
-                    for idx, base_lbl in enumerate(incoming_basis):
-                        candidate = base_lbl
-                        if have_tex_basis:
-                            base_tex = incoming_tex_basis[idx]
-                            final_lbl, final_tex = unique_label(
-                                candidate, tex_label=base_tex, protected=batch_protected
-                            )
-                            new_basis.append(final_lbl)
-                            new_tex_basis.append(final_tex)
-                            batch_protected.add(final_lbl)
-                        else:
-                            final_lbl = unique_label(
-                                candidate, protected=batch_protected
-                            )
-                            new_basis.append(final_lbl)
-                            batch_protected.add(final_lbl)
-
-                    self.basis_labels = new_basis
-                    if have_tex_basis:
-                        self._tex_basis_labels = new_tex_basis
-                    elif self._tex_label is not None:
-                        self._tex_basis_labels = [
-                            f"{self._tex_label}_{{{i + 1}}}"
-                            for i in range(self.dimension)
-                        ]
-                else:
-                    self.label = _label
-                    self.basis_labels = _basis_labels
-                    if not self.basis_labels:
-                        base = (
-                            self.label
-                            if isinstance(self.label, str) and self.label
-                            else "_e"
-                        )
-                        self.basis_labels = [
-                            f"{base}{i + 1}" for i in range(self.dimension)
-                        ]
-                    if _markers.get("_tex_label", None) is not None:
-                        self._tex_label = _markers["_tex_label"]
-                    if _markers.get("_tex_basis_labels", None) is not None:
-                        self._tex_basis_labels = _markers["_tex_basis_labels"]
-                    elif self._tex_label is not None and self._tex_basis_labels is None:
-                        self._tex_basis_labels = [
-                            f"{self._tex_label}_{{{i + 1}}}"
-                            for i in range(self.dimension)
-                        ]
-            elif _markers.get("prod", False):
-                if _markers.get("registered", None) is False:
-                    incoming_tex_label = _markers.get("_tex_label", None)
-                    if incoming_tex_label is None:
-                        self.label = unique_label(_label)
-                        self._tex_label = None
-                    else:
-                        self.label, self._tex_label = unique_label(
-                            _label, tex_label=incoming_tex_label
-                        )
-
-                    incoming_basis = list(_basis_labels or [])
-                    incoming_tex_basis = list(
-                        _markers.get("_tex_basis_labels", []) or []
-                    )
-                    have_tex_basis = len(incoming_basis) > 0 and len(
-                        incoming_tex_basis
-                    ) == len(incoming_basis)
-
-                    new_basis = []
-                    new_tex_basis = [] if have_tex_basis else None
-                    batch_protected = set()
-                    if isinstance(self.label, str):
-                        batch_protected.add(self.label)
-                    for idx, base_lbl in enumerate(incoming_basis):
-                        candidate = base_lbl
-                        if have_tex_basis:
-                            base_tex = incoming_tex_basis[idx]
-                            final_lbl, final_tex = unique_label(
-                                candidate, tex_label=base_tex, protected=batch_protected
-                            )
-                            new_basis.append(final_lbl)
-                            new_tex_basis.append(final_tex)
-                            batch_protected.add(final_lbl)
-                        else:
-                            final_lbl = unique_label(
-                                candidate, protected=batch_protected
-                            )
-                            new_basis.append(final_lbl)
-                            batch_protected.add(final_lbl)
-
-                    self.basis_labels = new_basis
-                    if have_tex_basis:
-                        self._tex_basis_labels = new_tex_basis
-                    elif self._tex_label is not None:
-                        self._tex_basis_labels = [
-                            f"{self._tex_label}_{{{i + 1}}}"
-                            for i in range(self.dimension)
-                        ]
-                else:
-                    self.label = _label
-                    self.basis_labels = _basis_labels
-                    if _markers.get("_tex_label", None) is not None:
-                        self._tex_label = _markers["_tex_label"]
-                    if _markers.get("_tex_basis_labels", None) is not None:
-                        self._tex_basis_labels = _markers["_tex_basis_labels"]
-                    elif self._tex_label is not None:
-                        self._tex_basis_labels = [
-                            f"{self._tex_label}_{{{i + 1}}}"
-                            for i in range(self.dimension)
-                        ]
-
+            elif _markers.get("sum", False) or _markers.get("prod", False):
+                _assign_composite_labels()
             else:
                 self.label = _label
                 self.basis_labels = _basis_labels
@@ -350,16 +2508,9 @@ class algebra_class(dgcv_class):
         self._child_print_warning = _child_print_warning
         self._exclude_from_VMF = _exclude_from_VMF
         self.is_sparse = format_sparse
-        sdd = dict()
-        for idx, val in self.structureData._data.items():
-            idx1, idx2 = self.structureData._unspool(idx)
-            if not hasattr(val, "_data"):
-                raise TypeError(
-                    "The `algebra_class` initializer recieved data in an unsupported format."
-                )
-            for idx3, v in val._data.items():
-                sdd[(idx1, idx2, idx3)] = v
-        self.structureDataDict = sdd
+        self.structureDataDict = _flatten_structure_data(
+            self.structureData, _source="algebra_class"
+        )
         self._built_from_matrices = process_matrix_rep
         self.simplify_products_by_default = simplify_products_by_default
         self.semidirect_decomposition = _markers.get("semidirect_decomposition", None)
@@ -367,26 +2518,15 @@ class algebra_class(dgcv_class):
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "algebra"
         if self._parameters:
-            struct_sing = set()
-            for slot in self.structureData._data.values():
-                for v in slot._data.values():
-                    _, d = as_numer_denom(v)
-                    if get_free_symbols(d):
-                        struct_sing.add(d)
-            if get_dgcv_settings_registry().get(
-                "simplify_singularity_ideals_by_default", True
-            ):
-                struct_sing = expr_union_primitives(
-                    struct_sing,
-                    order_coordinates(self._parameters),
-                    process_rationals=True,
-                    fail_quietly=True,
+            self._singularities = {
+                "structure": _harvest_structure_singularities(
+                    self.structureData, self._parameters
                 )
-            else:
-                struct_sing = list(struct_sing)
-            self._singularities = {"structure": struct_sing}
+            }
         else:
             self._singularities = {}
+
+        numeric_types = expr_numeric_types()
 
         def validate_and_adjust_grading_vector(vector, dimension):
             vector = list(vector)
@@ -404,7 +2544,7 @@ class algebra_class(dgcv_class):
                 vector = vector[:dimension]
 
             for i, component in enumerate(vector):
-                if not isinstance(component, expr_numeric_types()):
+                if not isinstance(component, numeric_types):
                     raise ValueError(
                         f"Invalid component in grading vector at index {i}: {component}. "
                         f"Expected scalar"
@@ -517,7 +2657,11 @@ class algebra_class(dgcv_class):
         self._rank_approximation = None
         self._center_cache = None
         self._lower_central_series_cache = None
+        self._lower_central_series_terminated = None
+        self._lower_central_series_depth = None
         self._derived_series_cache = None
+        self._derived_series_terminated = None
+        self._derived_series_depth = None
         self._grading_compatible = None
         self._grading_report = None
         self._killing_form = None
@@ -526,20 +2670,13 @@ class algebra_class(dgcv_class):
         self._Levi_deco_cache = None
         self._graded_components = None
         self._endomorphisms = None
-        self._coproduct = {elem: None for elem in self.basis}
+        self._coproduct = {idx: None for idx in range(self.dimension)}
 
     def _class_builder(self, coeff_dict, valence, format_sparse=False):
         ### build algebra element
         return algebra_element_class(
             self, coeff_dict, valence, format_sparse=format_sparse
         )
-
-    def _structure_data_slice(self, idx):
-        mat_data = dict()
-        for k, v in self.structureDataDict.items():
-            if k[0] == idx:
-                mat_data[(k[1], k[2])] = v
-        return mat_data
 
     @property
     def preferred_representation(self):
@@ -575,6 +2712,13 @@ class algebra_class(dgcv_class):
     @property
     def ambient(self):
         return self
+
+    @property
+    def basis_in_ambient_alg(self):
+        return self.basis
+
+    def _verbose_subject(self):
+        return "The algebra" if self.label is None else str(self.label)
 
     @property
     def endomorphism_algebra(self):
@@ -636,25 +2780,6 @@ class algebra_class(dgcv_class):
             },
         )
 
-    def update_grading(self, new_weight_vectors_list, replace_instead_of_add=False):
-        if isinstance(new_weight_vectors_list, (list, tuple)):
-            if all(isinstance(elem, (list, tuple)) for elem in new_weight_vectors_list):
-                if replace_instead_of_add is True:
-                    self.grading = [tuple(elem) for elem in new_weight_vectors_list]
-                else:
-                    grad = list(self.grading) + [
-                        tuple(elem) for elem in new_weight_vectors_list
-                    ]
-                    self.grading = grad
-            else:
-                raise TypeError(
-                    f"update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}"
-                )
-        else:
-            raise TypeError(
-                f"update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}"
-            )
-
     def contains(self, items, return_basis_coeffs=False, strict_types=False):
         if isinstance(items, (list, tuple)):
             return [
@@ -691,9 +2816,9 @@ class algebra_class(dgcv_class):
 
     def _set_product_protocol(self):
         if self.simplify_products_by_default is None:
+            fast_types = fast_scalar_types()
             if any(
-                not isinstance(j, fast_scalar_types())
-                for j in self.structureDataDict.values()
+                not isinstance(j, fast_types) for j in self.structureDataDict.values()
             ):
                 self.simplify_products_by_default = True
             else:
@@ -709,22 +2834,22 @@ class algebra_class(dgcv_class):
     def __hash__(self):
         return hash(self.dgcv_vs_id)
 
-    def __contains__(self, item):
-        return item in self.basis
-
     def __iter__(self):
         return iter(self.basis)
 
     def __getitem__(self, indices):
         if isinstance(indices, numbers.Integral):
             return self.basis[indices]
-        elif isinstance(indices, list):
+        elif isinstance(indices, (list, tuple)):
             if len(indices) == 1:
                 return self.basis[indices[0]]
-            elif isinstance(indices, list) and len(indices) == 2:
+            elif len(indices) == 2:
                 return self.structureData[indices[0], indices[1]]
-            elif isinstance(indices, list) and len(indices) == 3:
+            elif len(indices) == 3:
                 return self.structureData[indices[0], indices[1]][indices[2]]
+            raise TypeError(
+                f"Expected one, two, or three indices. Received {len(indices)}: {indices}"
+            ) from None
         else:
             raise TypeError(
                 f"To access an algebra element or structure data component, provide one index for an element from the basis, two indices for a list of coefficients from the product  of two basis elements, or 3 indices for the corresponding entry in the structure array. Instead of an integer of list of integers, the following was given: {indices}"
@@ -884,541 +3009,6 @@ class algebra_class(dgcv_class):
 
         return format_algebra_label(self.label)
 
-    def is_skew_symmetric(
-        self, verbose=False, _return_proof_path=False, _ignore_caches=False
-    ):
-        """
-        Checks if the algebra is skew-symmetric.
-        """
-        if not self._registered and verbose:
-            if self._callLock == retrieve_passkey() and isinstance(
-                self._print_warning, str
-            ):
-                print(self._print_warning)
-            else:
-                print(
-                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
-                )
-
-        if (
-            isinstance(self._educed_properties.get("is_skew", None), str)
-            and _ignore_caches is False
-        ):
-            t_message = self._educed_properties.get("is_skew", None)
-            self._skew_symmetric_cache = (True, None)
-        else:
-            t_message = ""
-
-        if self._skew_symmetric_cache is None or _ignore_caches is True:
-            result, failure = self._check_skew_symmetric()
-            self._skew_symmetric_cache = (result, failure)
-        else:
-            result, failure = self._skew_symmetric_cache
-
-        if verbose:
-            if result:
-                if self.label is None:
-                    print("The algebra is skew-symmetric.")
-                else:
-                    print(f"{self.label} is skew-symmetric.")
-            else:
-                i, j, k = failure
-                print(
-                    f"Skew symmetry fails for basis elements {i}, {j}, at coefficient index {k}."
-                )
-        if _return_proof_path is True:
-            return result, t_message
-        return result
-
-    def _check_skew_symmetric(self):
-        dim = self.dimension
-        for i in range(dim):
-            for j in range(i, dim):
-                for k in range(dim):
-                    expr = self.structureData[i, j][k] + self.structureData[j, i][k]
-                    if get_free_symbols(expr):  ###!!! optimize
-                        expr = simplify(expr)
-                    if not _scalar_is_zero(expr):
-                        return False, (i, j, k)
-        return True, None
-
-    def satisfies_jacobi_identity(
-        self, verbose=False, _return_proof_path=False, _ignore_caches=False
-    ):
-        """
-        Checks if the algebra satisfies the Jacobi identity.
-        Includes a warning for unregistered instances only if verbose=True.
-        """
-        if not self._registered and verbose:
-            if self._callLock == retrieve_passkey() and isinstance(
-                self._print_warning, str
-            ):
-                print(self._print_warning)
-            else:
-                print(
-                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
-                )
-
-        if (
-            isinstance(self._educed_properties.get("satisfies_Jacobi_ID", None), str)
-            and _ignore_caches is False
-        ):
-            t_message = self._educed_properties.get("satisfies_Jacobi_ID", None)
-            self._jacobi_identity_cache = (True, None)
-        else:
-            t_message = ""
-
-        if self._jacobi_identity_cache is None or _ignore_caches is True:
-            result, fail_list = self._check_jacobi_identity()
-            self._jacobi_identity_cache = (result, fail_list)
-        else:
-            result, fail_list = self._jacobi_identity_cache
-
-        if verbose:
-            if result:
-                if self.label is None:
-                    print("The algebra satisfies the Jacobi identity.")
-                else:
-                    print(f"{self.label} satisfies the Jacobi identity.")
-            else:
-                print(f"Jacobi identity fails for the following triples: {fail_list}")
-
-        if _return_proof_path is True:
-            return result, t_message
-        return result
-
-    def Jacobi_identities(self):
-        skew = self.is_skew_symmetric()
-        JI_list = []
-        for i in range(self.dimension):
-            lower_j = i + 1 if skew else 0
-            for j in range(lower_j, self.dimension):
-                lower_k = j + 1 if skew else 0
-                for k in range(lower_k, self.dimension):
-                    JI_list.append(
-                        self.basis[i] * self.basis[j] * self.basis[k]
-                        + self.basis[j] * self.basis[k] * self.basis[i]
-                        + self.basis[k] * self.basis[i] * self.basis[j]
-                    )
-        return JI_list
-
-    def _check_jacobi_identity(self):
-        skew, dim, basis = self.is_skew_symmetric(), self.dimension, self.basis
-        fail_list = []
-        for i in range(dim):
-            lower_j = i + 1 if skew else 0
-            for j in range(lower_j, dim):
-                lower_k = j + 1 if skew else 0
-                for k in range(lower_k, dim):
-                    ai, aj, ak = basis[i], basis[j], basis[k]
-                    expr = ai * aj * ak + aj * ak * ai + ak * ai * aj
-                    if get_free_symbols(expr):  ###!!! optimize
-                        expr = simplify(expr)
-                    if not expr.is_zero:
-                        fail_list.append((i, j, k))
-        if fail_list:
-            return False, fail_list
-        return True, None
-
-    def _warn_associativity_assumption(self, method_name):
-        """
-        Issues a warning that the method assumes the algebra is associative.
-
-        Parameters
-        ----------
-        method_name : str
-            The name of the method assuming associativity.
-
-        Notes
-        -----
-        - This helper method is intended for internal use.
-        - Use it in methods where associativity is assumed but not explicitly verified.
-        """
-        dgcv_warning(
-            f"{method_name} assumes the algebra is associative. "
-            "If it is not then unexpected results may occur."
-        )
-
-    def is_lie_algebra(self, verbose=False, return_bool=True):
-        dgcv_warning(
-            "`algebra_class.is_lie_algebra` has been deprecated as part of the shift toward standardized naming conventions in the `dgcv` library.",
-            dgcvDeprecationWarning,
-            stacklevel=2,
-            old_kw="is_lie_algebra",
-            new_kw="is_Lie_algebra",
-            sunset="2026",
-        )
-        return self.is_Lie_algebra(verbose=False, return_bool=True)
-
-    def is_Lie_algebra(
-        self,
-        verbose=False,
-        return_bool=True,
-        _return_proof_path=False,
-        _ignore_caches=False,
-        *,
-        _timed_reporting: bool | None = None,
-        _reporting_threshold_s: float = 10,
-        _progress_message: str | None = None,
-        _on_timed_update=None,
-    ):
-        if not self._registered and verbose:
-            if self._callLock == retrieve_passkey() and isinstance(
-                self._print_warning, str
-            ):
-                print(self._print_warning)
-            else:
-                print(
-                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
-                )
-
-        if isinstance(self._educed_properties.get("is_Lie_algebra", None), str):
-            t_message = self._educed_properties.get("is_Lie_algebra", None)
-            self._lie_algebra_cache = True
-            self._jacobi_identity_cache = True
-            self._skew_symmetric_cache = True
-        else:
-            t_message = ""
-
-        timed = bool(_timed_reporting) if _timed_reporting is not None else False
-        threshold = float(_reporting_threshold_s)
-
-        if self._lie_algebra_cache is not None and _ignore_caches is False:
-            if verbose and not timed:
-                print(
-                    f"Cached result: {f'Previously verified {self.label} is a Lie algebra' if self._lie_algebra_cache else f'Previously verified {self.label} is not a Lie algebra'}."
-                )
-            if _return_proof_path is True:
-                return self._lie_algebra_cache, t_message
-            return self._lie_algebra_cache
-
-        def _call_with_optional_timing(fn, **kwargs):
-            if not callable(fn):
-                return fn
-            if timed:
-                kwargs.setdefault("_timed_reporting", True)
-                kwargs.setdefault("_reporting_threshold_s", threshold)
-                kwargs.setdefault("_progress_message", _progress_message)
-                kwargs.setdefault("_on_timed_update", _on_timed_update)
-            try:
-                return fn(**kwargs)
-            except TypeError:
-                kwargs.pop("_timed_reporting", None)
-                kwargs.pop("_reporting_threshold_s", None)
-                kwargs.pop("_progress_message", None)
-                kwargs.pop("_on_timed_update", None)
-                return fn(**kwargs)
-
-        ok_skew = _call_with_optional_timing(
-            self.is_skew_symmetric,
-            verbose=verbose,
-            _ignore_caches=_ignore_caches,
-        )
-        if not ok_skew:
-            self._lie_algebra_cache = False
-            if return_bool is True:
-                if _return_proof_path is True:
-                    return False, t_message
-                return False
-            return
-
-        ok_jacobi = _call_with_optional_timing(
-            self.satisfies_jacobi_identity,
-            verbose=verbose,
-            _ignore_caches=_ignore_caches,
-        )
-        if not ok_jacobi:
-            self._lie_algebra_cache = False
-            if return_bool is True:
-                if _return_proof_path is True:
-                    return False, t_message
-                return False
-            return
-
-        if self._lie_algebra_cache is None or _ignore_caches is True:
-            self._lie_algebra_cache = True
-
-        if verbose and not timed:
-            if self.label is None:
-                print("The algebra is a Lie algebra.")
-            else:
-                print(f"{self.label} is a Lie algebra.")
-
-        if return_bool is True:
-            if _return_proof_path is True:
-                return self._lie_algebra_cache, t_message
-            return self._lie_algebra_cache
-
-    def _require_lie_algebra(self, method_name):
-        """
-        Checks that the algebra is a Lie algebra before proceeding.
-
-        Parameters
-        ----------
-        method_name : str
-            The name of the method requiring a Lie algebra.
-
-        Raises
-        ------
-        ValueError
-            If the algebra is not a Lie algebra.
-        """
-        if not self.is_Lie_algebra():
-            raise ValueError(
-                f"{method_name} can only be applied to Lie algebras."
-            ) from None
-
-    def is_semisimple(
-        self,
-        verbose=False,
-        return_bool=True,
-        _return_proof_path=False,
-        *,
-        _timed_reporting: bool | None = None,
-        _reporting_threshold_s: float = 10,
-        _progress_message: str | None = None,
-        _on_timed_update=None,
-    ):
-        if not self._registered and verbose:
-            if self._callLock == retrieve_passkey() and isinstance(
-                self._print_warning, str
-            ):
-                print(self._print_warning)
-            else:
-                print(
-                    "Warning: This algebra instance is unregistered. Initialize algebra objects with createFiniteAlg instead to register them."
-                )
-
-        if isinstance(self._educed_properties.get("is_simple", None), str):
-            t_message = self._educed_properties.get("is_simple", None)
-            self._is_simple_cache = True
-            self._is_semisimple_cache = True
-            self._educed_properties["special_type"] = "simple"
-            self._is_nilpotent_cache = False
-            self._is_solvable_cache = False
-        elif isinstance(self._educed_properties.get("is_semisimple", None), str):
-            t_message = self._educed_properties.get("is_semisimple", None)
-            self._is_semisimple_cache = True
-            self._educed_properties["special_type"] = (
-                self._educed_properties.get("special_type", None) or "semisimple"
-            )
-            self._is_nilpotent_cache = False
-            self._is_solvable_cache = False
-        else:
-            t_message = ""
-
-        timed = bool(_timed_reporting) if _timed_reporting is not None else False
-        threshold = float(_reporting_threshold_s)
-
-        if self._is_semisimple_cache is None:
-            if self._is_simple_cache is True:
-                self._is_semisimple_cache = True
-                self._is_solvable_cache = False
-                self._is_abelian_cache = False
-                self._is_nilpotent_cache = False
-            elif self._Levi_deco_cache is not None:
-                LC, MSI = self._Levi_deco_cache["LD_components"]
-                if getattr(MSI, "dimension", None) == 0 and self.dimension > 0:
-                    self._is_semisimple_cache = True
-                    self._is_solvable_cache = False
-                    self._is_abelian_cache = False
-                    self._is_nilpotent_cache = False
-                elif getattr(MSI, "dimension", None) != 0:
-                    self._is_semisimple_cache = False
-                    self._is_simple_cache = False
-                    if getattr(LC, "dimension", None) == 0:
-                        self._is_solvable_cache = True
-                        self._educed_properties["special_type"] = "solvable"
-
-        if self._is_semisimple_cache is not None:
-            if verbose and not timed:
-                print(
-                    f"Cached result: {f'Previously verified {self.label} is a semisimple Lie algebra' if self._is_semisimple_cache else f'Previously verified {self.label} is not a semisimple Lie algebra.'}."
-                )
-            if return_bool is True:
-                if _return_proof_path is True:
-                    return self._is_semisimple_cache, t_message
-                return self._is_semisimple_cache
-            if _return_proof_path is True:
-                return t_message
-            return
-
-        try:
-            ok_lie = self.is_Lie_algebra(
-                verbose=verbose,
-                _timed_reporting=timed,
-                _reporting_threshold_s=threshold,
-                _progress_message=_progress_message,
-                _on_timed_update=_on_timed_update,
-            )
-        except TypeError:
-            ok_lie = self.is_Lie_algebra(
-                verbose=verbose,
-                _timed_reporting=timed,
-                _reporting_threshold_s=threshold,
-                _progress_message=_progress_message,
-            )
-
-        if not ok_lie:
-            self._is_semisimple_cache = False
-            if return_bool is True:
-                if _return_proof_path is True:
-                    return False, "not a Lie algebra"
-                return False
-            if _return_proof_path is True:
-                return "not a Lie algebra"
-            return
-
-        det = _timed_progress_call(
-            lambda: simplify(killingForm(self).det()),
-            timed=timed,
-            threshold_s=threshold,
-            step_desc="computing determinant of the Killing form",
-            continue_desc=_progress_message,
-            progress_message=None,
-            _on_timed_update=_on_timed_update,
-        )
-
-        iz = getattr(det, "is_zero", None)
-        if iz is True:
-            det_is_zero = True
-        elif callable(iz):
-            try:
-                det_is_zero = bool(iz())
-            except Exception:
-                det_is_zero = _scalar_is_zero(det)
-        else:
-            det_is_zero = _scalar_is_zero(det)
-
-        det_is_nonzero = not det_is_zero
-
-        if verbose and not timed:
-            if det_is_nonzero:
-                self._is_semisimple_cache = True
-                self._educed_properties["special_type"] = "semisimple"
-                self._is_nilpotent_cache = False
-                self._is_solvable_cache = False
-                if self.label is None:
-                    print("The algebra is semisimple.")
-                else:
-                    print(f"{self.label} is semisimple.")
-            else:
-                self._is_semisimple_cache = False
-                self._is_simple_cache = False
-                if self.label is None:
-                    print("The algebra is not semisimple.")
-                else:
-                    print(f"{self.label} is not semisimple.")
-        else:
-            if det_is_nonzero:
-                self._is_semisimple_cache = True
-                self._educed_properties["special_type"] = "semisimple"
-                self._is_nilpotent_cache = False
-                self._is_solvable_cache = False
-            else:
-                self._is_semisimple_cache = False
-                self._is_simple_cache = False
-
-        if return_bool is True:
-            if _return_proof_path is True:
-                return det_is_nonzero, t_message
-            return det_is_nonzero
-
-    def is_simple(
-        self,
-        verbose=False,
-        bypass_semisimple_check=False,
-        _return_proof_path=False,
-        *,
-        surface_singularities=False,
-        _timed_reporting: bool | None = None,
-        _reporting_threshold_s: float = 10,
-        _progress_message: str | None = None,
-        _on_timed_update=None,
-    ):
-        if isinstance(self._educed_properties.get("is_simple", None), str):
-            t_message = self._educed_properties.get("is_simple", None)
-            self._is_simple_cache = True
-            self._is_semisimple_cache = True
-            self._educed_properties["special_type"] = "simple"
-            self._is_nilpotent_cache = False
-            self._is_solvable_cache = False
-        else:
-            t_message = ""
-
-        timed = bool(_timed_reporting) if _timed_reporting is not None else False
-        threshold = float(_reporting_threshold_s)
-
-        if bypass_semisimple_check is False and self._is_semisimple_cache is None:
-            try:
-                self.is_semisimple(
-                    verbose=verbose,
-                    _timed_reporting=timed,
-                    _reporting_threshold_s=threshold,
-                    _progress_message=_progress_message,
-                    _on_timed_update=_on_timed_update,
-                )
-            except TypeError:
-                self.is_semisimple(
-                    verbose=verbose,
-                    _timed_reporting=timed,
-                    _reporting_threshold_s=threshold,
-                    _progress_message=_progress_message,
-                )
-
-        if self._is_simple_cache is None:
-
-            def _do():
-                try:
-                    return self.compute_simple_subalgebras(
-                        verbose=verbose,
-                        _timed_reporting=timed,
-                        _reporting_threshold_s=threshold,
-                        _progress_message=_progress_message,
-                        _on_timed_update=_on_timed_update,
-                        surface_singularities=surface_singularities,
-                    )
-                except TypeError:
-                    return self.compute_simple_subalgebras(
-                        verbose=verbose,
-                        _timed_reporting=timed,
-                        _reporting_threshold_s=threshold,
-                        _progress_message=_progress_message,
-                        surface_singularities=surface_singularities,
-                    )
-
-            _timed_progress_call(
-                _do,
-                timed=timed,
-                threshold_s=threshold,
-                step_desc="decomposing semisimple subalgebra into simple subalgebras",
-                continue_desc=_progress_message,
-                progress_message=None,
-                _on_timed_update=_on_timed_update,
-            )
-
-            if self._Levi_deco_cache["LD_components"][1].dimension == 0:
-                self._is_semisimple_cache = True
-                self._is_nilpotent_cache = False
-                self._is_solvable_cache = False
-                if len(self._Levi_deco_cache["simple_ideals"]) == 1:
-                    self._is_simple_cache = True
-                    self._educed_properties["special_type"] = "simple"
-                else:
-                    self._is_simple_cache = False
-                    self._educed_properties["special_type"] = "semisimple"
-            else:
-                self._is_semisimple_cache = False
-                self._is_simple_cache = False
-                if self._Levi_deco_cache["LD_components"][0].dimension == 0:
-                    self._is_solvable_cache = True
-                    if self._educed_properties["special_type"] is None:
-                        self._educed_properties["special_type"] = "solvable"
-
-        if _return_proof_path is True:
-            return self._is_simple_cache, t_message
-        return self._is_simple_cache
-
     def is_subspace_subalgebra(
         self,
         elements,
@@ -1449,7 +3039,6 @@ class algebra_class(dgcv_class):
             - Otherwise, returns True if the elements form a subspace subalgebra, False otherwise.
         """
 
-        # Perform linear independence check
         if surface_singularities is None and self._parameters:
             surface_singularities = True
         filtered_elem = self.filter_independent_elements(
@@ -1460,24 +3049,22 @@ class algebra_class(dgcv_class):
         new_dim = len(filtered_elem)
         linearly_independent = len(elements) == len(filtered_elem)
         closed_under_product = True
+        skew = self.is_skew_symmetric()
         if return_structure_data is True:
-            structure_data = array_dgcv(
-                dict(),
-                shape=(new_dim, new_dim),
-                null_return=freeze_matrix(matrix_dgcv.zeros(new_dim, 1)),
-            )
+            structure_data = _structure_array(dict(), new_dim)
         if not isinstance(return_structure_data, bool):
             return_structure_data = False
         for count, elem in enumerate(filtered_elem):
             if closed_under_product is False:
                 break
-            lIdx = count + 1 if self.is_skew_symmetric() else 0
+            lIdx = count + 1 if skew else 0
             for j in range(lIdx, new_dim):
                 if closed_under_product is False:
                     break
+                product = elem * filtered_elem[j]
                 ic = _indep_check(
                     filtered_elem,
-                    elem * filtered_elem[j],
+                    product,
                     return_decomp_coeffs=return_structure_data,
                     surface_singularities=surface_singularities,
                 )
@@ -1488,7 +3075,7 @@ class algebra_class(dgcv_class):
                     if passCheck is True:
                         ic = _indep_check(
                             filtered_elem,
-                            elem * filtered_elem[j],
+                            product,
                             return_decomp_coeffs=return_structure_data,
                             surface_singularities=True,
                             _force_eqn_simiplify=True,
@@ -1504,11 +3091,15 @@ class algebra_class(dgcv_class):
                     structure_data = None
                 elif return_structure_data:
                     coeff_array = matrix_dgcv(
-                        {idx: coeff for idx, coeff in ic[1][0].items() if coeff != 0},
+                        {
+                            idx: coeff
+                            for idx, coeff in ic[1][0].items()
+                            if not _scalar_is_zero(coeff)
+                        },
                         shape=(new_dim, 1),
                     )
                     structure_data[count, j] = coeff_array
-                    if self.is_skew_symmetric():
+                    if skew:
                         structure_data[j, count] = -coeff_array
         if return_structure_data:
             out = {
@@ -1524,89 +3115,6 @@ class algebra_class(dgcv_class):
             return out, sing
         return out
 
-    def compute_weight(self, element, test_weights=None, flatten_weights=False):
-        return self.check_element_weight(
-            element, test_weights=test_weights, flatten_weights=flatten_weights
-        )
-
-    def check_element_weight(self, element, test_weights=None, flatten_weights=False):
-        """
-        Determines the weight vector of an algebra_element_class with respect to the grading vectors. Weight can be instead computed against another grading vector passed a list of weights as the keyword `test_weights`.
-
-        Parameters
-        ----------
-        element : algebra_element_class
-            The algebra_element_class to analyze.
-        test_weights : scalars
-        flatten_weights : (default: False) If True, returns contents of a list if otherwise would have returned a length 1 list
-
-        Returns
-        -------
-        list or weight value
-            A list of weights corresponding to the grading vectors of this algebra (or test_weights if provided).
-            Each entry is either an integer, symbolic expression, the string 'AllW' (i.e., All Weights) if the element is the zero element,
-            or 'NoW' (i.e., No Weights) if the element is not homogeneous.
-            If the list is length 1 and flatten_weights=True then only the contents of the list is returned.
-
-        Notes
-        -----
-        - 'AllW' (meaning, All Weights) is returned for zero elements, which are compatible with all weights.
-        - 'NoW' (meaning, No Weights) is returned for non-homogeneous elements that do not satisfy the grading constraints.
-        """
-        if (
-            get_dgcv_category(element) == "subalgebra_element"
-            and element.algebra.ambient == self
-        ):
-            element = element.ambient_rep
-        if (
-            not get_dgcv_category(element) == "algebra_element"
-            or element.algebra != self
-        ):
-            raise TypeError(
-                "Input in `algebra_class.check_element_weight` must be an `algebra_element` class instance belonging to the `algebra` instance whose `check_element_weight` is being called."
-            ) from None
-        if not test_weights and element._known_weight is not None:
-            if flatten_weights is True:
-                return element._known_weight[0]
-            else:
-                return element._known_weight
-
-        if element.is_zero:
-            return tuple(["AllW"] * self._gradingNumber)
-        if test_weights:
-            if not isinstance(test_weights, (list, tuple)):
-                raise TypeError(
-                    f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.).Recieved {test_weights}"
-                ) from None
-            for weight in test_weights:
-                if not isinstance(weight, (list, tuple)):
-                    raise TypeError(
-                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.). Recieved {test_weights}"
-                    ) from None
-                if self.dimension != len(weight) or not all(
-                    [isinstance(j, expr_numeric_types()) for j in weight]
-                ):
-                    raise TypeError(
-                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.) of length {self.dimension}.Recieved {test_weights}"
-                    ) from None
-            GVs = test_weights
-        else:
-            GVs = self.grading
-        weights = []
-        for grading_vector in GVs:
-            basis_weights = [
-                grading_vector[i] for i in element.coeff_dict
-            ]  ###!!! dependent on sparse encoding
-            if len(set(basis_weights)) == 1:
-                weights.append(basis_weights[0])
-            else:
-                weights.append("NoW")
-        if not test_weights:
-            element._known_weight = tuple(weights)
-        if flatten_weights and len(weights) == 1:
-            return weights[0]
-        return tuple(weights)
-
     def check_grading_compatibility(
         self, verbose=False, test_weights=None, trust_test_weight_format=False
     ):
@@ -1620,7 +3128,7 @@ class algebra_class(dgcv_class):
         test_weights : list of (lists of length self.dimension), optional
             elements in the inner lists represent weight values for basis elements to test compatibility against
         trust_test_weight_format : bool, optional (default=False)
-            Set to True to forgo sefeguard checks that test_weights is correctly formatted
+            Set to True to forgo safeguard checks that test_weights is correctly formatted
 
         Returns
         -------
@@ -1632,16 +3140,12 @@ class algebra_class(dgcv_class):
         - The algebra's zero element (weights labeled as 'AllW') are treated as compatible with all grading vectors.
         - Non-homogeneous elements (weights labeled as 'NoW') are treated as incompatible.
         """
-        defualt_check = False
+        default_check = False
         if test_weights is None:
-            defualt_check = True
+            default_check = True
             test_weights = self.grading
         elif trust_test_weight_format is False:
-            if not isinstance(test_weights, (list, tuple)):
-                raise TypeError(
-                    "The `test_weights` parameter in `algebra_class.weighted_component` must be a list/tuple of lists/tuples that length matches `algebra_class.dimension` and whose elements are weight values representing weights elements in `algebra_class.basis`."
-                )
-            elif not all(
+            if not isinstance(test_weights, (list, tuple)) or not all(
                 isinstance(j, (list, tuple)) and len(j) == self.dimension
                 for j in test_weights
             ):
@@ -1649,12 +3153,12 @@ class algebra_class(dgcv_class):
                     "The `test_weights` parameter in `algebra_class.weighted_component` must be a list/tuple of lists/tuples that length matches `algebra_class.dimension` and whose elements are weight values representing weights elements in `algebra_class.basis`."
                 )
 
-        if defualt_check is True and not self._gradingNumber:
+        if default_check is True and not self._gradingNumber:
             raise ValueError(
                 "No grading vectors are assigned to this algebra instance."
             ) from None
         if (
-            defualt_check is True
+            default_check is True
             and isinstance(self._grading_compatible, bool)
             and self._grading_report
         ):
@@ -1667,7 +3171,10 @@ class algebra_class(dgcv_class):
             for i, el1 in enumerate(self.basis):
                 for j, el2 in enumerate(self.basis):
                     product = el1 * el2
-                    product_weights = self.check_element_weight(product)
+                    product_weights = self.check_element_weight(
+                        product,
+                        test_weights=None if default_check else test_weights,
+                    )
 
                     for g, grading_vector in enumerate(test_weights):
                         expected_weight = grading_vector[i] + grading_vector[j]
@@ -1689,8 +3196,9 @@ class algebra_class(dgcv_class):
                                     "actual_weight": product_weights[g],
                                 }
                             )
-            self._grading_compatible = compatible
-            self._grading_report = failure_details
+            if default_check is True:
+                self._grading_compatible = compatible
+                self._grading_report = failure_details
 
         if verbose:
             if not compatible:
@@ -1703,7 +3211,7 @@ class algebra_class(dgcv_class):
                         f"produced weight {failure['actual_weight']}, expected {failure['expected_weight']}."
                     )
             else:
-                if defualt_check:
+                if default_check:
                     ps = "all of its assigned Z-gradings."
                 else:
                     ps = "the given weight system."
@@ -1737,7 +3245,7 @@ class algebra_class(dgcv_class):
         self._set_product_protocol()
 
         if for_associative_alg is True:
-            assume_Lie_algebra is False
+            assume_Lie_algebra = False
         elif assume_Lie_algebra is False and not self.is_Lie_algebra():
             raise ValueError(
                 "This algebra is not a Lie algebra. To compute the center for an associative algebra, set for_associative_alg=True."
@@ -1745,19 +3253,17 @@ class algebra_class(dgcv_class):
 
         el, temp_vars = linear_combination(self.basis)
         if for_associative_alg:
-            eqns = sum(
-                [
-                    list((el * other - other * el).coeff_dict.values())
-                    for other in self.basis
-                ],
-                [],
-            )
+            eqns = [
+                v
+                for other in self.basis
+                for v in (el * other - other * el).coeff_dict.values()
+            ]
         else:
-            eqns = sum(
-                [list((el * other).coeff_dict.values()) for other in self.basis], []
-            )
+            eqns = [v for other in self.basis for v in (el * other).coeff_dict.values()]
 
-        solutions = solve_dgcv(eqns, temp_vars, method="linsolve")
+        solutions = solve_dgcv(
+            eqns, temp_vars, method="linsolve", simplify_result=False
+        )
         if not solutions:
             dgcv_warning(
                 "The internal solver (determined by whichever symbolic engine set in defaults) returned no solutions, indicating that this computation of the center failed, as solutions do exist. An empty list is being returned."
@@ -1766,483 +3272,19 @@ class algebra_class(dgcv_class):
 
         el_sol = el.subs(solutions[0])
 
-        free_variables = tuple(
-            set.union(*[get_free_symbols(j) for j in el_sol.coeff_dict.values()])
-        )
+        free_variable_set = set()
+        for j in el_sol.coeff_dict.values():
+            free_variable_set |= set(get_free_symbols(j))
+        if not free_variable_set:
+            return []
+        free_variables = tuple(sorted(free_variable_set, key=str))
+        zeroing = {v: 0 for v in free_variables}
 
         return_list = []
         for var in free_variables:
-            basis_element = el_sol.subs({var: 1}).subs(
-                [(other_var, 0) for other_var in free_variables if other_var != var]
-            )
-            return_list.append(basis_element)
+            return_list.append(el_sol.subs({**zeroing, var: 1}))
 
         return return_list  ###!!! return subalgebra instead
-
-    def compute_derived_algebra(self, from_subalg=None):
-        """
-        Computes the derived algebra (commutator subalgebra) for Lie algebras.
-
-        Returns
-        -------
-        algebra
-            A new algebra instance representing the derived algebra.
-
-        Raises
-        ------
-        ValueError
-            If the algebra is not a Lie algebra or if the derived algebra cannot be computed.
-
-        Notes
-        -----
-        - This method only applies to Lie algebras.
-        - The derived algebra is generated by all products [x, y] = x * y, where * is the Lie bracket.
-        """
-        if get_dgcv_category(from_subalg) == "subalgebra":
-            refAlg = from_subalg
-        else:
-            refAlg = self
-        refAlg._set_product_protocol()
-
-        ###!!!
-        # refAlg._require_lie_algebra("compute_derived_algebra")
-
-        if refAlg._derived_subalg_cache is None:
-            commutators = []
-            for j, el1 in enumerate(refAlg.basis):
-                for k in range(j + 1, len(refAlg.basis)):
-                    commutators.append(el1 * refAlg.basis[k])
-            refAlg._derived_subalg_cache = refAlg.subalgebra(
-                commutators, span_warning=False, simplify_basis=True
-            )
-        return refAlg._derived_subalg_cache
-
-    def filter_independent_elements(
-        self,
-        elements,
-        apply_light_basis_simplification=False,
-        return_indices: bool = False,
-        surface_singularities: bool = False,
-        simplify_singularities: bool = None,
-    ):
-        """
-        Filters a set of elements to retain only a linearly independent subset.
-
-        Parameters
-        ----------
-        elements : list of algebra_element_class
-            The set of elements to filter.
-
-        Returns
-        -------
-        list of algebra_element_class
-            A subset of the input elements that are linearly independent and unique.
-        """
-        warning_message = ""
-        remain_subalg = True
-        subalg = None
-        if not isinstance(elements, (list, tuple)):
-            warning_message += (
-                "\n The given value for `elements` is not a list or tuple"
-            )
-        else:
-            nonAE, wrongAlgebra, correct = [], [], []
-            typeCheck = {"algebra_element", "subalgebra_element"}
-            for elem in elements:
-                if elem == 0:
-                    continue
-                if remain_subalg is True:
-                    if get_dgcv_category(elem) == "algebra_element":
-                        remain_subalg = False
-                    elif get_dgcv_category(elem) == "subalgebra_element":
-                        if subalg is None:
-                            subalg = elem.algebra
-                        elif subalg != elem.algebra:
-                            remain_subalg = False
-                if get_dgcv_category(elem) not in typeCheck:
-                    nonAE.append(elem)
-                elif (
-                    get_dgcv_category(elem) == "algebra_element"
-                    and elem.algebra != self
-                ) or (
-                    get_dgcv_category(elem) == "subalgebra_element"
-                    and elem.algebra.ambient != self
-                ):
-                    wrongAlgebra.append(elem)
-                else:
-                    correct.append(elem)
-            elements = correct
-            if len(nonAE) > 0:
-                warning_message += f"\n • These list elements are not `algebra_element` or `subalgebra_element` type: {nonAE}"
-            if len(wrongAlgebra) > 0:
-                warning_message += f"\n • These list elements are `algebra_element` or `subalgebra_element` type, but belong to a different, unrelated algebra: {wrongAlgebra}"
-        if warning_message:
-            raise ValueError(
-                "The `algebra` method `filter_independent_elements` can only be applied to lists of elements belong to the parent algebra the method is called from or any its subalgebras. Given data has the following problems:"
-                + warning_message
-            ) from None
-
-        if remain_subalg is False:
-            elements = [
-                (
-                    elem.ambient_rep
-                    if get_dgcv_category(elem) == "subalgebra_element"
-                    else elem
-                )
-                for elem in elements
-            ]
-        else:
-            elements = list(elements)
-
-        if return_indices is True:
-            out = _extract_basis(
-                elements,
-                ALBS=apply_light_basis_simplification,
-                return_indices=True,
-                surface_singularities=surface_singularities,
-                simplify_singularities=simplify_singularities,
-            )
-            if surface_singularities:
-                _, idxs, sing = out
-            else:
-                _, idxs = out
-            return (idxs, sing) if surface_singularities else idxs
-        return _extract_basis(
-            elements,
-            ALBS=apply_light_basis_simplification,
-            surface_singularities=surface_singularities,
-            simplify_singularities=simplify_singularities,
-        )
-
-    def lower_central_series(
-        self,
-        max_depth=None,
-        format_as_subalgebras=False,
-        from_subalg=None,
-        align_nested_bases=False,
-    ):
-        """
-        Computes the lower central series of the algebra (or given subalgebra).
-
-        Parameters
-        ----------
-        max_depth : int, optional
-            Maximum depth to compute the series. Defaults to the dimension of the algebra.
-        from_subalg : subalgebra_class, optional
-            performs computation the subalgebra instead of self
-
-        Returns
-        -------
-        list of lists
-            A list where each entry contains the basis for that level of the lower central series.
-
-        Notes
-        -----
-        - The lower central series is defined as:
-            g_1 = g,
-            g_{k+1} = [g_k, g]
-        """
-        if get_dgcv_category(from_subalg) == "subalgebra":
-            refAlg = from_subalg
-        else:
-            refAlg = self
-        refAlg._set_product_protocol()
-        scoped_basis = list(refAlg.basis)
-        if refAlg._lower_central_series_cache is None:
-            if max_depth is None:
-                max_depth = max(refAlg.dimension, 1)
-            series = []
-            current_basis = scoped_basis
-            previous_length = len(current_basis)
-
-            for _ in range(max_depth):
-                series.append(current_basis)
-
-                lower_central = []
-                for el1 in current_basis:
-                    for el2 in scoped_basis:
-                        commutator = el1 * el2
-                        lower_central.append(commutator)
-                independent_generators = self.filter_independent_elements(
-                    lower_central, apply_light_basis_simplification=True
-                )
-                if len(independent_generators) == 0:
-                    if len(scoped_basis) > 0:
-                        series.append([])
-                    break
-                if len(independent_generators) == previous_length:
-                    break
-                current_basis = independent_generators
-                previous_length = len(independent_generators)
-            if len(series) > 1 and refAlg._derived_subalg_cache is None:
-                refAlg._derived_subalg_cache = self.subalgebra(
-                    series[1], span_warning=False, simplify_basis=True
-                )
-            refAlg._lower_central_series_cache = (
-                series,
-                False,
-            )  # series, alignment bool
-        if (
-            align_nested_bases is True
-            and refAlg._lower_central_series_cache[1] is False
-        ):
-            if len(refAlg._lower_central_series_cache[0]) > 0 and get_dgcv_category(
-                refAlg._lower_central_series_cache[0][0]
-            ) in {"algebra", "subalgebra"}:
-                ser = [list(alg.basis) for alg in refAlg._lower_central_series_cache[0]]
-            else:
-                ser = refAlg._lower_central_series_cache[0]
-            new_series = [ser[-1]]
-            depth = len(ser)
-            for idx in range(1, depth):
-                old_level = ser[depth - 1 - idx]
-                discrep = len(old_level) - len(ser[depth - idx])
-                new_level = list(new_series[0])
-                for idx2 in range(len(old_level)):
-                    if discrep == 0:
-                        break
-                    elem = old_level[-1 - idx2]
-                    if _indep_check(ser[depth - idx], elem):
-                        new_level.insert(0, elem)
-                        discrep += -1
-                new_series.insert(0, new_level)
-            refAlg._lower_central_series_cache = (
-                new_series,
-                True,
-            )  # series, alignment bool
-        if format_as_subalgebras:
-            if len(refAlg._lower_central_series_cache[0]) > 0 and isinstance(
-                refAlg._lower_central_series_cache[0][0], list
-            ):
-                refAlg._lower_central_series_cache = (
-                    [
-                        refAlg.subalgebra(sa, span_warning=False)
-                        for sa in refAlg._lower_central_series_cache[0]
-                    ],
-                    refAlg._lower_central_series_cache[1],
-                )
-            returnSer = refAlg._lower_central_series_cache[0]
-        else:
-            if len(refAlg._lower_central_series_cache[0]) > 0 and get_dgcv_category(
-                refAlg._lower_central_series_cache[0][0]
-            ) in {"algebra", "subalgebra"}:
-                returnSer = [
-                    list(alg.basis) for alg in refAlg._lower_central_series_cache[0]
-                ]
-            else:
-                returnSer = refAlg._lower_central_series_cache[0]
-        return returnSer
-
-    def derived_series(
-        self,
-        max_depth=None,
-        format_as_subalgebras=False,
-        from_subalg=None,
-        align_nested_bases=False,
-        surface_singularities=False,
-        simplify_singularities=None,
-    ):
-        """
-        Computes the derived series of the algebra.
-
-        Parameters
-        ----------
-        max_depth : int, optional
-            Maximum depth to compute the series. Defaults to the dimension of the algebra.
-
-        Returns
-        -------
-        list of lists
-            A list where each entry contains the basis for that level of the derived series.
-
-        Notes
-        -----
-        - The derived series is defined as:
-            g^{(1)} = g,
-            g^{(k+1)} = [g^{(k)}, g^{(k)}]
-        """
-        if get_dgcv_category(from_subalg) == "subalgebra":
-            refAlg = from_subalg
-        else:
-            refAlg = self
-
-        refAlg._set_product_protocol()
-        scoped_basis = list(refAlg.basis)
-        if refAlg._derived_series_cache is None:
-            if max_depth is None:
-                max_depth = max(refAlg.dimension, 1)
-
-            series = []
-            current_basis = scoped_basis
-            previous_length = len(current_basis)
-            total_sing = []
-            for _ in range(max_depth):
-                series.append(list(current_basis))
-
-                derived = []
-                for count, el1 in enumerate(current_basis):
-                    lIdx = count + 1 if refAlg.is_skew_symmetric() else 0
-                    for el2 in current_basis[lIdx:]:
-                        derived.append(el1 * el2)
-                out = self.filter_independent_elements(
-                    derived,
-                    apply_light_basis_simplification=True,
-                    surface_singularities=surface_singularities,
-                    simplify_singularities=simplify_singularities,
-                )
-                if surface_singularities:
-                    independent_generators, sing = out
-                    total_sing += sing
-                else:
-                    independent_generators = out
-                if len(independent_generators) == 0:
-                    if len(scoped_basis) > 0:
-                        series.append([])
-                    break
-                if len(independent_generators) == previous_length:
-                    break
-
-                current_basis = list(independent_generators)
-                previous_length = len(independent_generators)
-            if surface_singularities:
-                if get_dgcv_settings_registry().get(
-                    "simplify_singularity_ideals_by_default", True
-                ):
-                    refAlg._singularities["derived_series"] = expr_union_primitives(
-                        [v for v in total_sing if get_free_symbols(v)],
-                        order_coordinates(refAlg._parameters),
-                        process_rationals=True,
-                        fail_quietly=True,
-                    )
-                else:
-                    refAlg._singularities["derived_series"] = [
-                        v for v in total_sing if get_free_symbols(v)
-                    ]
-            if len(series) > 1 and refAlg._derived_subalg_cache is None:
-                refAlg._derived_subalg_cache = self.subalgebra(
-                    series[1], span_warning=False, simplify_basis=True
-                )
-            refAlg._derived_series_cache = (series, False)  # series, alignment bool
-        if align_nested_bases is True and refAlg._derived_series_cache[1] is False:
-            if len(refAlg._derived_series_cache[0]) > 0 and get_dgcv_category(
-                refAlg._derived_series_cache[0][0]
-            ) in {"algebra", "subalgebra"}:
-                ser = [list(alg.basis) for alg in refAlg._derived_series_cache[0]]
-            else:
-                ser = refAlg._derived_series_cache[0]
-            depth = len(ser)
-            new_series = [] if depth == 0 else [ser[-1]]
-            build_step = 1
-            if (
-                len(new_series) == 1
-                and len(new_series[0]) == 1
-                and getattr(new_series[0][0], "is_zero", False)
-            ):
-                new_series.insert(0, ser[-2])
-                build_step = 2
-            for idx in range(build_step, depth):
-                old_level = ser[depth - 1 - idx]
-                discrep = len(old_level) - len(ser[depth - idx])
-                new_level = list(new_series[0])
-                for idx2 in range(len(old_level)):
-                    if discrep == 0:
-                        break
-                    elem = old_level[-1 - idx2]
-                    if _indep_check(ser[depth - idx], elem):
-                        new_level.insert(0, elem)
-                        discrep += -1
-                new_series.insert(0, new_level)
-            refAlg._derived_series_cache = (new_series, True)  # series, alignment bool
-        if format_as_subalgebras:
-            if len(refAlg._derived_series_cache[0]) > 0 and isinstance(
-                refAlg._derived_series_cache[0][0], list
-            ):
-                refAlg._derived_series_cache = (
-                    [
-                        refAlg.subalgebra(sa, span_warning=False)
-                        for sa in refAlg._derived_series_cache[0]
-                    ],
-                    refAlg._derived_series_cache[1],
-                )
-            returnSer = refAlg._derived_series_cache[0]
-        else:
-            if len(refAlg._derived_series_cache[0]) > 0 and get_dgcv_category(
-                refAlg._derived_series_cache[0][0]
-            ) in {"algebra", "subalgebra"}:
-                returnSer = [list(alg.basis) for alg in refAlg._derived_series_cache[0]]
-            else:
-                returnSer = refAlg._derived_series_cache[0]
-        return returnSer
-
-    def is_nilpotent(self, **kwargs):
-        """
-        Checks if the algebra is nilpotent.
-
-        Returns
-        -------
-        bool
-            True if the algebra is nilpotent, False otherwise.
-        """
-        if self._is_nilpotent_cache is None:
-            series = self.lower_central_series()
-            if (
-                len(series[-1]) < 2
-            ):  # to allow different conventions for formatting a trivial level basis
-                self._is_nilpotent_cache = True
-                self._educed_properties["special_type"] = "nilpotent"
-                self._is_semisimple_cache = False
-                self._is_simple_cache = False
-            else:
-                self._is_nilpotent_cache = False
-                self._is_abelian_cache = True
-        return self._is_nilpotent_cache
-
-    def is_solvable(self, **kwargs):
-        """
-        Checks if the algebra is solvable.
-
-        Returns
-        -------
-        bool
-            True if the algebra is solvable, False otherwise.
-        """
-        if self._is_solvable_cache is None:
-            if self._is_nilpotent_cache is None or self._is_nilpotent_cache is False:
-                series = self.derived_series()
-                if (
-                    len(series[-1]) < 2
-                ):  # to allow different conventions for formatting a trivial level basis
-                    self._is_solvable_cache = True
-                    self._is_semisimple_cache = False
-                    self._is_simple_cache = False
-                    self._educed_properties["special_type"] = "solvable"
-                else:
-                    self._is_solvable_cache = False
-                    self._is_abelian_cache = False
-                    self._is_nilpotent_cache = False
-            else:
-                self._is_solvable_cache = self._is_nilpotent_cache
-        return self._is_solvable_cache
-
-    def is_abelian(self, **kwargs):
-        if self._is_abelian_cache is None:
-            if self._educed_properties.get("special_type", None) == "abelian":
-                self._is_abelian_cache is True
-                self._is_nilpotent_cache = True
-                self._is_solvable_cache = True
-                self._is_semisimple_cache = False
-                self._is_simple_cache = False
-            else:
-                self._is_abelian_cache = all(
-                    _scalar_is_zero(elem) for elem in self.structureDataDict.values()
-                )
-                if self._is_abelian_cache is True:
-                    self._educed_properties["special_type"] = "abelian"
-                    self._is_nilpotent_cache = True
-                    self._is_solvable_cache = True
-                    self._is_semisimple_cache = False
-                    self._is_simple_cache = False
-        return self._is_abelian_cache
 
     def get_structure_matrix(self, table_format=True, style=None):
         """
@@ -2258,15 +3300,21 @@ class algebra_class(dgcv_class):
 
         Returns
         -------
-        list of lists or tableView object
-            The structure matrix as a list of lists or a tableView object
-            depending on the value of `table_format`.
+        list of lists
+            The structure matrix, whose (j, k)-entry is `basis[j] * basis[k]`.
 
         Notes
         -----
-        - The (j, k)-entry of the structure matrix is the result of `basis[j] * basis[k]`.
+        - `table_format` and `style` are retained for backwards compatibility
+          and have no effect. Use `multiplication_table` for rendered output.
         - If `basis_labels` is None, defaults to "_e1", "_e2", ..., "_e{d}".
         """
+        if table_format is not True or style is not None:
+            dgcv_warning(
+                "`algebra_class.get_structure_matrix` ignores its `table_format` "
+                "and `style` parameters and always returns a list of lists. Use "
+                "`algebra_class.multiplication_table` for rendered output."
+            )
 
         dimension = self.dimension
         structure_matrix = [
@@ -2277,7 +3325,7 @@ class algebra_class(dgcv_class):
 
     def is_ideal(self, subspace_elements, assume_basis=False):
         """
-        Checks if the given list of elgebra elements spans an ideal.
+        Checks if the given list of algebra elements spans an ideal.
 
         Parameters
         ----------
@@ -2312,91 +3360,20 @@ class algebra_class(dgcv_class):
 
         if assume_basis:
             b_product = wedge(*subspace_elements)
+        skew = self.is_skew_symmetric()
         for el in subspace_elements:
             for other in self.basis:
-                product = el * other
-                if assume_basis:
-                    if wedge(product, b_product).is_zero:
-                        return False
-                else:
-                    if not self.is_in_span(product, subspace_elements):
-                        return False
+                products = [el * other] if skew else [el * other, other * el]
+                for product in products:
+                    if assume_basis:
+                        if wedge(product, b_product).is_zero:
+                            return False
+                    else:
+                        if not self.is_in_span(
+                            product, subspace_elements, assume_basis=False
+                        ):
+                            return False
         return True
-
-    def is_in_span(self, element, subspace_elements, assume_basis):
-        """
-        Checks if a given algebra_element_class is in the span of subspace_elements.
-
-        Parameters
-        ----------
-        element : algebra_element_class
-            The element to check.
-        subspace_elements : list
-            A list of algebra_element_class instances representing the subspace they span.
-
-        Returns
-        -------
-        bool
-            True if the element is in the span of subspace_elements, False otherwise.
-        """
-        if (
-            not isinstance(subspace_elements, (list, tuple))
-            or len(subspace_elements) == 0
-        ):
-            return _scalar_is_zero(element)
-        if assume_basis:
-            return wedge(element, *subspace_elements)
-        combo, variables = linear_combination(subspace_elements)
-        diff = element - combo
-        eqns = list(diff.coeff_dict.values())
-        sol2 = solve_dgcv(eqns, variables, method="linsolve")
-        return bool(sol2)
-
-    def weighted_component(
-        self,
-        weights,
-        test_weights=None,
-        trust_test_weight_format=False,
-        from_subalg=None,
-    ):
-        if isinstance(weights, (set, dict)):
-            weights = list(weights)
-        if get_dgcv_category(from_subalg) == "subalgebra":
-            refAlg = from_subalg
-        else:
-            refAlg = self
-        if isinstance(weights, (list, tuple)):
-            if all(isinstance(weight, expr_numeric_types()) for weight in weights):
-                weights = [(weight,) for weight in weights]
-            elif not all(isinstance(weight, (list, tuple)) for weight in weights):
-                raise ValueError(
-                    "The `weights` parameter in `algebra_class.weighted_component` must be a list/tuple of weights/multi-weights. If giving a single multi-weight, it should be a length-1 list/tuple of lists/tuples, as otherwise a bare mult-weight tuple will be interpreted as a list of singleton weights."
-                ) from None
-            else:
-                weights = [tuple(weight) for weight in weights]
-        else:
-            raise ValueError(
-                f"The `weights` parameter in `algebra_class.weighted_component` must be a list/tuple of weights/multi-weights. If giving a single multi-weight, it should be a length-1 list/tuple of lists/tuples, as otherwise a bare mult-weight tuple will be interpreted as a list of singleton weights. Instead recieved{weights}"
-            ) from None
-        if test_weights is None:
-            test_weights = refAlg.grading
-        elif trust_test_weight_format is False:
-            if not isinstance(test_weights, (list, tuple)):
-                raise TypeError(
-                    "The `test_weights` parameter in `algebra_class.weighted_component` must be a list/tuple of lists/tuples that length matches `algebra_class.dimension` and whose elements are weight values representing weights elements in `algebra_class.basis`."
-                )
-            elif not all(
-                isinstance(j, (list, tuple)) and len(j) == refAlg.dimension
-                for j in test_weights
-            ):
-                raise TypeError(
-                    "The `test_weights` parameter in `algebra_class.weighted_component` must be a list/tuple of lists/tuples that length matches `algebra_class.dimension` and whose elements are weight values representing weights elements in `algebra_class.basis`."
-                )
-        component = []
-        for elem in refAlg.basis:
-            if elem.check_element_weight(test_weights=test_weights) in weights:
-                component.append(elem)
-        return algebra_subspace_class(component, parent_algebra=refAlg)
 
     def multiplication_table(
         self,
@@ -2588,19 +3565,28 @@ class algebra_class(dgcv_class):
         use_slices = True
         subIndices = set()
         index_map = dict()
+        pos = self._basis_index
         for count, elem in enumerate(basis):
             try:
-                idx = self.basis.index(elem)
-                index_map[idx] = count
-                subIndices.add(idx)
-            except ValueError:
+                idx = pos.get(elem)
+            except TypeError:
+                idx = None
+            if idx is None:
                 use_slices = False
                 break
+            index_map[idx] = count
+            subIndices.add(idx)
         if use_slices:
             sub_dim = len(subIndices)
+            if sub_dim != len(basis):
+                raise ValueError(
+                    "The basis provided to `algebra_class.subalgebra` contains "
+                    f"repeated elements ({len(basis)} given, {sub_dim} distinct)."
+                ) from None
+            sub_order = sorted(subIndices, key=index_map.get)
 
             def truncateBySubInd(li):
-                return [li[j] for j in subIndices]
+                return [li[j] for j in sub_order]
 
             def restrict_structure_data(data):
                 new_data = dict()
@@ -2619,11 +3605,7 @@ class algebra_class(dgcv_class):
                             raise TypeError(
                                 "The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra."
                             )
-                return array_dgcv(
-                    new_data,
-                    shape=(sub_dim, sub_dim),
-                    null_return=freeze_matrix(matrix_dgcv.zeros(sub_dim, 1)),
-                )
+                return _structure_array(new_data, sub_dim)
 
             if isinstance(grading, (list, tuple)) and all(
                 isinstance(elem, (list, tuple)) for elem in grading
@@ -2634,7 +3616,7 @@ class algebra_class(dgcv_class):
                     dgcv_warning(
                         "The `gradings` keyword given to `algebra_class.subalgebra` was in an unsupported format (i.e., not list of lists), so a valid alternate gradings vector was computed instead inherited from the parent algebra."
                     )
-                gradings = [truncateBySubInd(grading) for grading in self.grading]
+                gradings = [truncateBySubInd(vector) for vector in self.grading]
             structureData = restrict_structure_data(self.structureDataDict)
             return subalgebra_class(
                 basis,
@@ -2642,6 +3624,14 @@ class algebra_class(dgcv_class):
                 grading=gradings,
                 _compressed_structure_data=structureData,
                 _internal_lock=retrieve_passkey(),
+            )
+        if simplify_basis:
+            basis = list(
+                self.filter_independent_elements(
+                    basis,
+                    apply_light_basis_simplification=True,
+                    surface_singularities=False,
+                )
             )
         testStruct = self.is_subspace_subalgebra(
             basis,
@@ -2674,7 +3664,7 @@ class algebra_class(dgcv_class):
             _compressed_structure_data=testStruct["structure_data"],
             _internal_lock=retrieve_passkey(),
             span_warning=span_warning,
-            simplify_basis=simplify_basis,
+            simplify_basis=False,
             simplify_products_by_default=simplify_products_by_default,
             _known_singularities=ks,
         )
@@ -2693,7 +3683,7 @@ class algebra_class(dgcv_class):
     ):
         if simplify_products_by_default is None:
             simplify_products_by_default = self.simplify_products_by_default
-        if get_dgcv_category(basis) == "subalgebra_class" and basis.ambient == self:
+        if get_dgcv_category(basis) == "subalgebra" and basis.ambient == self:
             alg = basis
         else:
             alg = self.subalgebra(
@@ -2711,13 +3701,6 @@ class algebra_class(dgcv_class):
             simplify_products_by_default=simplify_products_by_default,
         )
 
-    def subspace(self, basis: list | tuple = [], grading=None, span_warning=True):
-        if grading is None:
-            grading = self.grading
-        return algebra_subspace_class(
-            basis, parent_algebra=self, test_weights=grading, span_warning=span_warning
-        )
-
     def killing_form_product(self, elem1, elem2, assume_Lie_algebra=False):
         if not self.contains(elem1, strict_types=True) or not self.contains(
             elem2, strict_types=True
@@ -2725,570 +3708,18 @@ class algebra_class(dgcv_class):
             raise TypeError(
                 "algebra_class.killing_form_product only operates on algebra elements from the dispatching algebra"
             )
-        kf = killingForm(self, assume_Lie_algebra=assume_Lie_algebra)
+        if get_dgcv_category(elem1) == "subalgebra_element":
+            elem1 = elem1.ambient_rep
+        if get_dgcv_category(elem2) == "subalgebra_element":
+            elem2 = elem2.ambient_rep
+        if self._killing_form is None:
+            self._killing_form = killingForm(
+                self, assume_Lie_algebra=assume_Lie_algebra
+            )
+        kf = self._killing_form
         vec1 = matrix_dgcv(elem1.coeff_dict, shape=(self.dimension, 1))
         vec2 = matrix_dgcv(elem2.coeff_dict, shape=(1, self.dimension))
         return (vec2 * kf * vec1)[0]
-
-    def radical(
-        self,
-        from_subalg=None,
-        assume_Lie_algebra=False,
-        surface_singularities=False,
-        simplify_singularities=None,
-    ):
-        if get_dgcv_category(from_subalg) == "subalgebra":
-            refAlg = from_subalg
-            amb_basis = from_subalg.basis_in_ambient_alg
-            parent = from_subalg.ambient
-        else:
-            refAlg = self
-            amb_basis = self.basis
-            parent = self
-        if refAlg._radical_cache is None and refAlg.dimension == 0:
-            refAlg._radical_cache = refAlg.subalgebra([], span_warning=False)
-        elif refAlg._radical_cache is None:
-            da = refAlg.compute_derived_algebra()
-            genElem, variables = linear_combination(amb_basis)
-            eqns = []
-            for elem in da.basis_in_ambient_alg:
-                eqns.append(
-                    parent.killing_form_product(
-                        genElem, elem, assume_Lie_algebra=assume_Lie_algebra
-                    )
-                )
-            if surface_singularities:
-                sol, singularities = solve_dgcv(
-                    eqns,
-                    variables,
-                    method="linsolve",
-                    return_divisors=True,
-                    pass_to_symbolic_engine=False,
-                    simplify_pivots=simplify_singularities
-                    if simplify_singularities is not None
-                    else True,
-                )
-            else:
-                sol = solve_dgcv(eqns, variables, method="linsolve")
-            if len(sol) == 0:
-                raise RuntimeError("failed to compute radical.")
-            else:
-                genSol = subs(genElem, sol[0])
-                if surface_singularities:
-                    sing = [subs(v, sol[0]) for v in singularities]
-                    sing = [v for v in sing if get_free_symbols(v)]
-                    if get_dgcv_settings_registry().get(
-                        "simplify_singularity_ideals_by_default", True
-                    ):
-                        sing = expr_union_primitives(
-                            sing,
-                            order_coordinates(refAlg._parameters),
-                            process_rationals=True,
-                            fail_quietly=True,
-                        )
-                    refAlg._singularities["radical"] = sing
-            freeVars = get_free_symbols(genSol)
-            if self._parameters:
-                freeVars = {v for v in freeVars if v not in self._parameters}
-            if len(freeVars) != 0:
-                radSpanners = []
-                for var in freeVars:
-                    radSpanners.append(
-                        genSol.subs({var: 1}).subs({v: 0 for v in freeVars})
-                    )
-            else:
-                radSpanners = []
-            refAlg._radical_cache = refAlg.subalgebra(radSpanners, span_warning=False)
-        clearVar(*listVar(temporary_only=True), report=False)
-        return refAlg._radical_cache
-
-    def compute_simple_subalgebras(
-        self,
-        verbose: bool = False,
-        *,
-        surface_singularities=False,
-        _timed_reporting: bool | None = None,
-        _reporting_threshold_s: float = 10,
-        _progress_message: str | None = None,
-        _on_timed_update=None,
-    ):
-        timed = bool(_timed_reporting) if _timed_reporting is not None else False
-        threshold = float(_reporting_threshold_s)
-        self.Levi_decomposition(
-            decompose_semisimple_fully=True,
-            verbose=verbose,
-            _timed_reporting=timed,
-            _reporting_threshold_s=threshold,
-            _progress_message=_progress_message,
-            _on_timed_update=_on_timed_update,
-            surface_singularities=surface_singularities,
-        )
-        return self._Levi_deco_cache["simple_ideals"]
-
-    def Levi_decomposition(
-        self,
-        from_subalg=None,
-        decompose_semisimple_fully=False,
-        _bust_cache=False,
-        assume_Lie_algebra=False,
-        verbose=False,
-        surface_singularities=None,
-        simplify_singularities=None,
-        _timed_reporting: bool | None = None,
-        _reporting_threshold_s: float = 10,
-        _progress_message: str | None = None,
-        _on_timed_update=None,
-    ):
-        timed = bool(_timed_reporting) if _timed_reporting is not None else False
-        threshold = float(_reporting_threshold_s)
-
-        def _time_call(fn, step_desc: str, continue_desc: str | None):
-            return _timed_progress_call(
-                fn,
-                timed=timed,
-                threshold_s=threshold,
-                step_desc=step_desc,
-                continue_desc=continue_desc,
-                progress_message=None,
-                _on_timed_update=_on_timed_update,
-            )
-
-        refAlg = self if get_dgcv_category(from_subalg) != "subalgebra" else from_subalg
-        if _bust_cache:
-            refAlg._radical_cache = None
-            refAlg._derived_series_cache = None
-            refAlg._lower_central_series_cache = None
-            refAlg._derived_subalg_cache = None
-        if surface_singularities is None:
-            surface_singularities = True if refAlg._parameters else False
-        if surface_singularities:
-            sing = []
-        if refAlg._Levi_deco_cache is None:
-            if refAlg._educed_properties.get("special_type", None) in {
-                "simple",
-                "semisimple",
-            }:
-                refAlg._Levi_deco_cache = {
-                    "LD_components": (refAlg, refAlg.subalgebra([])),
-                    "simple_ideals": None,
-                }
-            elif refAlg._educed_properties.get("special_type", None) in {
-                "nilpotent",
-                "solvable",
-                "abelian",
-            }:
-                refAlg._Levi_deco_cache = {
-                    "LD_components": (refAlg.subalgebra([]), refAlg),
-                    "simple_ideals": None,
-                }
-            else:
-                if verbose is True:
-                    print("Deriving (or retrieving) maximal solvable ideal...")
-
-                rad = _time_call(
-                    lambda: refAlg.radical(
-                        assume_Lie_algebra=assume_Lie_algebra,
-                        surface_singularities=surface_singularities,
-                        simplify_singularities=simplify_singularities,
-                    ),
-                    "deriving the maximal solvable ideal",
-                    "compute the max. solvable ideal's derived series",
-                )
-                if surface_singularities:
-                    sing += getattr(refAlg, "_singularities", {}).get("radical", [])
-                    new_sing = refAlg._singularities.get("LD", []) + [
-                        v for v in sing if get_free_symbols(v)
-                    ]
-                    if get_dgcv_settings_registry().get(
-                        "simplify_singularity_ideals_by_default", True
-                    ):
-                        new_sing = expr_union_primitives(
-                            new_sing,
-                            order_coordinates(refAlg._parameters),
-                            process_rationals=True,
-                            fail_quietly=True,
-                        )
-                    refAlg._singularities["LD"] = new_sing
-                if len(rad.basis) > 0:
-                    if verbose is True:
-                        print(
-                            "Finding a semisimple complement to the max. solvable ideal..."
-                        )
-
-                    rad_seq = _time_call(
-                        lambda: rad.derived_series(
-                            align_nested_bases=True,
-                            surface_singularities=surface_singularities,
-                            simplify_singularities=simplify_singularities,
-                        ),
-                        "computing the max. solvable ideal's derived series",
-                        "compute a semisimple complement to the maximal solvable ideal",
-                    )
-                    if surface_singularities:
-                        sing += getattr(rad, "_singularities", {}).get(
-                            "derived_series", set()
-                        )
-                        new_sing = refAlg._singularities.get("LD", []) + [
-                            v for v in sing if get_free_symbols(v)
-                        ]
-                        if get_dgcv_settings_registry().get(
-                            "simplify_singularity_ideals_by_default", True
-                        ):
-                            new_sing = expr_union_primitives(
-                                new_sing,
-                                order_coordinates(refAlg._parameters),
-                                process_rationals=True,
-                                fail_quietly=True,
-                            )
-                        refAlg._singularities["LD"] = new_sing
-
-                    def _compute_complement():
-                        local_rad_seq = (
-                            rad_seq[:-1] if rad_seq else []
-                        )  ###!!! note convention
-                        local_rad_seq.append([])
-
-                        discrep = refAlg.dimension - len(local_rad_seq[0])
-                        naiveBasis = []
-                        augment_NB = list(local_rad_seq[0])
-                        for elem in refAlg.basis:
-                            if len(naiveBasis) == discrep:
-                                break
-                            indep = _indep_check(
-                                augment_NB,
-                                elem,
-                                surface_singularities=surface_singularities,
-                            )
-                            if surface_singularities:
-                                indep, sing = indep
-                                new_sing = refAlg._singularities.get("LD", []) + [
-                                    v for v in sing if get_free_symbols(v)
-                                ]
-                                if get_dgcv_settings_registry().get(
-                                    "simplify_singularity_ideals_by_default", True
-                                ):
-                                    new_sing = expr_union_primitives(
-                                        new_sing,
-                                        order_coordinates(refAlg._parameters),
-                                        process_rationals=True,
-                                        fail_quietly=True,
-                                    )
-                                refAlg._singularities["LD"] = new_sing
-                            if indep:
-                                augment_NB.append(elem)
-                                naiveBasis.append(elem)
-                        ss_dim = len(naiveBasis)
-
-                        for idx in range(len(local_rad_seq)):
-                            if idx == len(local_rad_seq) - 1:
-                                compare_set = local_rad_seq[idx]
-                                quot_set = []
-                            else:
-                                rad_discrep = len(local_rad_seq[idx]) - len(
-                                    local_rad_seq[idx + 1]
-                                )
-                                compare_set = local_rad_seq[idx][:rad_discrep]
-                                quot_set = local_rad_seq[idx][rad_discrep:]
-                            compLen = len(compare_set)
-
-                            variables = []
-                            basis_modifiers = []
-                            for count in range(len(naiveBasis)):
-                                if compLen > 0:
-                                    w_sum, w_vars = linear_combination(
-                                        compare_set, prefix=f"_v_{count}_"
-                                    )
-                                    variables += w_vars
-                                    basis_modifiers.append(w_sum)
-                                else:
-                                    basis_modifiers.append(0 * naiveBasis[0])
-
-                            leading_coeffs = {}
-                            trailing_coeffs = {}
-                            eqns = []
-                            for idx1 in range(ss_dim):
-                                for idx2 in range(idx1 + 1, ss_dim):
-                                    w1, w2 = naiveBasis[idx1], naiveBasis[idx2]
-                                    lb = w1 * w2
-                                    surfacing = (
-                                        True
-                                        if refAlg._parameters or surface_singularities
-                                        else False
-                                    )
-                                    lb_decomp = _indep_check(
-                                        naiveBasis + local_rad_seq[idx],
-                                        lb,
-                                        return_decomp_coeffs=True,
-                                        surface_singularities=surfacing,
-                                    )
-                                    if lb_decomp[0] is True:
-                                        dgcv_warning(
-                                            "The Levi decomposition algorithm encountered a bug caused by solver failing to recognize a zero. Retrying now with a heavier simplify filter.",
-                                            wc_label="debug_log",
-                                        )
-                                        lb_decomp = _indep_check(
-                                            naiveBasis + local_rad_seq[idx],
-                                            lb,
-                                            return_decomp_coeffs=True,
-                                            surface_singularities=surfacing,
-                                            _force_eqn_simiplify=True,
-                                        )
-
-                                    if surfacing:
-                                        new_sing = refAlg._singularities.get(
-                                            "LD", []
-                                        ) + [
-                                            v
-                                            for v in lb_decomp[2]
-                                            if get_free_symbols(v)
-                                        ]
-                                        if get_dgcv_settings_registry().get(
-                                            "simplify_singularity_ideals_by_default",
-                                            True,
-                                        ):
-                                            new_sing = expr_union_primitives(
-                                                new_sing,
-                                                order_coordinates(refAlg._parameters),
-                                                process_rationals=True,
-                                                fail_quietly=True,
-                                            )
-                                        refAlg._singularities["LD"] = new_sing
-                                    lb_decomp = lb_decomp[1][0]
-                                    leading_coeffs[(idx1, idx2)] = [
-                                        lb_decomp.get(idx, 0) for idx in range(ss_dim)
-                                    ]
-                                    trailing_coeffs[(idx1, idx2)] = [
-                                        lb_decomp.get(idx, 0)
-                                        for idx in range(ss_dim, ss_dim + compLen)
-                                    ]
-
-                            for idxs in leading_coeffs:
-                                oldV_sum = zip_sum(trailing_coeffs[idxs], compare_set)
-                                vTerms_sum = -zip_sum(
-                                    leading_coeffs[idxs], basis_modifiers
-                                )
-                                newV = (
-                                    naiveBasis[idxs[0]] * basis_modifiers[idxs[1]]
-                                    - naiveBasis[idxs[1]] * basis_modifiers[idxs[0]]
-                                )
-                                qTerms_sum, t_vars = linear_combination(
-                                    quot_set, prefix=f"tv_{idxs[0]}_{idxs[1]}_"
-                                )
-                                variables += t_vars
-                                eqns.append(oldV_sum + vTerms_sum + qTerms_sum + newV)
-                            if surface_singularities:
-                                sol, _ = solve_dgcv(
-                                    eqns,
-                                    variables,
-                                    method="linsolve",
-                                    return_divisors=True,
-                                    pass_to_symbolic_engine=False,
-                                    simplify_pivots=simplify_singularities
-                                    if simplify_singularities is not None
-                                    else True,
-                                )
-                            else:
-                                sol = solve_dgcv(eqns, variables, method="linsolve")
-                            if len(sol) == 0:
-                                if not all(
-                                    getattr(eqn, "is_zero", False) for eqn in eqns
-                                ):
-                                    dgcv_warning(
-                                        f"eqn: {eqns},\\n variables{variables},\\n sol: {sol}",
-                                        wc_label="debug_log",
-                                    )
-                                    raise RuntimeError(
-                                        "solver failed during the dgcv Levi decomposition algorithm."
-                                    )
-                                new_basis = list(naiveBasis)
-                            else:
-                                new_basis = [
-                                    (w + v).subs(sol[0])
-                                    for w, v in zip(naiveBasis, basis_modifiers)
-                                ]
-                            free_variables = set()
-                            for nb in new_basis:
-                                free_variables |= set.union(
-                                    *[
-                                        get_free_symbols(j)
-                                        for j in nb.coeff_dict.values()
-                                    ]
-                                )
-                            free_variables = {
-                                x for x in free_variables if x in variables
-                            }
-                            if len(free_variables) > 0:
-                                zeroing = {v: 0 for v in free_variables}
-                                target = next(iter(free_variables))
-                                new_basis = [
-                                    subs(bv, {**zeroing, target: 1}) for bv in new_basis
-                                ]
-                            naiveBasis = new_basis
-                        return self.subalgebra(
-                            naiveBasis, span_warning=True, simplify_basis=True
-                        )
-
-                    Levi_component = _time_call(
-                        _compute_complement,
-                        "computing a semisimple complement to the max. solvable ideal",
-                        "decompose the semisimple component into simple ideals"
-                        if decompose_semisimple_fully
-                        else _progress_message,
-                    )
-                else:
-                    Levi_component = refAlg
-
-                refAlg._Levi_deco_cache = {
-                    "LD_components": (Levi_component, rad),
-                    "simple_ideals": None,
-                }
-
-        if (
-            decompose_semisimple_fully is True
-            and refAlg._Levi_deco_cache.get("LD_components", None) is not None
-            and refAlg._Levi_deco_cache.get("simple_ideals", 1) is None
-        ):
-            if verbose is True:
-                print("Decomposing semisimple subalgebra into simple subalgebras...")
-
-            Levi_component, rad = refAlg._Levi_deco_cache.get("LD_components", None)
-
-            def _decompose_semisimple():
-                simples = decompose_semisimple_algebra(
-                    Levi_component,
-                    format_as_lists_of_elements=True,
-                    surface_singularities=surface_singularities,
-                    simplify_singularities=simplify_singularities,
-                )
-                if surface_singularities is True:
-                    simples, sing = simples
-                new_basis = []
-                simple_ideals = []
-                for comp in simples:
-                    new_basis += comp
-                    simple_ideals.append(
-                        Levi_component.subalgebra(comp, simplify_basis=True)
-                    )
-                new_Levi = Levi_component.subalgebra(new_basis)
-                if surface_singularities:
-                    return new_Levi, tuple(simple_ideals), sing
-                return new_Levi, tuple(simple_ideals)
-
-            out = _time_call(
-                _decompose_semisimple,
-                "decomposing algebra into simple ideals",
-                _progress_message,
-            )
-            if surface_singularities is True:
-                new_Levi, simple_ideals, sing = out
-                new_sing = refAlg._singularities.get("simple_ideals", []) + [
-                    v for v in sing if get_free_symbols(v)
-                ]
-                if get_dgcv_settings_registry().get(
-                    "simplify_singularity_ideals_by_default", True
-                ):
-                    new_sing = expr_union_primitives(
-                        new_sing,
-                        order_coordinates(refAlg._parameters),
-                        process_rationals=True,
-                        fail_quietly=True,
-                    )
-                refAlg._singularities["simple_ideals"] = new_sing
-            else:
-                new_Levi, simple_ideals = out
-            refAlg._Levi_deco_cache["LD_components"] = (new_Levi, rad)
-            refAlg._Levi_deco_cache["simple_ideals"] = simple_ideals
-
-        return refAlg._Levi_deco_cache.get("LD_components", None)
-
-    def center(
-        self,
-        from_subalg=None,
-        surface_singularities: bool = None,
-        simplify_singularities: bool = None,
-        format_as_subalgebra=True,
-    ):
-        if get_dgcv_category(from_subalg) == "subalgebra":
-            refAlg = from_subalg
-        else:
-            refAlg = self
-        if surface_singularities is None:
-            surface_singularities = True if refAlg._parameters else False
-        if refAlg._center_cache is None:
-            if refAlg.dimension == 0:
-                refAlg._center_cache = refAlg.subalgebra([])
-                if format_as_subalgebra:
-                    return refAlg._center_cache
-                return refAlg._center_cache.basis
-            gene, variables = linear_combination(refAlg.basis)
-            eqns = (
-                [gene * elem for elem in refAlg.basis]
-                if refAlg.is_skew_symmetric()
-                else [gene * elem for elem in refAlg.basis]
-                + [elem * gene for elem in refAlg.basis]
-            )
-            if surface_singularities is True:
-                sol, sing = solve_dgcv(
-                    eqns,
-                    variables,
-                    return_divisors=True,
-                    pass_to_symbolic_engine=False,
-                    simplify_pivots=simplify_singularities
-                    if simplify_singularities is not None
-                    else True,
-                )
-                sol = sol[0]
-                if get_dgcv_settings_registry().get(
-                    "simplify_singularity_ideals_by_default", True
-                ):
-                    refAlg._singularities["center"] = expr_union_primitives(
-                        [v for v in sing if get_free_symbols(v)],
-                        order_coordinates(refAlg._parameters),
-                        process_rationals=True,
-                        fail_quietly=True,
-                    )
-                else:
-                    refAlg._singularities["center"] = [
-                        v for v in sing if get_free_symbols(v)
-                    ]
-            else:
-                sol = solve_dgcv(eqns, variables)[0]
-            gsol = subs(gene, sol)
-            fv = set()
-            vset = set(variables)
-            for v in variables:
-                fv |= {x for x in get_free_symbols(sol.get(v)) if x in vset}
-            if len(fv) == 0:
-                refAlg._center_cache = refAlg.subalgebra([])
-            else:
-                zeroing = {v: 0 for v in fv}
-                refAlg._center_cache = refAlg.subalgebra(
-                    [subs(gsol, {**zeroing, v: 1}) for v in fv]
-                )
-        if format_as_subalgebra:
-            return refAlg._center_cache
-        return refAlg._center_cache.basis
-
-    @property
-    def graded_components(self):
-        if self._graded_components is None:
-            gradings = sorted(list(set([tuple(j) for j in zip(*self.grading)])))
-            gc = {}
-            for key in gradings:
-                gc[key] = self.weighted_component([key])
-            self._graded_components = gc
-        return self._graded_components
-
-    def compute_graded_component_wrt_weight_index(self, idx=0):
-        if idx not in range(len(self.grading)):
-            dgcv_warning(
-                "The provided index is out of range. `compute_graded_component_wrt_weight_index` is using 0 instead."
-            )
-            idx = 0
-        wc = dict()
-        for idxs, comp in self.graded_components.items():
-            wc[idxs[idx]] = wc.get(idxs[idx], self.subspace([])) + comp
-        return wc
 
     def subalgebra_from_grading_conditions(
         self,
@@ -3302,11 +3733,14 @@ class algebra_class(dgcv_class):
         initial_basis_index=None,
         simplify_products_by_default=None,
     ):
-        basis = [
-            elem
-            for elem in self.basis
-            if callable_bool_condition(elem.check_element_weight()) is True
-        ]
+
+        weight_of = {}
+        basis = []
+        for elem in self.basis:
+            weight = elem.check_element_weight()
+            if callable_bool_condition(weight) is True:
+                weight_of[id(elem)] = weight
+                basis.append(elem)
         if sort_basis_by_grading_weights is True:
             grad_len = len(self.grading)
             idx_order = [j for j in index_priority_for_lex_sort if j < grad_len]
@@ -3318,12 +3752,10 @@ class algebra_class(dgcv_class):
                 idx_order = range(grad_len)
             basis = sorted(
                 basis,
-                key=lambda elem: [
-                    elem.check_element_weight()[idx] for idx in idx_order
-                ],
+                key=lambda elem: [weight_of[id(elem)][idx] for idx in idx_order],
                 reverse=reverse_sort_order,
             )
-        grad = list(zip(*[elem.check_element_weight() for elem in basis]))
+        grad = list(zip(*[weight_of[id(elem)] for elem in basis]))
         return self.new_alg_from_subalgebra(
             basis,
             grading=grad,
@@ -3348,10 +3780,12 @@ class algebra_class(dgcv_class):
             "algebra",
             "subalgebra",
         }:
-            raise (
+            raise TypeError(
                 "`rep_space` must be a `dgcv` class type representing a vector space or algebra."
-            )
-        if any(isinstance(elem, matrix_dgcv) for elem in representation_basis):
+            ) from None
+        if representation_basis is not None and any(
+            isinstance(elem, matrix_dgcv) for elem in representation_basis
+        ):
             use_matrix_rep_instead_of_tensor = True
         if use_matrix_rep_instead_of_tensor is None and representation_basis is None:
             representation_basis = self.preferred_representation
@@ -3378,11 +3812,11 @@ class algebra_class(dgcv_class):
                         )
                     if elem.shape[0] != elem.shape[1]:
                         raise TypeError(
-                            f"If setting `use_matrix_rep_instead_of_tensor==True` and providing `representation_basis`, it should be a list of square matrices. Recieved a matrix of shape {elem.shape}"
+                            f"If setting `use_matrix_rep_instead_of_tensor==True` and providing `representation_basis`, it should be a list of square matrices. Received a matrix of shape {elem.shape}"
                         )
                     if rep_space.dimension != elem.shape[0]:
                         raise TypeError(
-                            f"If setting `use_matrix_rep_instead_of_tensor==True` and providing `representation_basis`, it should be a list of (d,d) matrices where d is the dimension of the reprentation space (defaults to `self`). Recieved a matrix of shape {elem.shape} and rep. space of dimension {rep_space.dimension}"
+                            f"If setting `use_matrix_rep_instead_of_tensor==True` and providing `representation_basis`, it should be a list of (d,d) matrices where d is the dimension of the reprentation space (defaults to `self`). Received a matrix of shape {elem.shape} and rep. space of dimension {rep_space.dimension}"
                         )
             t_rep = [
                 _mat_to_tensor(j, rep_space.dual(), rep_space)
@@ -3410,43 +3844,6 @@ class algebra_class(dgcv_class):
             t_rep = representation_basis
         hom = homomorphism(self, [rep_space, rep_space.dual()], t_rep)
         return linear_representation(hom)
-
-    def grading_summary(self):
-        from .._aux.printing.printing._dgcv_display import show
-
-        gradingNumber = len(self.grading)
-        graded_components = self.graded_components
-        # gradings = sorted(list(set([tuple(j) for j in zip(*self.grading)])))
-        # graded_components = {}
-        # for key in gradings:
-        #     graded_components[key] = self.weighted_component(key)
-        pref = self._repr_latex_(abbrev=True).replace("$", "")
-        if "_" in pref:
-            prefi = f"\\left({pref} \\right)_"
-        else:
-            prefi = f"{pref}_"
-        strings = []
-        for k, v in graded_components.items():
-            inner = "".join(str(j) for j in k)
-            latex = v._repr_latex_().replace("$", "").replace(r"\displaystyle", "")
-            strings.append(f"$$ {prefi}{{{inner}}} = {latex},$$")
-        if len(strings) > 1:
-            strings.insert(-1, "and")
-        strings[-1] = strings[-1][:-3] + ".$$"
-        if gradingNumber == 0:
-            show(f"The algebra ${pref}$ has no assigend grading.")
-        else:
-            if gradingNumber == 1:
-                gradPhrase = "graded"
-            elif gradingNumber == 2:
-                gradPhrase = "bi-graded"
-            elif gradingNumber == 3:
-                gradPhrase = "tri-graded"
-            else:
-                gradPhrase = f"{gradingNumber}-graded"
-            show(
-                f"The algebra ${pref}$ has {gradPhrase} components: {' '.join(strings)}"
-            )
 
     def direct_sum(
         self,
@@ -3505,6 +3902,9 @@ class algebra_class(dgcv_class):
                     elem._repr_latex_(raw=True) for elem in self.basis
                 ] + [elem._repr_latex_(raw=True) for elem in other.basis]
 
+            if register_in_vmf is not True:
+                _markers["registered"] = False
+
             return linear_representation(
                 homomorphism(self, other.endomorphism_algebra)
             ).semidirect_sum(
@@ -3557,14 +3957,23 @@ class algebra_class(dgcv_class):
             grad = None
         else:
             grad = self._grading
+        substituted = isinstance(parameter_sub_rules, dict) and bool(
+            parameter_sub_rules
+        )
         sd = (
             subs(self.structureData, parameter_sub_rules)
-            if isinstance(parameter_sub_rules, dict)
+            if substituted
             else self.structureData
         )
+        if substituted:
+            educed = dict()
+            params = set(get_free_symbols(sd))
+        else:
+            educed = dict(self._educed_properties)
+            params = set(self._parameters)
         _markers = {
-            "parameters": self._parameters,
-            "_educed_properties": self._educed_properties,
+            "parameters": params,
+            "_educed_properties": educed,
             "semidirect_decomposition": self.semidirect_decomposition,
             "tensor_decomposition": self.tensor_decomposition,
         }
@@ -3661,7 +4070,7 @@ class algebra_class(dgcv_class):
                     or len(basis_labels) != self.dimension * other.dimension
                 ):
                     dgcv_warning(
-                        f"`basis_labels` is in an unsupported format and was ignored. Recieved {basis_labels}, types: {[type(lab) for lab in basis_labels]}, target length {self.dimension}*{other.dimension}"
+                        f"`basis_labels` is in an unsupported format and was ignored. Received {basis_labels}, types: {[type(lab) for lab in basis_labels]}, target length {self.dimension}*{other.dimension}"
                     )
                     basis_labels = None
             _markers = {
@@ -3734,173 +4143,10 @@ class algebra_class(dgcv_class):
             return algebra_class({})
         if isinstance(other, expr_numeric_types()):
             return self._convert_to_tp().__rmatmul__(other)
+        return NotImplemented
 
     def dual(self, invert_grad_weights=True):
         return algebra_dual(self, invert_grad_weights=invert_grad_weights)
-
-    ###!!! broken
-    def approximate_rank(
-        self,
-        check_semisimple=False,
-        assume_semisimple=False,
-        _use_cache=False,
-        from_subalg=None,
-        surface_singularities=False,
-        simplify_singularities=None,
-    ):
-        if get_dgcv_category(from_subalg) == "subalgebra":
-            refAlg = from_subalg
-        else:
-            refAlg = self
-        if refAlg.dimension == 0:
-            refAlg._rank_approximation = 0
-            if surface_singularities:
-                return 0, []
-            return 0
-        if check_semisimple is True:
-            ssc = refAlg.is_semisimple()
-            if ssc is True:
-                assume_semisimple = True
-            elif assume_semisimple is True:
-                print(
-                    "approximate_rank recieved parameters `check_semisimple=True` and `assume_semisimple=True`, but the semisimple check returned false. The algorithm is proceeding with the `assume_semisimple` logic applied, but this is likely not wanted, and should be prevented by setting those parameters differently. Note, just setting `check_semisimple=True` is enough to use optimized algorithms in the event that the semisimple check returns true, whereas `assume_semisimple` should only be used in applications where forgoing the semisimple check entirely is wanted."
-                )
-        if _use_cache and refAlg._rank_approximation is not None:
-            if surface_singularities:
-                return refAlg._rank_approximation, []
-            return refAlg._rank_approximation
-        power = (
-            1
-            if (assume_semisimple or refAlg._is_semisimple_cache is True)
-            else refAlg.dimension
-        )
-        get_slice = refAlg._structure_data_slice
-        elem = matrix_dgcv(
-            get_slice(0), shape=refAlg.structureData.shape
-        )  # test element
-        bound = max(100, 10 * refAlg.dimension)
-        for idx in range(1, refAlg.dimension):
-            elem2 = get_slice(idx)
-            elem += random.randint(0, bound) * matrix_dgcv(
-                elem2, shape=refAlg.structureData.shape
-            )
-        rank_result = fast_rank(
-            elem**power,
-            surface_singularities=surface_singularities,
-            simplify_singularities=simplify_singularities,
-        )
-        if surface_singularities:
-            rank, divisors = rank_result
-        else:
-            rank = rank_result
-        rank = refAlg.dimension - rank
-        if (
-            not isinstance(refAlg._rank_approximation, numbers.Integral)
-            or refAlg._rank_approximation > rank
-        ):
-            refAlg._rank_approximation = rank
-        if surface_singularities:
-            return refAlg._rank_approximation, divisors
-        return refAlg._rank_approximation
-
-    def summary(
-        self,
-        generate_full_report: bool = False,
-        generate_partial_report: bool = False,
-        theme=None,
-        use_latex=None,
-        *,
-        plain_text: bool = False,
-        return_displayable: bool = False,
-        show_singularities: bool | None = None,
-        _from_subalg=None,
-        _IL=None,
-        **kwargs,
-    ):
-        dgcvSR = get_dgcv_settings_registry()
-
-        if not isinstance(theme, str):
-            theme = kwargs.get("style", None)
-            if theme is None:
-                theme = dgcvSR.get("theme", "dark")
-        if use_latex is None:
-            use_latex = dgcvSR.get("use_latex")
-
-        if (plain_text is False) and (not is_rich_displaying_available()):
-            plain_text = True
-
-        extra_support_for_math_in_tables = bool(
-            dgcvSR.get("extra_support_for_math_in_tables")
-        )
-
-        subAlg = bool(
-            get_dgcv_category(_from_subalg) == "subalgebra"
-            and _IL == retrieve_passkey()
-        )
-        refAlg = _from_subalg if subAlg else self
-        parentAlg = self
-
-        if use_latex and not plain_text:
-            algebra_name, algebra_name_cap = _alg_name_latex(parentAlg)
-        else:
-            algebra_name = (
-                parentAlg.label if getattr(parentAlg, "label", None) else "the algebra"
-            )
-            algebra_name_cap = (
-                parentAlg.label if getattr(parentAlg, "label", None) else "The algebra"
-            )
-
-        if generate_full_report or generate_partial_report:
-            updates_printed = 0
-
-            def _count_update():
-                nonlocal updates_printed
-                updates_printed += 1
-
-            def _on_update():
-                try:
-                    _count_update()
-                except Exception:
-                    return
-
-            _summary_warm_caches(
-                refAlg,
-                subAlg=subAlg,
-                reporting_threshold_s=float(7.0),
-                progress_message=None,
-                full=generate_full_report,
-                _on_timed_update=_on_update,
-            )
-            if updates_printed:
-                print()
-
-        if plain_text:
-            out = _summary_render_plain(
-                parentAlg,
-                refAlg,
-                subAlg=subAlg,
-                algebra_name=algebra_name,
-                algebra_name_cap=algebra_name_cap,
-            )
-            if return_displayable:
-                return out
-            print(out)
-            return
-
-        out = _summary_render_rich(
-            refAlg=refAlg,
-            subAlg=subAlg,
-            algebra_name=algebra_name,
-            algebra_name_cap=algebra_name_cap,
-            style=theme,
-            use_latex=use_latex,
-            extra_support_for_math_in_tables=extra_support_for_math_in_tables,
-            show_singularities=show_singularities,
-            full=generate_full_report,
-        )
-        if return_displayable:
-            return out
-        show(out)
 
 
 class algebra_dual(dgcv_class):
@@ -4197,7 +4443,7 @@ class algebra_element_class(dgcv_class):
         elif get_dgcv_category(coeff_dict) == "array":
             coeff_dict = coeff_dict._data
         else:
-            raise (
+            raise TypeError(
                 "algebra_element_class recieved unsupports coeffs parameter format."
             ) from None
         self.algebra = alg
@@ -4396,6 +4642,13 @@ class algebra_element_class(dgcv_class):
         return True
 
     @property
+    def is_literal_zero(self):
+        for j in self.coeff_dict.values():
+            if not _scalar_is_zero(j):
+                return False
+        return True
+
+    @property
     def __dgcv_zero_obstr__(self):
         cfs = []
         cfvars = set()
@@ -4527,7 +4780,7 @@ class algebra_element_class(dgcv_class):
                 )
             else:
                 other = other._convert_to_tp()
-        if get_dgcv_category("other") == "vector_space_element":
+        if get_dgcv_category(other) == "vector_space_element":
             other = other._convert_to_tp()
         if isinstance(other, expr_numeric_types()):
             other = tensorProduct("_", {tuple(): other})
@@ -4719,7 +4972,7 @@ class algebra_element_class(dgcv_class):
             if self.algebra._coproduct.get(elem, None) is None:
                 tensor_terms = []
                 for idx, e1 in enumerate(self.algebra.basis):
-                    if self.algebra.is_skew_symmetric:
+                    if self.algebra.is_skew_symmetric():
                         skew = True
                         start = idx + 1
                     else:
@@ -4755,10 +5008,10 @@ class algebra_element_class(dgcv_class):
         return (out, [j.dual() for j in self.algebra.basis]) if return_basis else out
 
     def terms(self):
-        return [c * self.algebra.basis[idx] for idx, c in self.coeff_dict()]
+        return [c * self.algebra.basis[idx] for idx, c in self.coeff_dict.items()]
 
 
-class algebra_subspace_class(dgcv_class):
+class algebra_subspace_class(_vector_space_methods, dgcv_class):
     def __init__(
         self,
         basis,
@@ -4868,110 +5121,14 @@ class algebra_subspace_class(dgcv_class):
     def __hash__(self):
         return hash(self.dgcv_vs_id)
 
-    def __contains__(self, item):
-        return item in self.basis
-
-    def update_grading(self, new_weight_vectors_list, replace_instead_of_add=False):
-        if isinstance(new_weight_vectors_list, (list, tuple)):
-            if all(isinstance(elem, (list, tuple)) for elem in new_weight_vectors_list):
-                if replace_instead_of_add is True:
-                    self.grading = [tuple(elem) for elem in new_weight_vectors_list]
-                else:
-                    grad = list(self.grading) + [
-                        tuple(elem) for elem in new_weight_vectors_list
-                    ]
-                    self.grading = grad
-            else:
-                raise TypeError(
-                    f"update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}"
-                )
-        else:
-            raise TypeError(
-                f"update_grading expects first parameter to be a list of lists. The inner lists should have length {self.dimension}"
-            )
-
-    def compute_weight(self, element, test_weights=None, flatten_weights=False):
-        return self.check_element_weight(
-            element, test_weights=test_weights, flatten_weights=flatten_weights
-        )
-
-    def check_element_weight(self, element, test_weights=None, flatten_weights=False):
-        """
-        Determines the weight vector of an algebra_element_class with respect to the grading vectors assigned to an algebra_subspace_class. Weight can be instead computed against another grading vector passed a list of weights as the keyword `test_weights`.
-
-        Parameters
-        ----------
-        element : (sub)algebra_element_class
-            The (sub)algebra_element_class to analyze.
-        test_weights : list of scalars, optional (default: None)
-        flatten_weights : (default: False) If True, returns contents of a list if otherwise would have returned a length 1 list
-
-        Returns
-        -------
-        list
-            A list of weights corresponding to the grading vectors of this algebra subspace (or test_weights if provided).
-            Each entry is either an integer, symbolic expressions, the string 'AllW' (i.e., All Weights) if the element is the zero element,
-            or 'NoW' (i.e., No Weights) if the element is not homogeneous.
-            If the list is length 1 and flatten_weights=True then only the contents of the list is returned.
-
-        Notes
-        -----
-        - 'AllW' (meaning, All Weights) is returned for zero elements, which are compatible with all weights.
-        - 'NoW' (meaning, No Weights) is returned for non-homogeneous elements that do not satisfy the grading constraints.
-        """
-        if not isinstance(element, algebra_element_class) or element.algebra != self:
-            if (
-                get_dgcv_category(element) == "subalgebra_element"
-                and element.algebra.ambient == self.ambient
-            ):
-                pass
-            else:
-                raise TypeError(
-                    "Input in `algebra_subspace_class.check_element_weight` must be an `(sub)algebra_element_class` instance belonging to the `(sub)algebra_class` instance whose `check_element_weight` is being called."
-                ) from None
-        if not test_weights:
-            if self._gradingNumber == 0:
-                raise ValueError(
-                    "This algebra subspace instance has no assigned grading vectors to test weighting w.r.t.."
-                ) from None
-        if element.is_zero:
-            return tuple(["AllW"] * self._gradingNumber)
-        if test_weights:
-            if not isinstance(test_weights, (list, tuple)):
-                raise TypeError(
-                    f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.).Recieved {test_weights}"
-                ) from None
-            for weight in test_weights:
-                if not isinstance(weight, (list, tuple)):
-                    raise TypeError(
-                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, etc.).Recieved {test_weights}"
-                    ) from None
-                if self.dimension != len(weight) or not all(
-                    [isinstance(j, expr_numeric_types()) for j in weight]
-                ):
-                    raise TypeError(
-                        f"`check_element_weight` expects `test_weights` to be None or a list/tuple of lists/tuples of weight values (int,float, or symbolic expresion) of length {self.dimension}. Recieved {test_weights}"
-                    ) from None
-            GVs = test_weights
-        else:
-            GVs = self.grading
-        weights = []
-        for grading_vector in GVs:
-            basis_weights = [
-                grading_vector[idx] for idx in element.coeff_dict
-            ]  # requires coeff_dict be sparse
-            if len(set(basis_weights)) == 1:
-                weights.append(basis_weights[0])
-            else:
-                weights.append("NoW")
-        if flatten_weights and len(weights) == 1:
-            return weights[0]
-        return tuple(weights)
-
     def contains(self, items, return_basis_coeffs=False, strict_types=False):
         if isinstance(items, (list, tuple)):
             return [
-                self.contains(item, return_basis_coeffs=return_basis_coeffs)
+                self.contains(
+                    item,
+                    return_basis_coeffs=return_basis_coeffs,
+                    strict_types=strict_types,
+                )
                 for item in items
             ]
         if strict_types is False and items == 0:
@@ -4988,24 +5145,32 @@ class algebra_subspace_class(dgcv_class):
             item = item.ambient_rep
         if not isinstance(item, algebra_element_class) or item.algebra != self.ambient:
             return False
-        if item not in self.basis:
+
+        pos = self._basis_index
+        try:
+            found = pos.get(item)
+        except TypeError:
+            found = None
+        if found is None:
             if self.dimension == 0:
                 return False
             genElement, variables = linear_combination(self.basis)
-            sol = solve_dgcv(item - genElement, variables, method="linsolve")
+            sol = solve_dgcv(
+                item - genElement, variables, method="linsolve", simplify_result=False
+            )
             if len(sol) == 0:
                 return False
         else:
             if return_basis_coeffs is True:
-                idx = (self.basis).index(item)
-                return {idx: 1}
+                return {found: 1}
         if return_basis_coeffs is True:
             s = sol[0]
-            return {
-                c: s.get(var, 0)
-                for c, var in enumerate(variables)
-                if s.get(var, 0) != 0
-            }
+            out = dict()
+            for c, var in enumerate(variables):
+                coeff = s.get(var, 0)
+                if not _scalar_is_zero(coeff):
+                    out[c] = coeff
+            return out
         return True
 
     def __iter__(self):
@@ -5096,13 +5261,14 @@ class algebra_subspace_class(dgcv_class):
             current_dim = len(previous_basis)
             if prev_dim == current_dim:
                 break
+
             for idx1, e1 in enumerate(previous_basis):
                 if idx1 < prev_dim:
                     start = prev_dim
                 else:
                     start = idx1 + 1 if skew else 0
-                for idx, e2 in enumerate(previous_basis[start:]):
-                    idx2 = idx + start
+                for idx2 in range(start, current_dim):
+                    e2 = previous_basis[idx2]
                     product = e1 * e2
                     result, cd = _indep_check(
                         basis,
@@ -5111,7 +5277,7 @@ class algebra_subspace_class(dgcv_class):
                         _solve_variables=variables,
                     )
                     if result is True:
-                        out_int = current_dim + 1
+                        out_int = len(basis)
                         sd_out[(idx1, idx2)] = {out_int: 1}
                         if skew:
                             sd_out[(idx2, idx1)] = {out_int: -1}
@@ -5124,6 +5290,10 @@ class algebra_subspace_class(dgcv_class):
                                 i: -coef for i, coef in out_coeffs.items()
                             }
         dim = len(basis)
+        sd_out = _structure_array(
+            {k: matrix_dgcv(v, shape=(dim, 1)) for k, v in sd_out.items()}, dim
+        )
+
         sd_out = array_dgcv(
             {k: matrix_dgcv(v, shape=(dim, 1)) for k, v in sd_out.items()},
             shape=(dim, dim),
@@ -5159,6 +5329,7 @@ class algebra_subspace_class(dgcv_class):
             self.basis = tuple(self.basis) + (item,)
             self.filtered_basis = tuple(self.filtered_basis) + (item,)
             self.dimension += 1
+            self._basis_index_cache = None
             self.grading = [(0,) * self.dimension]
 
 
@@ -5269,19 +5440,25 @@ def _commutant_eigenspace_vectors_old(
     ) from last_err
 
 
-def _commutant_eigenspace_vectors(mat, parameters):
+def _commutant_eigenspace_vectors(mat, free_vars, max_attempts=6):
+    ordered_vars = sorted(free_vars, key=str)
+    expected = len(ordered_vars)
     dim = mat.shape[0]
-    prefix = f"dgcvvar_{uuid.uuid4().hex[:6]}_"
-    coords = matrix_dgcv([symbol(f"{prefix}{idx}") for idx in range(dim)])
-    image = mat * coords
-    trajectories = [diff(image, para) for para in parameters]
-    eigenspaces = []
-    for traj in trajectories:
-        total_vars = get_free_symbols(traj)
-        pars = {x for x in total_vars if x in coords}
-        zeroing = {par: 0 for par in pars}
-        eigenspaces.append([subs(traj, {**zeroing, par: 1}) for par in pars])
-    return eigenspaces
+    for attempt in range(max_attempts):
+        rng = random.Random(9176 + attempt)
+        weights = rng.sample(range(1, 16 * (attempt + 2)), expected)
+        specialized = mat.subs(dict(zip(ordered_vars, weights)))
+        try:
+            packets = specialized._eigenvects_by_engine()
+        except Exception:
+            continue
+        if len(packets) != expected:
+            continue
+        vectors = [list(packet[-1]) for packet in packets]
+        if sum(len(block) for block in vectors) != dim:
+            continue
+        return vectors
+    return None
 
 
 def decompose_semisimple_algebra(
@@ -5325,9 +5502,10 @@ def decompose_semisimple_algebra(
             simplify_pivots=simplify_singularities
             if simplify_singularities is not None
             else True,
+            simplify_result=False,
         )
     else:
-        sol = solve_dgcv(mats, variables, method="linsolve")
+        sol = solve_dgcv(mats, variables, method="linsolve", simplify_result=False)
     if not sol:
         raise RuntimeError("solve_dgcv failed in decompose_semisimple_algebra.")
 
@@ -5338,9 +5516,7 @@ def decompose_semisimple_algebra(
         if v is None:
             continue
         free_vars |= get_free_symbols(v)
-    params = getattr(alg, "_parameters", set())
-    if params:
-        free_vars -= params
+    free_vars &= set(variables)
     if len(free_vars) < 2:
         out = [list(alg.basis)] if format_as_lists_of_elements else [alg]
         if surface_singularities is True:
@@ -5348,6 +5524,17 @@ def decompose_semisimple_algebra(
         return out
 
     eigspaces = _commutant_eigenspace_vectors(solMat, free_vars)
+    if eigspaces is None:
+        dgcv_warning(
+            "decompose_semisimple_algebra could not separate the simple ideals of a "
+            f"{n}-dimensional semisimple algebra whose commutant has dimension "
+            f"{len(free_vars)}. Returning the algebra undecomposed.",
+            wc_label="debug_log",
+        )
+        out = [list(alg.basis)] if format_as_lists_of_elements else [alg]
+        if surface_singularities is True:
+            return out, sing
+        return out
 
     simples = []
     for vecs in eigspaces:
@@ -5604,6 +5791,25 @@ def _timed_progress_call(
     return out
 
 
+def _merge_rank_singularities(alg, refAlg, divisors):
+    terms = [v for v in divisors if get_free_symbols(v)]
+    if not terms:
+        return
+    hosts = (alg,) if alg is refAlg else (alg, refAlg)
+    for host in hosts:
+        merged = list(host._singularities.get("subalgebra_ranks", [])) + terms
+        if get_dgcv_settings_registry().get(
+            "simplify_singularity_ideals_by_default", True
+        ):
+            merged = expr_union_primitives(
+                merged,
+                order_coordinates(host._parameters),
+                process_rationals=True,
+                fail_quietly=True,
+            )
+        host._singularities["subalgebra_ranks"] = merged
+
+
 def _summary_warm_caches(
     refAlg,
     *,
@@ -5611,46 +5817,112 @@ def _summary_warm_caches(
     reporting_threshold_s: float = 10.0,
     progress_message: str | None = None,
     full=False,
+    force_heavy_solve: bool = False,
     _on_timed_update=None,
 ):
     thr = float(reporting_threshold_s)
+    heavy = bool(force_heavy_solve)
+
+    def _timed_kwargs(continue_desc):
+        return {
+            "_timed_reporting": True,
+            "_reporting_threshold_s": thr,
+            "_progress_message": continue_desc,
+            "_on_timed_update": _on_timed_update,
+        }
+
+    def _timed_step(fn, step_desc, continue_desc):
+        try:
+            return _timed_progress_call(
+                fn,
+                timed=True,
+                threshold_s=thr,
+                step_desc=step_desc,
+                continue_desc=continue_desc,
+                progress_message=None,
+                _on_timed_update=_on_timed_update,
+            )
+        except Exception:
+            return None
+
+    def _warm_ideal_ranks():
+        ld = getattr(refAlg, "_Levi_deco_cache", None)
+        simples = ld.get("simple_ideals", None) if isinstance(ld, dict) else None
+        if not simples:
+            return
+        surfacing = bool(getattr(refAlg, "_parameters", None))
+        total = len(simples)
+        for idx, ideal in enumerate(simples, start=1):
+            if getattr(ideal, "_rank_approximation", None) is not None:
+                continue
+            out = _timed_step(
+                lambda a=ideal: a.approximate_rank(
+                    _use_cache=True,
+                    assume_semisimple=True,
+                    surface_singularities=surfacing,
+                ),
+                f"estimating the rank of simple ideal {idx} of {total}",
+                progress_message
+                if idx == total
+                else "finish estimating the ranks of the simple ideals",
+            )
+            if surfacing and isinstance(out, tuple) and len(out) == 2:
+                try:
+                    _merge_rank_singularities(ideal, refAlg, out[1])
+                except Exception:
+                    pass
 
     is_lie = refAlg.is_Lie_algebra(
         verbose=False,
-        _timed_reporting=True,
-        _reporting_threshold_s=thr,
-        _progress_message=progress_message,
-        _on_timed_update=_on_timed_update,
+        **_timed_kwargs(progress_message),
     )
 
     if not is_lie:
         return
 
+    recovered = False
     try:
         refAlg.Levi_decomposition(
             decompose_semisimple_fully=full,
             verbose=False,
-            _timed_reporting=True,
-            _reporting_threshold_s=thr,
-            _progress_message=progress_message,
-            _on_timed_update=_on_timed_update,
+            force_heavy_solve=heavy,
+            **_timed_kwargs(progress_message),
         )
     except Exception:
-        if subAlg and not refAlg._parameters:
+        if not heavy and refAlg._parameters:
             print(
-                "A decomposition subroutine failed; proceeding with a partial report."
-                "Currently, summary is not fully tested for subalgebras, and that may be the reason."
-                "Suggestion: convert to an algebra_class via the subalgebra copy method."
+                "A decomposition subroutine failed. Since the algebra's structure "
+                "equations involve parameters, retrying with the heavier solve "
+                "algorithm."
             )
-        else:
-            addon = (
-                ", likely due to a presence of parameters in the algebra structure equations which is not fully tested across the algebra_class methods"
-                if refAlg._parameters
-                else ""
-            )
-            print(
-                f"A decomposition subroutine failed{addon}; proceeding with a partial report."
-            )
+            try:
+                refAlg.Levi_decomposition(
+                    decompose_semisimple_fully=full,
+                    verbose=False,
+                    force_heavy_solve=True,
+                    _bust_cache=True,
+                    **_timed_kwargs(progress_message),
+                )
+                recovered = True
+                heavy = True
+            except Exception:
+                recovered = False
+        if not recovered:
+            if subAlg and not refAlg._parameters:
+                print(
+                    "A decomposition subroutine failed; proceeding with a partial report."
+                    "Currently, summary is not fully tested for subalgebras, and that may be the reason."
+                    "Suggestion: convert to an algebra_class via the subalgebra copy method."
+                )
+            else:
+                addon = (
+                    ", likely due to a presence of parameters in the algebra structure equations which is not fully tested across the algebra_class methods"
+                    if refAlg._parameters
+                    else ""
+                )
+                print(
+                    f"A decomposition subroutine failed{addon}; proceeding with a partial report."
+                )
 
     rad = None
     try:
@@ -5667,88 +5939,60 @@ def _summary_warm_caches(
         except Exception:
             rad = None
 
-    try:
-        if rad is not None and getattr(rad, "dimension", 0) != 0:
-            _timed_progress_call(
-                lambda: rad.derived_series(),
-                timed=True,
-                threshold_s=thr,
-                step_desc="computing the maximal solvable ideal's derived series",
-                continue_desc=progress_message,
-                progress_message=None,
-                _on_timed_update=_on_timed_update,
-            )
-            _timed_progress_call(
-                lambda: rad.lower_central_series(),
-                timed=True,
-                threshold_s=thr,
-                step_desc="computing the maximal solvable ideal's lower central series",
-                continue_desc=progress_message,
-                progress_message=None,
-                _on_timed_update=_on_timed_update,
-            )
-            if full:
-                _timed_progress_call(
-                    lambda: refAlg.center(),
-                    timed=True,
-                    threshold_s=thr,
-                    step_desc="computing the center",
-                    continue_desc=progress_message,
-                    progress_message=None,
-                    _on_timed_update=_on_timed_update,
-                )
-    except Exception:
-        pass
+    if rad is not None and getattr(rad, "dimension", 0) != 0:
+        _timed_step(
+            lambda: rad.derived_series(force_heavy_solve=heavy),
+            "computing the maximal solvable ideal's derived series",
+            "compute the maximal solvable ideal's lower central series",
+        )
+        _timed_step(
+            lambda: rad.lower_central_series(),
+            "computing the maximal solvable ideal's lower central series",
+            "compute the center" if full else progress_message,
+        )
+
+    if full:
+        _timed_step(
+            lambda: refAlg.center(),
+            "computing the center",
+            progress_message,
+        )
 
     try:
-        if not refAlg.is_abelian():
+        abelian = refAlg.is_abelian(**_timed_kwargs(progress_message))
+    except Exception:
+        abelian = None
+
+    if not abelian:
+        try:
+            is_ss = refAlg.is_semisimple(
+                verbose=False,
+                **_timed_kwargs(progress_message),
+            )
+        except Exception:
+            is_ss = False
+
+        if is_ss:
             try:
-                is_ss = refAlg.is_semisimple(
+                refAlg.is_simple(
                     verbose=False,
-                    _timed_reporting=True,
-                    _reporting_threshold_s=thr,
-                    _progress_message=progress_message,
-                    _on_timed_update=_on_timed_update,
+                    **_timed_kwargs(progress_message),
                 )
             except Exception:
-                is_ss = False
+                pass
+        else:
+            try:
+                is_sol = refAlg.is_solvable(**_timed_kwargs(progress_message))
+            except Exception:
+                is_sol = False
 
-            if is_ss:
-                try:  # DEBUG
-                    refAlg.is_simple(
-                        verbose=False,
-                        _timed_reporting=True,
-                        _reporting_threshold_s=thr,
-                        _progress_message=progress_message,
-                        _on_timed_update=_on_timed_update,
-                    )
+            if is_sol:
+                try:
+                    refAlg.is_nilpotent(**_timed_kwargs(progress_message))
                 except Exception:
                     pass
-            else:
-                try:
-                    is_sol = refAlg.is_solvable(
-                        verbose=False,
-                        _timed_reporting=True,
-                        _reporting_threshold_s=thr,
-                        _progress_message=progress_message,
-                        _on_timed_update=_on_timed_update,
-                    )
-                except Exception:
-                    is_sol = False
 
-                if is_sol:
-                    try:
-                        refAlg.is_nilpotent(
-                            verbose=False,
-                            _timed_reporting=True,
-                            _reporting_threshold_s=thr,
-                            _progress_message=progress_message,
-                            _on_timed_update=_on_timed_update,
-                        )
-                    except Exception:
-                        pass
-    except Exception:
-        pass
+    _warm_ideal_ranks()
 
 
 def _summary_render_plain(
@@ -6691,6 +6935,79 @@ def trace_matrix(A):
     return trace_value
 
 
+def _structure_array(data, dim):
+    return array_dgcv(
+        data,
+        shape=(dim, dim),
+        null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1)),
+    )
+
+
+def _flatten_structure_data(structure_data, _source="algebra_class"):
+    sdd = dict()
+    unspool = structure_data._unspool
+    for idx, val in structure_data._data.items():
+        val_data = getattr(val, "_data", None)
+        if val_data is None:
+            raise TypeError(
+                f"The `{_source}` initializer received data in an unsupported format."
+            )
+        idx1, idx2 = unspool(idx)
+        for idx3, v in val_data.items():
+            sdd[(idx1, idx2, idx3)] = v
+    return sdd
+
+
+def _harvest_structure_singularities(structure_data, parameters):
+    struct_sing = set()
+    for slot in structure_data._data.values():
+        for v in slot._data.values():
+            _, d = as_numer_denom(v)
+            if get_free_symbols(d):
+                struct_sing.add(d)
+    if get_dgcv_settings_registry().get("simplify_singularity_ideals_by_default", True):
+        return expr_union_primitives(
+            struct_sing,
+            order_coordinates(parameters),
+            process_rationals=True,
+            fail_quietly=True,
+        )
+    return list(struct_sing)
+
+
+def _ordered_union(first, second):
+    out = list(first)
+    seen = set(out)
+    for item in second:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def _fresh_solve_variables(count):
+    pref = "v" + uuid.uuid4().hex[:8]
+    return [symbol(f"{pref}{j}") for j in range(count)]
+
+
+def _solve_weight_kwargs(
+    heavy, surface_singularities, simplify_singularities, method="linsolve"
+):
+    kwargs = {"method": method, "simplify_result": False}
+    if surface_singularities:
+        kwargs["return_divisors"] = True
+        kwargs["pass_to_symbolic_engine"] = False
+        if heavy:
+            kwargs["simplify_pivots"] = True
+        else:
+            kwargs["simplify_pivots"] = (
+                simplify_singularities if simplify_singularities is not None else True
+            )
+    elif heavy:
+        kwargs["simplify_pivots"] = True
+    return kwargs
+
+
 def _indep_check(
     elems,
     newE,
@@ -6701,6 +7018,7 @@ def _indep_check(
     surface_singularities=False,
     simplify_singularities=None,
     _force_eqn_simiplify=False,
+    force_heavy_solve=False,
 ):
     if not isinstance(elems, (list, tuple)) or len(elems) == 0:
         if return_decomp_coeffs:
@@ -6710,30 +7028,34 @@ def _indep_check(
         if return_decomp_coeffs:
             return (False, [{}], []) if surface_singularities else (False, [{}])
         return (False, []) if surface_singularities else False
-    if _solve_variables is None or len(_solve_variables) < len(elems):
-        pref = "v" + uuid.uuid4().hex[:8]
-        variables = [symbol(f"{pref}{j}") for j in range(len(elems))]
+    count = len(elems)
+    if _solve_variables is None or len(_solve_variables) < count:
+        variables = _fresh_solve_variables(count)
     else:
-        variables = _solve_variables[: len(elems)]
+        variables = _solve_variables[:count]
     eqn = sum(c * elem for c, elem in zip(variables, elems)) - newE
-    if _force_eqn_simiplify:
+    if _force_eqn_simiplify or force_heavy_solve:
         eqn = simplify(eqn)
 
+    solve_kwargs = _solve_weight_kwargs(
+        force_heavy_solve,
+        surface_singularities,
+        simplify_singularities,
+        method=method,
+    )
     if surface_singularities:
         sol, sing = solve_dgcv(
             eqn,
             variables,
             print_solve_stats=print_solve_stats,
-            method=method,
-            return_divisors=True,
-            pass_to_symbolic_engine=False,
-            simplify_pivots=simplify_singularities
-            if simplify_singularities is not None
-            else True,
+            **solve_kwargs,
         )
     else:
         sol = solve_dgcv(
-            eqn, variables, print_solve_stats=print_solve_stats, method=method
+            eqn,
+            variables,
+            print_solve_stats=print_solve_stats,
+            **solve_kwargs,
         )
     if len(sol) == 0:
         if return_decomp_coeffs:
@@ -6744,18 +7066,20 @@ def _indep_check(
     if return_decomp_coeffs:
         s = sol[0]
         coeffs = {idx: s.get(var, 0) for idx, var in enumerate(variables)}
+        var_set = set(variables)
         free_vars = set()
         for c in coeffs.values():
             free_vars |= get_free_symbols(c)
-        free_vars = {var for var in free_vars if var in variables}  ###!!!
+        free_vars &= var_set
         if len(free_vars) == 0:
             coeffs = [coeffs]
         else:
             zeroing = {u: 0 for u in free_vars}
-            coeffs = [
-                {idx: c.subs({**zeroing, v: 1}) for idx, c in coeffs.items()}
-                for v in free_vars
-            ]
+            expanded = []
+            for v in sorted(free_vars, key=str):
+                rule = {**zeroing, v: 1}
+                expanded.append({idx: c.subs(rule) for idx, c in coeffs.items()})
+            coeffs = expanded
         return (False, coeffs, sing) if surface_singularities else (False, coeffs)
     return (False, sing) if surface_singularities else False
 
@@ -6787,6 +7111,7 @@ def _basis_builder(
     _solve_variables=None,
     surface_singularities=False,
     simplify_singularities=None,
+    force_heavy_solve=False,
 ):
     if _scalar_is_zero(newE):
         return (list(elems), []) if surface_singularities else list(elems)
@@ -6812,18 +7137,19 @@ def _basis_builder(
         _solve_variables=_solve_variables,
         surface_singularities=surface_singularities,
         simplify_singularities=simplify_singularities,
+        force_heavy_solve=force_heavy_solve,
     )
     if surface_singularities:
         check, sing2 = check
     if check is True:
         return (
-            (list(elems) + [newE], set(sing) | set(sing2))
+            (list(elems) + [newE], _ordered_union(sing, sing2))
             if surface_singularities
             else list(elems) + [newE]
         )
     else:
         return (
-            (list(elems), set(sing) | set(sing2))
+            (list(elems), _ordered_union(sing, sing2))
             if surface_singularities
             else list(elems)
         )
@@ -6838,10 +7164,15 @@ def _extract_basis(
     return_indices=False,
     surface_singularities=False,
     simplify_singularities=None,
+    force_heavy_solve=False,
 ):
+    if not isinstance(element_list, (list, tuple)):
+        element_list = list(element_list)
     basis = []
     idxs = [] if return_indices else None
     sing = []
+    if _solve_variables is None and len(element_list) > 0:
+        _solve_variables = _fresh_solve_variables(len(element_list))
     for i, newE in enumerate(element_list):
         old_len = len(basis)
         basis = _basis_builder(
@@ -6853,11 +7184,12 @@ def _extract_basis(
             _solve_variables=_solve_variables,
             surface_singularities=surface_singularities,
             simplify_singularities=simplify_singularities,
+            force_heavy_solve=force_heavy_solve,
         )
 
         if surface_singularities:
             basis, new_sing = basis
-            sing += new_sing
+            sing = _ordered_union(sing, new_sing)
 
         if return_indices and len(basis) == old_len + 1:
             idxs.append(i)

@@ -902,7 +902,7 @@ def decompose(
             eqns, _ = ob
             eqns = list(eqns or [])
             if variables_to_constrain:
-                sol = solve_dgcv(eqns, variables_to_constrain)
+                sol = solve_dgcv(eqns, variables_to_constrain, simplify_result=False)
                 if len(sol) > 0:
                     return [], basis, sol
             return bool(eqns) and all(_scalar_is_zero(e) for e in eqns)
@@ -919,9 +919,11 @@ def decompose(
     eqns = list(eqns or [])
 
     if variables_to_constrain and not assume_VTC_linear:
-        solutions = solve_dgcv(eqns, variables, method="solve")
+        solutions = solve_dgcv(eqns, variables, method="solve", simplify_result=False)
     else:
-        solutions = solve_dgcv(eqns, variables, method="linsolve")
+        solutions = solve_dgcv(
+            eqns, variables, method="linsolve", simplify_result=False
+        )
     if not solutions:
         if only_check_decomposability is True:
             return False
@@ -1038,7 +1040,7 @@ def _decompose_over_number_field(
                     exhaustion_tree[new_order][branch_root] = (
                         exhaustion_tree[new_order].get(branch_root, []) + new_branch
                     )
-    sol = solve_dgcv(eqns, variables, method="linsolve")
+    sol = solve_dgcv(eqns, variables, method="linsolve", simplify_result=False)
     if len(sol) == 0:
         if only_check_independence:
             return True
@@ -1151,7 +1153,7 @@ def get_coframe(
                 s = s + u * e
             eqns.append(s - target)
 
-    sols = solve_dgcv(eqns, unknowns, method="linsolve")
+    sols = solve_dgcv(eqns, unknowns, method="linsolve", simplify_result=False)
     if not sols:
         raise RuntimeError(
             "`get_coframe` could not solve for a coframe (system unsatisfiable)."
@@ -1447,7 +1449,7 @@ def annihilator(
         else:
             scalar_eqns.append(e)
 
-    sols = solve_dgcv(scalar_eqns, vars_list, method="linsolve")
+    sols = solve_dgcv(scalar_eqns, vars_list, method="linsolve", simplify_result=False)
     if not sols:
         if _pass_error_report == retrieve_passkey():
             return "`annihilator` found no solutions."

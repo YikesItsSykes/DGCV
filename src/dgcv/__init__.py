@@ -220,6 +220,7 @@ from .eds import (
     transform_coframe,
     zeroFormAtom,
 )
+from .special_fields import filtration_tools
 from .special_fields.complex_structures import Del, DelBar, KahlerStructure
 from .special_fields.CR_geometry import (
     CR_structure,
@@ -228,7 +229,11 @@ from .special_fields.CR_geometry import (
     tangencyObstruction,
     weightedHomogeneousVF,
 )
-from .special_fields.filtered_structures import Tanaka_symbol, distribution
+from .special_fields.filtered_structures import (
+    Tanaka_symbol,
+    distribution,
+    filtration_class,
+)
 from .special_fields.Riemannian_geometry import (
     metric_from_matrix,
     metricClass,
@@ -366,6 +371,8 @@ __all__ = [
     # From filtered_structures
     "distribution",
     "Tanaka_symbol",
+    "filtration_class",
+    "filtration_tools",
     # From light_wrappers
     "function_dgcv",
     # From morphisms

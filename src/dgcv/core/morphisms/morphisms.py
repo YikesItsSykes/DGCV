@@ -92,7 +92,9 @@ class homomorphism(dgcv_class):
             ]
             if len(tps) == 0:
                 return tuple()
-            sol = solve_dgcv(sum(tps, -tp), vars)
+            sol = solve_dgcv(
+                sum(tps, -tp), vars, method="linsolve", simplify_result=False
+            )
             if len(sol) == 0:
                 return tuple()
             return tuple(j.subs(sol[0]) for j in vars)

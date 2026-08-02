@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import numbers
 from collections.abc import Iterable
+from itertools import count
 from typing import Any, Literal, Sequence, Tuple
 
 from .._aux._backends._display_engine import is_rich_displaying_available
@@ -482,6 +483,9 @@ class Tanaka_symbol(dgcv_class):
         if isinstance(nonnegParts, dict):
             nonNegWeights = sorted([k for k, v in nonnegParts.items() if len(v) != 0])
         else:
+            from .._aux._utilities._config import get_globals
+
+            get_globals()["DEBUG"] = [nonnegParts, primary_grading]
             nonNegWeights = sorted(
                 tuple(
                     set(
@@ -532,6 +536,7 @@ class Tanaka_symbol(dgcv_class):
             if isinstance(prolongation_label_prefix, str)
             else "eta"
         )
+        self._aliasing = dict()
         self._singularities = (
             _internal_singularities if _internal_singularities else dict()
         )
@@ -629,6 +634,45 @@ class Tanaka_symbol(dgcv_class):
     def __iter__(self):
         return iter(self.basis)
 
+    def _aliased_expansion(self, ftp: _fast_tensor_products, partial=False):
+        if not isinstance(ftp, _fast_tensor_products):
+            return ftp
+        if ftp._atomic_index in self._aliasing:
+            alias = self._aliasing[ftp._atomic_index]
+            if partial:
+                return alias.get(
+                    "operator",
+                    alias.get("expanded", ftp),
+                )
+            else:
+                return alias.get("expanded", ftp)
+
+        terms = []
+        leftovers = {}
+        for k, v in ftp.coeff_dict.items():
+            if len(k) == 1 and k[0] in self._aliasing:
+                alias = self._aliasing[k[0]]
+                if partial:
+                    new_term = alias.get(
+                        "operator",
+                        alias.get("expanded", None),
+                    )
+                    if new_term:
+                        terms.append(v * new_term)
+                    else:
+                        leftovers[k] = v
+                else:
+                    new_term = alias.get("expanded", None)
+                    if new_term:
+                        terms.append(v * new_term)
+                    else:
+                        leftovers[k] = v
+            else:
+                leftovers[k] = v
+        if leftovers:
+            return sum(terms, _fast_tensor_products(leftovers))
+        return sum(terms)
+
     def _fast_prolong_by_1(
         self,
         levels,
@@ -638,7 +682,12 @@ class Tanaka_symbol(dgcv_class):
         ADS=None,
         surface_singularities=None,
         simplify_pivots=None,
+        alias_counter=None,
     ):  # height must match levels structure
+        if alias_counter is None:
+            alias_counter = count(sum(len(level) for level in levels.values())).__next__
+        get_alias_id = alias_counter
+
         distinguished_s_weight_bound = min(distinguished_s_weight_bound, height)
         if len(self._parameters) > 0:
             if surface_singularities is not False:
@@ -686,13 +735,26 @@ class Tanaka_symbol(dgcv_class):
             def fast_validate_for_DS(tp, basisVec, w1, w2):
                 for subS in fast_DS:
                     if subS[w2] is not None and basisVec in subS[w2]:
-                        if _indep_check(subS[w1], tp):
+                        alias_data = self._aliasing.get(
+                            getattr(tp, "_atomic_index", -1), None
+                        )
+                        alias = alias_data.get("expanded", tp) if alias_data else tp
+
+                        if _indep_check(subS[w1], alias):
                             return False
                 return True
 
             def stamp(j, k, jidx, kidx, jdeg, kdeg):
-                obj = _fast_tensor_products(k) @ j  # removed .dual() for fast algorithm
+                new_idx = get_alias_id()
+                ftk = _fast_tensor_products(k)
+                hom_rep = ftk @ j
+                expanded_rep = _fast_tensor_products(self._aliased_expansion(k) @ j)
+                obj = _fast_tensor_products({(new_idx,): 1}, _atomic_index=new_idx)
                 obj._hom_id = [{(jidx, kidx, jdeg, kdeg): 1}, ""]
+                self._aliasing[new_idx] = {
+                    "expanded": expanded_rep,
+                    "operator": hom_rep,
+                }
                 return obj
 
             if self._GLA_generators is None:
@@ -727,6 +789,10 @@ class Tanaka_symbol(dgcv_class):
                     return elem * nested
 
                 def _complete(elem):
+                    alias_data = self._aliasing.get(
+                        getattr(elem, "_atomic_index", -1), None
+                    )
+                    alias = alias_data.get("expanded", elem) if alias_data else elem
                     new_terms = []
                     for w, comp in self._GLA_generators["map"].items():
                         if w == -1:
@@ -737,21 +803,29 @@ class Tanaka_symbol(dgcv_class):
                                     _fast_tensor_products(_iter_expand(elem, trip[0]))
                                     @ trip[1]  # removed .dual() for fast algo
                                 )
-                    return sum(new_terms, elem)
+                    if alias_data:
+                        alias_data["expanded"] = _fast_tensor_products(
+                            sum(new_terms, alias)
+                        )
+                    return elem
 
                 ambient_basis = [_complete(j) for j in preBasis]
 
             ###!!! add fast validation for nonnegative weight DS components
+            ###!!! add aliasing converters for DS
             for subSData in standard_DS:
                 if len(ambient_basis) == 0:
                     break
-                ambGE, ambVars = linear_combination(ambient_basis)
+                ambGE, ambGE_terse, ambVars = None, None, None
                 for w, level in subSData.items():
                     current_degree = height + w + 1
                     if current_degree <= distinguished_s_weight_bound:
                         dsSpanners = subSData[current_degree]["spanners"]
                         eqns = []
                         esVars = ambVars.copy()
+                        if ambGE is None:
+                            ambGE_terse, ambVars = linear_combination(ambient_basis)
+                            ambGE = self._aliased_expansion(ambGE_terse)
                         for elem in level["spanners"]:
                             newGE, newVars = linear_combination(dsSpanners)
                             esVars += newVars
@@ -764,6 +838,7 @@ class Tanaka_symbol(dgcv_class):
                                 return_divisors=True,
                                 pass_to_symbolic_engine=False,
                                 simplify_pivots=simplify_pivots,
+                                simplify_result=False,
                             )
                             self._singularities["prolongation"] = expr_union_primitives(
                                 list(self._singularities.get("prolongation", []))
@@ -775,10 +850,12 @@ class Tanaka_symbol(dgcv_class):
                             )
 
                         else:
-                            sol = solve_dgcv(eqns, esVars, method="linsolve")
+                            sol = solve_dgcv(
+                                eqns, esVars, method="linsolve", simplify_result=False
+                            )
                         ambient_basis = []
                         if len(sol) > 0:
-                            solGE = subs(ambGE, sol[0])
+                            solGE = subs(ambGE_terse, sol[0])
                             freeVars = set()
                             for c in solGE.coeffs:
                                 freeVars |= get_free_symbols(c)
@@ -799,14 +876,15 @@ class Tanaka_symbol(dgcv_class):
             if len(ambient_basis) == 0:
                 ambient_basis = [0 * self.basis[0]]
 
-            general_elem, tVars = linear_combination(ambient_basis)
+            general_elem_terse, tVars = linear_combination(ambient_basis)
+            general_elem = self._aliased_expansion(general_elem_terse, partial=True)
 
             eqns = []
             for triple in self.test_commutators:
                 t0, t1, t2 = triple[0], triple[1], triple[2]
                 derivation_rule = (
-                    (general_elem * t0) * t1
-                    + t0 * (general_elem * t1)
+                    self._aliased_expansion(general_elem * t0, partial=True) * t1
+                    + t0 * self._aliased_expansion(general_elem * t1, partial=True)
                     - general_elem * t2
                 )
                 if getattr(derivation_rule, "is_zero", False) or derivation_rule == 0:
@@ -836,6 +914,7 @@ class Tanaka_symbol(dgcv_class):
                         return_divisors=True,
                         pass_to_symbolic_engine=False,
                         simplify_pivots=simplify_pivots,
+                        simplify_result=False,
                     )
 
                     self._singularities["prolongation"] = expr_union_primitives(
@@ -848,7 +927,9 @@ class Tanaka_symbol(dgcv_class):
                     )
 
                 else:
-                    solution = solve_dgcv(eqns, tVars, method="linsolve")
+                    solution = solve_dgcv(
+                        eqns, tVars, method="linsolve", simplify_result=False
+                    )
 
             if len(solution) == 0:
                 dgcv_warning(
@@ -859,7 +940,7 @@ class Tanaka_symbol(dgcv_class):
                     "`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied."
                 )
             solution = solution[0]
-            el_sol = subs(general_elem, solution)
+            el_sol = subs(general_elem_terse, solution)
             if not isinstance(el_sol, _fast_tensor_products):
                 el_sol = _fast_tensor_products(el_sol)
 
@@ -872,11 +953,12 @@ class Tanaka_symbol(dgcv_class):
             zeroing = {v: 0 for v in fv}
             for v in fv:
                 basis_element = subs(el_sol, {**zeroing, v: 1})
-                coeffs = [subs(solution.get(v, 0), {**zeroing, v: 1}) for v in tVars]
-                # _hom_id format: [(source_label,((x,y) for x,y in zip(coeffs,target_labels)), label]
-                _hom_id = {}
+                # coeffs = [subs(solution.get(v, 0), {**zeroing, v: 1}) for v in tVars]
+                # # _hom_id format: [(source_label,((x,y) for x,y in zip(coeffs,target_labels)), label]
+                # _hom_id = {}
                 new_level.append(basis_element)
 
+            ###!!! add aliasing support
             if ADS is True:
                 new_elems = []
                 for subS in fast_DS:
@@ -944,6 +1026,7 @@ class Tanaka_symbol(dgcv_class):
                             return_divisors=True,
                             pass_to_symbolic_engine=False,
                             simplify_pivots=simplify_pivots,
+                            simplify_result=False,
                         )
                         self._singularities["prolongation"] = expr_union_primitives(
                             list(self._singularities.get("prolongation", []))
@@ -954,7 +1037,9 @@ class Tanaka_symbol(dgcv_class):
                             bypass=not simplify_ideals,
                         )
                     else:
-                        solution = solve_dgcv(eqns, solVars, method="linsolve")
+                        solution = solve_dgcv(
+                            eqns, solVars, method="linsolve", simplify_result=False
+                        )
                     if len(solution) == 0:
                         raise RuntimeError(
                             f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {solVars}"
@@ -1136,6 +1221,7 @@ class Tanaka_symbol(dgcv_class):
                                 method="linsolve",
                                 return_divisors=True,
                                 pass_to_symbolic_engine=False,
+                                simplify_result=False,
                             )
                             self._singularities["prolongation"] = (
                                 self._singularities.get("prolongation", set())
@@ -1146,6 +1232,7 @@ class Tanaka_symbol(dgcv_class):
                                 eqns,
                                 esVars,
                                 method="linsolve",
+                                simplify_result=False,
                             )
                         ambient_basis = []
                         if len(sol) > 0:
@@ -1206,12 +1293,15 @@ class Tanaka_symbol(dgcv_class):
                         method="linsolve",
                         return_divisors=True,
                         pass_to_symbolic_engine=False,
+                        simplify_result=False,
                     )
                     self._singularities["prolongation"] = self._singularities.get(
                         "prolongation", set()
                     ) | {v for v in sing if get_free_symbols(v)}
                 else:
-                    solution = solve_dgcv(eqns, tVars, method="linsolve")
+                    solution = solve_dgcv(
+                        eqns, tVars, method="linsolve", simplify_result=False
+                    )
 
             if len(solution) == 0:
                 raise RuntimeError(
@@ -1294,12 +1384,13 @@ class Tanaka_symbol(dgcv_class):
                             method="linsolve",
                             return_divisors=True,
                             pass_to_symbolic_engine=False,
+                            simplify_result=False,
                         )
                         self._singularities["prolongation"] = self._singularities.get(
                             "prolongation", set()
                         ) | {v for v in sing if get_free_symbols(v)}
                     else:
-                        solution = solve_dgcv(eqns, solVars)
+                        solution = solve_dgcv(eqns, solVars, simplify_result=False)
                     if len(solution) == 0:
                         raise RuntimeError(
                             f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {solVars}"
@@ -1442,7 +1533,12 @@ class Tanaka_symbol(dgcv_class):
         if report_progress_and_return_nothing is True:
             report_progress = True
         if not isinstance(iterations, numbers.Integral) or iterations < 1:
-            raise TypeError("`prolong` expects `iterations` to be a positive int.")
+            dgcv_warning(
+                "`prolong` expects `iterations` to be a positive int. So no prolongation was performed."
+            )
+            if return_symbol:
+                return self
+            return
         levels = self.levels
         height = self.height
         distinguished_s_weight_bound = self.height
@@ -1462,9 +1558,29 @@ class Tanaka_symbol(dgcv_class):
                 return f"{count}{'st' if count == 1 else 'nd' if count == 2 else 'rd' if count == 3 else 'th'}"
 
         if _fast_algorithm is True:
+            alias_counter = count(
+                sum(len(level) for w, level in levels.items() if w < 0)
+            )
+            get_alias_id = alias_counter.__next__
+            preprocess_noted = False
             for w in levels:
                 if w >= 0:
-                    levels[w] = [_fast_tensor_products(j) for j in levels[w]]
+                    if not preprocess_noted and report_progress:
+                        preprocess_noted = True
+                        print(
+                            "Preprocessing nonnegative-weighted components for the faster prolongation algorithm."
+                        )
+
+                    reformatted_level = []
+                    for j in levels[w]:
+                        new_idx = get_alias_id()
+                        new_elem = _fast_tensor_products(
+                            {(new_idx,): 1}, _atomic_index=new_idx
+                        )
+                        reformatted_level.append(new_elem)
+                        expanded = _fast_tensor_products(j)
+                        self._aliasing[new_idx] = {"expanded": expanded}
+                    levels[w] = reformatted_level
         for j in range(iterations):
             if stable:
                 break
@@ -1477,6 +1593,7 @@ class Tanaka_symbol(dgcv_class):
                     ADS=subspace_data,
                     surface_singularities=surface_singularities,
                     simplify_pivots=simplify_singularities,
+                    alias_counter=get_alias_id,
                 )
             else:
                 levels, stable, subspace_data = self._prolong_by_1(
@@ -1540,7 +1657,7 @@ class Tanaka_symbol(dgcv_class):
             for w in levels:
                 if w >= 0:
                     levels[w] = [
-                        j._convert_to_tp(
+                        self._aliased_expansion(j)._convert_to_tp(
                             _hom_id_map=(self._plp, self.levels),
                             _hom_id_label=f"{self._plp}_{c + 1}__{{[{w}]}}",
                         )
@@ -2002,7 +2119,7 @@ class Tanaka_symbol(dgcv_class):
                     return "NoSol"
             general_elem, tVars = linear_combination(ambient_basis)
             eqns = [newElem - general_elem]
-            sol = solve_dgcv(eqns, tVars, method="linsolve")
+            sol = solve_dgcv(eqns, tVars, method="linsolve", simplify_result=False)
             if len(sol) == 0:
                 if try_hard:
                     dgcv_warning(
@@ -2012,6 +2129,7 @@ class Tanaka_symbol(dgcv_class):
                         [simplify(eqn) for eqn in eqns],
                         tVars,
                         method="linsolve",
+                        simplify_result=False,
                     )
                     if len(sol) == 0:
                         return "NoSol"
@@ -2140,7 +2258,9 @@ def _GAE_to_hom_formatting(elem, nilradical, test_weights=None, return_weights=F
 
 
 class _fast_tensor_products:
-    def __init__(self, coeff_dict, alg=None, _validated=None, _hom_id=None):
+    def __init__(
+        self, coeff_dict, alg=None, _validated=None, _hom_id=None, _atomic_index=-1
+    ):
         if isinstance(coeff_dict, _fast_tensor_products):
             coeff_dict, alg, _validated, _hom_id = (
                 coeff_dict.coeff_dict,
@@ -2148,6 +2268,7 @@ class _fast_tensor_products:
                 coeff_dict.degree,
                 coeff_dict._hom_id,
             )
+        self._atomic_index = _atomic_index
         self.algebra = alg
         if _validated is None:
             if get_dgcv_category(coeff_dict) == "tensorProduct":
@@ -2216,9 +2337,16 @@ class _fast_tensor_products:
         if alg is None:
             alg = self.algebra
         ae = 0
+        basis = getattr(alg, "basis", [])
+        dim = len(basis)
         for k, v in self.coeff_dict.items():
-            if len(k) == 1:
-                ae += v * alg.basis[k[0]]
+            if len(k) != 1:
+                return False
+            idx = k[0]
+            if idx >= dim:
+                return False
+            ae += v * basis[idx]
+
         return ae
 
     def _convert_to_tp(self, _hom_id_map=None, _hom_id_label=None):
@@ -2326,24 +2454,47 @@ class _fast_tensor_products:
             if other.degree == 0:
                 return sum(v * self for v in other.coeff_dict.values())
             if self.degree == 1:
-                return other * (-self._to_algebra())
+                algebraized = self._to_algebra()
+                if algebraized is not False:
+                    return other * (-algebraized)
             if self.degree == 0:
                 return sum(v * other for v in self.coeff_dict.values())
             if other.degree == 1:
-                return self * other._to_algebra()
+                algebraized = self._to_algebra()
+                if algebraized is not False:
+                    return self * algebraized
             new_dict = dict()
             deg = 0
             ae1 = 0
             ae2 = 0
+            alg_basis1, alg_basis2 = (
+                getattr(self.algebra, "basis", []),
+                getattr(other.algebra, "basis", []),
+            )
+            alg_dim1, alg_dim2 = len(alg_basis1), len(alg_basis2)
             for k1, v1 in self.coeff_dict.items():
                 if len(k1) == 1:
-                    ae1 += v1 * self.algebra.basis[k1[0]]
-                    continue
+                    idx1 = k1[0]
+                    if idx1 < alg_dim1:
+                        ae1 += v1 * alg_basis1[idx1]
+                        continue
+                    dgcv_warning(
+                        "fast_tensor_products non-aliased mul is being tried for aliased elements",
+                        wc_label="debug_log",
+                    )
+                    continue  ###!!! silent igonore: No multiplication can be defined if idx1>=alg_dim1
                 k1L, k1A, k1B, k1T = k1[0], k1[:-1], k1[1:], k1[-1]
                 for k2, v2 in other.coeff_dict.items():
                     if len(k2) == 1:
-                        ae2 += v2 * other.algebra.basis[k2[0]]
-                        continue
+                        idx2 = k2[0]
+                        if idx2 < alg_dim2:
+                            ae2 += v2 * alg_basis2[idx2]
+                            continue
+                        dgcv_warning(
+                            "fast_tensor_products non-aliased mul is being tried for aliased elements",
+                            wc_label="debug_log",
+                        )
+                        continue  ###!!! silent igonore: No multiplication can be defined if idx2>=alg_dim2
                     k2L, k2A, k2B, k2T = k2[0], k2[:-1], k2[1:], k2[-1]
                     if k1T == k2L:
                         newkey = k1B + k2A
@@ -2374,13 +2525,30 @@ class _fast_tensor_products:
             if self.degree == 0:
                 return sum(v * other for v in self.coeff_dict.values())
             if self.degree == 1:
-                return self._to_algebra() * other
+                algebraized = self._to_algebra()
+                if algebraized is not False:
+                    return algebraized * other
+                else:
+                    dgcv_warning(
+                        "fast_tensor_products non-aliased mul is being tried for aliased elements",
+                        wc_label="debug_log",
+                    )
+                    return self * _fast_tensor_products(other)
             new_dict = dict()
             ac = other.coeffs
             ae1 = 0
+            alg_basis1 = getattr(self.algebra, "basis", [])
+            alg_dim1 = len(alg_basis1)
             for k1, v1 in self.coeff_dict.items():
                 if len(k1) == 1:
-                    ae1 += v1 * self.algebra.basis[k1[0]]
+                    idx1 = k1[0]
+                    if idx1 < alg_dim1:
+                        ae1 += v1 * alg_basis1[idx1]
+                        continue
+                    dgcv_warning(
+                        "fast_tensor_products non-aliased mul is being tried for aliased elements",
+                        wc_label="debug_log",
+                    )
                     continue
                 k1A, k1T = k1[:-1], k1[-1]
                 newval = new_dict.get(k1A, 0) + ac[k1T] * v1
@@ -2388,13 +2556,13 @@ class _fast_tensor_products:
                     new_dict[k1A] = newval
                 else:
                     new_dict.pop(k1A, None)
+            new_tensor = _fast_tensor_products(
+                new_dict, self.algebra, _validated=self.degree - 1
+            )
             if self.degree == 2:
-                return (
-                    _fast_tensor_products(
-                        new_dict, self.algebra, _validated=self.degree - 1
-                    )._to_algebra()
-                    + ae1 * other
-                )
+                algebraized = new_tensor._to_algebra()
+                if algebraized is not False:
+                    return algebraized + ae1 * other
             return (
                 _fast_tensor_products(
                     new_dict, self.algebra, _validated=self.degree - 1
@@ -2989,7 +3157,7 @@ class distribution(dgcv_class):
 
         def _decomp(elem, ge=gen_elem, variables=vars):
             eqns = list((elem - ge).coeff_dict.values())
-            sol = solve_dgcv(eqns, variables)
+            sol = solve_dgcv(eqns, variables, simplify_result=False)
             return sol
 
         level_dimensions = [len(level) for level in derFlag]
@@ -3116,7 +3284,7 @@ class distribution(dgcv_class):
                     linear_section_parameters=True,
                 )
                 sp_contraints += [k - v for k, v in deco.items()]
-            sol = solve_dgcv(sp_contraints, section_par)[0]
+            sol = solve_dgcv(sp_contraints, section_par, simplify_result=False)[0]
             solution = subs(genVF, sol)
             free_vars = set()
             for val in sol.values():
@@ -3131,9 +3299,14 @@ class distribution(dgcv_class):
         return self._characteristic
 
     def __add__(self, other):
+        if other == 0:
+            return self
         if get_dgcv_category(other) == "distribution":
             return distribution(self.spanning_vf_set + other.spanning_vf_set)
         return NotImplemented
+
+    def __radd__(self, other):
+        return self.__add__(other)
 
     def __mul__(self, other):
         if get_dgcv_category(other) == "distribution":
