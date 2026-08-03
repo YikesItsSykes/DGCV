@@ -849,7 +849,7 @@ def vmf_summary(
         return
 
     container_id = f"dgcv-vmf-summary-{uuid.uuid4().hex[:8]}"
-    theme_vars, theme_data = get_style(theme, return_theme_data=True)
+    theme_vars, theme_data = get_style(theme, return_theme_data=True, minimal=True)
     scoped_theme = theme_vars.replace(":root", f"#{container_id}")
     border_radius = int(
         theme_data.custom_css_vars.get("--dgcv-border-radius", "12px").replace("px", "")
@@ -1528,7 +1528,7 @@ def _snapshot_coor_(style=None, use_latex=None, slim=False, **kwargs):
         "Differential Forms",
     ]
 
-    theme_vars = get_style(style, legacy=False)
+    theme_vars = get_style(style, legacy=False, minimal=True)
 
     extra_css = """
 .dgcv-data-table td, .dgcv-data-table th {
@@ -1624,7 +1624,7 @@ def _snapshot_algebras_(style=None, use_latex=None, slim=False, **kwargs):
 
     columns = ["Algebra Label", "Basis", "Dimension", "Grading"]
 
-    theme_vars = get_style(style, legacy=False)
+    theme_vars = get_style(style, legacy=False, minimal=True)
 
     extra_css = """
 .dgcv-data-table td, .dgcv-data-table th {
@@ -1747,7 +1747,7 @@ def _snapshot_eds_atoms_(style=None, use_latex=None, slim=False, **kwargs):
                 ]
             )
 
-    theme_vars = get_style(style, legacy=False)
+    theme_vars = get_style(style, legacy=False, minimal=True)
 
     extra_css = """
     .dgcv-data-table td, .dgcv-data-table th {
@@ -1836,7 +1836,7 @@ def _snapshot_coframes_(style=None, use_latex=None, slim=False, **kwargs):
 
     columns = ["Coframe Label", "Coframe 1-Forms", "Structure Coefficients"]
 
-    theme_vars = get_style(style, legacy=False)
+    theme_vars = get_style(style, legacy=False, minimal=True)
 
     extra_css = """
     .dgcv-data-table td, .dgcv-data-table th {

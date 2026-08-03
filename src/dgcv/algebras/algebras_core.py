@@ -6687,8 +6687,8 @@ def _summary_render_rich(
 
         if rad is not None and getattr(rad, "dimension", 0) != 0:
             for cache_attr, title in [
-                ("_lower_central_series_cache", "Lower central series"),
-                ("_derived_series_cache", "Derived series"),
+                ("_lower_central_series_cache", "Lower central series of radical"),
+                ("_derived_series_cache", "Derived series of radical"),
             ]:
                 cache = getattr(rad, cache_attr, None)
                 if isinstance(cache, (list, tuple)) and cache and cache[0] is not None:

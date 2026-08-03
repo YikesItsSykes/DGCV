@@ -19,11 +19,15 @@ SPDX-License-Identifier: Apache-2.0
 # -----------------------------------------------------------------------------
 # imports and broadcasting
 # -----------------------------------------------------------------------------
+from __future__ import annotations
+
 import colorsys
 import difflib
 import random
-from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional, Union
+import re
+from dataclasses import asdict, dataclass, field, replace
+from string import Template
+from typing import Dict, List, Optional, Tuple, Union
 
 from ._config import get_dgcv_settings_registry
 
@@ -495,181 +499,6 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-hover-transform": "none",
             "--dgcv-hover-transition": "background-color 0.15s ease",
             "--dgcv-text-shadow": "0 1px 0 rgba(255,255,255,0.4)",
-        },
-    ),
-    "chalkboard_black": ThemeConfig(
-        bg_primary="#3c3c3c",
-        bg_surface="#2b2b2b",
-        bg_alt="#454545",
-        bg_hover="#1c1c1c",
-        text_main="#ffffff",
-        text_heading="#ffffff",
-        text_hover="#ffffff",
-        border_main="#8b4513",
-        bg_action="#9e9e9e",
-        text_on_action="#000000",
-        bg_action_hover="#bdbdbd",
-        bg_error="#e53935",
-        text_on_error="#ffffff",
-        bg_success="#43a047",
-        text_on_success="#ffffff",
-        border_alt="#616161",
-        font_family="Courier New, monospace",
-        custom_css_vars={
-            "--dgcv-border-width": "5px",
-            "--dgcv-table-shadow": "0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(139, 69, 19, 0.8)",
-            "--dgcv-text-shadow": "0 0 3px rgba(255,255,255,0.3)",
-            "--dgcv-hover-transform": "scale(1.001)",
-        },
-    ),
-    "chalkboard_blue": ThemeConfig(
-        bg_primary="#305e91",
-        bg_surface="#2c528c",
-        bg_alt="#457bc1",
-        bg_hover="#193a71",
-        text_main="#ffffff",
-        text_heading="#ffffff",
-        text_hover="#ffffff",
-        border_main="#8b4513",
-        bg_action="#64b5f6",
-        text_on_action="#0d47a1",
-        bg_action_hover="#90caf9",
-        bg_error="#ef5350",
-        text_on_error="#ffffff",
-        bg_success="#66bb6a",
-        text_on_success="#ffffff",
-        border_alt="#2196f3",
-        font_family="Courier New, monospace",
-        custom_css_vars={
-            "--dgcv-border-width": "5px",
-            "--dgcv-table-shadow": "0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(139, 69, 19, 0.8)",
-            "--dgcv-text-shadow": "0 0 3px rgba(255,255,255,0.3)",
-            "--dgcv-hover-transform": "scale(1.001)",
-        },
-    ),
-    "chalkboard_green": ThemeConfig(
-        bg_primary="#3c6e47",
-        bg_surface="#355e3b",
-        bg_alt="#4a7c59",
-        bg_hover="#2c5a33",
-        text_main="#ffffff",
-        text_heading="#ffffff",
-        text_hover="#ffffff",
-        border_main="#8b4513",
-        bg_action="#81c784",
-        text_on_action="#1b5e20",
-        bg_action_hover="#a5d6a7",
-        bg_error="#e57373",
-        text_on_error="#ffffff",
-        bg_success="#69f0ae",
-        text_on_success="#000000",
-        border_alt="#66bb6a",
-        font_family="Courier New, monospace",
-        custom_css_vars={
-            "--dgcv-border-width": "5px",
-            "--dgcv-table-shadow": "0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(139, 69, 19, 0.8)",
-            "--dgcv-text-shadow": "0 0 3px rgba(255,255,255,0.25)",
-            "--dgcv-hover-transform": "scale(1.001)",
-        },
-    ),
-    "chalkboard_purple": ThemeConfig(
-        bg_primary="#673ab7",
-        bg_surface="#7e57c2",
-        bg_alt="#9575cd",
-        bg_hover="#512da8",
-        text_main="#ffffff",
-        text_heading="#ffffff",
-        text_hover="#ffffff",
-        border_main="#8b4513",
-        bg_action="#b388ff",
-        text_on_action="#311b92",
-        bg_action_hover="#d1c4e9",
-        bg_error="#ff5252",
-        text_on_error="#ffffff",
-        bg_success="#69f0ae",
-        text_on_success="#000000",
-        border_alt="#b39ddb",
-        font_family="Courier New, monospace",
-        custom_css_vars={
-            "--dgcv-border-width": "5px",
-            "--dgcv-table-shadow": "0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(139, 69, 19, 0.8)",
-            "--dgcv-text-shadow": "0 0 3px rgba(255,255,255,0.3)",
-            "--dgcv-hover-transform": "scale(1.001)",
-        },
-    ),
-    "chalkboard_red": ThemeConfig(
-        bg_primary="#822626",
-        bg_surface="#731919",
-        bg_alt="#6e1e1e",
-        bg_hover="#4a1010",
-        text_main="#ffffff",
-        text_heading="#ffffff",
-        text_hover="#ffffff",
-        border_main="#8b4513",
-        bg_action="#e57373",
-        text_on_action="#4a1010",
-        bg_action_hover="#ef9a9a",
-        bg_error="#b71c1c",
-        text_on_error="#ffffff",
-        bg_success="#81c784",
-        text_on_success="#000000",
-        border_alt="#9a3030",
-        font_family="Courier New, monospace",
-        custom_css_vars={
-            "--dgcv-border-width": "5px",
-            "--dgcv-table-shadow": "0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(139, 69, 19, 0.8)",
-            "--dgcv-text-shadow": "0 0 3px rgba(255,255,255,0.3)",
-            "--dgcv-hover-transform": "scale(1.001)",
-        },
-    ),
-    "chalkboard_teal": ThemeConfig(
-        bg_primary="#004d40",
-        bg_surface="#00897b",
-        bg_alt="#00695c",
-        bg_hover="#004d40",
-        text_main="#ffffff",
-        text_heading="#ffffff",
-        text_hover="#ffffff",
-        border_main="#8b4513",
-        bg_action="#4db6ac",
-        text_on_action="#004d40",
-        bg_action_hover="#80cbc4",
-        bg_error="#e53935",
-        text_on_error="#ffffff",
-        bg_success="#43a047",
-        text_on_success="#ffffff",
-        border_alt="#26a69a",
-        font_family="Courier New, monospace",
-        custom_css_vars={
-            "--dgcv-border-width": "5px",
-            "--dgcv-table-shadow": "0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(139, 69, 19, 0.8)",
-            "--dgcv-text-shadow": "0 0 3px rgba(255,255,255,0.25)",
-            "--dgcv-hover-transform": "scale(1.001)",
-        },
-    ),
-    "chalkboard_yellow": ThemeConfig(
-        bg_primary="#f2c849",
-        bg_surface="#d4a017",
-        bg_alt="#e8c04a",
-        bg_hover="#cfa524",
-        text_main="#000000",
-        text_heading="#000000",
-        text_hover="#000000",
-        border_main="#8b4513",
-        bg_action="#f57f17",
-        text_on_action="#ffffff",
-        bg_action_hover="#fbc02d",
-        bg_error="#d32f2f",
-        text_on_error="#ffffff",
-        bg_success="#388e3c",
-        text_on_success="#ffffff",
-        border_alt="#f9a825",
-        font_family="Courier New, monospace",
-        custom_css_vars={
-            "--dgcv-border-width": "5px",
-            "--dgcv-table-shadow": "0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(139, 69, 19, 0.8)",
-            "--dgcv-text-shadow": "0 0 3px rgba(0,0,0,0.2)",
-            "--dgcv-hover-transform": "scale(1.001)",
         },
     ),
     "coffee_shop": ThemeConfig(
@@ -2199,30 +2028,6 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-text-shadow": "0 1px 0 rgba(255,255,255,0.5)",
         },
     ),
-    "safari": ThemeConfig(
-        bg_primary="#f3e6d4",
-        bg_surface="#8b6e4e",
-        bg_alt="#e4d7c5",
-        bg_hover="#d1b998",
-        text_main="#4b4b4b",
-        text_heading="#f7d94c",
-        text_hover="#4b4b4b",
-        border_main="#8b6e4e",
-        bg_action="#6b8e23",
-        text_on_action="#ffffff",
-        bg_action_hover="#556b2f",
-        bg_error="#b22222",
-        text_on_error="#ffffff",
-        bg_success="#228b22",
-        text_on_success="#ffffff",
-        border_alt="#d2b48c",
-        font_family="inherit",
-        custom_css_vars={
-            "--dgcv-border-width": "1px",
-            "--dgcv-table-shadow": "0 2px 8px rgba(139, 110, 78, 0.3)",
-            "--dgcv-hover-transform": "scale(1.001)",
-        },
-    ),
     "sakura": ThemeConfig(
         bg_primary="#f8f1ea",
         bg_surface="#b0476e",
@@ -2250,110 +2055,6 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-hover-transform": "scale(1.001)",
             "--dgcv-hover-transition": "all 0.3s ease",
             "--dgcv-text-shadow": "0 1px 0 rgba(255, 255, 255, 0.5)",
-        },
-    ),
-    "sci_fi": ThemeConfig(
-        bg_primary="#000000",
-        bg_surface="#001f3f",
-        bg_alt="#011627",
-        bg_hover="#7fdbff",
-        text_main="#7fdbff",
-        text_heading="#7fdbff",
-        text_hover="#001f3f",
-        border_main="#7fdbff",
-        bg_action="#0074d9",
-        text_on_action="#ffffff",
-        bg_action_hover="#39cccc",
-        bg_error="#ff4136",
-        text_on_error="#ffffff",
-        bg_success="#2ecc40",
-        text_on_success="#000000",
-        border_alt="#004080",
-        font_family="Orbitron, sans-serif",
-        custom_css_vars={
-            "--dgcv-border-width": "2px",
-            "--dgcv-table-shadow": "0 0 20px rgba(127, 219, 255, 0.9), 0 0 60px rgba(127, 219, 255, 0.3)",
-            "--dgcv-hover-transform": "scale(1.001)",
-            "--dgcv-text-shadow": "0 0 8px rgba(127, 219, 255, 0.8)",
-            "--dgcv-hover-transition": "all 0.2s ease",
-        },
-    ),
-    "sci_fi_green": ThemeConfig(
-        bg_primary="#000000",
-        bg_surface="#001f00",
-        bg_alt="#012200",
-        bg_hover="#39FF14",
-        text_main="#39FF14",
-        text_heading="#39FF14",
-        text_hover="#001f00",
-        border_main="#39FF14",
-        bg_action="#00FF00",
-        text_on_action="#000000",
-        bg_action_hover="#32CD32",
-        bg_error="#FF0000",
-        text_on_error="#ffffff",
-        bg_success="#00FA9A",
-        text_on_success="#000000",
-        border_alt="#003300",
-        font_family="Orbitron, sans-serif",
-        custom_css_vars={
-            "--dgcv-border-width": "2px",
-            "--dgcv-table-shadow": "0 0 20px rgba(57, 255, 20, 0.9), 0 0 60px rgba(57, 255, 20, 0.3)",
-            "--dgcv-hover-transform": "scale(1.001)",
-            "--dgcv-text-shadow": "0 0 8px rgba(57, 255, 20, 0.9)",
-            "--dgcv-hover-transition": "all 0.2s ease",
-        },
-    ),
-    "sci_fi_magenta": ThemeConfig(
-        bg_primary="#1A001F",
-        bg_surface="#300033",
-        bg_alt="#3A0040",
-        bg_hover="#FF00FF",
-        text_main="#FF00FF",
-        text_heading="#FF00FF",
-        text_hover="#300033",
-        border_main="#FF00FF",
-        bg_action="#8A2BE2",
-        text_on_action="#ffffff",
-        bg_action_hover="#9400D3",
-        bg_error="#FF4500",
-        text_on_error="#ffffff",
-        bg_success="#32CD32",
-        text_on_success="#000000",
-        border_alt="#4B0082",
-        font_family="Orbitron, sans-serif",
-        custom_css_vars={
-            "--dgcv-border-width": "2px",
-            "--dgcv-table-shadow": "0 0 20px rgba(255, 0, 255, 0.9), 0 0 60px rgba(255, 0, 255, 0.3)",
-            "--dgcv-hover-transform": "scale(1.001)",
-            "--dgcv-text-shadow": "0 0 8px rgba(255, 0, 255, 0.9)",
-            "--dgcv-hover-transition": "all 0.2s ease",
-        },
-    ),
-    "sci_fi_orange": ThemeConfig(
-        bg_primary="#1A0D00",
-        bg_surface="#331900",
-        bg_alt="#442600",
-        bg_hover="#FFA500",
-        text_main="#FFA500",
-        text_heading="#FFA500",
-        text_hover="#331900",
-        border_main="#FFA500",
-        bg_action="#FF4500",
-        text_on_action="#000000",
-        bg_action_hover="#FF6347",
-        bg_error="#DC143C",
-        text_on_error="#ffffff",
-        bg_success="#32CD32",
-        text_on_success="#000000",
-        border_alt="#663300",
-        font_family="Orbitron, sans-serif",
-        custom_css_vars={
-            "--dgcv-border-width": "2px",
-            "--dgcv-table-shadow": "0 0 20px rgba(255, 165, 0, 0.9), 0 0 60px rgba(255, 165, 0, 0.3)",
-            "--dgcv-hover-transform": "scale(1.001)",
-            "--dgcv-text-shadow": "0 0 8px rgba(255, 165, 0, 0.9)",
-            "--dgcv-hover-transition": "all 0.2s ease",
         },
     ),
     "slate_and_copper": ThemeConfig(
@@ -2485,34 +2186,6 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-hover-transform": "scale(1.001)",
         },
     ),
-    "too_much": ThemeConfig(
-        bg_primary="#000000",
-        bg_surface="#1a1a1a",
-        bg_alt="#333333",
-        bg_hover="#FF4500",
-        text_main="#FFFFFF",
-        text_heading="#FF4500",
-        text_hover="#FFFFFF",
-        border_main="#FF4500",
-        bg_action="#FF4500",
-        text_on_action="#FFFFFF",
-        bg_action_hover="#FF6347",
-        bg_error="#FF0000",
-        text_on_error="#FFFFFF",
-        bg_success="#39FF14",
-        text_on_success="#000000",
-        border_alt="#555555",
-        font_family="Impact, sans-serif",
-        custom_css_vars={
-            "--dgcv-border-width": "3px",
-            "--dgcv-border-image": "linear-gradient(90deg, #FF4500, #FF0000, #FF6347, #FF4500) 1",
-            "--dgcv-border-radius": "0",
-            "--dgcv-table-shadow": "0 0 20px rgba(255, 69, 0, 0.9), 0 0 60px rgba(255, 0, 0, 0.4)",
-            "--dgcv-hover-transform": "scale(1.002) rotate(0.3deg)",
-            "--dgcv-text-shadow": "0 0 8px rgba(255, 69, 0, 0.8)",
-            "--dgcv-hover-transition": "all 0.15s ease",
-        },
-    ),
     "turtle_shell": ThemeConfig(
         bg_primary="#f5f5f5",
         bg_surface="#556b2f",
@@ -2615,31 +2288,6 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-hover-transition": "background-color 0.5s ease",
             "--dgcv-table-shadow": "0 2px 8px rgba(75, 0, 130, 0.2)",
             "--dgcv-hover-transform": "scale(1.001)",
-        },
-    ),
-    "wooden_borders": ThemeConfig(
-        bg_primary="transparent",
-        bg_surface="transparent",
-        bg_alt="transparent",
-        bg_hover="transparent",
-        text_main="inherit",
-        text_heading="inherit",
-        text_hover="inherit",
-        border_main="#8b4513",
-        bg_action="#a0522d",
-        text_on_action="#ffffff",
-        bg_action_hover="#cd853f",
-        bg_error="#8b0000",
-        text_on_error="#ffffff",
-        bg_success="#556b2f",
-        text_on_success="#ffffff",
-        border_alt="#a0522d",
-        font_family="inherit",
-        custom_css_vars={
-            "--dgcv-border-width": "10px",
-            "--dgcv-table-shadow": "0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(139, 69, 19, 0.8)",
-            "--dgcv-border-image": "linear-gradient(135deg, #8b4513, #cd853f, #8b4513, #a0522d, #8b4513) 1",
-            "--dgcv-border-radius": "0",
         },
     ),
     "mercury": ThemeConfig(
@@ -3342,36 +2990,6 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-hover-transition": "all 0.3s ease",
         },
     ),
-    "clownfish_reef": ThemeConfig(
-        bg_primary="#0e2433",
-        bg_surface="#16344a",
-        bg_alt="#112c3f",
-        bg_hover="#f3533a",
-        text_main="#eaf4f8",
-        text_heading="#ff9280",
-        text_hover="#0b1d28",
-        text_alt="#7fa6ba",
-        border_main="#285b7a",
-        border_alt="#1d4661",
-        bg_action="#f3533a",
-        text_on_action="#ffffff",
-        bg_action_hover="#ff6b52",
-        bg_error="#d13b4f",
-        text_on_error="#ffffff",
-        bg_success="#22a86b",
-        text_on_success="#ffffff",
-        font_family="Helvetica, sans-serif",
-        custom_css_vars={
-            "--dgcv-border-width": "1px",
-            "--dgcv-special-text": "#ff826e",
-            "--dgcv-special-background": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cg%3E%3C!-- Dense High-Contrast Bubbles --%3E%3Ccircle cx='20' cy='30' r='4' fill='%234ce3d0' fill-opacity='0.45'/%3E%3Ccircle cx='19' cy='28' r='1' fill='%23ffffff' fill-opacity='0.7'/%3E%3Ccircle cx='155' cy='55' r='6' fill='%234ce3d0' fill-opacity='0.35'/%3E%3Ccircle cx='153' cy='52' r='2' fill='%23ffffff' fill-opacity='0.6'/%3E%3Ccircle cx='95' cy='110' r='3' fill='%234ce3d0' fill-opacity='0.45'/%3E%3Ccircle cx='45' cy='145' r='5.5' fill='%234ce3d0' fill-opacity='0.35'/%3E%3Ccircle cx='43' cy='142' r='1.5' fill='%23ffffff' fill-opacity='0.6'/%3E%3C!-- Clownfish 1 (Mid-size, Swimming Left) --%3E%3Cg transform='translate%28100, 20%29 scale%280.8%29' opacity='0.55'%3E%3Cpath d='M3.5,23 C-4,31 -5,35 -8,33 C-4,21 -4,9 -8,-3 C-5,-5 -4,1 3.5,9' fill='%23f3533a'/%3E%3Cpath d='M-5,25 C-8,31 -8,33 -8,33 C-6,25 -6,17 -8,-3 C-8,-3 -8,-1 -5,5' fill='%2311293a'/%3E%3Cpath d='M40,10 C24,1 5,12 3,16 C3,16 5,19 3,24 C5,28 24,39 40,30 C50,25 55,15 40,10 Z' fill='%23f3533a'/%3E%3Cpath d='M25,10 C21,11 19,27 21,30 C25,29 29,14 25,10 Z M12,12 C10,14 9,23 11,26 C14,25 15,16 12,12 Z' fill='%23ffffff'/%3E%3Ccircle cx='34' cy='17' r='1.5' fill='%2311293a'/%3E%3C/g%3E%3C!-- Clownfish 2 (Tiny, Background, Swimming Right) --%3E%3Cg transform='translate%2830, 85%29 scale%28-0.5, 0.5%29' opacity='0.35'%3E%3Cpath d='M3.5,23 C-4,31 -5,35 -8,33 C-4,21 -4,9 -8,-3 C-5,-5 -4,1 3.5,9' fill='%23f3533a'/%3E%3Cpath d='M40,10 C24,1 5,12 3,16 C3,16 5,19 3,24 C5,28 24,39 40,30 C50,25 55,15 40,10 Z' fill='%23f3533a'/%3E%3Cpath d='M25,10 C21,11 19,27 21,30 C25,29 29,14 25,10 Z M12,12 C10,14 9,23 11,26 C14,25 15,16 12,12 Z' fill='%23ffffff'/%3E%3Ccircle cx='34' cy='17' r='1.5' fill='%2311293a'/%3E%3C/g%3E%3C!-- Clownfish 3 (Large, Foreground, Swimming Right) --%3E%3Cg transform='translate%28135, 125%29 scale%28-1, 1%29' opacity='0.6'%3E%3Cpath d='M3.5,23 C-4,31 -5,35 -8,33 C-4,21 -4,9 -8,-3 C-5,-5 -4,1 3.5,9' fill='%23f3533a'/%3E%3Cpath d='M-5,25 C-8,31 -8,33 -8,33 C-6,25 -6,17 -8,-3 C-8,-3 -8,-1 -5,5' fill='%2311293a'/%3E%3Cpath d='M40,10 C24,1 5,12 3,16 C3,16 5,19 3,24 C5,28 24,39 40,30 C50,25 55,15 40,10 Z' fill='%23f3533a'/%3E%3Cpath d='M25,10 C21,11 19,27 21,30 C25,29 29,14 25,10 Z M12,12 C10,14 9,23 11,26 C14,25 15,16 12,12 Z' fill='%23ffffff'/%3E%3Ccircle cx='34' cy='17' r='1.5' fill='%2311293a'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\"), linear-gradient(135deg, rgba(243, 83, 58, 0.22) 0%, rgba(14, 36, 51, 0) 75%), #0e2433",
-            "--plaque-fill": "#112c3f",
-            "--plaque-border": "#f3533a",
-            "--dgcv-table-shadow": "0 0 30px rgba(243, 83, 58, 0.2), inset 0 1px 2px rgba(255, 146, 128, 0.25)",
-            "--dgcv-hover-transform": "translateY(-1px)",
-            "--dgcv-hover-transition": "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
-        },
-    ),
     "meadow_day": ThemeConfig(
         bg_primary="#FFFFFF",
         bg_surface="#ECE9D8",
@@ -3395,92 +3013,87 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-border-width": "1px",
             "--dgcv-special-background": (
                 'url("data:image/svg+xml,'
-                "%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'"
-                "%3E %3Cfilter id='g' x='0' y='0' width='100%' height='100%' color-interpolation-filters="
-                "'sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' seed='5"
-                "' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 "
-                "0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0.30 0 0 0 -0.14'/%3E %3C/filter%3E %3Crect width='160' "
-                "height='160' filter='url%28%23g%29'/%3E %3C/svg%3E"
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E %3Cf"
+                "ilter id='g' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeT"
+                "urbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' seed='5' stitchTiles='stitch' r"
+                "esult='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 "
+                "0.30 0 0 0 -0.14'/%3E %3C/filter%3E %3Crect width='160' height='160' filter='url%28%23g%29'/%3E "
+                "%3C/svg%3E"
                 '") 0 0 / 160px 160px repeat, '
                 'url("data:image/svg+xml,'
-                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='xMi"
-                "dYMax slice'%3E %3Cdefs%3E %3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E %3C"
-                "stop offset='0' stop-color='%231E62AC'/%3E %3Cstop offset='0.30' stop-color='%232E76C0'/"
-                "%3E %3Cstop offset='0.58' stop-color='%235F9FD6'/%3E %3Cstop offset='0.80' stop-color='%"
-                "23A8CCE8'/%3E %3Cstop offset='1' stop-color='%23D8E7F2'/%3E %3C/linearGradient%3E %3Clin"
-                "earGradient id='haze' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset='0' stop-color='%23D"
-                "CEAF5' stop-opacity='0'/%3E %3Cstop offset='1' stop-color='%23DCEAF5' stop-opacity='0.62"
-                "'/%3E %3C/linearGradient%3E %3ClinearGradient id='turf' gradientUnits='userSpaceOnUse' x"
-                "1='0' y1='272' x2='0' y2='470'%3E %3Cstop offset='0' stop-color='%23B3CE73'/%3E %3Cstop "
-                "offset='0.16' stop-color='%238CB656'/%3E %3Cstop offset='0.52' stop-color='%236A9842'/%3"
-                "E %3Cstop offset='1' stop-color='%23496E30'/%3E %3C/linearGradient%3E %3ClinearGradient "
-                "id='far' gradientUnits='userSpaceOnUse' x1='0' y1='326' x2='0' y2='430'%3E %3Cstop offse"
-                "t='0' stop-color='%23A3BA90'/%3E %3Cstop offset='1' stop-color='%238AA06D'/%3E %3C/linea"
-                "rGradient%3E %3ClinearGradient id='cfade' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset="
-                "'0' stop-color='%23FFFFFF' stop-opacity='0.55'/%3E %3Cstop offset='0.16' stop-color='%23"
-                "FFFFFF' stop-opacity='1'/%3E %3Cstop offset='0.68' stop-color='%23FFFFFF' stop-opacity='"
-                "1'/%3E %3Cstop offset='0.98' stop-color='%23000000' stop-opacity='0'/%3E %3C/linearGradi"
-                "ent%3E %3Cmask id='cmask'%3E%3Crect x='0' y='0' width='800' height='340' fill='url%28%23"
-                "cfade%29'/%3E%3C/mask%3E %3Cfilter id='cloud' x='0' y='0' width='100%' height='100%' col"
-                "or-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0."
-                "0055 0.019' numOctaves='5' seed='3' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix"
-                " in='n' type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 -2.9 0 0 0 1.62' result='m'/"
-                "%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter "
-                "id='cshade' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E"
-                " %3CfeTurbulence type='fractalNoise' baseFrequency='0.0055 0.019' numOctaves='5' seed='3"
-                "' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 "
-                "0 0 0.72 0 0 0 0 0.76 0 0 0 0 0.82 -2.2 0 0 0 1.05' result='m'/%3E %3CfeOffset in='m' dx"
-                "='0' dy='9' result='o'/%3E %3CfeComposite in='o' in2='SourceGraphic' operator='in'/%3E %"
-                "3C/filter%3E %3Cfilter id='mottle' x='0' y='0' width='100%' height='100%' color-interpol"
-                "ation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.014 0.045' "
-                "numOctaves='4' seed='11' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' typ"
-                "e='matrix' values='0 0 0 0 0.20 0 0 0 0 0.29 0 0 0 0 0.11 0.62 0 0 0 -0.20' result='m'/%"
-                "3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter i"
-                "d='blades' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E "
-                "%3CfeTurbulence type='fractalNoise' baseFrequency='0.09 0.55' numOctaves='3' seed='19' s"
-                "titchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0"
-                " 0.83 0 0 0 0 0.90 0 0 0 0 0.55 0.50 0 0 0 -0.22' result='m'/%3E %3CfeComposite in='m' i"
-                "n2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3ClinearGradient id='near' gradientU"
-                "nits='userSpaceOnUse' x1='0' y1='318' x2='0' y2='504'%3E %3Cstop offset='0' stop-color='"
-                "%2360843A'/%3E %3Cstop offset='0.22' stop-color='%23547630'/%3E %3Cstop offset='0.60' st"
-                "op-color='%2342602A'/%3E %3Cstop offset='1' stop-color='%23344C22'/%3E %3C/linearGradien"
-                "t%3E %3Cfilter id='nmottle' x='0' y='0' width='100%' height='100%' color-interpolation-f"
-                "ilters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.010 0.032' numOcta"
-                "ves='4' seed='23' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matr"
-                "ix' values='0 0 0 0 0.15 0 0 0 0 0.23 0 0 0 0 0.08 0.58 0 0 0 -0.19' result='m'/%3E %3Cf"
-                "eComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter id='nbla"
-                "des' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeT"
-                "urbulence type='fractalNoise' baseFrequency='0.055 0.32' numOctaves='3' seed='29' stitch"
-                "Tiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.74"
-                " 0 0 0 0 0.84 0 0 0 0 0.48 0.46 0 0 0 -0.20' result='m'/%3E %3CfeComposite in='m' in2='S"
-                "ourceGraphic' operator='in'/%3E %3C/filter%3E %3CclipPath id='nearclip'%3E %3Cpath d='M "
-                "-4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320 L 804,504 L -4,504 Z'/%3E %3C"
-                "/clipPath%3E %3CclipPath id='hillclip'%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C"
-                " 332,276 420,300 520,320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z'/%3E %3C/clipPat"
-                "h%3E %3C/defs%3E %3Crect x='0' y='0' width='800' height='500' fill='url%28%23sky%29'/%3E"
-                " %3Crect x='0' y='0' width='800' height='340' fill='%23FFFFFF' filter='url%28%23cshade%2"
-                "9' mask='url%28%23cmask%29' opacity='0.85'/%3E %3Crect x='0' y='0' width='800' height='3"
-                "40' fill='%23FFFFFF' filter='url%28%23cloud%29' mask='url%28%23cmask%29'/%3E %3Crect x='"
-                "0' y='240' width='800' height='160' fill='url%28%23haze%29'/%3E %3Cpath d='M -4,352 C 88"
-                ",338 200,330 300,330 C 432,330 560,336 804,349 L 804,504 L -4,504 Z' fill='url%28%23far%"
-                "29'/%3E %3Cpath d='M -4,352 C 88,338 200,330 300,330 C 432,330 560,336 804,349' fill='no"
-                "ne' stroke='%23C2D4A8' stroke-width='2' opacity='0.5'/%3E %3Cpath d='M -4,318 C 52,296 1"
-                "22,278 212,277 C 332,276 420,300 520,320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z'"
-                " fill='url%28%23turf%29'/%3E %3Cg clip-path='url%28%23hillclip%29'%3E %3Crect x='0' y='2"
-                "60' width='800' height='244' fill='%23FFFFFF' filter='url%28%23mottle%29'/%3E %3Crect x="
-                "'0' y='260' width='800' height='244' fill='%23FFFFFF' filter='url%28%23blades%29' opacit"
-                "y='0.55'/%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,320 C 63"
-                "0,342 720,360 804,378' fill='none' stroke='%23D2E39B' stroke-width='7' opacity='0.35'/%3"
-                "E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,320 C 630,342 720,3"
-                "60 804,378' fill='none' stroke='%23E2EEB4' stroke-width='2.5' opacity='0.55'/%3E %3C/g%3"
-                "E %3Cpath d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320 L 804,504 L -4"
-                ",504 Z' fill='url%28%23near%29'/%3E %3Cg clip-path='url%28%23nearclip%29'%3E %3Crect x='"
-                "0' y='300' width='800' height='204' fill='%23FFFFFF' filter='url%28%23nmottle%29'/%3E %3"
-                "Crect x='0' y='300' width='800' height='204' fill='%23FFFFFF' filter='url%28%23nblades%2"
-                "9' opacity='0.5'/%3E %3Cpath d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804"
-                ",320' fill='none' stroke='%23A9C95C' stroke-width='8' opacity='0.22'/%3E %3Cpath d='M -4"
-                ",463 C 130,443 280,417 400,395 C 530,371 690,344 804,320' fill='none' stroke='%23C3DC84'"
-                " stroke-width='2.5' opacity='0.5'/%3E %3C/g%3E %3C/svg%3E"
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='xMidYMax sl"
+                "ice'%3E %3Cdefs%3E %3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset='0' "
+                "stop-color='%231E62AC'/%3E %3Cstop offset='0.30' stop-color='%232E76C0'/%3E %3Cstop offset='0.58"
+                "' stop-color='%235F9FD6'/%3E %3Cstop offset='0.80' stop-color='%23A8CCE8'/%3E %3Cstop offset='1'"
+                " stop-color='%23D8E7F2'/%3E %3C/linearGradient%3E %3ClinearGradient id='haze' x1='0' y1='0' x2='"
+                "0' y2='1'%3E %3Cstop offset='0' stop-color='%23DCEAF5' stop-opacity='0'/%3E %3Cstop offset='1' s"
+                "top-color='%23DCEAF5' stop-opacity='0.62'/%3E %3C/linearGradient%3E %3ClinearGradient id='turf' "
+                "gradientUnits='userSpaceOnUse' x1='0' y1='272' x2='0' y2='470'%3E %3Cstop offset='0' stop-color="
+                "'%23B3CE73'/%3E %3Cstop offset='0.16' stop-color='%238CB656'/%3E %3Cstop offset='0.52' stop-colo"
+                "r='%236A9842'/%3E %3Cstop offset='1' stop-color='%23496E30'/%3E %3C/linearGradient%3E %3ClinearG"
+                "radient id='far' gradientUnits='userSpaceOnUse' x1='0' y1='326' x2='0' y2='430'%3E %3Cstop offse"
+                "t='0' stop-color='%23A3BA90'/%3E %3Cstop offset='1' stop-color='%238AA06D'/%3E %3C/linearGradien"
+                "t%3E %3ClinearGradient id='cfade' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset='0' stop-color='"
+                "%23FFFFFF' stop-opacity='0.55'/%3E %3Cstop offset='0.16' stop-color='%23FFFFFF' stop-opacity='1'"
+                "/%3E %3Cstop offset='0.68' stop-color='%23FFFFFF' stop-opacity='1'/%3E %3Cstop offset='0.98' sto"
+                "p-color='%23000000' stop-opacity='0'/%3E %3C/linearGradient%3E %3Cmask id='cmask'%3E%3Crect x='0"
+                "' y='0' width='800' height='340' fill='url%28%23cfade%29'/%3E%3C/mask%3E %3Cfilter id='cloud' x="
+                "'0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type="
+                "'fractalNoise' baseFrequency='0.0055 0.019' numOctaves='5' seed='3' stitchTiles='stitch' result="
+                "'n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 -2.9 0 0 0 1"
+                ".62' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3"
+                "Cfilter id='cshade' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E"
+                " %3CfeTurbulence type='fractalNoise' baseFrequency='0.0055 0.019' numOctaves='5' seed='3' stitch"
+                "Tiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.72 0 0 0 0"
+                " 0.76 0 0 0 0 0.82 -2.2 0 0 0 1.05' result='m'/%3E %3CfeOffset in='m' dx='0' dy='9' result='o'/%"
+                "3E %3CfeComposite in='o' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter id='mottl"
+                "e' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence "
+                "type='fractalNoise' baseFrequency='0.014 0.045' numOctaves='4' seed='11' stitchTiles='stitch' re"
+                "sult='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.20 0 0 0 0 0.29 0 0 0 0 0.1"
+                "1 0.62 0 0 0 -0.20' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %"
+                "3C/filter%3E %3Cfilter id='blades' x='0' y='0' width='100%' height='100%' color-interpolation-fi"
+                "lters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.09 0.55' numOctaves='3' see"
+                "d='19' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0"
+                " 0.83 0 0 0 0 0.90 0 0 0 0 0.55 0.50 0 0 0 -0.22' result='m'/%3E %3CfeComposite in='m' in2='Sour"
+                "ceGraphic' operator='in'/%3E %3C/filter%3E %3ClinearGradient id='near' gradientUnits='userSpaceO"
+                "nUse' x1='0' y1='318' x2='0' y2='504'%3E %3Cstop offset='0' stop-color='%2360843A'/%3E %3Cstop o"
+                "ffset='0.22' stop-color='%23547630'/%3E %3Cstop offset='0.60' stop-color='%2342602A'/%3E %3Cstop"
+                " offset='1' stop-color='%23344C22'/%3E %3C/linearGradient%3E %3Cfilter id='nmottle' x='0' y='0' "
+                "width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNo"
+                "ise' baseFrequency='0.010 0.032' numOctaves='4' seed='23' stitchTiles='stitch' result='n'/%3E %3"
+                "CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.15 0 0 0 0 0.23 0 0 0 0 0.08 0.58 0 0 0 -0"
+                ".19' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3"
+                "Cfilter id='nblades' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3"
+                "E %3CfeTurbulence type='fractalNoise' baseFrequency='0.055 0.32' numOctaves='3' seed='29' stitch"
+                "Tiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.74 0 0 0 0"
+                " 0.84 0 0 0 0 0.48 0.46 0 0 0 -0.20' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' op"
+                "erator='in'/%3E %3C/filter%3E %3CclipPath id='nearclip'%3E %3Cpath d='M -4,463 C 130,443 280,417"
+                " 400,395 C 530,371 690,344 804,320 L 804,504 L -4,504 Z'/%3E %3C/clipPath%3E %3CclipPath id='hil"
+                "lclip'%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,320 C 630,342 720,3"
+                "60 804,378 L 804,504 L -4,504 Z'/%3E %3C/clipPath%3E %3C/defs%3E %3Crect x='0' y='0' width='800'"
+                " height='500' fill='url%28%23sky%29'/%3E %3Crect x='0' y='0' width='800' height='340' fill='%23F"
+                "FFFFF' filter='url%28%23cshade%29' mask='url%28%23cmask%29' opacity='0.85'/%3E %3Crect x='0' y='"
+                "0' width='800' height='340' fill='%23FFFFFF' filter='url%28%23cloud%29' mask='url%28%23cmask%29'"
+                "/%3E %3Crect x='0' y='240' width='800' height='160' fill='url%28%23haze%29'/%3E %3Cpath d='M -4,"
+                "352 C 88,338 200,330 300,330 C 432,330 560,336 804,349 L 804,504 L -4,504 Z' fill='url%28%23far%"
+                "29'/%3E %3Cpath d='M -4,352 C 88,338 200,330 300,330 C 432,330 560,336 804,349' fill='none' stro"
+                "ke='%23C2D4A8' stroke-width='2' opacity='0.5'/%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C"
+                " 332,276 420,300 520,320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z' fill='url%28%23turf%29'"
+                "/%3E %3Cg clip-path='url%28%23hillclip%29'%3E %3Crect x='0' y='260' width='800' height='244' fil"
+                "l='%23FFFFFF' filter='url%28%23mottle%29'/%3E %3Crect x='0' y='260' width='800' height='244' fil"
+                "l='%23FFFFFF' filter='url%28%23blades%29' opacity='0.55'/%3E %3Cpath d='M -4,318 C 52,296 122,27"
+                "8 212,277 C 332,276 420,300 520,320 C 630,342 720,360 804,378' fill='none' stroke='%23D2E39B' st"
+                "roke-width='7' opacity='0.35'/%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,300"
+                " 520,320 C 630,342 720,360 804,378' fill='none' stroke='%23E2EEB4' stroke-width='2.5' opacity='0"
+                ".55'/%3E %3Crect x='0' y='430' width='800' height='74' fill='%232F4A20' opacity='0.16'/%3E %3C/g"
+                "%3E %3Cpath d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320 L 804,504 L -4,504 Z"
+                "' fill='url%28%23near%29'/%3E %3Cg clip-path='url%28%23nearclip%29'%3E %3Crect x='0' y='300' wid"
+                "th='800' height='204' fill='%23FFFFFF' filter='url%28%23nmottle%29'/%3E %3Crect x='0' y='300' wi"
+                "dth='800' height='204' fill='%23FFFFFF' filter='url%28%23nblades%29' opacity='0.5'/%3E %3Cpath d"
+                "='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320' fill='none' stroke='%23A9C95C' s"
+                "troke-width='8' opacity='0.22'/%3E %3Cpath d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,3"
+                "44 804,320' fill='none' stroke='%23C3DC84' stroke-width='2.5' opacity='0.5'/%3E %3C/g%3E %3C/svg"
+                "%3E"
                 '") center 58% / cover no-repeat, '
                 "linear-gradient(to bottom, #1E62AC 0%, #2E76C0 30%, #5F9FD6 58%, "
                 "#A8CCE8 80%, #D8E7F2 100%) center / cover no-repeat, "
@@ -3518,105 +3131,100 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-border-width": "1px",
             "--dgcv-special-background": (
                 'url("data:image/svg+xml,'
-                "%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'"
-                "%3E %3Cfilter id='g' x='0' y='0' width='100%' height='100%' color-interpolation-filters="
-                "'sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' seed='5"
-                "' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 "
-                "0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0.34 0 0 0 -0.16'/%3E %3C/filter%3E %3Crect width='160' "
-                "height='160' filter='url%28%23g%29'/%3E %3C/svg%3E"
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E %3"
+                "Cfilter id='g' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3"
+                "CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' seed='5' stitchTiles='sti"
+                "tch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 "
+                "0 0 0.5 0.34 0 0 0 -0.16'/%3E %3C/filter%3E %3Crect width='160' height='160' filter='url%28%23"
+                "g%29'/%3E %3C/svg%3E"
                 '") 0 0 / 160px 160px repeat, '
                 'url("data:image/svg+xml,'
-                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='xMi"
-                "dYMax slice'%3E %3Cdefs%3E %3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E %3C"
-                "stop offset='0' stop-color='%23101833'/%3E %3Cstop offset='0.28' stop-color='%231E2748'/"
-                "%3E %3Cstop offset='0.52' stop-color='%233A3560'/%3E %3Cstop offset='0.70' stop-color='%"
-                "236E4462'/%3E %3Cstop offset='0.86' stop-color='%23B45F53'/%3E %3Cstop offset='1' stop-c"
-                "olor='%23E89A5C'/%3E %3C/linearGradient%3E %3CradialGradient id='glow' cx='0.5' cy='0.5'"
-                " r='0.5'%3E %3Cstop offset='0' stop-color='%23FFC078' stop-opacity='0.70'/%3E %3Cstop of"
-                "fset='0.45' stop-color='%23F09A5E' stop-opacity='0.34'/%3E %3Cstop offset='1' stop-color"
-                "='%23E8834E' stop-opacity='0'/%3E %3C/radialGradient%3E %3ClinearGradient id='cloudcol' "
-                "gradientUnits='userSpaceOnUse' x1='0' y1='24' x2='0' y2='352'%3E %3Cstop offset='0' stop"
-                "-color='%232E3352'/%3E %3Cstop offset='0.42' stop-color='%235B4666'/%3E %3Cstop offset='"
-                "0.74' stop-color='%23B06A5C'/%3E %3Cstop offset='1' stop-color='%23F0A96E'/%3E %3C/linea"
-                "rGradient%3E %3ClinearGradient id='haze' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset='"
-                "0' stop-color='%23E8945C' stop-opacity='0'/%3E %3Cstop offset='1' stop-color='%23E8945C'"
-                " stop-opacity='0.34'/%3E %3C/linearGradient%3E %3ClinearGradient id='turf' gradientUnits"
-                "='userSpaceOnUse' x1='0' y1='272' x2='0' y2='470'%3E %3Cstop offset='0' stop-color='%234"
-                "1522F'/%3E %3Cstop offset='0.16' stop-color='%23334325'/%3E %3Cstop offset='0.52' stop-c"
-                "olor='%2325341C'/%3E %3Cstop offset='1' stop-color='%231A2614'/%3E %3C/linearGradient%3E"
-                " %3ClinearGradient id='far' gradientUnits='userSpaceOnUse' x1='0' y1='326' x2='0' y2='43"
-                "0'%3E %3Cstop offset='0' stop-color='%236B6274'/%3E %3Cstop offset='1' stop-color='%2354"
-                "4E63'/%3E %3C/linearGradient%3E %3ClinearGradient id='near' gradientUnits='userSpaceOnUs"
-                "e' x1='0' y1='318' x2='0' y2='504'%3E %3Cstop offset='0' stop-color='%231B2614'/%3E %3Cs"
-                "top offset='0.22' stop-color='%23151E10'/%3E %3Cstop offset='0.60' stop-color='%2310170C"
-                "'/%3E %3Cstop offset='1' stop-color='%230B1108'/%3E %3C/linearGradient%3E %3ClinearGradi"
-                "ent id='mglow' gradientUnits='userSpaceOnUse' x1='0' y1='268' x2='0' y2='470'%3E %3Cstop"
-                " offset='0' stop-color='%23FFB86E' stop-opacity='0.30'/%3E %3Cstop offset='0.38' stop-co"
-                "lor='%23F09A5E' stop-opacity='0.12'/%3E %3Cstop offset='1' stop-color='%23E8834E' stop-o"
-                "pacity='0'/%3E %3C/linearGradient%3E %3ClinearGradient id='cfade' x1='0' y1='0' x2='0' y"
-                "2='1'%3E %3Cstop offset='0' stop-color='%23FFFFFF' stop-opacity='0.6'/%3E %3Cstop offset"
-                "='0.18' stop-color='%23FFFFFF' stop-opacity='1'/%3E %3Cstop offset='0.80' stop-color='%2"
-                "3FFFFFF' stop-opacity='1'/%3E %3Cstop offset='1' stop-color='%23000000' stop-opacity='0'"
-                "/%3E %3C/linearGradient%3E %3Cmask id='cmask'%3E%3Crect x='0' y='0' width='800' height='"
-                "352' fill='url%28%23cfade%29'/%3E%3C/mask%3E %3Cfilter id='cloud' x='0' y='0' width='100"
-                "%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNois"
-                "e' baseFrequency='0.0055 0.019' numOctaves='5' seed='3' stitchTiles='stitch' result='n'/"
-                "%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 -2.9 0 0"
-                " 0 1.62' result='m'/%3E %3CfeComposite in='SourceGraphic' in2='m' operator='in'/%3E %3C/"
-                "filter%3E %3Cfilter id='cshade' x='0' y='0' width='100%' height='100%' color-interpolati"
-                "on-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.0055 0.019' nu"
-                "mOctaves='5' seed='3' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='"
-                "matrix' values='0 0 0 0 0.10 0 0 0 0 0.10 0 0 0 0 0.18 -2.2 0 0 0 1.05' result='m'/%3E %"
-                "3CfeOffset in='m' dx='0' dy='-8' result='o'/%3E %3CfeComposite in='o' in2='SourceGraphic"
-                "' operator='in'/%3E %3C/filter%3E %3Cfilter id='mottle' x='0' y='0' width='100%' height="
-                "'100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFre"
-                "quency='0.014 0.045' numOctaves='4' seed='11' stitchTiles='stitch' result='n'/%3E %3CfeC"
-                "olorMatrix in='n' type='matrix' values='0 0 0 0 0.05 0 0 0 0 0.08 0 0 0 0 0.04 0.60 0 0 "
-                "0 -0.20' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/"
-                "filter%3E %3Cfilter id='blades' x='0' y='0' width='100%' height='100%' color-interpolati"
-                "on-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.09 0.55' numOc"
-                "taves='3' seed='19' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='ma"
-                "trix' values='0 0 0 0 0.92 0 0 0 0 0.68 0 0 0 0 0.38 0.42 0 0 0 -0.22' result='m'/%3E %3"
-                "CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter id='nm"
-                "ottle' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3Cf"
-                "eTurbulence type='fractalNoise' baseFrequency='0.010 0.032' numOctaves='4' seed='23' sti"
-                "tchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0"
-                ".03 0 0 0 0 0.05 0 0 0 0 0.02 0.58 0 0 0 -0.19' result='m'/%3E %3CfeComposite in='m' in2"
-                "='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter id='nblades' x='0' y='0' widt"
-                "h='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fract"
-                "alNoise' baseFrequency='0.055 0.32' numOctaves='3' seed='29' stitchTiles='stitch' result"
-                "='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.62 0 0 0 0 0.45 0 0 0 0"
-                " 0.24 0.40 0 0 0 -0.22' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operato"
-                "r='in'/%3E %3C/filter%3E %3CclipPath id='nearclip'%3E %3Cpath d='M -4,463 C 130,443 280,"
-                "417 400,395 C 530,371 690,344 804,320 L 804,504 L -4,504 Z'/%3E %3C/clipPath%3E %3CclipP"
-                "ath id='hillclip'%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,"
-                "320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z'/%3E %3C/clipPath%3E %3C/defs%3E %3Cr"
-                "ect x='0' y='0' width='800' height='500' fill='url%28%23sky%29'/%3E %3Cellipse cx='300' "
-                "cy='330' rx='430' ry='150' fill='url%28%23glow%29'/%3E %3Crect x='0' y='0' width='800' h"
-                "eight='352' fill='%230C1026' filter='url%28%23cshade%29' mask='url%28%23cmask%29' opacit"
-                "y='0.8'/%3E %3Crect x='0' y='0' width='800' height='352' fill='url%28%23cloudcol%29' fil"
-                "ter='url%28%23cloud%29' mask='url%28%23cmask%29'/%3E %3Crect x='0' y='250' width='800' h"
-                "eight='160' fill='url%28%23haze%29'/%3E %3Cpath d='M -4,352 C 88,338 200,330 300,330 C 4"
-                "32,330 560,336 804,349 L 804,504 L -4,504 Z' fill='url%28%23far%29'/%3E %3Cpath d='M -4,"
-                "352 C 88,338 200,330 300,330 C 432,330 560,336 804,349' fill='none' stroke='%23E0A882' s"
-                "troke-width='2' opacity='0.45'/%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,27"
-                "6 420,300 520,320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z' fill='url%28%23turf%29"
-                "'/%3E %3Cg clip-path='url%28%23hillclip%29'%3E %3Crect x='0' y='260' width='800' height="
-                "'244' fill='%23FFFFFF' filter='url%28%23mottle%29'/%3E %3Crect x='0' y='260' width='800'"
-                " height='244' fill='%23FFFFFF' filter='url%28%23blades%29' opacity='0.30'/%3E %3Cpath d="
-                "'M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,320 C 630,342 720,360 804,378' "
-                "fill='none' stroke='%23F0A45E' stroke-width='6' opacity='0.28'/%3E %3Cpath d='M -4,318 C"
-                " 52,296 122,278 212,277 C 332,276 420,300 520,320 C 630,342 720,360 804,378' fill='none'"
-                " stroke='%23FFCE92' stroke-width='2' opacity='0.55'/%3E %3C/g%3E %3Cpath d='M -4,463 C 1"
-                "30,443 280,417 400,395 C 530,371 690,344 804,320 L 804,504 L -4,504 Z' fill='url%28%23ne"
-                "ar%29'/%3E %3Cg clip-path='url%28%23nearclip%29'%3E %3Crect x='0' y='300' width='800' he"
-                "ight='204' fill='%23FFFFFF' filter='url%28%23nmottle%29'/%3E %3Crect x='0' y='300' width"
-                "='800' height='204' fill='%23FFFFFF' filter='url%28%23nblades%29' opacity='0.28'/%3E %3C"
-                "path d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320' fill='none' stroke"
-                "='%23E09455' stroke-width='7' opacity='0.20'/%3E %3Cpath d='M -4,463 C 130,443 280,417 4"
-                "00,395 C 530,371 690,344 804,320' fill='none' stroke='%23F7BC7C' stroke-width='2' opacit"
-                "y='0.45'/%3E %3C/g%3E %3Crect x='0' y='268' width='800' height='236' fill='url%28%23mglo"
-                "w%29'/%3E %3C/svg%3E"
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='xMidYMax "
+                "slice'%3E %3Cdefs%3E %3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset="
+                "'0' stop-color='%23101833'/%3E %3Cstop offset='0.28' stop-color='%231E2748'/%3E %3Cstop offset"
+                "='0.52' stop-color='%233A3560'/%3E %3Cstop offset='0.70' stop-color='%236E4462'/%3E %3Cstop of"
+                "fset='0.86' stop-color='%23B45F53'/%3E %3Cstop offset='1' stop-color='%23E89A5C'/%3E %3C/linea"
+                "rGradient%3E %3CradialGradient id='glow' cx='0.5' cy='0.5' r='0.5'%3E %3Cstop offset='0' stop-"
+                "color='%23FFC078' stop-opacity='0.70'/%3E %3Cstop offset='0.45' stop-color='%23F09A5E' stop-op"
+                "acity='0.34'/%3E %3Cstop offset='1' stop-color='%23E8834E' stop-opacity='0'/%3E %3C/radialGrad"
+                "ient%3E %3ClinearGradient id='cloudcol' gradientUnits='userSpaceOnUse' x1='0' y1='24' x2='0' y"
+                "2='352'%3E %3Cstop offset='0' stop-color='%232E3352'/%3E %3Cstop offset='0.42' stop-color='%23"
+                "5B4666'/%3E %3Cstop offset='0.74' stop-color='%23B06A5C'/%3E %3Cstop offset='1' stop-color='%2"
+                "3F0A96E'/%3E %3C/linearGradient%3E %3ClinearGradient id='haze' x1='0' y1='0' x2='0' y2='1'%3E "
+                "%3Cstop offset='0' stop-color='%23E8945C' stop-opacity='0'/%3E %3Cstop offset='1' stop-color='"
+                "%23E8945C' stop-opacity='0.34'/%3E %3C/linearGradient%3E %3ClinearGradient id='turf' gradientU"
+                "nits='userSpaceOnUse' x1='0' y1='272' x2='0' y2='470'%3E %3Cstop offset='0' stop-color='%23415"
+                "22F'/%3E %3Cstop offset='0.16' stop-color='%23334325'/%3E %3Cstop offset='0.52' stop-color='%2"
+                "325341C'/%3E %3Cstop offset='1' stop-color='%231A2614'/%3E %3C/linearGradient%3E %3ClinearGrad"
+                "ient id='far' gradientUnits='userSpaceOnUse' x1='0' y1='326' x2='0' y2='430'%3E %3Cstop offset"
+                "='0' stop-color='%236B6274'/%3E %3Cstop offset='1' stop-color='%23544E63'/%3E %3C/linearGradie"
+                "nt%3E %3ClinearGradient id='near' gradientUnits='userSpaceOnUse' x1='0' y1='318' x2='0' y2='50"
+                "4'%3E %3Cstop offset='0' stop-color='%231B2614'/%3E %3Cstop offset='0.22' stop-color='%23151E1"
+                "0'/%3E %3Cstop offset='0.60' stop-color='%2310170C'/%3E %3Cstop offset='1' stop-color='%230B11"
+                "08'/%3E %3C/linearGradient%3E %3ClinearGradient id='mglow' gradientUnits='userSpaceOnUse' x1='"
+                "0' y1='240' x2='0' y2='470'%3E%3Cstop offset='0' stop-color='%23FFB86E' stop-opacity='0'/%3E%3"
+                "Cstop offset='0.17' stop-color='%23FFB86E' stop-opacity='0.30'/%3E%3Cstop offset='0.45' stop-c"
+                "olor='%23F09A5E' stop-opacity='0.12'/%3E%3Cstop offset='1' stop-color='%23E8834E' stop-opacity"
+                "='0'/%3E%3C/linearGradient%3E %3ClinearGradient id='cfade' x1='0' y1='0' x2='0' y2='1'%3E %3Cs"
+                "top offset='0' stop-color='%23FFFFFF' stop-opacity='0.6'/%3E %3Cstop offset='0.18' stop-color="
+                "'%23FFFFFF' stop-opacity='1'/%3E %3Cstop offset='0.80' stop-color='%23FFFFFF' stop-opacity='1'"
+                "/%3E %3Cstop offset='1' stop-color='%23000000' stop-opacity='0'/%3E %3C/linearGradient%3E %3Cm"
+                "ask id='cmask'%3E%3Crect x='0' y='0' width='800' height='352' fill='url%28%23cfade%29'/%3E%3C/"
+                "mask%3E %3Cfilter id='cloud' x='0' y='0' width='100%' height='100%' color-interpolation-filter"
+                "s='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.0055 0.019' numOctaves='5' se"
+                "ed='3' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0"
+                " 0 1 0 0 0 0 1 0 0 0 0 1 -2.9 0 0 0 1.62' result='m'/%3E %3CfeComposite in='SourceGraphic' in2"
+                "='m' operator='in'/%3E %3C/filter%3E %3Cfilter id='cshade' x='0' y='0' width='100%' height='10"
+                "0%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0"
+                ".0055 0.019' numOctaves='5' seed='3' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='"
+                "n' type='matrix' values='0 0 0 0 0.10 0 0 0 0 0.10 0 0 0 0 0.18 -2.2 0 0 0 1.05' result='m'/%3"
+                "E %3CfeOffset in='m' dx='0' dy='-8' result='o'/%3E %3CfeComposite in='o' in2='SourceGraphic' o"
+                "perator='in'/%3E %3C/filter%3E %3Cfilter id='mottle' x='0' y='0' width='100%' height='100%' co"
+                "lor-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.014 0"
+                ".045' numOctaves='4' seed='11' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' typ"
+                "e='matrix' values='0 0 0 0 0.05 0 0 0 0 0.08 0 0 0 0 0.04 0.60 0 0 0 -0.20' result='m'/%3E %3C"
+                "feComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter id='blades' x"
+                "='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence ty"
+                "pe='fractalNoise' baseFrequency='0.09 0.55' numOctaves='3' seed='19' stitchTiles='stitch' resu"
+                "lt='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.92 0 0 0 0 0.68 0 0 0 0 0.3"
+                "8 0.42 0 0 0 -0.22' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E"
+                " %3C/filter%3E %3Cfilter id='nmottle' x='0' y='0' width='100%' height='100%' color-interpolati"
+                "on-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.010 0.032' numOctave"
+                "s='4' seed='23' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' valu"
+                "es='0 0 0 0 0.03 0 0 0 0 0.05 0 0 0 0 0.02 0.58 0 0 0 -0.19' result='m'/%3E %3CfeComposite in="
+                "'m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %3Cfilter id='nblades' x='0' y='0' wid"
+                "th='100%' height='100%' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoi"
+                "se' baseFrequency='0.055 0.32' numOctaves='3' seed='29' stitchTiles='stitch' result='n'/%3E %3"
+                "CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.62 0 0 0 0 0.45 0 0 0 0 0.24 0.40 0 0 0 "
+                "-0.22' result='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3"
+                "E %3CclipPath id='nearclip'%3E %3Cpath d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344"
+                " 804,320 L 804,504 L -4,504 Z'/%3E %3C/clipPath%3E %3CclipPath id='hillclip'%3E %3Cpath d='M -"
+                "4,318 C 52,296 122,278 212,277 C 332,276 420,300 520,320 C 630,342 720,360 804,378 L 804,504 L"
+                " -4,504 Z'/%3E %3C/clipPath%3E %3C/defs%3E %3Crect x='0' y='0' width='800' height='500' fill='"
+                "url%28%23sky%29'/%3E %3Cellipse cx='300' cy='330' rx='430' ry='150' fill='url%28%23glow%29'/%3"
+                "E %3Crect x='0' y='0' width='800' height='352' fill='%230C1026' filter='url%28%23cshade%29' ma"
+                "sk='url%28%23cmask%29' opacity='0.8'/%3E %3Crect x='0' y='0' width='800' height='352' fill='ur"
+                "l%28%23cloudcol%29' filter='url%28%23cloud%29' mask='url%28%23cmask%29'/%3E %3Crect x='0' y='2"
+                "50' width='800' height='160' fill='url%28%23haze%29'/%3E %3Cpath d='M -4,352 C 88,338 200,330 "
+                "300,330 C 432,330 560,336 804,349 L 804,504 L -4,504 Z' fill='url%28%23far%29'/%3E %3Cpath d='"
+                "M -4,352 C 88,338 200,330 300,330 C 432,330 560,336 804,349' fill='none' stroke='%23E0A882' st"
+                "roke-width='2' opacity='0.45'/%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,3"
+                "00 520,320 C 630,342 720,360 804,378 L 804,504 L -4,504 Z' fill='url%28%23turf%29'/%3E %3Cg cl"
+                "ip-path='url%28%23hillclip%29'%3E %3Crect x='0' y='260' width='800' height='244' fill='%23FFFF"
+                "FF' filter='url%28%23mottle%29'/%3E %3Crect x='0' y='260' width='800' height='244' fill='%23FF"
+                "FFFF' filter='url%28%23blades%29' opacity='0.30'/%3E %3Cpath d='M -4,318 C 52,296 122,278 212,"
+                "277 C 332,276 420,300 520,320 C 630,342 720,360 804,378' fill='none' stroke='%23F0A45E' stroke"
+                "-width='6' opacity='0.28'/%3E %3Cpath d='M -4,318 C 52,296 122,278 212,277 C 332,276 420,300 5"
+                "20,320 C 630,342 720,360 804,378' fill='none' stroke='%23FFCE92' stroke-width='2' opacity='0.5"
+                "5'/%3E %3C/g%3E %3Cpath d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320 L 804,"
+                "504 L -4,504 Z' fill='url%28%23near%29'/%3E %3Cg clip-path='url%28%23nearclip%29'%3E %3Crect x"
+                "='0' y='300' width='800' height='204' fill='%23FFFFFF' filter='url%28%23nmottle%29'/%3E %3Crec"
+                "t x='0' y='300' width='800' height='204' fill='%23FFFFFF' filter='url%28%23nblades%29' opacity"
+                "='0.28'/%3E %3Cpath d='M -4,463 C 130,443 280,417 400,395 C 530,371 690,344 804,320' fill='non"
+                "e' stroke='%23E09455' stroke-width='7' opacity='0.20'/%3E %3Cpath d='M -4,463 C 130,443 280,41"
+                "7 400,395 C 530,371 690,344 804,320' fill='none' stroke='%23F7BC7C' stroke-width='2' opacity='"
+                "0.45'/%3E %3C/g%3E %3Crect x='0' y='240' width='800' height='264' fill='url%28%23mglow%29'/%3E"
+                " %3C/svg%3E"
                 '") center 58% / cover no-repeat, '
                 "linear-gradient(to bottom, #101833 0%, #1E2748 28%, #3A3560 52%, "
                 "#6E4462 70%, #B45F53 86%, #E89A5C 100%) center / cover no-repeat, "
@@ -3629,6 +3237,398 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-text-shadow": "none",
             "--dgcv-hover-transform": "none",
             "--dgcv-hover-transition": "background-color 90ms linear, color 90ms linear",
+        },
+    ),
+    "clownfish_reef": ThemeConfig(
+        bg_primary="#0A1E2B",
+        bg_surface="#123044",
+        bg_alt="#0D2433",
+        bg_hover="#F5714C",
+        text_main="#DCE9F0",
+        text_heading="#FFA47F",
+        text_hover="#0A1E2B",
+        text_alt="#A8C4D2",
+        border_main="#4380A0",
+        border_alt="#1F4860",
+        bg_action="#EC5F34",
+        text_on_action="#160800",
+        bg_action_hover="#FF7E52",
+        bg_error="#E0596E",
+        text_on_error="#1A0409",
+        bg_success="#2C9C7A",
+        text_on_success="#04180F",
+        font_family="'Avenir Next', Avenir, 'Century Gothic', 'Trebuchet MS', sans-serif",
+        custom_css_vars={
+            "--dgcv-border-width": "1px",
+            "$randomized": (
+                "nx=0:169 ny=0:169 ns=150:200 "
+                "hx=10:72 hy=44:80 hs=150:215 hd=0:1 "
+                "mx=28:90 my=8:36 ms=92:132 md=0:1 mp=0:3 "
+                "fx=4:56 fy=20:52 fs=52:78 fp=0:3 "
+                "bx=56:94 by=0:99 bw=46:74 "
+                "sx=36:64 sy=52:74"
+            ),
+            "$randomized@minimal": "hd=0:0",
+            "$assemble": "--dgcv-special-background",
+            "$part_1": (
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='170' viewBox='0 0 170 170'"
+                "%3E %3Cfilter id='s' x='0' y='0' width='100%' height='100%' color-interpolation-filters="
+                "'sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.62' numOctaves='2' seed='"
+                "4' stitchTiles='stitch' result='n'/%3E %3CfeColorMatrix in='n' type='matrix' values='0 0"
+                " 0 0 0.80 0 0 0 0 0.94 0 0 0 0 1 1.15 0 0 0 -0.80'/%3E %3C/filter%3E %3Crect width='170'"
+                " height='170' filter='url%28%23s%29'/%3E %3C/svg%3E"
+                '") ${nx}px ${ny}px / ${ns}px ${ns}px repeat, '
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-66 -48 132 96'%3E%3Cdefs%3E%3Clinear"
+                "Gradient id='bodyfill' gradientUnits='userSpaceOnUse' x1='0' y1='-28' x2='0' y2='28'%3E "
+                "%3Cstop offset='0' stop-color='%23FF9752'/%3E %3Cstop offset='0.45' stop-color='%23F26A2"
+                "E'/%3E %3Cstop offset='1' stop-color='%23D2461A'/%3E %3C/linearGradient%3E %3ClinearGrad"
+                "ient id='finfill' gradientUnits='userSpaceOnUse' x1='0' y1='-34' x2='0' y2='34'%3E %3Cst"
+                "op offset='0' stop-color='%23F9853F'/%3E %3Cstop offset='1' stop-color='%23D8531F'/%3E %"
+                "3C/linearGradient%3E %3CclipPath id='bodyclip'%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-"
+                "27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z'/%3E %3"
+                "C/clipPath%3E%3C/defs%3E%3Cg transform='rotate%28-7%29' opacity='1.00'%3E%3Cpath d='M -3"
+                "0,-10 C -40,-16 -47,-20 -53,-22 C -56,-11 -56,11 -53,22 C -47,20 -40,16 -30,10 Z' fill='"
+                "url%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M 24,-24 C 14,-3"
+                "4 -2,-38 -12,-36 C -20,-34 -25,-25 -27,-16 Z' fill='url%28%23finfill%29' stroke='%231524"
+                "30' stroke-width='2'/%3E %3Cpath d='M 8,24 C 2,33 -8,35 -14,33 C -20,31 -24,23 -26,17 Z'"
+                " fill='url%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M 52,1 C "
+                "40,-18 16,-28 -4,-27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40"
+                ",19 52,1 Z' fill='url%28%23bodyfill%29'/%3E %3Cg clip-path='url%28%23bodyclip%29'%3E %3C"
+                "path d='M 30,-32 C 27,-14 27,10 24,34' fill='none' stroke='%23152430' stroke-width='21'/"
+                "%3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none' stroke='%23152430' stroke-width='2"
+                "2'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34' fill='none' stroke='%23152430' stro"
+                "ke-width='14'/%3E %3Cpath d='M 30,-32 C 27,-14 27,10 24,34' fill='none' stroke='%23FBF1E"
+                "6' stroke-width='13'/%3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none' stroke='%23FB"
+                "F1E6' stroke-width='14'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34' fill='none' st"
+                "roke='%23FBF1E6' stroke-width='8'/%3E %3Cellipse cx='6' cy='23' rx='30' ry='10' fill='%2"
+                "38E2F12' opacity='0.30'/%3E %3Cellipse cx='2' cy='-24' rx='28' ry='8' fill='%23FFC08A' o"
+                "pacity='0.22'/%3E %3C/g%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-27 C -16,-26 -25,-20 -3"
+                "0,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z' fill='none' stroke='%23152430"
+                "' stroke-width='2.5'/%3E %3Cpath d='M 18,6 C 10,16 8,24 12,26 C 18,26 24,16 24,8 Z' fill"
+                "='%23F9873F' stroke='%23152430' stroke-width='1.6' opacity='0.9'/%3E %3Ccircle cx='37' c"
+                "y='-7' r='5.4' fill='%23F7EADF' stroke='%23152430' stroke-width='1.4'/%3E %3Ccircle cx='"
+                "37' cy='-7' r='3' fill='%23131F2A'/%3E %3Ccircle cx='35.4' cy='-8.6' r='1.1' fill='%23FF"
+                "FFFF'/%3E%3C/g%3E%3C/svg%3E"
+                '") calc(${hx}% + ${hd} * 9999px) ${hy}% / min(${hs}px, 46%) auto no-repeat'
+            ),
+            "$part_2@detail": (
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-66 -48 132 96'%3E%3Cdefs%3E%3Clinear"
+                "Gradient id='bodyfill' gradientUnits='userSpaceOnUse' x1='0' y1='-28' x2='0' y2='28'%3E "
+                "%3Cstop offset='0' stop-color='%23FF9752'/%3E %3Cstop offset='0.45' stop-color='%23F26A2"
+                "E'/%3E %3Cstop offset='1' stop-color='%23D2461A'/%3E %3C/linearGradient%3E %3ClinearGrad"
+                "ient id='finfill' gradientUnits='userSpaceOnUse' x1='0' y1='-34' x2='0' y2='34'%3E %3Cst"
+                "op offset='0' stop-color='%23F9853F'/%3E %3Cstop offset='1' stop-color='%23D8531F'/%3E %"
+                "3C/linearGradient%3E %3CclipPath id='bodyclip'%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-"
+                "27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z'/%3E %3"
+                "C/clipPath%3E%3C/defs%3E%3Cg transform='scale%28-1 1%29 rotate%287%29' opacity='1.00'%3E"
+                "%3Cpath d='M -30,-10 C -40,-16 -47,-20 -53,-22 C -56,-11 -56,11 -53,22 C -47,20 -40,16 -"
+                "30,10 Z' fill='url%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M"
+                " 24,-24 C 14,-34 -2,-38 -12,-36 C -20,-34 -25,-25 -27,-16 Z' fill='url%28%23finfill%29' "
+                "stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M 8,24 C 2,33 -8,35 -14,33 C -20,31 -"
+                "24,23 -26,17 Z' fill='url%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpa"
+                "th d='M 52,1 C 40,-18 16,-28 -4,-27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -"
+                "4,27 C 16,28 40,19 52,1 Z' fill='url%28%23bodyfill%29'/%3E %3Cg clip-path='url%28%23body"
+                "clip%29'%3E %3Cpath d='M 30,-32 C 27,-14 27,10 24,34' fill='none' stroke='%23152430' str"
+                "oke-width='21'/%3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none' stroke='%23152430' "
+                "stroke-width='22'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34' fill='none' stroke='"
+                "%23152430' stroke-width='14'/%3E %3Cpath d='M 30,-32 C 27,-14 27,10 24,34' fill='none' s"
+                "troke='%23FBF1E6' stroke-width='13'/%3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none"
+                "' stroke='%23FBF1E6' stroke-width='14'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34'"
+                " fill='none' stroke='%23FBF1E6' stroke-width='8'/%3E %3Cellipse cx='6' cy='23' rx='30' r"
+                "y='10' fill='%238E2F12' opacity='0.30'/%3E %3Cellipse cx='2' cy='-24' rx='28' ry='8' fil"
+                "l='%23FFC08A' opacity='0.22'/%3E %3C/g%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-27 C -16"
+                ",-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z' fill='none' st"
+                "roke='%23152430' stroke-width='2.5'/%3E %3Cpath d='M 18,6 C 10,16 8,24 12,26 C 18,26 24,"
+                "16 24,8 Z' fill='%23F9873F' stroke='%23152430' stroke-width='1.6' opacity='0.9'/%3E %3Cc"
+                "ircle cx='37' cy='-7' r='5.4' fill='%23F7EADF' stroke='%23152430' stroke-width='1.4'/%3E"
+                " %3Ccircle cx='37' cy='-7' r='3' fill='%23131F2A'/%3E %3Ccircle cx='35.4' cy='-8.6' r='1"
+                ".1' fill='%23FFFFFF'/%3E%3C/g%3E%3C/svg%3E"
+                '") calc(${hx}% + (1 - ${hd}) * 9999px) ${hy}% / min(${hs}px, 46%) auto no-repeat, '
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-66 -48 132 96'%3E%3Cdefs%3E%3Clinear"
+                "Gradient id='bodyfill' gradientUnits='userSpaceOnUse' x1='0' y1='-28' x2='0' y2='28'%3E "
+                "%3Cstop offset='0' stop-color='%23FF9752'/%3E %3Cstop offset='0.45' stop-color='%23F26A2"
+                "E'/%3E %3Cstop offset='1' stop-color='%23D2461A'/%3E %3C/linearGradient%3E %3ClinearGrad"
+                "ient id='finfill' gradientUnits='userSpaceOnUse' x1='0' y1='-34' x2='0' y2='34'%3E %3Cst"
+                "op offset='0' stop-color='%23F9853F'/%3E %3Cstop offset='1' stop-color='%23D8531F'/%3E %"
+                "3C/linearGradient%3E %3CclipPath id='bodyclip'%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-"
+                "27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z'/%3E %3"
+                "C/clipPath%3E%3C/defs%3E%3Cg transform='rotate%28-5%29' opacity='0.92'%3E%3Cpath d='M -3"
+                "0,-10 C -40,-16 -47,-20 -53,-22 C -56,-11 -56,11 -53,22 C -47,20 -40,16 -30,10 Z' fill='"
+                "url%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M 24,-24 C 14,-3"
+                "4 -2,-38 -12,-36 C -20,-34 -25,-25 -27,-16 Z' fill='url%28%23finfill%29' stroke='%231524"
+                "30' stroke-width='2'/%3E %3Cpath d='M 8,24 C 2,33 -8,35 -14,33 C -20,31 -24,23 -26,17 Z'"
+                " fill='url%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M 52,1 C "
+                "40,-18 16,-28 -4,-27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40"
+                ",19 52,1 Z' fill='url%28%23bodyfill%29'/%3E %3Cg clip-path='url%28%23bodyclip%29'%3E %3C"
+                "path d='M 30,-32 C 27,-14 27,10 24,34' fill='none' stroke='%23152430' stroke-width='21'/"
+                "%3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none' stroke='%23152430' stroke-width='2"
+                "2'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34' fill='none' stroke='%23152430' stro"
+                "ke-width='14'/%3E %3Cpath d='M 30,-32 C 27,-14 27,10 24,34' fill='none' stroke='%23FBF1E"
+                "6' stroke-width='13'/%3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none' stroke='%23FB"
+                "F1E6' stroke-width='14'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34' fill='none' st"
+                "roke='%23FBF1E6' stroke-width='8'/%3E %3Cellipse cx='6' cy='23' rx='30' ry='10' fill='%2"
+                "38E2F12' opacity='0.30'/%3E %3Cellipse cx='2' cy='-24' rx='28' ry='8' fill='%23FFC08A' o"
+                "pacity='0.22'/%3E %3C/g%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-27 C -16,-26 -25,-20 -3"
+                "0,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z' fill='none' stroke='%23152430"
+                "' stroke-width='2.5'/%3E %3Cpath d='M 18,6 C 10,16 8,24 12,26 C 18,26 24,16 24,8 Z' fill"
+                "='%23F9873F' stroke='%23152430' stroke-width='1.6' opacity='0.9'/%3E %3Ccircle cx='37' c"
+                "y='-7' r='5.4' fill='%23F7EADF' stroke='%23152430' stroke-width='1.4'/%3E %3Ccircle cx='"
+                "37' cy='-7' r='3' fill='%23131F2A'/%3E %3Ccircle cx='35.4' cy='-8.6' r='1.1' fill='%23FF"
+                "FFFF'/%3E%3C/g%3E%3Crect x='-66' y='-48' width='132' height='96' fill='%230F3E57' opacit"
+                "y='0.10'/%3E%3C/svg%3E"
+                '") calc(${mx}% + (${md} + max(0, ${mp} - 2)) * 9999px) ${my}% / min(${ms}px, 34%) auto no-repeat, '
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-66 -48 132 96'%3E%3Cdefs%3E%3Clinear"
+                "Gradient id='bodyfill' gradientUnits='userSpaceOnUse' x1='0' y1='-28' x2='0' y2='28'%3E "
+                "%3Cstop offset='0' stop-color='%23FF9752'/%3E %3Cstop offset='0.45' stop-color='%23F26A2"
+                "E'/%3E %3Cstop offset='1' stop-color='%23D2461A'/%3E %3C/linearGradient%3E %3ClinearGrad"
+                "ient id='finfill' gradientUnits='userSpaceOnUse' x1='0' y1='-34' x2='0' y2='34'%3E %3Cst"
+                "op offset='0' stop-color='%23F9853F'/%3E %3Cstop offset='1' stop-color='%23D8531F'/%3E %"
+                "3C/linearGradient%3E %3CclipPath id='bodyclip'%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-"
+                "27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z'/%3E %3"
+                "C/clipPath%3E%3C/defs%3E%3Cg transform='scale%28-1 1%29 rotate%285%29' opacity='0.92'%3E"
+                "%3Cpath d='M -30,-10 C -40,-16 -47,-20 -53,-22 C -56,-11 -56,11 -53,22 C -47,20 -40,16 -"
+                "30,10 Z' fill='url%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M"
+                " 24,-24 C 14,-34 -2,-38 -12,-36 C -20,-34 -25,-25 -27,-16 Z' fill='url%28%23finfill%29' "
+                "stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M 8,24 C 2,33 -8,35 -14,33 C -20,31 -"
+                "24,23 -26,17 Z' fill='url%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpa"
+                "th d='M 52,1 C 40,-18 16,-28 -4,-27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -"
+                "4,27 C 16,28 40,19 52,1 Z' fill='url%28%23bodyfill%29'/%3E %3Cg clip-path='url%28%23body"
+                "clip%29'%3E %3Cpath d='M 30,-32 C 27,-14 27,10 24,34' fill='none' stroke='%23152430' str"
+                "oke-width='21'/%3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none' stroke='%23152430' "
+                "stroke-width='22'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34' fill='none' stroke='"
+                "%23152430' stroke-width='14'/%3E %3Cpath d='M 30,-32 C 27,-14 27,10 24,34' fill='none' s"
+                "troke='%23FBF1E6' stroke-width='13'/%3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none"
+                "' stroke='%23FBF1E6' stroke-width='14'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34'"
+                " fill='none' stroke='%23FBF1E6' stroke-width='8'/%3E %3Cellipse cx='6' cy='23' rx='30' r"
+                "y='10' fill='%238E2F12' opacity='0.30'/%3E %3Cellipse cx='2' cy='-24' rx='28' ry='8' fil"
+                "l='%23FFC08A' opacity='0.22'/%3E %3C/g%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-27 C -16"
+                ",-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z' fill='none' st"
+                "roke='%23152430' stroke-width='2.5'/%3E %3Cpath d='M 18,6 C 10,16 8,24 12,26 C 18,26 24,"
+                "16 24,8 Z' fill='%23F9873F' stroke='%23152430' stroke-width='1.6' opacity='0.9'/%3E %3Cc"
+                "ircle cx='37' cy='-7' r='5.4' fill='%23F7EADF' stroke='%23152430' stroke-width='1.4'/%3E"
+                " %3Ccircle cx='37' cy='-7' r='3' fill='%23131F2A'/%3E %3Ccircle cx='35.4' cy='-8.6' r='1"
+                ".1' fill='%23FFFFFF'/%3E%3C/g%3E%3Crect x='-66' y='-48' width='132' height='96' fill='%2"
+                "30F3E57' opacity='0.10'/%3E%3C/svg%3E"
+                '") calc(${mx}% + ((1 - ${md}) + max(0, ${mp} - 2)) * 9999px) ${my}% / min(${ms}px, 34%) auto no-repeat, '
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-66 -48 132 96'%3E%3Cdefs%3E%3Clinear"
+                "Gradient id='bodyfill' gradientUnits='userSpaceOnUse' x1='0' y1='-28' x2='0' y2='28'%3E "
+                "%3Cstop offset='0' stop-color='%23FF9752'/%3E %3Cstop offset='0.45' stop-color='%23F26A2"
+                "E'/%3E %3Cstop offset='1' stop-color='%23D2461A'/%3E %3C/linearGradient%3E %3ClinearGrad"
+                "ient id='finfill' gradientUnits='userSpaceOnUse' x1='0' y1='-34' x2='0' y2='34'%3E %3Cst"
+                "op offset='0' stop-color='%23F9853F'/%3E %3Cstop offset='1' stop-color='%23D8531F'/%3E %"
+                "3C/linearGradient%3E %3CclipPath id='bodyclip'%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-"
+                "27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z'/%3E %3"
+                "C/clipPath%3E%3C/defs%3E%3Cg transform='rotate%286%29' opacity='0.55'%3E%3Cpath d='M -30"
+                ",-10 C -40,-16 -47,-20 -53,-22 C -56,-11 -56,11 -53,22 C -47,20 -40,16 -30,10 Z' fill='u"
+                "rl%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M 24,-24 C 14,-34"
+                " -2,-38 -12,-36 C -20,-34 -25,-25 -27,-16 Z' fill='url%28%23finfill%29' stroke='%2315243"
+                "0' stroke-width='2'/%3E %3Cpath d='M 8,24 C 2,33 -8,35 -14,33 C -20,31 -24,23 -26,17 Z' "
+                "fill='url%28%23finfill%29' stroke='%23152430' stroke-width='2'/%3E %3Cpath d='M 52,1 C 4"
+                "0,-18 16,-28 -4,-27 C -16,-26 -25,-20 -30,-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,"
+                "19 52,1 Z' fill='url%28%23bodyfill%29'/%3E %3Cg clip-path='url%28%23bodyclip%29'%3E %3Cp"
+                "ath d='M 30,-32 C 27,-14 27,10 24,34' fill='none' stroke='%23152430' stroke-width='21'/%"
+                "3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none' stroke='%23152430' stroke-width='22"
+                "'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34' fill='none' stroke='%23152430' strok"
+                "e-width='14'/%3E %3Cpath d='M 30,-32 C 27,-14 27,10 24,34' fill='none' stroke='%23FBF1E6"
+                "' stroke-width='13'/%3E %3Cpath d='M 8,-34 C 2,-16 12,8 4,34' fill='none' stroke='%23FBF"
+                "1E6' stroke-width='14'/%3E %3Cpath d='M -22,-32 C -25,-12 -25,12 -22,34' fill='none' str"
+                "oke='%23FBF1E6' stroke-width='8'/%3E %3Cellipse cx='6' cy='23' rx='30' ry='10' fill='%23"
+                "8E2F12' opacity='0.30'/%3E %3Cellipse cx='2' cy='-24' rx='28' ry='8' fill='%23FFC08A' op"
+                "acity='0.22'/%3E %3C/g%3E %3Cpath d='M 52,1 C 40,-18 16,-28 -4,-27 C -16,-26 -25,-20 -30"
+                ",-10 L -30,10 C -25,20 -16,26 -4,27 C 16,28 40,19 52,1 Z' fill='none' stroke='%23152430'"
+                " stroke-width='2.5'/%3E %3Cpath d='M 18,6 C 10,16 8,24 12,26 C 18,26 24,16 24,8 Z' fill="
+                "'%23F9873F' stroke='%23152430' stroke-width='1.6' opacity='0.9'/%3E %3Ccircle cx='37' cy"
+                "='-7' r='5.4' fill='%23F7EADF' stroke='%23152430' stroke-width='1.4'/%3E %3Ccircle cx='3"
+                "7' cy='-7' r='3' fill='%23131F2A'/%3E %3Ccircle cx='35.4' cy='-8.6' r='1.1' fill='%23FFF"
+                "FFF'/%3E%3C/g%3E%3Crect x='-66' y='-48' width='132' height='96' fill='%230F3E57' opacity"
+                "='0.28'/%3E%3C/svg%3E"
+                '") calc(${fx}% + max(0, ${fp} - 2) * 9999px) ${fy}% / min(${fs}px, 22%) auto no-repeat'
+            ),
+            "$part_3": (
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 260'%3E%3Ccircle cx='30' cy='2"
+                "2' r='2.4' fill='none' stroke='%23CFEFF5' stroke-width='1.1' opacity='0.44'/%3E%3Ccircle"
+                " cx='29.2' cy='21.1' r='0.6' fill='%23EAFBFF' opacity='0.48'/%3E%3Ccircle cx='46' cy='58"
+                "' r='4.9' fill='none' stroke='%23CFEFF5' stroke-width='1.1' opacity='0.42'/%3E%3Ccircle "
+                "cx='43.9' cy='56.2' r='1.2' fill='%23EAFBFF' opacity='0.46'/%3E%3Ccircle cx='37' cy='94'"
+                " r='3.9' fill='none' stroke='%23CFEFF5' stroke-width='1.1' opacity='0.40'/%3E%3Ccircle c"
+                "x='35.5' cy='92.6' r='0.9' fill='%23EAFBFF' opacity='0.44'/%3E%3Ccircle cx='17' cy='130'"
+                " r='2.9' fill='none' stroke='%23CFEFF5' stroke-width='1.1' opacity='0.38'/%3E%3Ccircle c"
+                "x='16.4' cy='129.0' r='0.7' fill='%23EAFBFF' opacity='0.42'/%3E%3Ccircle cx='18' cy='166"
+                "' r='5.4' fill='none' stroke='%23CFEFF5' stroke-width='1.1' opacity='0.36'/%3E%3Ccircle "
+                "cx='15.8' cy='164.1' r='1.3' fill='%23EAFBFF' opacity='0.40'/%3E%3Ccircle cx='37' cy='20"
+                "2' r='4.4' fill='none' stroke='%23CFEFF5' stroke-width='1.1' opacity='0.34'/%3E%3Ccircle"
+                " cx='35.7' cy='200.4' r='1.1' fill='%23EAFBFF' opacity='0.38'/%3E%3Ccircle cx='46' cy='2"
+                "38' r='3.4' fill='none' stroke='%23CFEFF5' stroke-width='1.1' opacity='0.32'/%3E%3Ccircl"
+                "e cx='44.4' cy='236.8' r='0.8' fill='%23EAFBFF' opacity='0.36'/%3E%3C/svg%3E"
+                '") ${bx}% ${by}% / ${bw}px auto repeat-y, '
+                'url("data:image/svg+xml,'
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' vie"
+                "wBox='0 0 800 500' preserveAspectRatio='xMidYMax slice'%3E %3Cdefs%3E %3ClinearGradient "
+                "id='water' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset='0' stop-color='%231E6C8E'/%3E "
+                "%3Cstop offset='0.24' stop-color='%23175978'/%3E %3Cstop offset='0.52' stop-color='%230F"
+                "3E57'/%3E %3Cstop offset='0.78' stop-color='%230A2C3F'/%3E %3Cstop offset='1' stop-color"
+                "='%23071D2A'/%3E %3C/linearGradient%3E %3ClinearGradient id='ray' gradientUnits='userSpa"
+                "ceOnUse' x1='0' y1='-60' x2='0' y2='430'%3E %3Cstop offset='0' stop-color='%23CFEFF7' st"
+                "op-opacity='0.22'/%3E %3Cstop offset='0.45' stop-color='%23AFE0EE' stop-opacity='0.08'/%"
+                "3E %3Cstop offset='1' stop-color='%238FD0E6' stop-opacity='0'/%3E %3C/linearGradient%3E "
+                "%3ClinearGradient id='tentfill' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='0' y2='"
+                "-33'%3E %3Cstop offset='0' stop-color='%236B4560'/%3E %3Cstop offset='0.55' stop-color='"
+                "%239C6580'/%3E %3Cstop offset='1' stop-color='%23D693A8'/%3E %3C/linearGradient%3E %3Cli"
+                "nearGradient id='floor' gradientUnits='userSpaceOnUse' x1='0' y1='432' x2='0' y2='505'%3"
+                "E %3Cstop offset='0' stop-color='%230B2836'/%3E %3Cstop offset='1' stop-color='%2305141D"
+                "'/%3E %3C/linearGradient%3E %3Cfilter id='caustic' x='0' y='0' width='100%' height='100%"
+                "' color-interpolation-filters='sRGB'%3E %3CfeTurbulence type='fractalNoise' baseFrequenc"
+                "y='0.016 0.05' numOctaves='3' seed='9' stitchTiles='stitch' result='n'/%3E %3CfeColorMat"
+                "rix in='n' type='matrix' values='0 0 0 0 0.82 0 0 0 0 0.95 0 0 0 0 1 1.5 0 0 0 -1.02' re"
+                "sult='m'/%3E %3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E %3C/filter%3E %"
+                "3ClinearGradient id='cfade' x1='0' y1='0' x2='0' y2='1'%3E %3Cstop offset='0' stop-color"
+                "='%23FFFFFF' stop-opacity='1'/%3E %3Cstop offset='1' stop-color='%23000000' stop-opacity"
+                "='0'/%3E %3C/linearGradient%3E %3Cmask id='cmask'%3E%3Crect x='0' y='0' width='800' heig"
+                "ht='280' fill='url%28%23cfade%29'/%3E%3C/mask%3E %3Cg id='tent'%3E %3Cpath d='M 0,0 C -3"
+                ".4,-13 -3.4,-25 0,-33 C 3.4,-25 3.4,-13 0,0 Z' fill='url%28%23tentfill%29'/%3E %3Ccircle"
+                " cx='0' cy='-32' r='2.6' fill='%23F0A9BC' opacity='0.85'/%3E %3C/g%3E %3C/defs%3E %3Crec"
+                "t x='0' y='0' width='800' height='500' fill='url%28%23water%29'/%3E %3Cg transform='skew"
+                "X%28-13%29'%3E %3Crect x='150' y='-60' width='58' height='500' fill='url%28%23ray%29'/%3"
+                "E %3Crect x='300' y='-60' width='26' height='500' fill='url%28%23ray%29'/%3E %3Crect x='"
+                "430' y='-60' width='72' height='500' fill='url%28%23ray%29'/%3E %3Crect x='620' y='-60' "
+                "width='34' height='500' fill='url%28%23ray%29'/%3E %3C/g%3E %3Crect x='0' y='0' width='8"
+                "00' height='280' fill='%23FFFFFF' filter='url%28%23caustic%29' mask='url%28%23cmask%29' "
+                "opacity='0.5'/%3E %3Cpath d='M -4,470 C 90,452 150,462 230,452 C 320,441 380,458 470,450"
+                " C 560,442 660,456 804,442 L 804,504 L -4,504 Z' fill='url%28%23floor%29'/%3E %3Cpath d="
+                "'M -4,470 C 90,452 150,462 230,452 C 320,441 380,458 470,450 C 560,442 660,456 804,442' "
+                "fill='none' stroke='%232C7C93' stroke-width='2' opacity='0.30'/%3E %3Cg transform='trans"
+                "late%28636 468%29 scale%281.05%29'%3E%3Cellipse cx='0' cy='4' rx='48' ry='15' fill='%235"
+                "53650'/%3E%3Cuse xlink:href='%23tent' transform='translate%28-42.0 0%29 rotate%28-25.5%2"
+                "9 scale%281.02 0.59%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%28-36.0 0%29"
+                " rotate%28-28.4%29 scale%280.86 0.71%29'/%3E%3Cuse xlink:href='%23tent' transform='trans"
+                "late%28-30.0 0%29 rotate%28-25.3%29 scale%280.94 0.83%29'/%3E%3Cuse xlink:href='%23tent'"
+                " transform='translate%28-24.0 0%29 rotate%28-13.5%29 scale%281.02 0.94%29'/%3E%3Cuse xli"
+                "nk:href='%23tent' transform='translate%28-18.0 0%29 rotate%28-9.9%29 scale%280.86 1.01%2"
+                "9'/%3E%3Cuse xlink:href='%23tent' transform='translate%28-12.0 0%29 rotate%28-13.0%29 sc"
+                "ale%280.94 1.04%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%28-6.0 0%29 rota"
+                "te%28-6.1%29 scale%281.02 1.01%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%2"
+                "80.0 0%29 rotate%284.9%29 scale%280.86 0.94%29'/%3E%3Cuse xlink:href='%23tent' transform"
+                "='translate%286.0 0%29 rotate%284.8%29 scale%280.94 0.83%29'/%3E%3Cuse xlink:href='%23te"
+                "nt' transform='translate%2812.0 0%29 rotate%283.6%29 scale%281.02 0.71%29'/%3E%3Cuse xli"
+                "nk:href='%23tent' transform='translate%2818.0 0%29 rotate%2813.6%29 scale%280.86 0.59%29"
+                "'/%3E%3Cuse xlink:href='%23tent' transform='translate%2824.0 0%29 rotate%2821.9%29 scale"
+                "%280.94 0.50%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%2830.0 0%29 rotate%"
+                "2819.4%29 scale%281.02 0.45%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%2836"
+                ".0 0%29 rotate%2821.4%29 scale%280.86 0.45%29'/%3E%3Cuse xlink:href='%23tent' transform="
+                "'translate%2842.0 0%29 rotate%2833.1%29 scale%280.94 0.50%29'/%3E%3C/g%3E %3Cg transform"
+                "='translate%28268 462%29 scale%281.45%29'%3E%3Cellipse cx='0' cy='4' rx='48' ry='15' fil"
+                "l='%23553650'/%3E%3Cuse xlink:href='%23tent' transform='translate%28-42.0 0%29 rotate%28"
+                "-30.0%29 scale%280.86 0.45%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%28-36"
+                ".0 0%29 rotate%28-20.8%29 scale%280.94 0.50%29'/%3E%3Cuse xlink:href='%23tent' transform"
+                "='translate%28-30.0 0%29 rotate%28-22.7%29 scale%281.02 0.59%29'/%3E%3Cuse xlink:href='%"
+                "23tent' transform='translate%28-24.0 0%29 rotate%28-21.8%29 scale%280.86 0.71%29'/%3E%3C"
+                "use xlink:href='%23tent' transform='translate%28-18.0 0%29 rotate%28-10.4%29 scale%280.9"
+                "4 0.83%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%28-12.0 0%29 rotate%28-4."
+                "6%29 scale%281.02 0.94%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%28-6.0 0%"
+                "29 rotate%28-7.8%29 scale%280.86 1.01%29'/%3E%3Cuse xlink:href='%23tent' transform='tran"
+                "slate%280.0 0%29 rotate%28-3.1%29 scale%280.94 1.04%29'/%3E%3Cuse xlink:href='%23tent' t"
+                "ransform='translate%286.0 0%29 rotate%288.6%29 scale%281.02 1.01%29'/%3E%3Cuse xlink:hre"
+                "f='%23tent' transform='translate%2812.0 0%29 rotate%2810.6%29 scale%280.86 0.94%29'/%3E%"
+                "3Cuse xlink:href='%23tent' transform='translate%2818.0 0%29 rotate%288.1%29 scale%280.94"
+                " 0.83%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%2824.0 0%29 rotate%2816.4%"
+                "29 scale%281.02 0.71%29'/%3E%3Cuse xlink:href='%23tent' transform='translate%2830.0 0%29"
+                " rotate%2826.4%29 scale%280.86 0.59%29'/%3E%3Cuse xlink:href='%23tent' transform='transl"
+                "ate%2836.0 0%29 rotate%2825.2%29 scale%280.94 0.50%29'/%3E%3Cuse xlink:href='%23tent' tr"
+                "ansform='translate%2842.0 0%29 rotate%2825.1%29 scale%281.02 0.45%29'/%3E%3C/g%3E %3Crec"
+                "t x='0' y='0' width='800' height='500' fill='%230A2C3F' opacity='0.10'/%3E %3C/svg%3E"
+                '") ${sx}% ${sy}% / cover no-repeat, '
+                "linear-gradient(to bottom, #1E6C8E 0%, #175978 24%, #0F3E57 52%, "
+                "#0A2C3F 78%, #071D2A 100%) center / cover no-repeat, "
+                "#0F3E57"
+            ),
+            "--dgcv-special-text": "#FFD2BC",
+            "--plaque-fill": "#0E2637",
+            "--plaque-border": "#FFA47F",
+            "--dgcv-table-shadow": "0 2px 14px rgba(2, 12, 20, 0.55)",
+            "--dgcv-text-shadow": "none",
+            "--dgcv-hover-transform": "translateY(-1px)",
+            "--dgcv-hover-transition": "background-color 140ms ease, color 140ms ease, transform 140ms ease",
+        },
+    ),
+    "coyfish_pond": ThemeConfig(
+        bg_primary="#0E1F1C",
+        bg_surface="#162C27",
+        bg_alt="#122622",
+        bg_hover="#E8A93C",
+        text_main="#DCE8DF",
+        text_heading="#F0B75A",
+        text_hover="#0E1F1C",
+        text_alt="#B4C9BA",
+        border_main="#63947B",
+        border_alt="#284840",
+        bg_action="#E2652A",
+        text_on_action="#1A0703",
+        bg_action_hover="#F0834A",
+        bg_error="#DE5A46",
+        text_on_error="#1A0604",
+        bg_success="#63A85C",
+        text_on_success="#04140A",
+        font_family="'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif",
+        custom_css_vars={
+            "--dgcv-border-width": "1px",
+            "$randomized": (
+                "rx=0:179 ry=0:179 rs=150:210 "
+                "g1x=14:84 g1y=12:84 g1s=104:168 "
+                "g2x=12:86 g2y=14:82 g2s=76:126 g2p=0:3 "
+                "k1x=16:82 k1y=14:80 k1s=96:150 "
+                "k2x=12:86 k2y=12:84 k2s=84:132 k2p=0:3 "
+                "k3x=14:84 k3y=16:82 k3s=72:114 k3p=0:1 "
+                "k4x=14:84 k4y=16:82 k4s=64:100 "
+                "sx=40:60 sy=40:60"
+            ),
+            "$assemble": "--dgcv-special-background",
+            "$part_1": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='r' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.022 0.028' numOctaves='4' seed='13' stitchTiles='stitch' result='n'/%3E%3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.78 0 0 0 0 0.93 0 0 0 0 0.86 1.05 0 0 0 -0.72'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url%28%23r%29'/%3E%3C/svg%3E\") ${rx}px ${ry}px / ${rs}px ${rs}px repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-60 -60 120 120'%3E%3Cg transform='translate%28-16 -12%29 rotate%2824%29'%3E%3Cdefs%3E%3ClinearGradient id='pa' gradientUnits='userSpaceOnUse' x1='0' y1='-30' x2='0' y2='30'%3E%3Cstop offset='0' stop-color='%234E8A3E'/%3E%3Cstop offset='1' stop-color='%232F5E28'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M 0,0 L 28.7,-8.8 A 30 30 0 1 0 28.7,8.8 Z' fill='url%28%23pa%29' stroke='%2324491F' stroke-width='1.65'/%3E%3Cpath d='M 0,0 L 19.7,16.7' stroke='%237FB05E' stroke-width='1.50' opacity='0.45'/%3E%3Cpath d='M 0,0 L 1.4,25.8' stroke='%237FB05E' stroke-width='1.50' opacity='0.45'/%3E%3Cpath d='M 0,0 L -17.7,18.7' stroke='%237FB05E' stroke-width='1.50' opacity='0.45'/%3E%3Cpath d='M 0,0 L -25.8,0.0' stroke='%237FB05E' stroke-width='1.50' opacity='0.45'/%3E%3Cpath d='M 0,0 L -17.7,-18.7' stroke='%237FB05E' stroke-width='1.50' opacity='0.45'/%3E%3Cpath d='M 0,0 L 1.4,-25.8' stroke='%237FB05E' stroke-width='1.50' opacity='0.45'/%3E%3Cpath d='M 0,0 L 19.7,-16.7' stroke='%237FB05E' stroke-width='1.50' opacity='0.45'/%3E%3C/g%3E%3Cg transform='translate%2822 20%29 rotate%28196%29'%3E%3Cdefs%3E%3ClinearGradient id='pb' gradientUnits='userSpaceOnUse' x1='0' y1='-21' x2='0' y2='21'%3E%3Cstop offset='0' stop-color='%235C9A46'/%3E%3Cstop offset='1' stop-color='%2339702F'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M 0,0 L 20.1,-6.1 A 21 21 0 1 0 20.1,6.1 Z' fill='url%28%23pb%29' stroke='%232A5224' stroke-width='1.16'/%3E%3Cpath d='M 0,0 L 13.8,11.7' stroke='%238CBB68' stroke-width='1.05' opacity='0.45'/%3E%3Cpath d='M 0,0 L 1.0,18.0' stroke='%238CBB68' stroke-width='1.05' opacity='0.45'/%3E%3Cpath d='M 0,0 L -12.4,13.1' stroke='%238CBB68' stroke-width='1.05' opacity='0.45'/%3E%3Cpath d='M 0,0 L -18.1,0.0' stroke='%238CBB68' stroke-width='1.05' opacity='0.45'/%3E%3Cpath d='M 0,0 L -12.4,-13.1' stroke='%238CBB68' stroke-width='1.05' opacity='0.45'/%3E%3Cpath d='M 0,0 L 1.0,-18.0' stroke='%238CBB68' stroke-width='1.05' opacity='0.45'/%3E%3Cpath d='M 0,0 L 13.8,-11.7' stroke='%238CBB68' stroke-width='1.05' opacity='0.45'/%3E%3C/g%3E%3C/svg%3E\") calc(${g1x}% - (min(${g1s}px, 40%) / 2)) calc(${g1y}% - (min(${g1s}px, 40%) / 2)) / min(${g1s}px, 40%) min(${g1s}px, 40%) no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-60 -60 120 120'%3E%3Cg transform='translate%28-10 8%29 rotate%28128%29'%3E%3Cdefs%3E%3ClinearGradient id='pc' gradientUnits='userSpaceOnUse' x1='0' y1='-27' x2='0' y2='27'%3E%3Cstop offset='0' stop-color='%238A5230'/%3E%3Cstop offset='1' stop-color='%235A3220'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M 0,0 L 25.8,-7.9 A 27 27 0 1 0 25.8,7.9 Z' fill='url%28%23pc%29' stroke='%23402314' stroke-width='1.49'/%3E%3Cpath d='M 0,0 L 17.7,15.0' stroke='%23B87A48' stroke-width='1.35' opacity='0.45'/%3E%3Cpath d='M 0,0 L 1.3,23.2' stroke='%23B87A48' stroke-width='1.35' opacity='0.45'/%3E%3Cpath d='M 0,0 L -16.0,16.9' stroke='%23B87A48' stroke-width='1.35' opacity='0.45'/%3E%3Cpath d='M 0,0 L -23.2,0.0' stroke='%23B87A48' stroke-width='1.35' opacity='0.45'/%3E%3Cpath d='M 0,0 L -16.0,-16.9' stroke='%23B87A48' stroke-width='1.35' opacity='0.45'/%3E%3Cpath d='M 0,0 L 1.3,-23.2' stroke='%23B87A48' stroke-width='1.35' opacity='0.45'/%3E%3Cpath d='M 0,0 L 17.7,-15.0' stroke='%23B87A48' stroke-width='1.35' opacity='0.45'/%3E%3C/g%3E%3Cg transform='translate%2824 -20%29 rotate%28302%29'%3E%3Cdefs%3E%3ClinearGradient id='pd' gradientUnits='userSpaceOnUse' x1='0' y1='-18' x2='0' y2='18'%3E%3Cstop offset='0' stop-color='%236E7C2E'/%3E%3Cstop offset='1' stop-color='%2347521C'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M 0,0 L 17.2,-5.3 A 18 18 0 1 0 17.2,5.3 Z' fill='url%28%23pd%29' stroke='%23333C14' stroke-width='0.99'/%3E%3Cpath d='M 0,0 L 11.8,10.0' stroke='%239BAA4E' stroke-width='0.90' opacity='0.45'/%3E%3Cpath d='M 0,0 L 0.8,15.5' stroke='%239BAA4E' stroke-width='0.90' opacity='0.45'/%3E%3Cpath d='M 0,0 L -10.6,11.2' stroke='%239BAA4E' stroke-width='0.90' opacity='0.45'/%3E%3Cpath d='M 0,0 L -15.5,0.0' stroke='%239BAA4E' stroke-width='0.90' opacity='0.45'/%3E%3Cpath d='M 0,0 L -10.6,-11.2' stroke='%239BAA4E' stroke-width='0.90' opacity='0.45'/%3E%3Cpath d='M 0,0 L 0.8,-15.5' stroke='%239BAA4E' stroke-width='0.90' opacity='0.45'/%3E%3Cpath d='M 0,0 L 11.8,-10.0' stroke='%239BAA4E' stroke-width='0.90' opacity='0.45'/%3E%3C/g%3E%3C/svg%3E\") calc(${g2x}% - (min(${g2s}px, 36%) / 2) + max(0, ${g2p} - 2) * 9999px) calc(${g2y}% - (min(${g2s}px, 36%) / 2)) / min(${g2s}px, 36%) min(${g2s}px, 36%) no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-58 -58 116 116'%3E%3Cdefs%3E%3ClinearGradient id='bo' gradientUnits='userSpaceOnUse' x1='0' y1='-44' x2='0' y2='30'%3E%3Cstop offset='0' stop-color='%23F59A4A'/%3E%3Cstop offset='1' stop-color='%23C6400F'/%3E%3C/linearGradient%3E%3ClinearGradient id='to' gradientUnits='userSpaceOnUse' x1='0' y1='28' x2='0' y2='54'%3E%3Cstop offset='0' stop-color='%23C6400F' stop-opacity='0.95'/%3E%3Cstop offset='1' stop-color='%23EE8A44' stop-opacity='0.42'/%3E%3C/linearGradient%3E%3ClinearGradient id='fo' gradientUnits='userSpaceOnUse' x1='-10' y1='-16' x2='-23' y2='-2'%3E%3Cstop offset='0' stop-color='%23C6400F' stop-opacity='0.85'/%3E%3Cstop offset='1' stop-color='%23EE8A44' stop-opacity='0.38'/%3E%3C/linearGradient%3E%3ClinearGradient id='ho' gradientUnits='userSpaceOnUse' x1='10' y1='-16' x2='23' y2='-2'%3E%3Cstop offset='0' stop-color='%23C6400F' stop-opacity='0.85'/%3E%3Cstop offset='1' stop-color='%23EE8A44' stop-opacity='0.38'/%3E%3C/linearGradient%3E%3CclipPath id='co'%3E%3Cpath d='M 0,-44 C 7,-40 12,-27 12,-10 C 12,6 8,22 4,30 L -4,30 C -8,22 -12,6 -12,-10 C -12,-27 -7,-40 0,-44 Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg transform='rotate%28-18%29' opacity='1'%3E%3Cpath d='M 4,26 C 9,36 15,46 13,52 C 7,50 2,43 0,37 C -2,43 -7,50 -13,52 C -15,46 -9,36 -4,26 Z' fill='url%28%23to%29'/%3E%3Cpath d='M -11,-18 C -18,-14 -23,-6 -21,-1 C -16,-5 -12,-11 -10,-15 Z' fill='url%28%23fo%29'/%3E%3Cpath d='M 11,-18 C 18,-14 23,-6 21,-1 C 16,-5 12,-11 10,-15 Z' fill='url%28%23ho%29'/%3E%3Cpath d='M 0,-44 C 7,-40 12,-27 12,-10 C 12,6 8,22 4,30 L -4,30 C -8,22 -12,6 -12,-10 C -12,-27 -7,-40 0,-44 Z' fill='url%28%23bo%29'/%3E%3Cg clip-path='url%28%23co%29'%3E%3Cellipse cx='-3' cy='-22' rx='7' ry='10' transform='rotate%2820 -3 -22%29' fill='%23FFD9A8' opacity='0.55'/%3E%3Cellipse cx='4' cy='4' rx='8' ry='12' transform='rotate%28-14 4 4%29' fill='%23B02F0A' opacity='0.50'/%3E%3Cpath d='M 0,-30 C 3,-16 3,4 1,20 C -1,4 -1,-16 0,-30 Z' fill='%233A1206' opacity='0.16'/%3E%3Cellipse cx='0' cy='30' rx='9' ry='11' fill='%23C6400F' opacity='0.55'/%3E%3C/g%3E%3Ccircle cx='-4.8' cy='-35' r='1.7' fill='%231F0A03' opacity='0.75'/%3E%3Ccircle cx='4.8' cy='-35' r='1.7' fill='%231F0A03' opacity='0.75'/%3E%3C/g%3E%3C/svg%3E\") calc(${k1x}% - (min(${k1s}px, 42%) / 2)) calc(${k1y}% - (min(${k1s}px, 42%) / 2)) / min(${k1s}px, 42%) min(${k1s}px, 42%) no-repeat",
+            "$part_2@detail": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-58 -58 116 116'%3E%3Cdefs%3E%3ClinearGradient id='bk' gradientUnits='userSpaceOnUse' x1='0' y1='-44' x2='0' y2='30'%3E%3Cstop offset='0' stop-color='%23FBF6EC'/%3E%3Cstop offset='1' stop-color='%23E2DACB'/%3E%3C/linearGradient%3E%3ClinearGradient id='tk' gradientUnits='userSpaceOnUse' x1='0' y1='28' x2='0' y2='54'%3E%3Cstop offset='0' stop-color='%23E2DACB' stop-opacity='0.95'/%3E%3Cstop offset='1' stop-color='%23F7F1E5' stop-opacity='0.42'/%3E%3C/linearGradient%3E%3ClinearGradient id='fk' gradientUnits='userSpaceOnUse' x1='-10' y1='-16' x2='-23' y2='-2'%3E%3Cstop offset='0' stop-color='%23E2DACB' stop-opacity='0.85'/%3E%3Cstop offset='1' stop-color='%23F7F1E5' stop-opacity='0.38'/%3E%3C/linearGradient%3E%3ClinearGradient id='hk' gradientUnits='userSpaceOnUse' x1='10' y1='-16' x2='23' y2='-2'%3E%3Cstop offset='0' stop-color='%23E2DACB' stop-opacity='0.85'/%3E%3Cstop offset='1' stop-color='%23F7F1E5' stop-opacity='0.38'/%3E%3C/linearGradient%3E%3CclipPath id='ck'%3E%3Cpath d='M 0,-44 C 7,-40 12,-27 12,-10 C 12,6 8,22 4,30 L -4,30 C -8,22 -12,6 -12,-10 C -12,-27 -7,-40 0,-44 Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg transform='rotate%28152%29' opacity='1'%3E%3Cpath d='M 4,26 C 9,36 15,46 13,52 C 7,50 2,43 0,37 C -2,43 -7,50 -13,52 C -15,46 -9,36 -4,26 Z' fill='url%28%23tk%29'/%3E%3Cpath d='M -11,-18 C -18,-14 -23,-6 -21,-1 C -16,-5 -12,-11 -10,-15 Z' fill='url%28%23fk%29'/%3E%3Cpath d='M 11,-18 C 18,-14 23,-6 21,-1 C 16,-5 12,-11 10,-15 Z' fill='url%28%23hk%29'/%3E%3Cpath d='M 0,-44 C 7,-40 12,-27 12,-10 C 12,6 8,22 4,30 L -4,30 C -8,22 -12,6 -12,-10 C -12,-27 -7,-40 0,-44 Z' fill='url%28%23bk%29'/%3E%3Cg clip-path='url%28%23ck%29'%3E%3Cellipse cx='-2' cy='-26' rx='8' ry='11' transform='rotate%2816 -2 -26%29' fill='%23D8402A' opacity='0.92'/%3E%3Cellipse cx='3' cy='2' rx='9' ry='13' transform='rotate%28-12 3 2%29' fill='%23D8402A' opacity='0.88'/%3E%3Cellipse cx='-4' cy='20' rx='5' ry='7' transform='rotate%288 -4 20%29' fill='%23D8402A' opacity='0.75'/%3E%3Cpath d='M 0,-30 C 3,-16 3,4 1,20 C -1,4 -1,-16 0,-30 Z' fill='%234A2418' opacity='0.16'/%3E%3Cellipse cx='0' cy='30' rx='9' ry='11' fill='%23E2DACB' opacity='0.55'/%3E%3C/g%3E%3Ccircle cx='-4.8' cy='-35' r='1.7' fill='%23241009' opacity='0.75'/%3E%3Ccircle cx='4.8' cy='-35' r='1.7' fill='%23241009' opacity='0.75'/%3E%3C/g%3E%3C/svg%3E\") calc(${k2x}% - (min(${k2s}px, 38%) / 2) + max(0, ${k2p} - 2) * 9999px) calc(${k2y}% - (min(${k2s}px, 38%) / 2)) / min(${k2s}px, 38%) min(${k2s}px, 38%) no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-58 -58 116 116'%3E%3Cdefs%3E%3ClinearGradient id='bg' gradientUnits='userSpaceOnUse' x1='0' y1='-44' x2='0' y2='30'%3E%3Cstop offset='0' stop-color='%23F7CE6A'/%3E%3Cstop offset='1' stop-color='%23D8992A'/%3E%3C/linearGradient%3E%3ClinearGradient id='tg' gradientUnits='userSpaceOnUse' x1='0' y1='28' x2='0' y2='54'%3E%3Cstop offset='0' stop-color='%23D8992A' stop-opacity='0.95'/%3E%3Cstop offset='1' stop-color='%23F2C158' stop-opacity='0.42'/%3E%3C/linearGradient%3E%3ClinearGradient id='fg' gradientUnits='userSpaceOnUse' x1='-10' y1='-16' x2='-23' y2='-2'%3E%3Cstop offset='0' stop-color='%23D8992A' stop-opacity='0.85'/%3E%3Cstop offset='1' stop-color='%23F2C158' stop-opacity='0.38'/%3E%3C/linearGradient%3E%3ClinearGradient id='hg' gradientUnits='userSpaceOnUse' x1='10' y1='-16' x2='23' y2='-2'%3E%3Cstop offset='0' stop-color='%23D8992A' stop-opacity='0.85'/%3E%3Cstop offset='1' stop-color='%23F2C158' stop-opacity='0.38'/%3E%3C/linearGradient%3E%3CclipPath id='cg'%3E%3Cpath d='M 0,-44 C 7,-40 12,-27 12,-10 C 12,6 8,22 4,30 L -4,30 C -8,22 -12,6 -12,-10 C -12,-27 -7,-40 0,-44 Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg transform='rotate%2864%29' opacity='1'%3E%3Cpath d='M 4,26 C 9,36 15,46 13,52 C 7,50 2,43 0,37 C -2,43 -7,50 -13,52 C -15,46 -9,36 -4,26 Z' fill='url%28%23tg%29'/%3E%3Cpath d='M -11,-18 C -18,-14 -23,-6 -21,-1 C -16,-5 -12,-11 -10,-15 Z' fill='url%28%23fg%29'/%3E%3Cpath d='M 11,-18 C 18,-14 23,-6 21,-1 C 16,-5 12,-11 10,-15 Z' fill='url%28%23hg%29'/%3E%3Cpath d='M 0,-44 C 7,-40 12,-27 12,-10 C 12,6 8,22 4,30 L -4,30 C -8,22 -12,6 -12,-10 C -12,-27 -7,-40 0,-44 Z' fill='url%28%23bg%29'/%3E%3Cg clip-path='url%28%23cg%29'%3E%3Cellipse cx='0' cy='-14' rx='8' ry='13' transform='rotate%2810 0 -14%29' fill='%23FFEBB0' opacity='0.55'/%3E%3Cellipse cx='2' cy='14' rx='7' ry='10' transform='rotate%28-18 2 14%29' fill='%23B87716' opacity='0.45'/%3E%3Cpath d='M 0,-30 C 3,-16 3,4 1,20 C -1,4 -1,-16 0,-30 Z' fill='%234A320A' opacity='0.16'/%3E%3Cellipse cx='0' cy='30' rx='9' ry='11' fill='%23D8992A' opacity='0.55'/%3E%3C/g%3E%3Ccircle cx='-4.8' cy='-35' r='1.7' fill='%23241804' opacity='0.75'/%3E%3Ccircle cx='4.8' cy='-35' r='1.7' fill='%23241804' opacity='0.75'/%3E%3C/g%3E%3C/svg%3E\") calc(${k3x}% - (min(${k3s}px, 34%) / 2) + ${k3p} * 9999px) calc(${k3y}% - (min(${k3s}px, 34%) / 2)) / min(${k3s}px, 34%) min(${k3s}px, 34%) no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-58 -58 116 116'%3E%3Cdefs%3E%3ClinearGradient id='bu' gradientUnits='userSpaceOnUse' x1='0' y1='-44' x2='0' y2='30'%3E%3Cstop offset='0' stop-color='%233C4249'/%3E%3Cstop offset='1' stop-color='%2320262C'/%3E%3C/linearGradient%3E%3ClinearGradient id='tu' gradientUnits='userSpaceOnUse' x1='0' y1='28' x2='0' y2='54'%3E%3Cstop offset='0' stop-color='%2320262C' stop-opacity='0.95'/%3E%3Cstop offset='1' stop-color='%23333940' stop-opacity='0.42'/%3E%3C/linearGradient%3E%3ClinearGradient id='fu' gradientUnits='userSpaceOnUse' x1='-10' y1='-16' x2='-23' y2='-2'%3E%3Cstop offset='0' stop-color='%2320262C' stop-opacity='0.85'/%3E%3Cstop offset='1' stop-color='%23333940' stop-opacity='0.38'/%3E%3C/linearGradient%3E%3ClinearGradient id='hu' gradientUnits='userSpaceOnUse' x1='10' y1='-16' x2='23' y2='-2'%3E%3Cstop offset='0' stop-color='%2320262C' stop-opacity='0.85'/%3E%3Cstop offset='1' stop-color='%23333940' stop-opacity='0.38'/%3E%3C/linearGradient%3E%3CclipPath id='cu'%3E%3Cpath d='M 0,-44 C 7,-40 12,-27 12,-10 C 12,6 8,22 4,30 L -4,30 C -8,22 -12,6 -12,-10 C -12,-27 -7,-40 0,-44 Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg transform='rotate%28-108%29' opacity='0.88'%3E%3Cpath d='M 4,26 C 9,36 15,46 13,52 C 7,50 2,43 0,37 C -2,43 -7,50 -13,52 C -15,46 -9,36 -4,26 Z' fill='url%28%23tu%29'/%3E%3Cpath d='M -11,-18 C -18,-14 -23,-6 -21,-1 C -16,-5 -12,-11 -10,-15 Z' fill='url%28%23fu%29'/%3E%3Cpath d='M 11,-18 C 18,-14 23,-6 21,-1 C 16,-5 12,-11 10,-15 Z' fill='url%28%23hu%29'/%3E%3Cpath d='M 0,-44 C 7,-40 12,-27 12,-10 C 12,6 8,22 4,30 L -4,30 C -8,22 -12,6 -12,-10 C -12,-27 -7,-40 0,-44 Z' fill='url%28%23bu%29'/%3E%3Cg clip-path='url%28%23cu%29'%3E%3Cellipse cx='-3' cy='-24' rx='7' ry='10' transform='rotate%2818 -3 -24%29' fill='%23F0EADC' opacity='0.85'/%3E%3Cellipse cx='4' cy='6' rx='8' ry='12' transform='rotate%28-16 4 6%29' fill='%23F0EADC' opacity='0.78'/%3E%3Cpath d='M 0,-30 C 3,-16 3,4 1,20 C -1,4 -1,-16 0,-30 Z' fill='%2312161A' opacity='0.16'/%3E%3Cellipse cx='0' cy='30' rx='9' ry='11' fill='%2320262C' opacity='0.55'/%3E%3C/g%3E%3Ccircle cx='-4.8' cy='-35' r='1.7' fill='%230A0D10' opacity='0.75'/%3E%3Ccircle cx='4.8' cy='-35' r='1.7' fill='%230A0D10' opacity='0.75'/%3E%3C/g%3E%3C/svg%3E\") calc(${k4x}% - (min(${k4s}px, 30%) / 2) + (1 - ${k3p}) * 9999px) calc(${k4y}% - (min(${k4s}px, 30%) / 2)) / min(${k4s}px, 30%) min(${k4s}px, 30%) no-repeat",
+            "$part_3": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3ClinearGradient id='water' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='0' y2='500'%3E%3Cstop offset='0' stop-color='%2316302A'/%3E%3Cstop offset='0.45' stop-color='%23102420'/%3E%3Cstop offset='1' stop-color='%23081613'/%3E%3C/linearGradient%3E%3CradialGradient id='sun' cx='0.5' cy='0.5' r='0.5'%3E%3Cstop offset='0' stop-color='%239FD8B0' stop-opacity='0.13'/%3E%3Cstop offset='1' stop-color='%239FD8B0' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cfilter id='silt' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.009 0.013' numOctaves='4' seed='21' stitchTiles='stitch' result='n'/%3E%3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.16 0 0 0 0 0.26 0 0 0 0 0.20 0.55 0 0 0 -0.18' result='m'/%3E%3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E%3C/filter%3E%3Cfilter id='caustic' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013 0.017' numOctaves='3' seed='5' stitchTiles='stitch' result='n'/%3E%3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.72 0 0 0 0 0.92 0 0 0 0 0.82 1.35 0 0 0 -0.98' result='m'/%3E%3CfeComposite in='m' in2='SourceGraphic' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect x='0' y='0' width='800' height='500' fill='url%28%23water%29'/%3E%3Crect x='0' y='0' width='800' height='500' fill='%23FFFFFF' filter='url%28%23silt%29' opacity='0.5'/%3E%3Cellipse cx='300' cy='190' rx='330' ry='210' fill='url%28%23sun%29'/%3E%3Cellipse cx='128' cy='392' rx='74' ry='46' fill='%2320342B' opacity='0.55'/%3E%3Cellipse cx='624' cy='118' rx='92' ry='54' fill='%231C3028' opacity='0.5'/%3E%3Cellipse cx='452' cy='438' rx='58' ry='34' fill='%2322362C' opacity='0.45'/%3E%3Crect x='0' y='0' width='800' height='500' fill='%23FFFFFF' filter='url%28%23caustic%29' opacity='0.34'/%3E%3C/svg%3E\") ${sx}% ${sy}% / cover no-repeat, linear-gradient(to bottom, #16302A 0%, #102420 45%, #081613 100%) center / cover no-repeat, #102420",
+            "--dgcv-special-text": "#F0B75A",
+            "--plaque-fill": "#162C27",
+            "--plaque-border": "#F0B75A",
+            "--dgcv-table-shadow": "0 2px 14px rgba(3, 10, 8, 0.55)",
+            "--dgcv-text-shadow": "none",
+            "--dgcv-hover-transform": "translateY(-1px)",
+            "--dgcv-hover-transition": "background-color 150ms ease, color 150ms ease, transform 150ms ease",
+        },
+    ),
+    "chalkboard_classroom": ThemeConfig(
+        bg_primary="#1A2420",
+        bg_surface="#212F29",
+        bg_alt="#1D2925",
+        bg_hover="#F2D675",
+        text_main="#E9E6DA",
+        text_heading="#F6DE8C",
+        text_hover="#1A2420",
+        text_alt="#C9D2C6",
+        border_main="#9C7A50",
+        border_alt="#634B32",
+        bg_action="#E8748F",
+        text_on_action="#241016",
+        bg_action_hover="#F196AC",
+        bg_error="#D9605A",
+        text_on_error="#230A08",
+        bg_success="#7FB06B",
+        text_on_success="#0E1D0A",
+        font_family="'Chalkboard SE', 'Comic Sans MS', 'Marker Felt', cursive",
+        custom_css_vars={
+            "--dgcv-border-width": "1px",
+            "$randomized": "axdx=12:86 axdy=14:78 axsz=56:92 cndx=12:86 cndy=14:78 cnsz=40:64 sx=42:58 sy=44:56",
+            "--dgcv-special-background": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cfilter id='d' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='7' stitchTiles='stitch' result='n'/%3E%3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0.957 0 0 0 0 0.945 0 0 0 0 0.902 0.26 0 0 0 -0.14'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url%28%23d%29'/%3E%3C/svg%3E\") 0 0 / 140px 140px repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-45 -45 90 90'%3E%3Cg stroke='%23F4F1E6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none' opacity='0.40'%3E%3Cpath d='M 0.0,0.0 L 0.0,-38.0'/%3E%3Cpath d='M 3.3,-31.8 L 0.0,-38.0 L -3.3,-31.8'/%3E%3Cpath d='M 0.0,0.0 L 34.0,-6.0'/%3E%3Cpath d='M 28.5,-1.7 L 34.0,-6.0 L 27.3,-8.2'/%3E%3Cpath d='M 0.0,0.0 L -26.0,18.0'/%3E%3Cpath d='M -22.8,11.8 L -26.0,18.0 L -19.0,17.2'/%3E%3C/g%3E%3C/svg%3E\") calc(${axdx}% - (min(${axsz}px, 42%) / 2)) calc(${axdy}% - (min(${axsz}px, 42%) / 2)) / min(${axsz}px, 42%) min(${axsz}px, 42%) no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-20 -26 40 52'%3E%3Cg stroke='%23F4F1E6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none' opacity='0.40'%3E%3Cpath d='M 0,-24 L -13.0,4.0'/%3E%3Cpath d='M 0,-24 L 13.0,4.0'/%3E%3Cellipse cx='0' cy='4' rx='13' ry='4.2'/%3E%3C/g%3E%3C/svg%3E\") calc(${cndx}% - (min(${cnsz}px, 30%) / 2)) calc(${cndy}% - (min(${cnsz}px, 30%) * 0.65)) / min(${cnsz}px, 30%) calc(min(${cnsz}px, 30%) * 1.3) no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3ClinearGradient id='slate' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%2326342D'/%3E%3Cstop offset='0.5' stop-color='%231E2A24'/%3E%3Cstop offset='1' stop-color='%23161F1A'/%3E%3C/linearGradient%3E%3CradialGradient id='smudge' cx='0.5' cy='0.5' r='0.5'%3E%3Cstop offset='0' stop-color='%23F4F1E6' stop-opacity='0.07'/%3E%3Cstop offset='0.6' stop-color='%23F4F1E6' stop-opacity='0.03'/%3E%3Cstop offset='1' stop-color='%23F4F1E6' stop-opacity='0'/%3E%3C/radialGradient%3E%3ClinearGradient id='streak' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%23F4F1E6' stop-opacity='0'/%3E%3Cstop offset='0.5' stop-color='%23F4F1E6' stop-opacity='0.05'/%3E%3Cstop offset='1' stop-color='%23F4F1E6' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='0' y='0' width='800' height='500' fill='url%28%23slate%29'/%3E%3Cellipse cx='210' cy='140' rx='170' ry='95' fill='url%28%23smudge%29'/%3E%3Cellipse cx='560' cy='330' rx='210' ry='110' fill='url%28%23smudge%29'/%3E%3Crect x='40' y='250' width='420' height='16' fill='url%28%23streak%29'/%3E%3Crect x='300' y='400' width='500' height='12' fill='url%28%23streak%29'/%3E%3C/svg%3E\") ${sx}% ${sy}% / cover no-repeat, linear-gradient(to bottom, #26342D 0%, #1E2A24 50%, #161F1A 100%) center / cover no-repeat, #1E2A24",
+            "--dgcv-special-text": "#F6DE8C",
+            "--dgcv-table-shadow": "0 2px 10px rgba(4, 8, 6, 0.45)",
+            "--dgcv-text-shadow": "none",
+            "--dgcv-hover-transform": "none",
+            "--dgcv-hover-transition": "background-color 110ms ease, color 110ms ease",
         },
     ),
 }
@@ -3917,7 +3917,9 @@ def get_random_theme(vibrancy: float = 0.2) -> ThemeConfig:
     return out
 
 
-def get_style(theme_name: str, *args, return_theme_data: bool = False, **kwargs) -> str:
+def get_style(
+    theme_name: str, *args, return_theme_data: bool = False, minimal=False, **kwargs
+) -> str:
     """
     Returns a CSS ``:root { }`` block of dgcv theme variables for the given theme name.
 
@@ -3963,6 +3965,217 @@ def get_style(theme_name: str, *args, return_theme_data: bool = False, **kwargs)
     theme_data = (
         get_random_theme() if theme_name == "random" else THEME_REGISTRY[theme_name]
     )
+    theme_data = assemble_parts(theme_data, minimal=minimal, theme_name=theme_name)
+    theme_data = apply_randomization(theme_data, theme_name, minimal=minimal)
     if return_theme_data:
         return f":root {{\n    {theme_data.to_css_string()}\n}}", theme_data
     return f":root {{\n    {theme_data.to_css_string()}\n}}"
+
+
+# -----------------------------------------------------------------------------
+# randomization
+# -----------------------------------------------------------------------------
+
+
+RANDOMIZED_KEY = "$randomized"
+ASSEMBLE_KEY = "$assemble"
+
+_PART_RE = re.compile(r"^\$part_(\d+)(?:@(\w+))?$")
+
+_SLOT_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)=(-?\d+):(-?\d+)$")
+_PHI_CONJUGATE = 0.6180339887498949
+
+_rng = random.Random()
+_cursors: Dict[str, float] = {}
+
+
+class ThemeRandomizationError(ValueError):
+    """Raised when a theme's randomization stub or tokens are malformed."""
+
+
+class ThemeAssemblyError(ValueError):
+    """Raised when a theme's part stubs are malformed."""
+
+
+def assemble_parts(theme_data, minimal: bool = False, theme_name: str = "<theme>"):
+    """Join ``$part_N`` fragments into the property named by ``$assemble``.
+
+    Fragments tagged ``@detail`` are dropped when ``minimal`` is true, so a
+    small container never carries the bytes for layers it would not paint.
+    Themes with no ``$assemble`` stub are returned unchanged and unscanned.
+    """
+    target = theme_data.custom_css_vars.get(ASSEMBLE_KEY)
+    if not target:
+        return theme_data
+    target = target.strip()
+
+    parts, rest, seen = [], {}, set()
+    for key, value in theme_data.custom_css_vars.items():
+        if key == ASSEMBLE_KEY:
+            continue
+        match = _PART_RE.match(key)
+        if match is None:
+            if key.startswith("$part"):
+                raise ThemeAssemblyError(
+                    f"theme {theme_name!r}: malformed part key {key!r}; "
+                    f"expected $part_N or $part_N@detail"
+                )
+            rest[key] = value
+            continue
+        index, tag = int(match.group(1)), match.group(2)
+        if tag not in (None, "detail"):
+            raise ThemeAssemblyError(
+                f"theme {theme_name!r}: unknown part tag {tag!r} on {key!r}; "
+                f"only @detail is understood"
+            )
+        if index in seen:
+            raise ThemeAssemblyError(
+                f"theme {theme_name!r}: duplicate part index {index}"
+            )
+        seen.add(index)
+        if tag == "detail" and minimal:
+            continue
+        parts.append((index, value))
+
+    if not parts:
+        raise ThemeAssemblyError(
+            f"theme {theme_name!r}: {ASSEMBLE_KEY} names {target!r} but no parts survive"
+        )
+    if target in rest:
+        raise ThemeAssemblyError(
+            f"theme {theme_name!r}: {target!r} is both assembled from parts and set directly"
+        )
+
+    joined = ", ".join(value.strip().strip(",").strip() for _, value in sorted(parts))
+    rest[target] = joined
+    return replace(theme_data, custom_css_vars=rest)
+
+
+def _parse_slots(spec: str, theme_name: str) -> Dict[str, Tuple[int, int]]:
+    slots: Dict[str, Tuple[int, int]] = {}
+    for token in spec.split():
+        match = _SLOT_RE.match(token)
+        if match is None:
+            raise ThemeRandomizationError(
+                f"theme {theme_name!r}: malformed slot {token!r} in {RANDOMIZED_KEY}; "
+                f"expected name=lo:hi with integer bounds"
+            )
+        name, lo, hi = match.group(1), int(match.group(2)), int(match.group(3))
+        if lo > hi:
+            raise ThemeRandomizationError(
+                f"theme {theme_name!r}: slot {name!r} has lo {lo} greater than hi {hi}"
+            )
+        if name in slots:
+            raise ThemeRandomizationError(
+                f"theme {theme_name!r}: slot {name!r} declared twice"
+            )
+        slots[name] = (lo, hi)
+    if not slots:
+        raise ThemeRandomizationError(
+            f"theme {theme_name!r}: {RANDOMIZED_KEY} is present but declares no slots"
+        )
+    return slots
+
+
+def _roll(key: str, lo: int, hi: int) -> int:
+    """Next value for a slot, advancing a low-discrepancy sequence."""
+    cursor = _cursors.get(key)
+    if cursor is None:
+        cursor = _rng.random()
+    cursor = (cursor + _PHI_CONJUGATE) % 1.0
+    _cursors[key] = cursor
+    return lo + int(cursor * (hi - lo + 1))
+
+
+def apply_randomization(theme_data, theme_name: str = "<theme>", minimal: bool = False):
+    """Return a copy of ``theme_data`` with slot tokens substituted.
+
+    Themes with no ``$randomized`` stub are returned unchanged and unscanned.
+    """
+    spec = theme_data.custom_css_vars.get(RANDOMIZED_KEY)
+    if not spec:
+        return theme_data
+
+    slots = _parse_slots(spec, theme_name)
+    if minimal:
+        override = theme_data.custom_css_vars.get(RANDOMIZED_KEY + "@minimal")
+        if override:
+            slots.update(_parse_slots(override, theme_name))
+    values = {
+        name: _roll(f"{theme_name}:{name}", lo, hi) for name, (lo, hi) in slots.items()
+    }
+
+    resolved = {}
+    for key, value in theme_data.custom_css_vars.items():
+        if key.startswith("$"):
+            continue
+        if "$" not in value:
+            resolved[key] = value
+            continue
+        try:
+            resolved[key] = Template(value).substitute(values)
+        except KeyError as exc:
+            raise ThemeRandomizationError(
+                f"theme {theme_name!r}: {key} references undeclared slot {exc.args[0]!r}; "
+                f"declared slots are {sorted(slots)}"
+            ) from exc
+        except ValueError as exc:
+            raise ThemeRandomizationError(
+                f"theme {theme_name!r}: {key} contains a malformed token "
+                f"(use ${{name}}, and $$ for a literal dollar sign)"
+            ) from exc
+
+    return replace(theme_data, custom_css_vars=resolved)
+
+
+def check_theme_randomization(theme_data, theme_name: str = "<theme>") -> None:
+    """Registry-load / test-time validation.
+
+    Fails loudly on a malformed stub, a token with no matching slot, or a slot
+    that nothing references -- none of which are visible in a browser, where a
+    stray ``$hx`` just renders as an invalid background.
+    """
+    spec = theme_data.custom_css_vars.get(RANDOMIZED_KEY)
+    if not spec:
+        for key, value in theme_data.custom_css_vars.items():
+            if "$" in value.replace("$$", ""):
+                raise ThemeRandomizationError(
+                    f"theme {theme_name!r}: {key} uses a $token but the theme has no "
+                    f"{RANDOMIZED_KEY} stub, so it will be emitted literally"
+                )
+        return
+
+    slots = _parse_slots(spec, theme_name)
+    override = theme_data.custom_css_vars.get(RANDOMIZED_KEY + "@minimal")
+    if override:
+        slots.update(_parse_slots(override, theme_name))
+    used = set()
+    for key, value in theme_data.custom_css_vars.items():
+        if key.startswith(RANDOMIZED_KEY) or key == ASSEMBLE_KEY:
+            continue  # directives, not values; $part_N fragments ARE scanned
+        identifiers = set(Template(value).get_identifiers())  # Python 3.11+
+        unknown = identifiers - set(slots)
+        if unknown:
+            raise ThemeRandomizationError(
+                f"theme {theme_name!r}: {key} references undeclared slot(s) {sorted(unknown)}"
+            )
+        used |= identifiers
+    unused = set(slots) - used
+    if unused:
+        raise ThemeRandomizationError(
+            f"theme {theme_name!r}: slot(s) {sorted(unused)} declared but never referenced"
+        )
+
+
+def preview_assembled(
+    theme_data, minimal: bool = False, theme_name: str = "<theme>"
+) -> str:
+    """Authoring aid: the fully assembled, rolled value, ready to paste into a
+    browser.  Split themes are no longer a single copy-pasteable string, so this
+    is how you eyeball one."""
+    data = apply_randomization(
+        assemble_parts(theme_data, minimal=minimal, theme_name=theme_name),
+        theme_name,
+        minimal=minimal,
+    )
+    return data.custom_css_vars[theme_data.custom_css_vars[ASSEMBLE_KEY].strip()]
