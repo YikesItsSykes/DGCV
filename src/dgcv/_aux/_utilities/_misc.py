@@ -1,7 +1,7 @@
 """
 package: dgcv - Differential Geometry with Complex Variables
 
-module: dgcv._aux._config
+module: dgcv._aux._utilities._misc.py
 
 
 ---
@@ -23,7 +23,12 @@ from .._backends._types_and_constants import imag_unit, symbol
 
 def zip_sum(*args, init=0):
     if len(args) == 2:
-        return sum([a * b for a, b in zip(*args)], init)
+        pairs = list(zip(*args))
+        if pairs:
+            hook = getattr(type(pairs[0][1]), "_dgcv_multiadd_scaled", None)
+            if hook is not None:
+                return hook(pairs, init)
+        return sum([a * b for a, b in pairs], init)
     if len(args) == 0:
         return
     if len(args) == 1:

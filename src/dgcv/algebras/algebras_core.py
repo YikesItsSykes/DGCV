@@ -1557,7 +1557,7 @@ class _algebra_methods(_vector_space_methods):
                         break
                     elem = old_level[-1 - idx2]
                     if _indep_check(
-                        ser[depth - idx],
+                        new_level,
                         elem,
                         force_heavy_solve=force_heavy_solve,
                     ):
@@ -4719,6 +4719,78 @@ class algebra_element_class(dgcv_class):
             self.valence,
         )
 
+    @classmethod
+    def _dgcv_multiadd(cls, terms, start=0):
+        if not isinstance(terms, (list, tuple)):
+            terms = list(terms)
+        if not terms:
+            return start
+        acc = {}
+        alg = None
+        valence = None
+        residual = []
+        if isinstance(start, cls):
+            acc.update(start.coeff_dict)
+            alg = start.algebra
+            valence = start.valence
+        elif not _scalar_is_zero(start):
+            residual.append(start)
+        for t in terms:
+            if isinstance(t, cls):
+                if alg is None:
+                    alg = t.algebra
+                    valence = t.valence
+                if t.algebra == alg and t.valence == valence:
+                    for k, v in t.coeff_dict.items():
+                        acc[k] = acc.get(k, 0) + v
+                    continue
+            residual.append(t)
+        if alg is None:
+            return sum(terms, start)
+        out = cls(alg, acc, valence)
+        if residual:
+            return sum(residual, out)
+        return out
+
+    @classmethod
+    def _dgcv_multiadd_scaled(cls, pairs, start=0):
+        if not isinstance(pairs, (list, tuple)):
+            pairs = list(pairs)
+        if not pairs:
+            return start
+        acc = {}
+        alg = None
+        valence = None
+        spbd = False
+        residual = []
+        if isinstance(start, cls):
+            acc.update(start.coeff_dict)
+            alg = start.algebra
+            valence = start.valence
+            spbd = alg.simplify_products_by_default is True
+        elif not _scalar_is_zero(start):
+            residual.append(start)
+        for c, t in pairs:
+            if isinstance(t, cls):
+                if alg is None:
+                    alg = t.algebra
+                    valence = t.valence
+                    spbd = alg.simplify_products_by_default is True
+                if t.algebra == alg and t.valence == valence:
+                    if not _scalar_is_zero(c):
+                        for k, v in t.coeff_dict.items():
+                            acc[k] = acc.get(k, 0) + (
+                                simplify(c * v) if spbd else c * v
+                            )
+                    continue
+            residual.append(c * t)
+        if alg is None:
+            return sum([c * t for c, t in pairs], start)
+        out = cls(alg, acc, valence)
+        if residual:
+            return sum(residual, out)
+        return out
+
     def __add__(self, other):
         if _scalar_is_zero(other):
             return self
@@ -7033,7 +7105,7 @@ def _indep_check(
         variables = _fresh_solve_variables(count)
     else:
         variables = _solve_variables[:count]
-    eqn = sum(c * elem for c, elem in zip(variables, elems)) - newE
+    eqn = zip_sum(variables, elems) - newE
     if _force_eqn_simiplify or force_heavy_solve:
         eqn = simplify(eqn)
 

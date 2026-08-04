@@ -60,7 +60,7 @@ from .._aux._utilities._config import (
     get_variable_registry,
     update_globals,
 )
-from .._aux._utilities._misc import linear_combination
+from .._aux._utilities._misc import linear_combination, zip_sum
 from .._aux._vmf._safeguards import (
     create_key,
     get_dgcv_category,
@@ -858,9 +858,9 @@ class subalgebra_element(dgcv_class):
             if len(cd) == 0:
                 self._ambient_rep = self.algebra.ambient.zero_element
             else:
-                self._ambient_rep = sum(
-                    coeff * self.algebra.basis_in_ambient_alg[j]
-                    for j, coeff in self.coeff_dict.items()
+                amb_basis = self.algebra.basis_in_ambient_alg
+                self._ambient_rep = zip_sum(
+                    list(cd.values()), [amb_basis[j] for j in cd]
                 )
         return self._ambient_rep
 
@@ -962,6 +962,78 @@ class subalgebra_element(dgcv_class):
             new_dict,
             self.valence,
         )
+
+    @classmethod
+    def _dgcv_multiadd(cls, terms, start=0):
+        if not isinstance(terms, (list, tuple)):
+            terms = list(terms)
+        if not terms:
+            return start
+        acc = {}
+        alg = None
+        valence = None
+        residual = []
+        if isinstance(start, cls):
+            acc.update(start.coeff_dict)
+            alg = start.algebra
+            valence = start.valence
+        elif not _scalar_is_zero(start):
+            residual.append(start)
+        for t in terms:
+            if isinstance(t, cls):
+                if alg is None:
+                    alg = t.algebra
+                    valence = t.valence
+                if t.algebra == alg and t.valence == valence:
+                    for k, v in t.coeff_dict.items():
+                        acc[k] = acc.get(k, 0) + v
+                    continue
+            residual.append(t)
+        if alg is None:
+            return sum(terms, start)
+        out = cls(alg, acc, valence)
+        if residual:
+            return sum(residual, out)
+        return out
+
+    @classmethod
+    def _dgcv_multiadd_scaled(cls, pairs, start=0):
+        if not isinstance(pairs, (list, tuple)):
+            pairs = list(pairs)
+        if not pairs:
+            return start
+        acc = {}
+        alg = None
+        valence = None
+        spbd = False
+        residual = []
+        if isinstance(start, cls):
+            acc.update(start.coeff_dict)
+            alg = start.algebra
+            valence = start.valence
+            spbd = alg.simplify_products_by_default is True
+        elif not _scalar_is_zero(start):
+            residual.append(start)
+        for c, t in pairs:
+            if isinstance(t, cls):
+                if alg is None:
+                    alg = t.algebra
+                    valence = t.valence
+                    spbd = alg.simplify_products_by_default is True
+                if t.algebra == alg and t.valence == valence:
+                    if not _scalar_is_zero(c):
+                        for k, v in t.coeff_dict.items():
+                            acc[k] = acc.get(k, 0) + (
+                                simplify(c * v) if spbd else c * v
+                            )
+                    continue
+            residual.append(c * t)
+        if alg is None:
+            return sum([c * t for c, t in pairs], start)
+        out = cls(alg, acc, valence)
+        if residual:
+            return sum(residual, out)
+        return out
 
     def __add__(self, other):
         if _scalar_is_zero(other):
@@ -2878,6 +2950,7 @@ def createAlgebra(
         symbolData = obj.export_algebra_data(
             _internal_call_lock=retrieve_passkey(),
             preserve_negative_part_basis=preserve_negative_part_basis,
+            jacobi_threshold=1,
             try_hard=True,
         )
         if isinstance(symbolData, str):

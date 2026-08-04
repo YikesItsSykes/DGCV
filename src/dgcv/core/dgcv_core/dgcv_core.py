@@ -8266,7 +8266,7 @@ def im_with_hol_coor(expr):
 
 
 # -----------------------------------------------------------------------------
-# basic vector field and differential forms operations
+# basic operations
 # -----------------------------------------------------------------------------
 def exteriorProduct(*args):
     if len(args) == 0:
@@ -8285,8 +8285,34 @@ def exteriorProduct(*args):
     return out
 
 
+def sum_dgcv(terms, start=0):
+    """
+    Sum dgcv objects, using a class-provided accumulator when one is available.
+
+    Parameters
+    ----------
+    terms : iterable
+        Objects to sum.
+    start : optional
+        Initial value included in the sum. Default is 0.
+
+    Returns
+    -------
+    object
+        The sum of `start` and the elements of `terms`.
+    """
+    if not isinstance(terms, (list, tuple)):
+        terms = list(terms)
+    if not terms:
+        return start
+    hook = getattr(type(terms[0]), "_dgcv_multiadd", None)
+    if hook is None:
+        return sum(terms, start)
+    return hook(terms, start)
+
+
 # -----------------------------------------------------------------------------
-# tensor fields
+# tensor field tools
 # -----------------------------------------------------------------------------
 def tensor_product(*args, doNotSimplify=False):
     """
@@ -8385,7 +8411,7 @@ def symmetric_product(*tfs):
 
 
 # -----------------------------------------------------------------------------
-# complex vector fields
+# complex vector field tools
 # -----------------------------------------------------------------------------
 def holVF_coeffs(
     vf: vector_field_class, arg2: list | tuple, doNotSimplify=False

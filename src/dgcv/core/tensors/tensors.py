@@ -713,6 +713,7 @@ class tensorProduct:
         _process_shape_with_accumulation=True,
         _amb_prom=False,
         _hom_id=None,
+        _hom_decomp=None,
     ):
         if not isinstance(coeff_dict, dict):
             raise ValueError("Coefficient dictionary must be a dictionary.")
@@ -789,12 +790,13 @@ class tensorProduct:
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "tensorProduct"
         self._terms = [self] if len(self.coeff_dict) == 1 else None
+        self._properties = {}
         if _hom_id:
-            self._properties = {
-                "_hom_id": _hom_id
-            }  # _hom_id format: [{source_label,{y:x for x,y in zip(coeffs,target_labels)}}, label]
-        else:
-            self._properties = {}
+            self._properties["_hom_id"] = (
+                _hom_id  # _hom_id format: [{source_label,{y:x for x,y in zip(coeffs,target_labels)}}, label]
+            )
+        if _hom_decomp:
+            self._properties["_hom_decomp"] = _hom_decomp
 
     @staticmethod
     def _process_coeffs_dict(
@@ -804,7 +806,7 @@ class tensorProduct:
             return {tuple(): 0}, 0, 0, 0, [{tuple(): 0}], [0], {0: []}, {}
         vector_spaces = []
         spring = dict()
-        seen_vs = []
+        seen_vs = set()
         max_degree = 0
         min_degree = -1
         prolongation_type = None  ###!!! depricating soon
@@ -832,7 +834,7 @@ class tensorProduct:
                 max_degree = deg
             for idx in key[2 * deg :]:
                 if idx not in seen_vs:
-                    seen_vs.append(idx)
+                    seen_vs.add(idx)
                     vector_spaces.append(idx)
                     nidx = _vsr_inh_idx(idx)
                     if idx == nidx:
