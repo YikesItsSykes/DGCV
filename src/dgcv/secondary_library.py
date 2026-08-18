@@ -14,17 +14,17 @@ SPDX-License-Identifier: Apache-2.0
 
 from ._aux._backends._symbolic_router import defloat
 from ._aux._utilities._misc import linear_combination, zip_sum
-from .core.arrays.arrays import frozen_array_dgcv, frozen_matrix_dgcv
-from .core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
+from .core.arrays import frozen_array_dgcv, frozen_matrix_dgcv
+from .core.vector_fields_and_differential_forms import (
     _decompose_over_number_field as decompose_over_number_field,
 )
-from .core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
+from .core.vector_fields_and_differential_forms import (
     _extract_basis_by_wedge_vectorized as extract_basis_by_wedge_vectorized,
 )
-from .core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
+from .core.vector_fields_and_differential_forms import (
     _extract_basis_over_function_ring as extract_basis_over_function_ring,
 )
-from .core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
+from .core.vector_fields_and_differential_forms import (
     _extract_basis_over_number_field as extract_basis_over_number_field,
 )
 

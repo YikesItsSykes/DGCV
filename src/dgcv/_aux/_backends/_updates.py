@@ -54,12 +54,14 @@ baseline_defaults: Dict[str, Any] = {
     "VLP": None,
     "extra_support_for_math_in_tables": False,
     "conjugation_prefix": "BAR",
+    "_solve_default": "solve",
 }
 
 
 changes: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     ("0.2.6", {"theme": "appalachian"}),
     ("0.3.0", {"theme": "graph_paper", "verbose_label_printing": False}),
+    ("0.3.3", {"_solve_default": "auto"}),
     (
         "0.3.13",
         {

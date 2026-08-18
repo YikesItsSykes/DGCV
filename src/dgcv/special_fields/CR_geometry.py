@@ -70,7 +70,7 @@ from .._aux._vmf._safeguards import (
     retrieve_passkey,
 )
 from .._aux._vmf.vmf import clearVar, listVar, order_coordinates, vmf_lookup
-from ..core.arrays.arrays import matrix_dgcv
+from ..core.arrays import matrix_dgcv
 from ..core.base import dgcv_class
 from ..core.conversions.conversions import (
     allToReal,
@@ -79,7 +79,7 @@ from ..core.conversions.conversions import (
     realToSym,
     symToHol,
 )
-from ..core.dgcv_core.dgcv_core import (
+from ..core.dgcv_core import (
     complex_struct_op,
     holVF_coeffs,
     polynomial_dgcv,
@@ -88,8 +88,8 @@ from ..core.dgcv_core.dgcv_core import (
     wedge,
 )
 from ..core.polynomials.polynomials import createMultigradedPolynomial
-from ..core.solvers.solvers import solve_dgcv
-from ..core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
+from ..core.solvers import solve_dgcv
+from ..core.vector_fields_and_differential_forms import (
     LieDerivative,
     annihilator,
     exteriorDerivative,

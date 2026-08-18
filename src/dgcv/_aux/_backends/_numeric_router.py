@@ -67,7 +67,7 @@ def _extract_basis_over_number_field(
     samples: int = 2,
     max_tries_per_obj: int = 4,
 ):
-    from ...core.solvers.solvers import solve_dgcv
+    from ...core.solvers import solve_dgcv
 
     objs = [o for o in objs if o is not None]
     if not objs:

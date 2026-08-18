@@ -1,26 +1,3 @@
-"""
-package: dgcv - Differential Geometry with Complex Variables
-
-sub-package: dgcv.core
-
-module: dgcv.core.morphisms
-
-
----
-Author (of this sub-package): David Gamble Sykes
-
-Project page: https://realandimaginary.com/dgcv/
-
-Copyright (c) 2024-present David Gamble Sykes
-
-Licensed under the Apache License, Version 2.0
-
-SPDX-License-Identifier: Apache-2.0
-"""
-
-# -----------------------------------------------------------------------------
-# imports and broadcasting
-# -----------------------------------------------------------------------------
 from ..._aux._backends._symbolic_router import simplify, subs
 from ..._aux._backends._types_and_constants import symbol
 from ..._aux._vmf._safeguards import (
@@ -30,8 +7,8 @@ from ..._aux._vmf._safeguards import (
 )
 from ..base import dgcv_class
 from ..combinatorics.combinatorics import carProd
-from ..solvers.solvers import solve_dgcv
-from ..tensors.tensors import tensorProduct, vector_space_class
+from ..solvers import solve_dgcv
+from ..tensors import tensorProduct
 
 __all__ = ["homomorphism"]
 
@@ -64,7 +41,6 @@ class homomorphism(dgcv_class):
                     "If providing the `domain` parameter as a list reprenting a tensor product of vector spaces then its elements must be vector space class types (or similar, e.g., `algebra_class` etc.)"
                 )
 
-        classes.add("tensor_proxy")
         if not all(get_dgcv_category(space) in classes for space in [domain, codomain]):
             raise TypeError(
                 "domain and codomain parameters for `homomorphism` must be vector space class types (or similar, e.g., `algebra_class` etc.)"
@@ -82,8 +58,6 @@ class homomorphism(dgcv_class):
         newBI = []
 
         def _decomp(tp):
-            if get_dgcv_category(codomain) == "tensor_proxy":
-                pass
             if not hasattr(codomain, "tensor_representation"):
                 return tuple()
             vars = [symbol(f"c{j}") for j in range(codomain.dimension)]
@@ -117,7 +91,7 @@ class homomorphism(dgcv_class):
                     )
             elif elem == 0:
                 newBI.append(codomain.zero_element)
-            elif getattr(elem, "dgcv_vs_id", None) == codomain.dgcv_vs_id:
+            elif getattr(elem, "algebra", None) is codomain:
                 newBI.append(elem)
             elif get_dgcv_category(elem) == "tensorProduct":
                 coeffs = _decomp(elem)
@@ -147,7 +121,10 @@ class homomorphism(dgcv_class):
         self.domain = domain
         self.codomain = codomain
         self._zero_map = all_zero
-        p1, p2 = getattr(domain, "_parameters"), getattr(codomain, "_parameters")
+        p1, p2 = (
+            getattr(domain, "_parameters", None),
+            getattr(codomain, "_parameters", None),
+        )
         p1, p2 = p1 if p1 else set(), p2 if p2 else set()
         self._parameters = p1 | p2
         if not self._zero_map:
@@ -161,21 +138,26 @@ class homomorphism(dgcv_class):
 
     def apply(self, func, *, in_place=False, skip_none=True, **kwargs):
         if in_place:
-            target = self
-        else:
-            target = self.__class__.__new__(self.__class__)
-            target._alg_hom = None
-            target._alg_derivation = None
-            target._parameters = self._parameters
-            target._zero_map = self._zero_map
-            target.tensor_representation = func(self.tensor_representation)
+            self.tensor_representation = func(self.tensor_representation)
+            self._alg_hom = None
+            self._alg_derivation = None
+            return self
 
-            if hasattr(self, "_dgcv_class_check"):
-                target._dgcv_class_check = self._dgcv_class_check
-            if hasattr(self, "_dgcv_category"):
-                target._dgcv_category = self._dgcv_category
-            if hasattr(self, "_dgcv_categories"):
-                target._dgcv_categories = set(self._dgcv_categories)
+        target = self.__class__.__new__(self.__class__)
+        target.domain = self.domain
+        target.codomain = self.codomain
+        target._alg_hom = None
+        target._alg_derivation = None
+        target._parameters = self._parameters
+        target._zero_map = self._zero_map
+        target.tensor_representation = func(self.tensor_representation)
+
+        if hasattr(self, "_dgcv_class_check"):
+            target._dgcv_class_check = self._dgcv_class_check
+        if hasattr(self, "_dgcv_category"):
+            target._dgcv_category = self._dgcv_category
+        if hasattr(self, "_dgcv_categories"):
+            target._dgcv_categories = set(self._dgcv_categories)
 
         return target
 
@@ -211,11 +193,11 @@ class homomorphism(dgcv_class):
                 return getattr(simplify(x), "is_zero", False) or x == 0
 
             self._alg_hom = all(check(eqn) for eqn in self._alg_hom_eqns)
-        self._alg_hom
+        return self._alg_hom
 
     @property
     def _alg_der_eqns(self):
-        if self.codomain.ambient != self.domain.ambient:
+        if self.codomain.ambient is not self.domain.ambient:
             return [1]
         skew = (
             getattr(self.domain, "is_skew_symmetric", lambda: False)()
@@ -236,8 +218,8 @@ class homomorphism(dgcv_class):
             def check(x):
                 return getattr(simplify(x), "is_zero", False) or x == 0
 
-            self._alg_hom = all(check(eqn) for eqn in self._alg_der_eqns)
-        self._alg_hom
+            self._alg_derivation = all(check(eqn) for eqn in self._alg_der_eqns)
+        return self._alg_derivation
 
     def __str__(self):
         if getattr(self, "_zero_map", False):
@@ -253,7 +235,7 @@ class homomorphism(dgcv_class):
         return self._repr_latex_(raw=raw)
 
     def __call__(self, elem):
-        if getattr(elem, "dgcv_vs_id", None) == self.domain.dgcv_vs_id:
+        if getattr(elem, "algebra", None) is self.domain:
             if getattr(self, "_zero_map", False):
                 return self.codomain.zero_element
             return self.tensor_representation(elem, demote_to_VS_when_possible=True)
@@ -274,14 +256,18 @@ class _fast_tensor_proxy:
             dim = dim * nd
         self.dimensions = tuple(dimensions)
         self.degree = len(self.dimensions)
-        self.domain = (
-            self.vector_spaces[-1].dual() if self.degree > 0 else vector_space_class(0)
-        )
+        if self.degree > 0:
+            self.domain = self.vector_spaces[-1].dual()
+        else:
+            from ...algebras import algebra_class
+
+            self.domain = algebra_class(0)
         self.dim = dim if len(val_vs) > 0 else 0
         self.zero_element = tuple(vs.zero_element for vs in self.vector_spaces)
         self._dgcv_class_check = retrieve_passkey()
         self._dgcv_category = "tensor_proxy"
-        self.dgcv_vs_id = "tensor_proxy"
+        self.card = None
+        self._parameters = set()
         self._pre_basis_cache = None
         self._basis = None
 
@@ -327,15 +313,12 @@ class _fast_tensor_proxy:
             and elem.min_degree == self.degree
         ):
             for k in elem.coeff_dict.keys():
-                deg = len(k)
-                for vs, vsidx, val in zip(
-                    self.vector_spaces, k[2 * deg :], k[deg : 2 * deg]
-                ):
-                    if vs.dgcv_vs_id == vsidx:
+                for vs, factor in zip(self.vector_spaces, k):
+                    if vs.card is factor[2]:
                         if query_dgcv_categories(vs, "algebra_dual"):
-                            if val == 0:
+                            if factor[1] == 0:
                                 continue
-                        elif val == 1:
+                        elif factor[1] == 1:
                             continue
                     return False  ### add logic branch here for subalgebra support
             return True

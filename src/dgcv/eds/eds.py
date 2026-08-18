@@ -942,10 +942,10 @@ class abstract_ZF(sp.Basic):
             base = 0
         if isinstance(base, list):
             base = tuple(base)
-        if isinstance(base, abstract_ZF):
-            base = base.base
         if isinstance(base, abstDFAtom) and base.degree == 0:  ###!!!
             base = base.coeff
+        if isinstance(base, abstract_ZF):
+            base = base.base
         if isinstance(base, tuple):
             op, *args = base
             new_args = []
@@ -1941,7 +1941,7 @@ class abstDFAtom(sp.Basic):
             and self.ext_deriv_order is not None
             and self.ext_deriv_order > 0
         ):
-            return 0
+            return "0"
         if coeff_sympy == 1:
             return str(self.label) if self.label else "1"
         elif coeff_sympy == -1:
@@ -1990,7 +1990,7 @@ class abstDFAtom(sp.Basic):
             and self.ext_deriv_order is not None
             and self.ext_deriv_order > 0
         ):
-            return 0
+            return "0"
         if coeff_sympy == 1:
             return bar_labeling(self.label) if self.label else "1"
         elif coeff_sympy == -1:
@@ -2029,7 +2029,7 @@ class abstDFAtom(sp.Basic):
             and self.ext_deriv_order is not None
             and self.ext_deriv_order > 0
         ):
-            return 0
+            return "0"
         if coeff_sympy == 1:
             return str(self.label) if self.label else "1"
         elif coeff_sympy == -1:
@@ -3730,7 +3730,10 @@ def extDer(df, coframe=None, order=1, with_canonicalize=False, with_simplify=Fal
         elif isinstance(df, abstract_ZF):
             ddf = _extDer_abstract_ZF(df, coframe)
         elif isinstance(df, abstDFAtom):
-            ddf = _extDer_abstDFAtom(df, coframe)
+            if df.degree == 0:
+                ddf = _extDer_abstract_ZF(abstract_ZF(df), coframe)
+            else:
+                ddf = _extDer_abstDFAtom(df, coframe)
         elif isinstance(df, abstDFMonom):
             ddf = _extDer_abstDFMonom(df, coframe)
         elif isinstance(df, abstract_DF):

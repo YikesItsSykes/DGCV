@@ -19,14 +19,12 @@ SPDX-License-Identifier: Apache-2.0
 # -----------------------------------------------------------------------------
 # imports and broadcasting
 # -----------------------------------------------------------------------------
-from ._class_printers import (
-    array_latex_helper,
-    array_VS_printer,
+from ._arrays import array_latex_helper, array_VS_printer
+from ._fields import tensor_field_latex2, tensor_field_printer2
+from ._spaces import (
     lincomb_latex,
     lincomb_plain,
     space_display,
-    tensor_field_latex2,
-    tensor_field_printer2,
     tensor_latex_alias,
     tensor_latex_helper,
     tensor_VS_printer,

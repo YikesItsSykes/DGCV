@@ -370,9 +370,9 @@ dgcv_settings_registry = {
     "DEBUG": False,
     "force_rich_display": False,
     "simplify_singularity_ideals_by_default": True,
+    "_solve_default": "auto",
     "__": dict(),
 }
-vs_registry = []
 
 
 def get_variable_registry():
@@ -381,19 +381,6 @@ def get_variable_registry():
 
 def get_dgcv_settings_registry():
     return dgcv_settings_registry
-
-
-def get_vs_registry():
-    return vs_registry
-
-
-def from_vsr(idx):
-    return vs_registry[idx]
-
-
-def _vsr_inh_idx(idx):
-    vs = from_vsr(idx)
-    return getattr(vs, "ambient", vs).dgcv_vs_id
 
 
 def clear_variable_registry():
@@ -669,13 +656,13 @@ def configure_convenient_labels(
     configured_by_library: dict[str, list[str]] = {}
 
     if include_most or "complex variables" in libraries:
-        from ...core.dgcv_core.dgcv_core import conjugate_dgcv
         from .._backends import im, re
+        from .._backends._symbolic_router import conjugate
         from .._backends._types_and_constants import imag_unit
 
         new_functions = {
             "I": imag_unit(),
-            "conjugate": conjugate_dgcv,
+            "conjugate": conjugate,
             "im": im,
             "re": re,
         }
@@ -712,7 +699,7 @@ def configure_convenient_labels(
             new_functions, key=str.lower
         )
     if include_all or "abbreviations" in libraries:
-        from dgcv.core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
+        from dgcv.core.vector_fields_and_differential_forms import (
             coordinate_differential_form,
             coordinate_vector_field,
         )

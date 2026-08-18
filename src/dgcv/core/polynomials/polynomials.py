@@ -54,7 +54,7 @@ from ..._aux._backends._types_and_constants import symbol, zero
 from ..._aux._utilities._config import dgcv_warning
 from ..._aux._vmf.vmf import clearVar
 from ..combinatorics.combinatorics import chooseOp
-from ..dgcv_core.dgcv_core import polynomial_dgcv, variableProcedure
+from ..dgcv_core import polynomial_dgcv, variableProcedure
 
 ScalarLike = Union[int, float, complex]
 WeightVec = Sequence[int]

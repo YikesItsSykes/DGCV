@@ -39,11 +39,7 @@ from ..._utilities._config import (
 )
 from ..._utilities._settings import _toggle_or_set_verbosity
 from ..._vmf._safeguards import check_dgcv_category, get_dgcv_category
-from ._string_processing import (
-    _coerce_to_str,
-    _strip_display_dollars,
-    _unwrap_math_delims,
-)
+from ._string_processing import _strip_display_dollars, _unwrap_math_delims
 
 __all__ = ["LaTeX", "LaTeX_eqn_system", "LaTeX_list", "show"]
 
@@ -52,10 +48,7 @@ __all__ = ["LaTeX", "LaTeX_eqn_system", "LaTeX_list", "show"]
 # body
 # -----------------------------------------------------------------------------
 def _is_engine_expr(x: Any) -> bool:
-    try:
-        return isinstance(x, expr_types())
-    except Exception:
-        return False
+    return isinstance(x, expr_types())
 
 
 def _try_symToHol(x: Any, removeBARs: bool) -> Any:
@@ -70,7 +63,7 @@ def _try_symToHol(x: Any, removeBARs: bool) -> Any:
 def _latex_from_engine_expr(x: Any) -> str:
     s = _backend_latex(x)
     if not isinstance(s, str):
-        return _coerce_to_str(x)
+        return str(x)
     return _unwrap_math_delims(s)
 
 
@@ -128,7 +121,7 @@ def LaTeX(obj: Any, removeBARs: bool | None = None, verbose: bool = False) -> st
                 try:
                     return _latex_from_engine_expr(x2)
                 except Exception:
-                    return _coerce_to_str(x2)
+                    return str(x2)
 
             f = getattr(x2, "_repr_latex_", None)
             if callable(f):
@@ -138,7 +131,7 @@ def LaTeX(obj: Any, removeBARs: bool | None = None, verbose: bool = False) -> st
                         return _unwrap_math_delims(s)
                 except Exception:
                     pass
-            return _coerce_to_str(x2)
+            return str(x2)
 
         if check_dgcv_category(x):
             if not _has_varSpace_type(x):
@@ -159,7 +152,7 @@ def LaTeX(obj: Any, removeBARs: bool | None = None, verbose: bool = False) -> st
                 try:
                     return _latex_from_engine_expr(x2)
                 except Exception:
-                    return _coerce_to_str(x2)
+                    return str(x2)
 
             f = getattr(x2, "_repr_latex_", None)
             if callable(f):
@@ -169,7 +162,7 @@ def LaTeX(obj: Any, removeBARs: bool | None = None, verbose: bool = False) -> st
                         return _unwrap_math_delims(s)
                 except Exception:
                     pass
-            return _coerce_to_str(x2)
+            return str(x2)
 
         x2 = _try_symToHol(x, removeBARs)
 
@@ -177,7 +170,7 @@ def LaTeX(obj: Any, removeBARs: bool | None = None, verbose: bool = False) -> st
             try:
                 return _latex_from_engine_expr(x2)
             except Exception:
-                return _coerce_to_str(x2)
+                return str(x2)
 
         f = getattr(x2, "_repr_latex_", None)
         if callable(f):
@@ -188,7 +181,7 @@ def LaTeX(obj: Any, removeBARs: bool | None = None, verbose: bool = False) -> st
             except Exception:
                 pass
 
-        return _coerce_to_str(x2)
+        return str(x2)
 
     out = _strip_display_dollars(_latex_of(obj)) or ""
     if verbose:
@@ -495,7 +488,7 @@ def display_DGCV(*args):
     return show(*args)
 
 
-def show(*args, verbose: bool = False, plain_text=False):
+def show(*args, verbose: bool = False, plain_text=False, force_latex_compiling=False):
     """
     Display dgcv objects with IPython if available.
 
@@ -509,12 +502,12 @@ def show(*args, verbose: bool = False, plain_text=False):
             _toggle_or_set_verbosity()  # disable temp verbosity
         return
     for j in args:
-        _display_dgcv_single(j)
+        _display_dgcv_single(j, FLC=force_latex_compiling)
     if verbose:
         _toggle_or_set_verbosity()  # disable temp verbosity
 
 
-def _display_dgcv_single(arg: Any) -> None:
+def _display_dgcv_single(arg: Any, FLC=False) -> None:
     if isinstance(arg, str):
         try:
             ok = _nb_display_latex(arg)
@@ -522,13 +515,21 @@ def _display_dgcv_single(arg: Any) -> None:
                 return
         except Exception:
             pass
-        print(_coerce_to_str(arg))
+        print(str(arg))
         return
 
     # If already an HTML-capable object, attempt IPython display
     try:
         if hasattr(arg, "_repr_html_") or hasattr(arg, "to_html"):
             from IPython.display import display  # type: ignore # local optional import
+
+            if FLC:
+                from ..._utilities._config import latex_in_html
+
+                method = getattr(arg, "to_html", getattr(arg, "_repr_html_"))
+                dtext = method() if callable(method) else method
+                display(latex_in_html(dtext, extra_support_for_math_in_tables=True))
+                return
 
             display(arg)
             return
@@ -553,7 +554,7 @@ def _display_dgcv_single(arg: Any) -> None:
         except Exception:
             pass
 
-    print(_coerce_to_str(arg))
+    print(str(arg))
 
 
 def _complexDisplay(*args):
@@ -582,7 +583,7 @@ def _complexDisplay(*args):
         pass
 
     for j in converted:
-        print(_coerce_to_str(j))
+        print(str(j))
 
 
 def dgcv_init_printing(minimal_scope: bool = False, *args, **kwargs):

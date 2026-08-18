@@ -272,29 +272,6 @@ class case_tree:
             }
         return self._open_cr
 
-    def _condition_strings(self, sources, latex, filter_conditions=None):
-        flt = filter_conditions if callable(filter_conditions) else (lambda x: x)
-        out = []
-        for e, slot in self.case_rules.items():
-            if "closed" in slot:
-                v, src = slot["closed"]
-                if src in sources:
-                    ke, ve = flt(e), flt(v)
-                    out.append(
-                        LaTeX_eqn_system({ke: ve}, math_mode="$")
-                        if latex
-                        else f"{ke} = {ve}"
-                    )
-            for v, src in slot.get("open", ()):
-                if src in sources:
-                    ke, ve = flt(e), flt(v)
-                    out.append(
-                        LaTeX_eqn_system({e: v}, relation=r" \neq ", math_mode="$")
-                        if latex
-                        else f"{ke} \u2260 {ve}"
-                    )
-        return out
-
     def add_case(
         self,
         label: str = None,
@@ -1221,19 +1198,18 @@ def _tree_leaves_html(
         closed = conds.get("closed", {})
         open_ = conds.get("open", {})
         eqns = []
-        for e in order_coordinates(list(set(closed) | set(open_))):
-            if e in closed:
-                v = closed[e]
+        for e in order_coordinates(list(closed)):
+            v = closed[e]
+            eqns.append(
+                LaTeX_eqn_system({e: v}, math_mode="$") if use_latex else f"{e} = {v}"
+            )
+        for e in order_coordinates(list(open_)):
+            for v in sorted(open_[e], key=str):
                 eqns.append(
-                    LaTeX_eqn_system({e: v}, math_mode="$")
+                    LaTeX_eqn_system({e: v}, relation=r" \neq ", math_mode="$")
                     if use_latex
-                    else f"{e} = {v}"
+                    else f"{e} \u2260 {v}"
                 )
-            if e in open_:
-                for v in sorted(open_[e], key=str):
-                    LaTeX_eqn_system(
-                        {e: v}, relation=r" \neq ", math_mode="$"
-                    ) if use_latex else f"{e} \u2260 {v}"
         return ", ".join(eqns)
 
     def state(x):

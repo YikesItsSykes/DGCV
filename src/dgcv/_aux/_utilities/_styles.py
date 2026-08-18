@@ -55,16 +55,7 @@ dgcv_custom_variables = [
 @dataclass
 class ThemeConfig:
     """
-    Configuration dataclass for a single dgcv HTML theme.
-
-    Each theme defines a palette of CSS custom properties (variables) that are
-    consumed by dgcv's HTML builders. Builders access theme data exclusively
-    through the CSS variables emitted by ``to_css_string`` and ``get_style`` —
-    they never read ThemeConfig fields directly.
-
-    Background/foreground pairs are designed to be used together to ensure
-    readable contrast. Mixing across pairs may produce inaccessible color
-    combinations:
+    Background/foreground pairs:
 
         ``bg_surface``      /  ``text_heading``
         ``bg_primary``      /  ``text_main``
@@ -2631,33 +2622,207 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
         },
     ),
     "quilt_applique": ThemeConfig(
-        bg_primary="#0f2420",
+        bg_primary="#0F2420",
         bg_surface="#163530",
-        bg_alt="#122a26",
-        bg_hover="#f0a878",
-        text_main="#f0ece0",
-        text_heading="#f0a878",
-        text_hover="#0f2420",
-        text_alt="#a8c0b8",
-        border_main="#c87a5a",
-        border_alt="#163530",
-        bg_action="#1f6e5e",
-        text_on_action="#f0ece0",
-        bg_action_hover="#2a8a76",
-        bg_error="#c84a3a",
-        text_on_error="#f0ece0",
-        bg_success="#3a8a5a",
-        text_on_success="#f0ece0",
-        font_family="Georgia, serif",
+        bg_alt="#122A26",
+        bg_hover="#F0A878",
+        text_main="#F0ECE0",
+        text_heading="#F0A878",
+        text_hover="#0F2420",
+        text_alt="#A8C0B8",
+        border_main="#C87A5A",
+        border_alt="#2A4C44",
+        bg_action="#3E9B7A",
+        text_on_action="#062018",
+        bg_action_hover="#54B292",
+        bg_error="#A8382C",
+        text_on_error="#FBE6DE",
+        bg_success="#2F6B4A",
+        text_on_success="#E2F0E2",
+        font_family="'Bookman Old Style', Bookman, 'Palatino Linotype', Palatino, Georgia, serif",
         custom_css_vars={
             "--dgcv-border-width": "1px",
-            "--dgcv-special-text": "#f0ece0",
-            "--dgcv-special-background": "radial-gradient(circle 4px at 16% 22%, #e8b85e 0 80%, transparent 82%), radial-gradient(circle 4px at 76% 18%, #f0a878 0 80%, transparent 82%), radial-gradient(circle 4px at 70% 80%, #f0a878 0 80%, transparent 82%), radial-gradient(circle 8px at 34% 56%, #5e2a48 0 80%, transparent 82%), radial-gradient(circle 6px at 60% 42%, #1a5a4c 0 80%, transparent 82%), radial-gradient(circle 9px at 16% 22%, #f0a878 0 78%, transparent 80%), radial-gradient(circle 8px at 76% 18%, #e8b85e 0 78%, transparent 80%), radial-gradient(circle 7px at 88% 48%, #e08a8a 0 78%, transparent 80%), radial-gradient(circle 8px at 70% 80%, #f0ece0 0 78%, transparent 80%), radial-gradient(circle 7px at 24% 82%, #f0a878 0 78%, transparent 80%), radial-gradient(circle 6px at 46% 12%, #e8b85e 0 78%, transparent 80%), radial-gradient(circle 26px at 34% 56%, #1a5a4c 0 78%, transparent 80%), radial-gradient(circle 18px at 60% 42%, #5e2a48 0 78%, transparent 80%), radial-gradient(circle 7px at 44% 66%, #1f5a44 0 78%, transparent 80%), radial-gradient(circle 5px at 52% 48%, #1f5a44 0 78%, transparent 80%), radial-gradient(circle at 68% 32%, #173228, #0f2420 80%)",
-            "--dgcv-table-shadow": "0 0 20px rgba(240, 168, 120, 0.3), 0 0 60px rgba(31, 110, 94, 0.25), inset 0 1px 0 rgba(240, 236, 224, 0.12)",
-            "--plaque-fill": "#163530",
-            "--plaque-border": "#f0a878",
-            "--dgcv-hover-transform": "scale(1.001)",
-            "--dgcv-hover-transition": "all 0.2s ease",
+            "$randomized": (
+                "wx=0:139 wy=0:139 ws=110:170 mx=18:82 my=20:80 ms=150:230 sx=10:88 sy=14:86 ss=130:200 sd=0:1 px"
+                "=8:90 py=10:88 ps=64:104 pp=0:3 gx=0:159 gy=0:159 gs=150:200"
+            ),
+            "$assemble": "--dgcv-special-background",
+            "$part_1": (
+                "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' view"
+                "Box='0 0 140 140'%3E%3Cfilter id='wa' x='0' y='0' width='100%' height='100%' color-interpolation"
+                "-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.06 0.85' numOctaves='2' s"
+                "eed='7' stitchTiles='stitch' result='n'/%3E%3CfeColorMatrix in='n' type='matrix' values='0 0 0 0"
+                " 0.93 0 0 0 0 0.89 0 0 0 0 0.79 0.30 0 0 0 -0.15'/%3E%3C/filter%3E%3Cfilter id='wb' x='0' y='0' "
+                "width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoi"
+                "se' baseFrequency='0.85 0.06' numOctaves='2' seed='11' stitchTiles='stitch' result='n'/%3E%3CfeC"
+                "olorMatrix in='n' type='matrix' values='0 0 0 0 0.05 0 0 0 0 0.11 0 0 0 0 0.09 0.28 0 0 0 -0.14'"
+                "/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url%28%23wa%29'/%3E%3Crect width='140'"
+                " height='140' filter='url%28%23wb%29'/%3E%3C/svg%3E\") ${wx}px ${wy}px / ${ws}px ${ws}px repeat,"
+                " url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-60 -60 120 120'%3E"
+                "%3Cdefs%3E%3ClinearGradient id='pf' gradientUnits='userSpaceOnUse' x1='0' y1='-47' x2='0' y2='-1"
+                "0'%3E%3Cstop offset='0' stop-color='%23F09274'/%3E%3Cstop offset='1' stop-color='%23DC6A50'/%3E%"
+                "3C/linearGradient%3E%3ClinearGradient id='uf' gradientUnits='userSpaceOnUse' x1='0' y1='-47' x2="
+                "'0' y2='-10'%3E%3Cstop offset='0' stop-color='%235A2844'/%3E%3Cstop offset='1' stop-color='%233A"
+                "162C'/%3E%3C/linearGradient%3E%3ClinearGradient id='cf' gradientUnits='userSpaceOnUse' x1='0' y1"
+                "='-14' x2='0' y2='14'%3E%3Cstop offset='0' stop-color='%23EFC46C'/%3E%3Cstop offset='1' stop-col"
+                "or='%23C89532'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='0' cy='0' r='56' fill='none' str"
+                "oke='%23F2E6CE' stroke-width='0.9' stroke-dasharray='3 3.6' opacity='0.20'/%3E%3Ccircle cx='0' c"
+                "y='0' r='51' fill='none' stroke='%23F2E6CE' stroke-width='0.9' stroke-dasharray='3 3.6' opacity="
+                "'0.26'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' transform='rotate%28"
+                "22.5%29 scale%280.78%29' fill='url%28%23uf%29' stroke='%23F2E6CE' stroke-width='1.7' stroke-dash"
+                "array='3.4 3' stroke-opacity='0.55' stroke-linejoin='round'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32"
+                " 0,-47 C -12,-32 -9,-20 0,-10 Z' transform='rotate%2867.5%29 scale%280.78%29' fill='url%28%23uf%"
+                "29' stroke='%23F2E6CE' stroke-width='1.7' stroke-dasharray='3.4 3' stroke-opacity='0.55' stroke-"
+                "linejoin='round'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' transform="
+                "'rotate%28112.5%29 scale%280.78%29' fill='url%28%23uf%29' stroke='%23F2E6CE' stroke-width='1.7' "
+                "stroke-dasharray='3.4 3' stroke-opacity='0.55' stroke-linejoin='round'/%3E%3Cpath d='M 0,-10 C 9"
+                ",-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' transform='rotate%28157.5%29 scale%280.78%29' fill='"
+                "url%28%23uf%29' stroke='%23F2E6CE' stroke-width='1.7' stroke-dasharray='3.4 3' stroke-opacity='0"
+                ".55' stroke-linejoin='round'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z"
+                "' transform='rotate%28202.5%29 scale%280.78%29' fill='url%28%23uf%29' stroke='%23F2E6CE' stroke-"
+                "width='1.7' stroke-dasharray='3.4 3' stroke-opacity='0.55' stroke-linejoin='round'/%3E%3Cpath d="
+                "'M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' transform='rotate%28247.5%29 scale%280.7"
+                "8%29' fill='url%28%23uf%29' stroke='%23F2E6CE' stroke-width='1.7' stroke-dasharray='3.4 3' strok"
+                "e-opacity='0.55' stroke-linejoin='round'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9"
+                ",-20 0,-10 Z' transform='rotate%28292.5%29 scale%280.78%29' fill='url%28%23uf%29' stroke='%23F2E"
+                "6CE' stroke-width='1.7' stroke-dasharray='3.4 3' stroke-opacity='0.55' stroke-linejoin='round'/%"
+                "3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' transform='rotate%28337.5%29"
+                " scale%280.78%29' fill='url%28%23uf%29' stroke='%23F2E6CE' stroke-width='1.7' stroke-dasharray='"
+                "3.4 3' stroke-opacity='0.55' stroke-linejoin='round'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 "
+                "C -12,-32 -9,-20 0,-10 Z' transform='rotate%280%29' fill='url%28%23pf%29' stroke='%23F2E6CE' str"
+                "oke-width='1.5' stroke-dasharray='3.2 2.8' stroke-opacity='0.72' stroke-linejoin='round'/%3E%3Cp"
+                "ath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' transform='rotate%2845%29' fill='u"
+                "rl%28%23pf%29' stroke='%23F2E6CE' stroke-width='1.5' stroke-dasharray='3.2 2.8' stroke-opacity='"
+                "0.72' stroke-linejoin='round'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 "
+                "Z' transform='rotate%2890%29' fill='url%28%23pf%29' stroke='%23F2E6CE' stroke-width='1.5' stroke"
+                "-dasharray='3.2 2.8' stroke-opacity='0.72' stroke-linejoin='round'/%3E%3Cpath d='M 0,-10 C 9,-20"
+                " 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' transform='rotate%28135%29' fill='url%28%23pf%29' stroke"
+                "='%23F2E6CE' stroke-width='1.5' stroke-dasharray='3.2 2.8' stroke-opacity='0.72' stroke-linejoin"
+                "='round'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' transform='rotate%"
+                "28180%29' fill='url%28%23pf%29' stroke='%23F2E6CE' stroke-width='1.5' stroke-dasharray='3.2 2.8'"
+                " stroke-opacity='0.72' stroke-linejoin='round'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,"
+                "-32 -9,-20 0,-10 Z' transform='rotate%28225%29' fill='url%28%23pf%29' stroke='%23F2E6CE' stroke-"
+                "width='1.5' stroke-dasharray='3.2 2.8' stroke-opacity='0.72' stroke-linejoin='round'/%3E%3Cpath "
+                "d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' transform='rotate%28270%29' fill='url%"
+                "28%23pf%29' stroke='%23F2E6CE' stroke-width='1.5' stroke-dasharray='3.2 2.8' stroke-opacity='0.7"
+                "2' stroke-linejoin='round'/%3E%3Cpath d='M 0,-10 C 9,-20 12,-32 0,-47 C -12,-32 -9,-20 0,-10 Z' "
+                "transform='rotate%28315%29' fill='url%28%23pf%29' stroke='%23F2E6CE' stroke-width='1.5' stroke-d"
+                "asharray='3.2 2.8' stroke-opacity='0.72' stroke-linejoin='round'/%3E%3Ccircle cx='0' cy='0' r='1"
+                "3.5' fill='url%28%23cf%29' stroke='%23F2E6CE' stroke-width='1.6' stroke-dasharray='3.2 2.8' stro"
+                "ke-opacity='0.75'/%3E%3Ccircle cx='0' cy='0' r='5.5' fill='%233A162C' stroke='%23F2E6CE' stroke-"
+                "width='1.1' stroke-dasharray='2.4 2.2' stroke-opacity='0.6'/%3E%3C/svg%3E\") ${mx}% ${my}% / min"
+                "(${ms}px, 46%) auto no-repeat"
+            ),
+            "$part_2@detail": (
+                "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-60 -40 120 80'%3E%3"
+                "Cdefs%3E%3ClinearGradient id='lf' gradientUnits='userSpaceOnUse' x1='0' y1='-11' x2='0' y2='7'%3"
+                "E%3Cstop offset='0' stop-color='%237FC79A'/%3E%3Cstop offset='1' stop-color='%2357A374'/%3E%3C/l"
+                "inearGradient%3E%3ClinearGradient id='bd' gradientUnits='userSpaceOnUse' x1='0' y1='-26' x2='0' "
+                "y2='0'%3E%3Cstop offset='0' stop-color='%23EFC46C'/%3E%3Cstop offset='1' stop-color='%23DC6A50'/"
+                "%3E%3C/linearGradient%3E%3C/defs%3E%3Cg%3E%3Cpath d='M -52,26 C -32,20 -14,6 0,-12 C 11,-25 24,-"
+                "28 38,-27' fill='none' stroke='%234E9268' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='"
+                "M -52,26 C -32,20 -14,6 0,-12 C 11,-25 24,-28 38,-27' fill='none' stroke='%23F2E6CE' stroke-widt"
+                "h='1' stroke-dasharray='2.6 3.2' opacity='0.45'/%3E%3Cpath d='M 0,0 C 8,-9 22,-11 31,-3 C 22,7 8"
+                ",7 0,0 Z' transform='translate%28-38 22%29 rotate%2838%29 scale%280.85%29' fill='url%28%23lf%29'"
+                " stroke='%23F2E6CE' stroke-width='1.4' stroke-dasharray='2.8 2.6' stroke-opacity='0.6' stroke-li"
+                "nejoin='round'/%3E%3Cpath d='M 0,0 C 8,-9 22,-11 31,-3 C 22,7 8,7 0,0 Z' transform='translate%28"
+                "-24 15%29 rotate%28215%29 scale%280.75%29' fill='url%28%23lf%29' stroke='%23F2E6CE' stroke-width"
+                "='1.4' stroke-dasharray='2.8 2.6' stroke-opacity='0.6' stroke-linejoin='round'/%3E%3Cpath d='M 0"
+                ",0 C 8,-9 22,-11 31,-3 C 22,7 8,7 0,0 Z' transform='translate%28-8 0%29 rotate%2852%29 scale%280"
+                ".9%29' fill='url%28%23lf%29' stroke='%23F2E6CE' stroke-width='1.4' stroke-dasharray='2.8 2.6' st"
+                "roke-opacity='0.6' stroke-linejoin='round'/%3E%3Cpath d='M 0,0 C 8,-9 22,-11 31,-3 C 22,7 8,7 0,"
+                "0 Z' transform='translate%286 -16%29 rotate%28228%29 scale%280.8%29' fill='url%28%23lf%29' strok"
+                "e='%23F2E6CE' stroke-width='1.4' stroke-dasharray='2.8 2.6' stroke-opacity='0.6' stroke-linejoin"
+                "='round'/%3E%3Cpath d='M 0,0 C 8,-9 22,-11 31,-3 C 22,7 8,7 0,0 Z' transform='translate%2822 -25"
+                "%29 rotate%2828%29 scale%280.68%29' fill='url%28%23lf%29' stroke='%23F2E6CE' stroke-width='1.4' "
+                "stroke-dasharray='2.8 2.6' stroke-opacity='0.6' stroke-linejoin='round'/%3E%3Cpath d='M 0,-26 C "
+                "11,-14 11,-4 0,0 C -11,-4 -11,-14 0,-26 Z' transform='translate%2838 -27%29 rotate%2872%29 scale"
+                "%280.72%29' fill='url%28%23bd%29' stroke='%23F2E6CE' stroke-width='1.4' stroke-dasharray='2.8 2."
+                "6' stroke-opacity='0.65' stroke-linejoin='round'/%3E%3Cpath d='M -54,33 C -34,27 -16,13 -2,-5 C "
+                "9,-18 24,-21 40,-20' fill='none' stroke='%23F2E6CE' stroke-width='0.9' stroke-dasharray='3 3.6' "
+                "opacity='0.22'/%3E%3C/g%3E%3C/svg%3E\") calc(${sx}% + ${sd} * 9999px) ${sy}% / min(${ss}px, 42%)"
+                " auto no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-60"
+                " -40 120 80'%3E%3Cdefs%3E%3ClinearGradient id='lf' gradientUnits='userSpaceOnUse' x1='0' y1='-11"
+                "' x2='0' y2='7'%3E%3Cstop offset='0' stop-color='%237FC79A'/%3E%3Cstop offset='1' stop-color='%2"
+                "357A374'/%3E%3C/linearGradient%3E%3ClinearGradient id='bd' gradientUnits='userSpaceOnUse' x1='0'"
+                " y1='-26' x2='0' y2='0'%3E%3Cstop offset='0' stop-color='%23EFC46C'/%3E%3Cstop offset='1' stop-c"
+                "olor='%23DC6A50'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg transform='scale%28-1 1%29'%3E%3Cpath d"
+                "='M -52,26 C -32,20 -14,6 0,-12 C 11,-25 24,-28 38,-27' fill='none' stroke='%234E9268' stroke-wi"
+                "dth='5' stroke-linecap='round'/%3E%3Cpath d='M -52,26 C -32,20 -14,6 0,-12 C 11,-25 24,-28 38,-2"
+                "7' fill='none' stroke='%23F2E6CE' stroke-width='1' stroke-dasharray='2.6 3.2' opacity='0.45'/%3E"
+                "%3Cpath d='M 0,0 C 8,-9 22,-11 31,-3 C 22,7 8,7 0,0 Z' transform='translate%28-38 22%29 rotate%2"
+                "838%29 scale%280.85%29' fill='url%28%23lf%29' stroke='%23F2E6CE' stroke-width='1.4' stroke-dasha"
+                "rray='2.8 2.6' stroke-opacity='0.6' stroke-linejoin='round'/%3E%3Cpath d='M 0,0 C 8,-9 22,-11 31"
+                ",-3 C 22,7 8,7 0,0 Z' transform='translate%28-24 15%29 rotate%28215%29 scale%280.75%29' fill='ur"
+                "l%28%23lf%29' stroke='%23F2E6CE' stroke-width='1.4' stroke-dasharray='2.8 2.6' stroke-opacity='0"
+                ".6' stroke-linejoin='round'/%3E%3Cpath d='M 0,0 C 8,-9 22,-11 31,-3 C 22,7 8,7 0,0 Z' transform="
+                "'translate%28-8 0%29 rotate%2852%29 scale%280.9%29' fill='url%28%23lf%29' stroke='%23F2E6CE' str"
+                "oke-width='1.4' stroke-dasharray='2.8 2.6' stroke-opacity='0.6' stroke-linejoin='round'/%3E%3Cpa"
+                "th d='M 0,0 C 8,-9 22,-11 31,-3 C 22,7 8,7 0,0 Z' transform='translate%286 -16%29 rotate%28228%2"
+                "9 scale%280.8%29' fill='url%28%23lf%29' stroke='%23F2E6CE' stroke-width='1.4' stroke-dasharray='"
+                "2.8 2.6' stroke-opacity='0.6' stroke-linejoin='round'/%3E%3Cpath d='M 0,0 C 8,-9 22,-11 31,-3 C "
+                "22,7 8,7 0,0 Z' transform='translate%2822 -25%29 rotate%2828%29 scale%280.68%29' fill='url%28%23"
+                "lf%29' stroke='%23F2E6CE' stroke-width='1.4' stroke-dasharray='2.8 2.6' stroke-opacity='0.6' str"
+                "oke-linejoin='round'/%3E%3Cpath d='M 0,-26 C 11,-14 11,-4 0,0 C -11,-4 -11,-14 0,-26 Z' transfor"
+                "m='translate%2838 -27%29 rotate%2872%29 scale%280.72%29' fill='url%28%23bd%29' stroke='%23F2E6CE"
+                "' stroke-width='1.4' stroke-dasharray='2.8 2.6' stroke-opacity='0.65' stroke-linejoin='round'/%3"
+                "E%3Cpath d='M -54,33 C -34,27 -16,13 -2,-5 C 9,-18 24,-21 40,-20' fill='none' stroke='%23F2E6CE'"
+                " stroke-width='0.9' stroke-dasharray='3 3.6' opacity='0.22'/%3E%3C/g%3E%3C/svg%3E\") calc(${sx}%"
+                ' + (1 - ${sd}) * 9999px) ${sy}% / min(${ss}px, 42%) auto no-repeat, url("data:image/svg+xml,%3C'
+                "svg xmlns='http://www.w3.org/2000/svg' viewBox='-40 -40 80 80'%3E%3Cdefs%3E%3ClinearGradient id="
+                "'pk' gradientUnits='userSpaceOnUse' x1='0' y1='-26' x2='0' y2='0'%3E%3Cstop offset='0' stop-colo"
+                "r='%23EFC46C'/%3E%3Cstop offset='1' stop-color='%23C89532'/%3E%3C/linearGradient%3E%3C/defs%3E%3"
+                "Ccircle cx='0' cy='0' r='34' fill='none' stroke='%23F2E6CE' stroke-width='0.9' stroke-dasharray="
+                "'3 3.6' opacity='0.22'/%3E%3Cpath d='M 0,-26 C 11,-14 11,-4 0,0 C -11,-4 -11,-14 0,-26 Z' transf"
+                "orm='rotate%280%29' fill='url%28%23pk%29' stroke='%23F2E6CE' stroke-width='1.5' stroke-dasharray"
+                "='3 2.6' stroke-opacity='0.68' stroke-linejoin='round'/%3E%3Cpath d='M 0,-26 C 11,-14 11,-4 0,0 "
+                "C -11,-4 -11,-14 0,-26 Z' transform='rotate%2890%29' fill='url%28%23pk%29' stroke='%23F2E6CE' st"
+                "roke-width='1.5' stroke-dasharray='3 2.6' stroke-opacity='0.68' stroke-linejoin='round'/%3E%3Cpa"
+                "th d='M 0,-26 C 11,-14 11,-4 0,0 C -11,-4 -11,-14 0,-26 Z' transform='rotate%28180%29' fill='url"
+                "%28%23pk%29' stroke='%23F2E6CE' stroke-width='1.5' stroke-dasharray='3 2.6' stroke-opacity='0.68"
+                "' stroke-linejoin='round'/%3E%3Cpath d='M 0,-26 C 11,-14 11,-4 0,0 C -11,-4 -11,-14 0,-26 Z' tra"
+                "nsform='rotate%28270%29' fill='url%28%23pk%29' stroke='%23F2E6CE' stroke-width='1.5' stroke-dash"
+                "array='3 2.6' stroke-opacity='0.68' stroke-linejoin='round'/%3E%3Ccircle cx='0' cy='0' r='5' fil"
+                "l='%235A2844' stroke='%23F2E6CE' stroke-width='1.1' stroke-dasharray='2.4 2.2' stroke-opacity='0"
+                ".6'/%3E%3C/svg%3E\") calc(${px}% + max(0, ${pp} - 2) * 9999px) ${py}% / min(${ps}px, 22%) auto n"
+                "o-repeat"
+            ),
+            "$part_3": (
+                "radial-gradient(ellipse 122% 98% at 50% 38%, rgba(255, 225, 180, 0.07) 0%, rgba(255, 225, 180, 0"
+                '.02) 34%, rgba(6, 18, 15, 0.12) 66%, rgba(6, 18, 15, 0.42) 100%) center / cover no-repeat, url("'
+                "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0"
+                " 0 160 160'%3E%3Cdefs%3E%3ClinearGradient id='sg' gradientUnits='userSpaceOnUse' x1='0' y1='0' x"
+                "2='0' y2='160'%3E%3Cstop offset='0' stop-color='%230D211D'/%3E%3Cstop offset='1' stop-color='%23"
+                "0A1B18'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='160' height='160' fill='url%28%23sg%29"
+                "'/%3E%3Crect x='12' y='12' width='68' height='68' fill='%2314322C'/%3E%3Crect x='17' y='17' widt"
+                "h='58' height='58' fill='none' stroke='%23F2E6CE' stroke-width='0.9' stroke-dasharray='3.4 3.6' "
+                "opacity='0.16'/%3E%3Cpath d='M 12,12 L 80,80 M 80,12 L 12,80' fill='none' stroke='%23F2E6CE' str"
+                "oke-width='0.7' stroke-dasharray='3 4' opacity='0.09'/%3E%3Crect x='92' y='12' width='68' height"
+                "='68' fill='%23123029'/%3E%3Crect x='97' y='17' width='58' height='58' fill='none' stroke='%23F2"
+                "E6CE' stroke-width='0.9' stroke-dasharray='3.4 3.6' opacity='0.16'/%3E%3Cpath d='M 92,12 L 160,8"
+                "0 M 160,12 L 92,80' fill='none' stroke='%23F2E6CE' stroke-width='0.7' stroke-dasharray='3 4' opa"
+                "city='0.09'/%3E%3Crect x='12' y='92' width='68' height='68' fill='%2316352E'/%3E%3Crect x='17' y"
+                "='97' width='58' height='58' fill='none' stroke='%23F2E6CE' stroke-width='0.9' stroke-dasharray="
+                "'3.4 3.6' opacity='0.16'/%3E%3Cpath d='M 12,92 L 80,160 M 80,92 L 12,160' fill='none' stroke='%2"
+                "3F2E6CE' stroke-width='0.7' stroke-dasharray='3 4' opacity='0.09'/%3E%3Crect x='92' y='92' width"
+                "='68' height='68' fill='%23112823'/%3E%3Crect x='97' y='97' width='58' height='58' fill='none' s"
+                "troke='%23F2E6CE' stroke-width='0.9' stroke-dasharray='3.4 3.6' opacity='0.16'/%3E%3Cpath d='M 9"
+                "2,92 L 160,160 M 160,92 L 92,160' fill='none' stroke='%23F2E6CE' stroke-width='0.7' stroke-dasha"
+                "rray='3 4' opacity='0.09'/%3E%3Cpath d='M 6,-4 L 6,164' fill='none' stroke='%23F2E6CE' stroke-wi"
+                "dth='1' stroke-dasharray='4.5 4' opacity='0.22'/%3E%3Cpath d='M -4,6 L 164,6' fill='none' stroke"
+                "='%23F2E6CE' stroke-width='1' stroke-dasharray='4.5 4' opacity='0.22'/%3E%3Cpath d='M 86,-4 L 86"
+                ",164' fill='none' stroke='%23F2E6CE' stroke-width='1' stroke-dasharray='4.5 4' opacity='0.22'/%3"
+                "E%3Cpath d='M -4,86 L 164,86' fill='none' stroke='%23F2E6CE' stroke-width='1' stroke-dasharray='"
+                "4.5 4' opacity='0.22'/%3E%3C/svg%3E\") ${gx}px ${gy}px / ${gs}px ${gs}px repeat, linear-gradient"
+                "(to bottom, #17352E 0%, #143029 55%, #0D211D 100%) center / cover no-repeat, #14302A"
+            ),
+            "--dgcv-special-text": "#F4E9D2",
+            "--plaque-fill": "#122E28",
+            "--plaque-border": "#F0A878",
+            "--dgcv-table-shadow": "0 2px 12px rgba(4, 14, 12, 0.55)",
+            "--dgcv-text-shadow": "none",
+            "--dgcv-hover-transform": "translateY(-1px)",
+            "--dgcv-hover-transition": "background-color 160ms ease, color 160ms ease, transform 160ms ease",
         },
     ),
     "quilt_denim": ThemeConfig(
@@ -3557,7 +3722,7 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-hover-transition": "background-color 140ms ease, color 140ms ease, transform 140ms ease",
         },
     ),
-    "coyfish_pond": ThemeConfig(
+    "koifish_pond": ThemeConfig(
         bg_primary="#0E1F1C",
         bg_surface="#162C27",
         bg_alt="#122622",
@@ -3601,7 +3766,7 @@ THEME_REGISTRY: Dict[str, ThemeConfig] = {
             "--dgcv-hover-transition": "background-color 150ms ease, color 150ms ease, transform 150ms ease",
         },
     ),
-    "chalkboard_classroom": ThemeConfig(
+    "chalkboard_green": ThemeConfig(
         bg_primary="#1A2420",
         bg_surface="#212F29",
         bg_alt="#1D2925",
@@ -3937,7 +4102,8 @@ def get_style(
 
     Returns:
     --------
-        str — a ``:root { }`` CSS block with all theme variables indented and
+    str
+        a ``:root { }`` CSS block with all theme variables indented and
         ready for injection into a ``<style>`` tag.
     """
     default_dark, default_light = "matte_slate_soft", "paper_graphite"  # hard coded
@@ -3998,12 +4164,6 @@ class ThemeAssemblyError(ValueError):
 
 
 def assemble_parts(theme_data, minimal: bool = False, theme_name: str = "<theme>"):
-    """Join ``$part_N`` fragments into the property named by ``$assemble``.
-
-    Fragments tagged ``@detail`` are dropped when ``minimal`` is true, so a
-    small container never carries the bytes for layers it would not paint.
-    Themes with no ``$assemble`` stub are returned unchanged and unscanned.
-    """
     target = theme_data.custom_css_vars.get(ASSEMBLE_KEY)
     if not target:
         return theme_data
@@ -4078,7 +4238,6 @@ def _parse_slots(spec: str, theme_name: str) -> Dict[str, Tuple[int, int]]:
 
 
 def _roll(key: str, lo: int, hi: int) -> int:
-    """Next value for a slot, advancing a low-discrepancy sequence."""
     cursor = _cursors.get(key)
     if cursor is None:
         cursor = _rng.random()
@@ -4088,10 +4247,6 @@ def _roll(key: str, lo: int, hi: int) -> int:
 
 
 def apply_randomization(theme_data, theme_name: str = "<theme>", minimal: bool = False):
-    """Return a copy of ``theme_data`` with slot tokens substituted.
-
-    Themes with no ``$randomized`` stub are returned unchanged and unscanned.
-    """
     spec = theme_data.custom_css_vars.get(RANDOMIZED_KEY)
     if not spec:
         return theme_data
@@ -4129,12 +4284,6 @@ def apply_randomization(theme_data, theme_name: str = "<theme>", minimal: bool =
 
 
 def check_theme_randomization(theme_data, theme_name: str = "<theme>") -> None:
-    """Registry-load / test-time validation.
-
-    Fails loudly on a malformed stub, a token with no matching slot, or a slot
-    that nothing references -- none of which are visible in a browser, where a
-    stray ``$hx`` just renders as an invalid background.
-    """
     spec = theme_data.custom_css_vars.get(RANDOMIZED_KEY)
     if not spec:
         for key, value in theme_data.custom_css_vars.items():
@@ -4152,7 +4301,7 @@ def check_theme_randomization(theme_data, theme_name: str = "<theme>") -> None:
     used = set()
     for key, value in theme_data.custom_css_vars.items():
         if key.startswith(RANDOMIZED_KEY) or key == ASSEMBLE_KEY:
-            continue  # directives, not values; $part_N fragments ARE scanned
+            continue
         identifiers = set(Template(value).get_identifiers())  # Python 3.11+
         unknown = identifiers - set(slots)
         if unknown:
@@ -4170,9 +4319,6 @@ def check_theme_randomization(theme_data, theme_name: str = "<theme>") -> None:
 def preview_assembled(
     theme_data, minimal: bool = False, theme_name: str = "<theme>"
 ) -> str:
-    """Authoring aid: the fully assembled, rolled value, ready to paste into a
-    browser.  Split themes are no longer a single copy-pasteable string, so this
-    is how you eyeball one."""
     data = apply_randomization(
         assemble_parts(theme_data, minimal=minimal, theme_name=theme_name),
         theme_name,

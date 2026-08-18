@@ -1576,7 +1576,7 @@ def _snapshot_algebras_(style=None, use_latex=None, slim=False, **kwargs):
         if isinstance(values, (list, tuple)):
             n = len(values)
             if n == 0:
-                return "—" if not use_latex else "$\\text{—}$"
+                return "-" if not use_latex else "$\\text{-}$"
             if n > 5:
                 return f"{_basis_label(values[0])}, ..., {_basis_label(values[-1])}"
             return ", ".join(_basis_label(v) for v in values)

@@ -16,28 +16,48 @@ Licensed under the Apache License, Version 2.0
 SPDX-License-Identifier: Apache-2.0
 """
 
-from .dgcv_core import (
-    complex_struct_op,
-    createVariables,
-    differential_form_class,
+from .atom_factory import createMatrixCoordinates, createVariables, variableProcedure
+from .combinations import (
+    VF_bracket,
     exteriorProduct,
-    polynomial_dgcv,
-    realPartOfVF,
+    sum_dgcv,
     symmetric_product,
-    tensor_field_class,
     tensor_product,
+    wedge,
+)
+from .coordinate_formats import conjugate_dgcv
+from .fields import (
+    assemble_tensor_field,
+    differential_form_class,
+    tensor_field_class,
     vector_field_class,
 )
+from .holomorphic_fields import (
+    antiholVF_coeffs,
+    complex_struct_op,
+    holVF_coeffs,
+    realPartOfVF,
+)
+from .polynomials.poly import polynomial_dgcv
 
 __all__ = [
+    "VF_bracket",
+    "antiholVF_coeffs",
+    "assemble_tensor_field",
     "complex_struct_op",
+    "conjugate_dgcv",
     "createVariables",
+    "createMatrixCoordinates",
     "differential_form_class",
     "exteriorProduct",
+    "holVF_coeffs",
     "polynomial_dgcv",
     "realPartOfVF",
+    "sum_dgcv",
     "symmetric_product",
     "tensor_field_class",
     "tensor_product",
+    "variableProcedure",
     "vector_field_class",
+    "wedge",
 ]

@@ -21,7 +21,6 @@ SPDX-License-Identifier: Apache-2.0
 # -----------------------------------------------------------------------------
 
 import re
-from typing import Any
 
 from ..._utilities._config import get_dgcv_settings_registry, greek_letters
 
@@ -326,16 +325,6 @@ def _unwrap_math_delims(s: str) -> str:
     if t.startswith("$") and t.endswith("$") and len(t) >= 2:
         return t[1:-1].strip()
     return t
-
-
-def _coerce_to_str(x: Any) -> str:
-    try:
-        return str(x)
-    except Exception:
-        try:
-            return repr(x)
-        except Exception:
-            return ""
 
 
 def _collapse_double_braces(s: str) -> str:

@@ -27,6 +27,8 @@ import uuid
 from html import escape as _esc
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
+from .._utilities._styles import get_style
+
 __all__ = ["TableView", "panel_view", "build_plain_table", "build_matrix_table"]
 
 # -----------------------------------------------------------------------------
@@ -200,6 +202,8 @@ class TableView:
         hover_mode: str = "row",
         slim: bool = False,
     ):
+        if isinstance(theme_css_vars, str) and "--dgcv" not in theme_css_vars:
+            theme_css_vars = get_style(theme_css_vars)
         self.columns = columns
         self.rows = rows
         self.footer_rows = footer_rows or []

@@ -41,22 +41,17 @@ from ..._aux._utilities._config import dgcv_warning
 from ..._aux._utilities._misc import zip_sum
 from ..._aux._vmf._safeguards import create_key, get_dgcv_category
 from ..._aux._vmf.vmf import first_available_label, vmf_lookup
-from ...core.arrays.arrays import array_dgcv, freeze_matrix, matrix_dgcv
+from ...core.arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ...core.combinatorics.combinatorics import Baker_Campbell_Hausdorff
-from ...core.dgcv_core.dgcv_core import createVariables, wedge
+from ...core.dgcv_core import createVariables, wedge
 from ...core.morphisms import homomorphism
-from ...core.solvers.solvers import solve_dgcv
-from ...core.vector_fields_and_differential_forms import (
-    coordinate_vector_field,
-)
-from ..algebras_core import (
-    _extract_basis,
-    adjointRepresentation,
-    algebra_class,
-    algebra_subspace_class,
-    killingForm,
-)
-from ..algebras_secondary import createAlgebra, subalgebra_class
+from ...core.solvers import solve_dgcv
+from ...core.vector_fields_and_differential_forms import coordinate_vector_field
+from ..algebras import algebra_class
+from ..creators import createAlgebra
+from ..subspaces import algebra_subspace_class
+from ..subspaces.subalgebras import subalgebra_class
+from ..threads import _extract_basis, adjointRepresentation, killingForm
 
 __all__ = [
     "adjointRepresentation",
@@ -655,6 +650,7 @@ def quotient_by_ideal(
         return createAlgebra(
             0,
             label=label if label else "trivial_algebra",
+            base_field=algebra.base_field,
             forgo_vmf_registry=not register_in_vmf,
             return_created_object=True,
         )
@@ -713,6 +709,7 @@ def quotient_by_ideal(
         sd_out,
         label=label,
         basis_labels=basis_labels,
+        base_field=algebra.base_field,
         forgo_vmf_registry=not register_in_vmf,
         initial_basis_index=initial_basis_index,
         simplify_products_by_default=simplify_products_by_default,
@@ -728,4 +725,21 @@ def center(
     return algebra.center(
         surface_singularities=surface_singularities,
         format_as_subalgebra=format_as_subalgebra,
+    )
+
+
+def find_simple_subalgebras(
+    alg: algebra_class | subalgebra_class,
+    assume_Lie_algebra: bool = False,
+    verbose: bool = False,
+    surface_singularities: bool | None = None,
+    simplify_singularities: bool | None = None,
+    force_heavy_solve: bool = False,
+) -> list[subalgebra_class]:
+    return alg.simple_subalgebras(
+        assume_Lie_algebra=assume_Lie_algebra,
+        verbose=verbose,
+        surface_singularities=surface_singularities,
+        simplify_singularities=simplify_singularities,
+        force_heavy_solve=force_heavy_solve,
     )

@@ -28,15 +28,9 @@ from ..._aux._vmf.vmf import vmf_lookup
 from ..._aux.printing.printing._dgcv_display import LaTeX
 from ...special_fields.complex_structures import KahlerStructure
 from ...special_fields.Riemannian_geometry import metricClass
-from ..conversions.conversions import allToSym
-from ..dgcv_core.dgcv_core import (
-    allToReal,
-    dgcv_class,
-)
-from ..vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
-    get_DF,
-    get_VF,
-)
+from ..base import dgcv_class
+from ..conversions.conversions import allToReal, allToSym
+from ..vector_fields_and_differential_forms import get_DF, get_VF
 
 __all__ = ["coordinate_map"]
 

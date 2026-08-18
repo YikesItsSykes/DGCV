@@ -262,10 +262,6 @@ def validate_label_list(basis_labels):
             raise ValueError(warning_message)
 
 
-def protect_variable_relatives():
-    return get_variable_registry().get("protected_variables", {})
-
-
 def validate_label(label, remove_guardrails=False):
     """
     Checks if the provided variable label starts with dgcv's designated prefix for complex variables, and reformats it to a safe fallback if necessary.
@@ -288,7 +284,8 @@ def validate_label(label, remove_guardrails=False):
             raise ValueError(
                 f"dgcv recognizes label '{label}' as a protected global name and recommends not using it as a variable name. Set remove_guardrails=True to force it."
             )
-        if label in protect_variable_relatives():
+        protected_vr = get_variable_registry().get("protected_variables", set())
+        if label in protected_vr:
             info = vmf_lookup(label, path=True)
             system_type = info.get("type", "unregistered")
             path = info.get("path", ["", "unknown"])
@@ -376,20 +373,13 @@ def unique_label(
     protected_vr = vr.get("protected_variables", set())
     if isinstance(protected_vr, (set, list, tuple)):
         taken.update(protected_vr)
-    try:
-        taken.update(protect_variable_relatives())
-    except Exception:
-        pass
     if protected:
         if isinstance(protected, str):
             taken.add(protected)
         else:
-            try:
-                for name in protected:
-                    if isinstance(name, str):
-                        taken.add(name)
-            except TypeError:
-                taken.add(str(protected))
+            for name in protected:
+                if isinstance(name, str):
+                    taken.add(name)
 
     def _augment_tex_label(tl: str, version_number: int) -> str:
         suffix = f"_{{\\operatorname{{{tex_v_prefix}}}{version_number}}}"

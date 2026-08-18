@@ -16,22 +16,37 @@ Licensed under the Apache License, Version 2.0
 SPDX-License-Identifier: Apache-2.0
 """
 
-from .vector_fields_and_differential_forms import (
+from .annihilators import annihilator
+from .cartan import (
     LieDerivative,
-    annihilator,
+    _prep_symb_set_for_ext_der,
+    exteriorDerivative,
+    interiorProduct,
+    makeZeroForm,
+)
+from .coframes import get_coframe
+from .complex_assembly import (
+    assembleFromAntiholVFC,
+    assembleFromCompVFC,
+    assembleFromHolVFC,
+)
+from .decomposition import decompose
+from .independence import _extract_basis_by_wedge_vectorized
+from .retrieval import (
     coordinate_differential_form,
     coordinate_vector_field,
-    decompose,
-    exteriorDerivative,
-    get_coframe,
     get_DF,
     get_VF,
-    interiorProduct,
 )
 
 __all__ = [
+    "_extract_basis_by_wedge_vectorized",
     "LieDerivative",
     "annihilator",
+    "assembleFromAntiholVFC",
+    "assembleFromCompVFC",
+    "assembleFromHolVFC",
+    "_prep_symb_set_for_ext_der",
     "coordinate_differential_form",
     "coordinate_vector_field",
     "decompose",
@@ -40,4 +55,5 @@ __all__ = [
     "get_VF",
     "get_coframe",
     "interiorProduct",
+    "makeZeroForm",
 ]

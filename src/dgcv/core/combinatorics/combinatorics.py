@@ -510,22 +510,16 @@ def permSign(sortable, returnSorted=False, key=None, **kwargs):
     """
 
     def merge_sort(permutation):
-        # Length 1 or empty lists do not need to be sorted
         if len(permutation) <= 1:
             return permutation, 0
 
-        # For longer lists, divide them into two smaller parts.
-        # Most merge-sort documentation says to split in half
         partition = len(permutation) // 2
         left = permutation[:partition]
         right = permutation[partition:]
 
-        # Recursively merge-sort and count permutation parities.
         left_sorted, left_parity = merge_sort(left)
         right_sorted, right_parity = merge_sort(right)
 
-        # merge the sorted left and right parts in a sorted way while counting
-        # parity of the permutation from "concatenation" to "sorted" merge.
         merged_list, merge_parity = merge_and_count(left_sorted, right_sorted)
 
         sorting_parity = left_parity + right_parity + merge_parity
@@ -533,16 +527,9 @@ def permSign(sortable, returnSorted=False, key=None, **kwargs):
         return merged_list, sorting_parity
 
     def merge_and_count(left, right):
-        # we'll build the sorted merge in a list
         merged = []
-        # and count the number of swaps performed as we build it
-        # (starting with parity = 0)
         parity = 0
 
-        # Pull elements from the two lists into the merged list
-        # by comparing the first element not yet pulled in from
-        # either list and taking the smaller one. Do this until
-        # all elements from one list are pulled into merged.
         i = j = 0
         while i < len(left) and j < len(right):
             li = key(left[i]) if key else left[i]
@@ -553,25 +540,14 @@ def permSign(sortable, returnSorted=False, key=None, **kwargs):
             else:
                 merged.append(right[j])
                 j += 1
-                # pulling in the leading element from the right list
-                # requires swapping it with the remaining elements in the
-                # left list. Upate parity accordingly
                 parity += len(left) - i
 
-        # one of the sublists may not have been exhaust, so add what
-        # remains to the end of the merged list.
         merged.extend(left[i:])
         merged.extend(right[j:])
-
         return merged, parity
 
-    # Count inversions in the permutation and get the sorted list
     sorted_list, inversions = merge_sort(sortable)
-
-    # Compute the sign based on the number of inversions
     sign = 1 if inversions % 2 == 0 else -1
-
-    # Return based on the returnSorted flag
     if returnSorted:
         return sign, sorted_list
     else:
@@ -582,29 +558,23 @@ def weightedPermSign(
     permutation, weights, returnSorted=False, use_degree_attribute=False
 ):
     def merge_sort(permutation, weights):
-        # Base case: single element or empty list
         if len(permutation) <= 1:
             return permutation, weights, 0
 
-        # Split into left and right parts
         partition = len(permutation) // 2
         left = permutation[:partition]
         right = permutation[partition:]
         left_weights = weights[:partition]
         right_weights = weights[partition:]
 
-        # Recursively sort and count parities
         left_sorted, left_weights_sorted, left_parity = merge_sort(left, left_weights)
         right_sorted, right_weights_sorted, right_parity = merge_sort(
             right, right_weights
         )
 
-        # Merge sorted parts while counting weighted parity
         merged_list, merged_weights, merge_parity = merge_and_count(
             left_sorted, right_sorted, left_weights_sorted, right_weights_sorted
         )
-
-        # Combine parities
         sorting_parity = (left_parity + right_parity + merge_parity) % 2
 
         return merged_list, merged_weights, sorting_parity

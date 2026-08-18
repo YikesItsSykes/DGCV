@@ -65,6 +65,52 @@ def _scalar_is_zero(x) -> bool:
         return False
 
 
+class IndeterminateSignError(Exception):
+    """
+    Raised when the sign of a scalar cannot be certified.
+    """
+
+
+def _scalar_sign(x) -> int:
+    """
+    Sign of a scalar as -1, 0, or 1.
+
+    Raises
+    ------
+    IndeterminateSignError
+        If the sign cannot be certified.
+    """
+    if _scalar_is_zero(x):
+        return 0
+
+    for attr, val in (("is_positive", 1), ("is_negative", -1)):
+        z = getattr(x, attr, None)
+        if callable(z):
+            try:
+                z = z()
+            except Exception:
+                z = None
+        if z is True:
+            return val
+
+    try:
+        if isinstance(x, constant_scalar_types()) and not isinstance(x, bool):
+            return 1 if x > 0 else -1
+    except Exception:
+        pass
+
+    try:
+        gt = x > 0
+        if isinstance(gt, bool):
+            return 1 if gt else -1
+    except Exception:
+        pass
+
+    raise IndeterminateSignError(
+        f"Cannot determine the sign of {x!r}; it may depend on free parameters."
+    )
+
+
 def get_free_symbols(expr):
     """
     Return the set of atomic elements in symbolic expr

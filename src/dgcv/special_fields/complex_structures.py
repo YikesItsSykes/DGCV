@@ -45,12 +45,12 @@ from .._aux._vmf._safeguards import (
 from .._aux._vmf.vmf import vmf_lookup
 from ..core.base import dgcv_class
 from ..core.conversions.conversions import allToReal, allToSym
-from ..core.dgcv_core.dgcv_core import (
+from ..core.dgcv_core import (
     complex_struct_op,
     differential_form_class,
     tensor_field_class,
 )
-from ..core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
+from ..core.vector_fields_and_differential_forms import (
     _prep_symb_set_for_ext_der,
     exteriorDerivative,
     makeZeroForm,

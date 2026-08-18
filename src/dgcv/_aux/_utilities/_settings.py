@@ -406,6 +406,7 @@ def view_dgcv_settings(verbose=False):
                 "default_numeric_engine",
                 "DEBUG",
                 "fallback_conjugate_prefix",
+                "_solve_default",
             }
             | {key for key in settings.keys() if str(key).startswith("_")}
         )

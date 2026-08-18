@@ -97,26 +97,24 @@ from ._aux.printing.printing._dgcv_display import (
     show,
 )
 from ._aux.printing.printing._string_processing import clean_LaTeX
-from .algebras import algebra_tools
-from .algebras.algebras_aux import algebraDataFromMatRep
-from .algebras.algebras_core import (
+from .algebras import (
     adjointRepresentation,
     algebra_class,
     algebra_element_class,
     algebra_subspace_class,
+    algebra_tools,
+    algebraDataFromMatRep,
+    createAlgebra,
+    createSimpleLieAlgebra,
     killingForm,
     linear_representation,
-    vector_space_endomorphisms,
-)
-from .algebras.algebras_secondary import (
-    createAlgebra,
-    createFiniteAlg,  # deprecated
-    createSimpleLieAlgebra,
     subalgebra_class,
     subalgebra_element,
+    vector_space_endomorphisms,
 )
+from .algebras.creators.general import createFiniteAlg  # deprecated
 from .ancillary.light_wrappers import function_dgcv
-from .core.arrays.arrays import array_dgcv, assemble_block_matrix, matrix_dgcv
+from .core.arrays import array_dgcv, assemble_block_matrix, matrix_dgcv
 from .core.combinatorics.combinatorics import (
     Baker_Campbell_Hausdorff,
     carProd,
@@ -136,43 +134,44 @@ from .core.conversions.conversions import (
     symToHol,
     symToReal,
 )
-from .core.dgcv_core.dgcv_core import (
+from .core.dgcv_core import (
+    VF_bracket,
+    antiholVF_coeffs,
+    assemble_tensor_field,
+    complex_struct_op,
+    createVariables,
+    differential_form_class,
+    exteriorProduct,
+    polynomial_dgcv,
+    symmetric_product,
+    tensor_field_class,
+    tensor_product,
+    vector_field_class,
+    wedge,
+)
+from .core.dgcv_core.atom_factory.temp import temporaryVariables
+from .core.dgcv_core.coordinate_formats import (
+    conj_with_hol_coor,
+    conj_with_real_coor,
+    conjugate_dgcv,
+    im_with_hol_coor,
+    im_with_real_coor,
+    re_with_hol_coor,
+    re_with_real_coor,
+)
+from .core.dgcv_core.decprec import (
     DFClass,
     STFClass,
-    VF_bracket,
     VF_coeffs,
     VFClass,
     addDF,
     addVF,
-    antiholVF_coeffs,
-    assemble_tensor_field,
-    complex_struct_op,
-    complexVFC,
-    conj_with_hol_coor,
-    conj_with_real_coor,
     conjComplex,
-    conjugate_dgcv,
-    createVariables,
-    dgcvPolyClass,
-    differential_form_class,
-    exteriorProduct,
-    holVF_coeffs,
-    im_with_hol_coor,
-    im_with_real_coor,
-    polynomial_dgcv,
-    re_with_hol_coor,
-    re_with_real_coor,
-    realPartOfVF,
     scaleDF,
     scaleVF,
-    symmetric_product,
-    temporaryVariables,
-    tensor_field_class,
-    tensor_product,
     tensorField,
-    vector_field_class,
-    wedge,
 )
+from .core.dgcv_core.holomorphic_fields import complexVFC, holVF_coeffs, realPartOfVF
 from .core.morphisms.coordinate_maps import coordinate_map
 from .core.morphisms.morphisms import homomorphism
 from .core.polynomials.polynomials import (
@@ -182,15 +181,9 @@ from .core.polynomials.polynomials import (
     getWeightedTerms,
     monomialWeight,
 )
-from .core.solvers.solvers import solve_dgcv
-from .core.tensors.tensors import (
-    createVectorSpace,
-    multi_tensor_product,
-    tensorProduct,
-    vector_space_class,
-    vector_space_element,
-)
-from .core.vector_fields_and_differential_forms.vector_fields_and_differential_forms import (
+from .core.solvers import solve_dgcv
+from .core.tensors import multi_tensor_product, tensorProduct
+from .core.vector_fields_and_differential_forms import (
     LieDerivative,
     annihilator,
     assembleFromAntiholVFC,
@@ -305,7 +298,6 @@ __all__ = [
     "assemble_tensor_field",
     "DFClass",  # deprecated - old differential form class (now just a dispatch shim)
     "differential_form_class",
-    "dgcvPolyClass",  # dgcv polynomial class
     "DGCV_snapshot",  # deprecated
     "STFClass",  # deprecated - old symmetric tensor field class (now just a dispatch shim)
     "symmetric_product",
@@ -394,11 +386,8 @@ __all__ = [
     "solve_dgcv",  # supports solving equations with various dgcv types
     "simplify_dgcv",  #
     # From tensors
-    "createVectorSpace",  # Create vector_space_class class instances with labeling
     "multi_tensor_product",  # Form tensorProduct from multiple factors
     # of vector space and their dual spaces
-    "vector_space_class",  # Class representing vector spaces
-    "vector_space_element",  # Class representing elements in a vector space
     "tensorProduct",  # Class representing elements in tensor products (of VS elements)
     # From vectorFieldsAndDifferentialForms
     "LieDerivative",  # Compute Lie derivative

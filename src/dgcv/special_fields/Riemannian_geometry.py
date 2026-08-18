@@ -41,10 +41,10 @@ from .._aux._backends._calculus import diff
 from .._aux._backends._types_and_constants import rational
 from .._aux._vmf._safeguards import get_dgcv_category, retrieve_passkey
 from .._aux._vmf.vmf import vmf_lookup
-from ..core.arrays.arrays import _spool, array_dgcv, matrix_dgcv
+from ..core.arrays import _spool, array_dgcv, matrix_dgcv
 from ..core.base import dgcv_class
 from ..core.conversions.conversions import allToReal, allToSym, symToHol
-from ..core.dgcv_core.dgcv_core import (
+from ..core.dgcv_core import (
     assemble_tensor_field,
     tensor_field_class,
 )
