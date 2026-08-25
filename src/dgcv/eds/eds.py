@@ -1310,9 +1310,10 @@ class abstract_ZF(dgcv_class):
             def sub_process(arg, sub_data):
                 if isinstance(arg, tuple):
                     arg = abstract_ZF(arg)
-                if isinstance(arg, abstDFAtom) and arg.degree == 0:  ###!!!
+                if (
+                    isinstance(arg, abstDFAtom) and arg.degree == 0
+                ):  ###!!! for review later, may signal a bug...
                     arg = arg.coeff
-                    dgcv_warning("DEBUG8493")
                 if isinstance(arg, (zeroFormAtom, abstract_ZF)):
                     newArg = arg.subs(
                         sub_data, with_diff_corollaries=with_diff_corollaries

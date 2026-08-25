@@ -175,9 +175,6 @@ class _symbol_prolongation_stages:
                         eqns, solVars, method=solve_method, simplify_result=False
                     )
                 if len(solution) == 0:
-                    from ..._aux._utilities._config import working_namespace
-
-                    working_namespace()["DEBUG"] = eqns, solVars
                     raise RuntimeError(
                         f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {solVars}"
                     )

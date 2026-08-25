@@ -107,8 +107,6 @@ class _symbol_prolongation:
             if return_symbol:
                 return self
             return
-        # solver gating is resolved once here rather than per prolongation level,
-        # so the inner loops only reference the results
         has_parameters = len(self._parameters) > 0
         track_singularities = has_parameters and surface_singularities is not False
         if simplify_singularities is None:

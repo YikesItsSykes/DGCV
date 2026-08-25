@@ -128,9 +128,6 @@ def subalgebra(
     else:
         ks = None
     if testStruct["closed_under_product"] is not True:
-        from ..._aux._utilities._config import working_namespace
-
-        working_namespace()["DEBUG"] = target_alg, basis
         raise TypeError(
             "The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead."
         ) from None
