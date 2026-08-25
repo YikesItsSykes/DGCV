@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from ..._aux._backends._symbolic_router import simplify
-from ..._aux._backends._types_and_constants import symbol
+from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
+    is_zero_knowing_zero_is_expected,
+)
+from ..._aux._backends._types_and_constants import _disposable_symbols
 from ..._aux._utilities._misc import linear_combination
 from ..._aux._vmf._safeguards import create_key
 from ...algebras import _extract_basis
-from ...core.solvers import solve_dgcv
+from ...core.solvers import solve_knowing_solution_exists
 from ._tensor_products import _fast_tensor_products
 
 
@@ -65,23 +68,22 @@ class _symbol_brackets:
     def _decompose_in_level(self, elem, weight, neg_positions, try_hard=False):
         level = self.levels[weight]
         if len(level) == 0:
-            if getattr(elem, "is_zero", False) or elem == 0:
+            if is_zero_knowing_zero_is_expected(elem):
                 return []
             return None
         if weight < 0:
             coeffs = getattr(elem, "coeffs", None)
             if coeffs is not None and len(coeffs) == self.negativePart.dimension:
                 return [coeffs[neg_positions[(weight, t)]] for t in range(len(level))]
-        general_elem, tVars = linear_combination(level)
+        general_elem, tVars = linear_combination(level, _disposable=True)
         eqns = [elem - general_elem]
-        sol = solve_dgcv(eqns, tVars, method="linsolve", simplify_result=False)
-        if len(sol) == 0 and try_hard is True:
-            sol = solve_dgcv(
-                [simplify(eqn) for eqn in eqns],
-                tVars,
-                method="linsolve",
-                simplify_result=False,
-            )
+        sol = solve_knowing_solution_exists(
+            eqns,
+            tVars,
+            try_hard=try_hard is True,
+            method="linear_parametric" if self._parameters else "linear",
+            simplify_result=False,
+        )
         if len(sol) == 0:
             return None
         return [sol[0].get(var, var) for var in tVars]
@@ -150,7 +152,7 @@ class _symbol_brackets:
                                 f"`Tanaka_symbol` received nonnegative level data that is not admissible. Element {position + 1} of degree {weight} maps a degree {jdeg} basis element outside of degree {kdeg}, so degree {weight} is not contained in the algebraic prolongation of the levels preceding it."
                             )
                         for kidx, c in enumerate(vec):
-                            if c != 0:
+                            if not _scalar_is_zero(c):
                                 decomp[(jidx, kidx, jdeg, kdeg)] = c
                 decomps.append(decomp)
                 operators.append(self._hom_operator_form(decomp, neg_positions))
@@ -238,7 +240,7 @@ class _symbol_brackets:
                 return None
             entry = (jidx, kidx, jdeg, kdeg)
             decomp[entry] = decomp.get(entry, 0) + v
-        return {k: v for k, v in decomp.items() if v != 0}
+        return {k: v for k, v in decomp.items() if not _scalar_is_zero(v)}
 
     def _mixed_action_table(self, neg_positions, neg_coords, try_hard=False):
         table = dict()
@@ -284,7 +286,7 @@ class _symbol_brackets:
     def _apply_bracket(self, source, vec, weight, size, action, memo):
         result = [0] * size
         for q, c in enumerate(vec):
-            if c == 0:
+            if _scalar_is_zero(c):
                 continue
             if weight < 0:
                 contrib = action[source][(weight, q)]
@@ -321,21 +323,20 @@ class _symbol_brackets:
                 return None
             rhs += [a - b for a, b in zip(left, right)]
         if len(columns) == 0:
-            return [] if all(c == 0 for c in rhs) else None
+            return [] if all(is_zero_knowing_zero_is_expected(c) for c in rhs) else None
         varLabel = create_key(prefix="_ja")
-        tVars = [symbol(f"{varLabel}{m}") for m in range(len(columns))]
+        tVars = _disposable_symbols(varLabel, len(columns))
         eqns = [
             sum(tVars[m] * columns[m][r] for m in range(len(columns))) - rhs[r]
             for r in range(len(rhs))
         ]
-        sol = solve_dgcv(eqns, tVars, method="linsolve", simplify_result=False)
-        if len(sol) == 0 and try_hard is True:
-            sol = solve_dgcv(
-                [simplify(eqn) for eqn in eqns],
-                tVars,
-                method="linsolve",
-                simplify_result=False,
-            )
+        sol = solve_knowing_solution_exists(
+            eqns,
+            tVars,
+            try_hard=try_hard is True,
+            method="linear_parametric" if self._parameters else "linear",
+            simplify_result=False,
+        )
         if len(sol) == 0:
             return None
         return [sol[0].get(var, var) for var in tVars]

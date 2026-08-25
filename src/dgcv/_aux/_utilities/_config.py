@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import base64
 import collections.abc
-import inspect
 import mimetypes
 import re
 import sys
@@ -44,7 +43,7 @@ from typing import List, Literal, Optional
 
 from dgcv import __version__
 
-_globals_ = None
+_working_namespace_ = None
 
 dgcv_categories = {
     "vector_field",
@@ -112,140 +111,26 @@ __all__ = [
 
 
 # -----------------------------------------------------------------------------
-# body
+# VMF
 # -----------------------------------------------------------------------------
-def get_globals():
+def working_namespace():
     """
     Fetch namespace dict of the active session
     """
-    global _globals_
-    if _globals_ is not None:
-        return _globals_
-
-    for frame_info in inspect.stack():
-        if frame_info.frame.f_globals["__name__"] == "__main__":
-            _globals_ = frame_info.frame.f_globals
-            return _globals_
-
-    raise RuntimeError("Could not find the '__main__' module in the call stack.")
+    global _working_namespace_
+    if _working_namespace_ is None:
+        _working_namespace_ = sys.modules["__main__"].__dict__
+    return _working_namespace_
 
 
-def update_globals(update_dict):
-    namespace = get_globals()
+def update_working_namespace(update_dict):
+    namespace = working_namespace()
     namespace.update(update_dict)
 
 
-def update_globals_k_v(key, value):
-    namespace = get_globals()
+def update_working_namespace_k_v(key, value):
+    namespace = working_namespace()
     namespace[key] = value
-
-
-def set_up_globals():
-    """
-    Initialize the global namespace pointer. Intended only for dgcv backend utilities.
-    """
-    if _globals_ is None:
-        get_globals()
-
-
-def configure_warnings():
-    warnings.simplefilter("once", category=dgcvWarning)
-    warnings.simplefilter("once", category=dgcvDeprecationWarning)
-    warnings.simplefilter("always", category=dgcvOperationsNote)
-    warnings.showwarning = _dgcv_showwarning
-
-
-_original_showwarning = warnings.showwarning
-
-
-class dgcvWarning(UserWarning):
-    pass
-
-
-class dgcvOperationsNote(UserWarning):
-    pass
-
-
-class dgcvDeprecationWarning(DeprecationWarning):
-    def __init__(
-        self,
-        message,
-        *,
-        old_kw=None,
-        new_kw=None,
-        since=None,
-        sunset=None,
-    ):
-        super().__init__(message)
-        self.old_kw = old_kw
-        self.new_kw = new_kw
-        self.since = since
-        self.sunset = sunset
-
-
-class debug_log(UserWarning):
-    pass
-
-
-def _dgcv_showwarning(message, category, filename, lineno, file=None, line=None):
-    stream = file if file is not None else sys.stderr
-
-    if issubclass(category, dgcvDeprecationWarning):
-        parts = []
-
-        if getattr(message, "old_kw", None):
-            parts.append(f"deprecated keyword={message.old_kw!r}")
-
-        if getattr(message, "new_kw", None):
-            parts.append(f"use {message.new_kw!r} instead")
-
-        if getattr(message, "since", None):
-            parts.append(f"since {message.since}")
-
-        if getattr(message, "sunset", None):
-            parts.append(f"scheduled for removal: {message.sunset}")
-
-        suffix = f" ({'; '.join(parts)})" if parts else ""
-
-        print(f"dgcv deprecation: {message}{suffix}", file=stream)
-        return
-    if issubclass(category, dgcvWarning):
-        print(f"dgcv warning: {message}", file=stream)
-        return
-    if issubclass(category, dgcvOperationsNote):
-        print(f"dgcv operations note: {message}", file=stream)
-        return
-    if issubclass(category, debug_log):
-        if get_dgcv_settings_registry().get("DEBUG", False):
-            print(f"DEBUG note: {message}", file=stream)
-        return
-    _original_showwarning(message, category, filename, lineno, file=file, line=line)
-
-
-def dgcv_warning(
-    message, warning_class=None, stacklevel=2, wc_label=None, **warning_kwargs
-):
-    if warning_class is None:
-        if isinstance(wc_label, str):
-            if wc_label == "dgcvOperationsNote":
-                warning_class = dgcvOperationsNote
-            elif wc_label == "debug_log":
-                warning_class = debug_log
-            else:
-                warning_class = dgcvWarning
-        else:
-            warning_class = dgcvWarning
-
-    if isinstance(warning_class, type) and issubclass(warning_class, Warning):
-        warning = (
-            warning_class(message, **warning_kwargs)
-            if warning_kwargs
-            else warning_class(message)
-        )
-    else:
-        warning = warning_class
-
-    warnings.warn(warning, stacklevel=stacklevel)
 
 
 class StringifiedSymbolsDict(collections.abc.MutableMapping):
@@ -359,6 +244,7 @@ dgcv_settings_registry = {
     "compile_latex_conjugation": True,
     "preferred_variable_format": "complex",
     "pass_solve_requests_to_symbolic_engine": True,
+    "use_rank_basis_extraction": True,
     "extra_support_for_math_in_tables": environment_inference(),
     "use_numeric_methods": False,
     "default_numeric_engine": "numpy",
@@ -667,7 +553,7 @@ def configure_convenient_labels(
             "re": re,
         }
         new_functions = {relabeling_map.get(k, k): v for k, v in new_functions.items()}
-        _globals_.update(new_functions)
+        working_namespace().update(new_functions)
         configured_by_library["complex variables"] = sorted(
             new_functions, key=str.lower
         )
@@ -694,7 +580,7 @@ def configure_convenient_labels(
             "symbol": symbol,
         }
         new_functions = {relabeling_map.get(k, k): v for k, v in new_functions.items()}
-        _globals_.update(new_functions)
+        working_namespace().update(new_functions)
         configured_by_library["symbolic expressions"] = sorted(
             new_functions, key=str.lower
         )
@@ -709,7 +595,7 @@ def configure_convenient_labels(
             "coor_VF": coordinate_vector_field,
         }
         new_functions = {relabeling_map.get(k, k): v for k, v in new_functions.items()}
-        _globals_.update(new_functions)
+        working_namespace().update(new_functions)
         configured_by_library["miscellaneous abbreviations"] = sorted(
             new_functions, key=str.lower
         )
@@ -742,3 +628,108 @@ def configure_convenient_labels(
         )
 
     print(message)
+
+
+# -----------------------------------------------------------------------------
+# warning system
+# -----------------------------------------------------------------------------
+
+
+def configure_warnings():
+    warnings.simplefilter("once", category=dgcvWarning)
+    warnings.simplefilter("once", category=dgcvDeprecationWarning)
+    warnings.simplefilter("always", category=dgcvOperationsNote)
+    warnings.showwarning = _dgcv_showwarning
+
+
+_original_showwarning = warnings.showwarning
+
+
+class dgcvWarning(UserWarning):
+    pass
+
+
+class dgcvOperationsNote(UserWarning):
+    pass
+
+
+class dgcvDeprecationWarning(DeprecationWarning):
+    def __init__(
+        self,
+        message,
+        *,
+        old_kw=None,
+        new_kw=None,
+        since=None,
+        sunset=None,
+    ):
+        super().__init__(message)
+        self.old_kw = old_kw
+        self.new_kw = new_kw
+        self.since = since
+        self.sunset = sunset
+
+
+class debug_log(UserWarning):
+    pass
+
+
+def _dgcv_showwarning(message, category, filename, lineno, file=None, line=None):
+    stream = file if file is not None else sys.stderr
+
+    if issubclass(category, dgcvDeprecationWarning):
+        parts = []
+
+        if getattr(message, "old_kw", None):
+            parts.append(f"deprecated keyword={message.old_kw!r}")
+
+        if getattr(message, "new_kw", None):
+            parts.append(f"use {message.new_kw!r} instead")
+
+        if getattr(message, "since", None):
+            parts.append(f"since {message.since}")
+
+        if getattr(message, "sunset", None):
+            parts.append(f"scheduled for removal: {message.sunset}")
+
+        suffix = f" ({'; '.join(parts)})" if parts else ""
+
+        print(f"dgcv deprecation: {message}{suffix}", file=stream)
+        return
+    if issubclass(category, dgcvWarning):
+        print(f"dgcv warning: {message}", file=stream)
+        return
+    if issubclass(category, dgcvOperationsNote):
+        print(f"dgcv operations note: {message}", file=stream)
+        return
+    if issubclass(category, debug_log):
+        if get_dgcv_settings_registry().get("DEBUG", False):
+            print(f"DEBUG note: {message}", file=stream)
+        return
+    _original_showwarning(message, category, filename, lineno, file=file, line=line)
+
+
+def dgcv_warning(
+    message, warning_class=None, stacklevel=2, wc_label=None, **warning_kwargs
+):
+    if warning_class is None:
+        if isinstance(wc_label, str):
+            if wc_label == "dgcvOperationsNote":
+                warning_class = dgcvOperationsNote
+            elif wc_label == "debug_log":
+                warning_class = debug_log
+            else:
+                warning_class = dgcvWarning
+        else:
+            warning_class = dgcvWarning
+
+    if isinstance(warning_class, type) and issubclass(warning_class, Warning):
+        warning = (
+            warning_class(message, **warning_kwargs)
+            if warning_kwargs
+            else warning_class(message)
+        )
+    else:
+        warning = warning_class
+
+    warnings.warn(warning, stacklevel=stacklevel)

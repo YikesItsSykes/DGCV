@@ -117,27 +117,17 @@ def available_engine_kinds():
 
 
 def invalidate_engine_cache():
-    global \
-        _engine_kind, \
-        _engine_module, \
-        _one_obj, \
-        _zero_obj, \
-        _fast_scalar_types, \
-        _expr_types, \
-        _expr_numeric_types, \
-        _atomic_pred, \
-        _I_obj, \
-        _constant_scalar_types
+    global _engine_kind, _engine_module
     _engine_kind = None
     _engine_module = None
-    _fast_scalar_types = None
-    _expr_types = None
-    _expr_numeric_types = None
-    _atomic_pred = None
-    _one_obj = None
-    _zero_obj = None
-    _I_obj = None
-    _constant_scalar_types = None
+
+    try:
+        from ._types_and_constants import invalidate_types_and_constants_cache
+
+        invalidate_types_and_constants_cache()
+    except Exception:
+        pass
+
     try:
         from ._cls_coercion import invalidate_cls_coercion_cache
 

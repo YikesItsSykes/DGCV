@@ -5,7 +5,7 @@ from numbers import Number
 from typing import Any, Dict, Tuple
 
 from ....._aux._backends._symbolic_router import _scalar_is_zero
-from ....._aux._backends._types_and_constants import imag_unit, rational
+from ....._aux._backends._types_and_constants import half, imag_unit
 from ....._aux._vmf.vmf import vmf_lookup
 from ....combinatorics.combinatorics import permSign
 
@@ -30,8 +30,6 @@ format_filter = {
     "complex": "complex",
     "real": "real",
 }
-
-half = rational(1, 2)
 
 
 def _is_scalar_coeff_dict(d: Dict[Any, Any]) -> bool:
@@ -275,6 +273,7 @@ def _slot_allowed(plan, syslbl, idx):
 
 
 def _to_real_algo(plan=None, cd={}, vst={}):
+    h = half()
     new_dict = {}
 
     for k_seed, v_seed in cd.items():
@@ -320,11 +319,11 @@ def _to_real_algo(plan=None, cd={}, vst={}):
                         real_term = lead + [real_idx] + tail + term_tail
                         im_term = lead + [im_idx] + tail + term_tail
                         new_contribution[tuple(real_term)] = (
-                            new_contribution.get(tuple(real_term), 0) + half * v
+                            new_contribution.get(tuple(real_term), 0) + h * v
                         )
                         new_contribution[tuple(im_term)] = (
                             new_contribution.get(tuple(im_term), 0)
-                            + half * imag_unit() * v
+                            + h * imag_unit() * v
                         )
                     else:  # covariant slot
                         real_term = lead + [real_idx] + tail + term_tail
@@ -344,11 +343,11 @@ def _to_real_algo(plan=None, cd={}, vst={}):
                         real_term = lead + [real_idx] + tail + term_tail
                         im_term = lead + [im_idx] + tail + term_tail
                         new_contribution[tuple(real_term)] = (
-                            new_contribution.get(tuple(real_term), 0) + half * v
+                            new_contribution.get(tuple(real_term), 0) + h * v
                         )
                         new_contribution[tuple(im_term)] = (
                             new_contribution.get(tuple(im_term), 0)
-                            - half * imag_unit() * v
+                            - h * imag_unit() * v
                         )
                     else:  # covariant slot
                         real_term = lead + [real_idx] + tail + term_tail
@@ -373,6 +372,7 @@ def _to_real_algo(plan=None, cd={}, vst={}):
 
 
 def _to_complex_algo(plan=None, cd={}, vst={}):
+    h = half()
     new_dict = {}
 
     for k_seed, v_seed in cd.items():
@@ -432,10 +432,10 @@ def _to_complex_algo(plan=None, cd={}, vst={}):
                         holo_term = lead + [holo_idx] + tail + rest
                         anti_term = lead + [anti_idx] + tail + rest
                         new_contribution[tuple(holo_term)] = (
-                            new_contribution.get(tuple(holo_term), 0) + v * half
+                            new_contribution.get(tuple(holo_term), 0) + v * h
                         )
                         new_contribution[tuple(anti_term)] = (
-                            new_contribution.get(tuple(anti_term), 0) + v * half
+                            new_contribution.get(tuple(anti_term), 0) + v * h
                         )
 
                 # imaginary variable
@@ -457,11 +457,11 @@ def _to_complex_algo(plan=None, cd={}, vst={}):
                         anti_term = lead + [anti_idx] + tail + rest
                         new_contribution[tuple(holo_term)] = (
                             new_contribution.get(tuple(holo_term), 0)
-                            - imag_unit() * v * half
+                            - imag_unit() * v * h
                         )
                         new_contribution[tuple(anti_term)] = (
                             new_contribution.get(tuple(anti_term), 0)
-                            + imag_unit() * v * half
+                            + imag_unit() * v * h
                         )
 
             current_contribution = new_contribution

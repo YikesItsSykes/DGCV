@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..._aux._backends._symbolic_router import subs
+from ..._aux._backends._symbolic_router import _scalar_is_zero, get_free_symbols, subs
 from ..._aux._backends._types_and_constants import expr_numeric_types
 from ..._aux._utilities._config import dgcv_warning
 from ..._aux._vmf._safeguards import get_dgcv_category, retrieve_passkey
@@ -30,7 +30,7 @@ class _fast_tensor_products:
                 self.coeff_dict = dict()
                 self.degree = 0
                 for k, v in coeff_dict.items():
-                    if v != 0 or k == tuple():
+                    if not _scalar_is_zero(v) or k == tuple():
                         self.coeff_dict[k] = v
                         self.degree = max(self.degree, len(k))
             elif get_dgcv_category(coeff_dict) in {
@@ -41,7 +41,9 @@ class _fast_tensor_products:
                     self.algebra = coeff_dict.algebra
                 self.degree = 1
                 self.coeff_dict = {
-                    (k,): v for k, v in enumerate(coeff_dict.coeffs) if v != 0
+                    (k,): v
+                    for k, v in enumerate(coeff_dict.coeffs)
+                    if not _scalar_is_zero(v)
                 }
             else:
                 self.coeff_dict = dict()
@@ -62,7 +64,9 @@ class _fast_tensor_products:
     def is_zero(self):
         if self._is_zero is None:
             self._is_zero = (
-                False if any(v != 0 for v in self.coeff_dict.values()) else True
+                False
+                if any(not _scalar_is_zero(v) for v in self.coeff_dict.values())
+                else True
             )
         return self._is_zero
 
@@ -71,6 +75,15 @@ class _fast_tensor_products:
         if self._coeffs is None:
             self._coeffs = list(self.coeff_dict.values())
         return self._coeffs
+
+    @property
+    def __dgcv_zero_obstr__(self):
+        cfs = []
+        cfvars = set()
+        for cf in self.coeff_dict.values():
+            cfs.append(cf)
+            cfvars |= get_free_symbols(cf)
+        return cfs, cfvars
 
     def _to_algebra(self, alg=None):
         if alg is None:
@@ -137,7 +150,7 @@ class _fast_tensor_products:
         return tensorProduct(new_dict, _hom_id=homid, _hom_decomp=homdecomp)
 
     def __add__(self, other):
-        if other == 0 or getattr(other, "is_zero", False):
+        if _scalar_is_zero(other):
             return self
         if isinstance(other, _fast_tensor_products):
             new_dict = dict(self.coeff_dict)
@@ -192,9 +205,13 @@ class _fast_tensor_products:
                 continue
             for k, v in t.coeff_dict.items():
                 deg = max(deg, len(k))
-                if v != 0:
+                if not _scalar_is_zero(v):
                     acc[k] = acc.get(k, 0) + v
-        out = cls({k: v for k, v in acc.items() if v != 0}, alg, _validated=deg)
+        out = cls(
+            {k: v for k, v in acc.items() if not _scalar_is_zero(v)},
+            alg,
+            _validated=deg,
+        )
         if residual:
             return sum(residual, out)
         return out
@@ -224,21 +241,25 @@ class _fast_tensor_products:
             if not alg_set:
                 alg = t.algebra
                 alg_set = True
-            if c == 0 or t.is_zero:
+            if _scalar_is_zero(c) or t.is_zero:
                 continue
             for k, v in t.coeff_dict.items():
                 deg = max(deg, len(k))
                 nv = c * v
-                if nv != 0:
+                if not _scalar_is_zero(nv):
                     acc[k] = acc.get(k, 0) + nv
-        out = cls({k: v for k, v in acc.items() if v != 0}, alg, _validated=deg)
+        out = cls(
+            {k: v for k, v in acc.items() if not _scalar_is_zero(v)},
+            alg,
+            _validated=deg,
+        )
         if residual:
             return sum(residual, out)
         return out
 
     def __mul__(self, other):
         if isinstance(other, expr_numeric_types()):
-            if other == 0:
+            if _scalar_is_zero(other):
                 return _fast_tensor_products({tuple(): 0}, self.algebra, _validated=0)
             return _fast_tensor_products(
                 {k: other * v for k, v in self.coeff_dict.items()},
@@ -294,7 +315,7 @@ class _fast_tensor_products:
                     if k1T == k2L:
                         newkey = k1B + k2A
                         newval = new_dict.get(newkey, 0) + v1 * v2
-                        if newval != 0:
+                        if not _scalar_is_zero(newval):
                             deg = max(len(newkey), deg)
                             new_dict[newkey] = newval
                         else:
@@ -302,7 +323,7 @@ class _fast_tensor_products:
                     if k1L == k2T:
                         newkey = k2B + k1A
                         newval = new_dict.get(newkey, 0) - v1 * v2
-                        if newval != 0:
+                        if not _scalar_is_zero(newval):
                             deg = max(len(newkey), deg)
                             new_dict[newkey] = newval
                         else:
@@ -346,7 +367,7 @@ class _fast_tensor_products:
                     continue
                 k1A, k1T = k1[:-1], k1[-1]
                 newval = new_dict.get(k1A, 0) + ac[k1T] * v1
-                if newval != 0:
+                if not _scalar_is_zero(newval):
                     new_dict[k1A] = newval
                 else:
                     new_dict.pop(k1A, None)
@@ -367,7 +388,7 @@ class _fast_tensor_products:
 
     def __rmul__(self, other):
         if isinstance(other, expr_numeric_types()):
-            if other == 0:
+            if _scalar_is_zero(other):
                 return _fast_tensor_products(dict(), self.algebra, _validated=0)
             return _fast_tensor_products(
                 {k: other * v for k, v in self.coeff_dict.items()},
@@ -396,10 +417,10 @@ class _fast_tensor_products:
             new_dict = dict()
             for k, v in self.coeff_dict.items():
                 for idx, c in enumerate(ac):
-                    if c != 0:
+                    if not _scalar_is_zero(c):
                         newkey = k + (idx,)
                         newval = new_dict.get(newkey, 0) + c * v
-                        if newval != 0:
+                        if not _scalar_is_zero(newval):
                             new_dict[newkey] = newval
                         else:
                             new_dict.pop(newkey, None)
@@ -413,7 +434,7 @@ class _fast_tensor_products:
                 for idx, c in other.coeff_dict.items():
                     newkey = k + idx
                     newval = new_dict.get(newkey, 0) + c * v
-                    if newval != 0:
+                    if not _scalar_is_zero(newval):
                         new_dict[newkey] = newval
                     else:
                         new_dict.pop(newkey, None)

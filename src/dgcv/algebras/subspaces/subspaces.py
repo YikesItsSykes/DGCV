@@ -147,7 +147,7 @@ class algebra_subspace_class(_vector_space_methods, dgcv_class):
         if found is None:
             if self.dimension == 0:
                 return False
-            genElement, variables = linear_combination(self.basis)
+            genElement, variables = linear_combination(self.basis, _disposable=True)
             sol = solve_dgcv(
                 item - genElement, variables, method="linsolve", simplify_result=False
             )

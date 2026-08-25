@@ -392,7 +392,7 @@ class _vector_space_methods:
             return _scalar_is_zero(element)
         if assume_basis:
             return wedge(element, *subspace_elements)
-        combo, variables = linear_combination(subspace_elements)
+        combo, variables = linear_combination(subspace_elements, _disposable=True)
         diff = element - combo
         eqns = list(diff.coeff_dict.values())
         sol2 = solve_dgcv(eqns, variables, method="linsolve", simplify_result=False)

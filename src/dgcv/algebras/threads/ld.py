@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-from ..._aux._backends._polynomials import (
-    expr_union_primitives,
-)
+from ..._aux._backends._polynomials import expr_union_primitives
 from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
     get_free_symbols,
     simplify,
     subs,
 )
-from ..._aux._utilities._config import (
-    dgcv_warning,
-    get_dgcv_settings_registry,
-)
+from ..._aux._utilities._config import dgcv_warning, get_dgcv_settings_registry
 from ..._aux._utilities._misc import linear_combination, zip_sum
 from ..._aux._vmf.vmf import order_coordinates
 from ...core.solvers import solve_dgcv
@@ -198,7 +194,9 @@ def _ldc(
                         for count in range(len(naiveBasis)):
                             if compLen > 0:
                                 w_sum, w_vars = linear_combination(
-                                    compare_set, prefix=f"_v_{count}_"
+                                    compare_set,
+                                    prefix=f"_v_{count}_",
+                                    _disposable=True,
                                 )
                                 variables += w_vars
                                 basis_modifiers.append(w_sum)
@@ -285,7 +283,9 @@ def _ldc(
                                 - naiveBasis[idxs[1]] * basis_modifiers[idxs[0]]
                             )
                             qTerms_sum, t_vars = linear_combination(
-                                quot_set, prefix=f"tv_{idxs[0]}_{idxs[1]}_"
+                                quot_set,
+                                prefix=f"tv_{idxs[0]}_{idxs[1]}_",
+                                _disposable=True,
                             )
                             variables += t_vars
                             eqns.append(oldV_sum + vTerms_sum + qTerms_sum + newV)
@@ -301,7 +301,7 @@ def _ldc(
                         else:
                             sol = solve_dgcv(eqns, variables, **solve_kwargs)
                         if len(sol) == 0:
-                            if not all(getattr(eqn, "is_zero", False) for eqn in eqns):
+                            if not all(_scalar_is_zero(eqn) for eqn in eqns):
                                 dgcv_warning(
                                     f"eqn: {eqns},\\n variables{variables},\\n sol: {sol}",
                                     wc_label="debug_log",

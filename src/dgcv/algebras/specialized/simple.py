@@ -3,7 +3,7 @@ from __future__ import annotations
 import numbers
 from typing import List, Optional
 
-from ..._aux._backends._symbolic_router import clear_denominators
+from ..._aux._backends._symbolic_router import _scalar_is_zero, clear_denominators
 from ..._aux._utilities._config import dgcv_warning
 from ..._aux._vmf._safeguards import retrieve_passkey
 from ...core.arrays import array_dgcv, freeze_matrix, matrix_dgcv
@@ -359,7 +359,7 @@ class simple_Lie_algebra(algebra_class):
                             new_data[outer_key] = matrix_dgcv(
                                 {index_map[k]: v}, shape=inner_shape
                             )
-                    elif v is not None and not v != 0:
+                    elif v is not None and _scalar_is_zero(v):
                         raise TypeError(
                             "The basis provided to the `simple_Lie_algebra.parabolic_subalgebra` method does not span a subalgebra. Could be likely a bug in `dgcv`."
                         )

@@ -22,7 +22,11 @@ Licensed under the Apache License, Version 2.0
 SPDX-License-Identifier: Apache-2.0
 """
 
+from .._aux._backends._cls_coercion import register_legacy_sympy_class
+from .._aux._backends._display import latex as _routed_latex
 from .._aux._backends._engine import sympy_module_if_available
+from .._aux._vmf._safeguards import retrieve_passkey
+from ..core.base import dgcv_class
 from .eds import abstDFAtom, abstract_ZF
 
 sp = sympy_module_if_available()
@@ -150,7 +154,10 @@ _simplification_rules_registry = {
 }
 
 
-class abstract_ZF_test(sp.Basic):
+class abstract_ZF_test(dgcv_class):
+    _dgcv_class_check = retrieve_passkey()
+    _dgcv_category = "abstract_ZF_test"
+
     """
     Experimental version of abstract_ZF supporting a symbolic function registry and planned simplification logic.
     """
@@ -174,16 +181,19 @@ class abstract_ZF_test(sp.Basic):
                     new_args.append(arg.base)
                 else:
                     new_args.append(arg)
-            return sp.Basic.__new__(cls, (op, *new_args))
-        return sp.Basic.__new__(cls, base)
+            return object.__new__(cls)
+        return object.__new__(cls)
 
     def __init__(self, base):
         self.base = base
 
-    def _repr_latex_(self):
-        return f"${self._latex(self.base)}$"
+    def _repr_latex_(self, raw=False, **kwargs):
+        return self._latex() if raw else f"${self._latex()}$"
 
-    def _latex(self, expr):
+    def _latex(self, printer=None, raw=True, **kwargs):
+        return self._latex_of(self.base)
+
+    def _latex_of(self, expr):
         if isinstance(expr, tuple):
             op, *args = expr
             if (
@@ -191,6 +201,9 @@ class abstract_ZF_test(sp.Basic):
                 and "latex" in _math_functions_registry[op]
             ):
                 latex_func = _math_functions_registry[op]["latex"]
-                return latex_func([self._latex(arg) for arg in args])
-            return f"{op}({', '.join(map(self._latex, args))})"
-        return sp.latex(expr)
+                return latex_func([self._latex_of(arg) for arg in args])
+            return f"{op}({', '.join(map(self._latex_of, args))})"
+        return _routed_latex(expr)
+
+
+register_legacy_sympy_class(abstract_ZF_test)

@@ -8,7 +8,7 @@ from ._indexing import _spool
 
 class _matrix_arithmetic:
     def __add__(self, other):
-        if other == 0 or getattr(other, "is_zero", False):
+        if _scalar_is_zero(other):
             return self
         other = _as_matrix_dgcv(other)
         if other is None:

@@ -42,10 +42,10 @@ from .._utilities._config import (
     dgcv_warning,
     dgcvDeprecationWarning,
     get_dgcv_settings_registry,
-    get_globals,
     get_variable_registry,
     greek_letters,
     latex_in_html,
+    working_namespace,
 )
 from .._utilities._styles import get_style
 from ..printing._tables import build_plain_table
@@ -155,7 +155,7 @@ def _clearVar_single(label):
     else:
         return
     registry = get_variable_registry()
-    global_vars = get_globals()
+    global_vars = working_namespace()
     cleared_info = None
 
     paths = registry.get("paths", {})
@@ -1165,7 +1165,7 @@ def _vmf_plain_snapshot_algebras(vr: dict) -> str:
     if not keys:
         return ""
 
-    global_dict = get_globals()
+    global_dict = working_namespace()
 
     lines: list[str] = [f"=== Finite-dimensional Algebras ({len(keys)}) ==="]
     for label in keys:
@@ -1251,7 +1251,7 @@ def _vmf_plain_snapshot_coframes(vr: dict) -> str:
     if not keys:
         return ""
 
-    global_dict = get_globals()
+    global_dict = working_namespace()
     lines: list[str] = [f"=== Coframes ({len(keys)}) ==="]
     for label in keys:
         system = coframes.get(label, {}) or {}
@@ -1562,7 +1562,7 @@ def _snapshot_algebras_(style=None, use_latex=None, slim=False, **kwargs):
 
     registry = get_variable_registry()
     finite_algebras = registry.get("finite_algebra_systems", {}) or {}
-    global_dict = get_globals()
+    global_dict = working_namespace()
 
     def _basis_label(x):
         if use_latex:
@@ -1783,7 +1783,7 @@ def _snapshot_coframes_(style=None, use_latex=None, slim=False, **kwargs):
 
     vr = get_variable_registry()
     coframes_registry = (vr.get("eds", {}) or {}).get("coframes", {}) or {}
-    global_dict = get_globals()
+    global_dict = working_namespace()
 
     def _latex_of(obj):
         try:

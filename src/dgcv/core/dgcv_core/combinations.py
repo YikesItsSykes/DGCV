@@ -1,4 +1,4 @@
-from ..._aux._backends._symbolic_router import simplify
+from ..._aux._backends._symbolic_router import _scalar_is_zero, simplify
 from ..._aux._backends._types_and_constants import check_dgcv_scalar
 from ..._aux._vmf._safeguards import get_dgcv_category, query_dgcv_categories
 from .fields import vector_field_class
@@ -29,15 +29,15 @@ def VF_bracket(X, Y, *, doNotSimplify: bool = False, **_ignored):
     out = {}
 
     for k, v in cd_Y.items():
-        if v:
+        if not _scalar_is_zero(v):
             w = X(v)
-            if w:
+            if not _scalar_is_zero(w):
                 out[k] = out.get(k, 0) + w
 
     for k, v in cd_X.items():
-        if v:
+        if not _scalar_is_zero(v):
             w = Y(v)
-            if w:
+            if not _scalar_is_zero(w):
                 out[k] = out.get(k, 0) - w
 
     if not out:
@@ -45,9 +45,9 @@ def VF_bracket(X, Y, *, doNotSimplify: bool = False, **_ignored):
     else:
         if not doNotSimplify:
             for k, v in list(out.items()):
-                if v:
+                if not _scalar_is_zero(v):
                     out[k] = simplify(v)
-        out = {k: v for k, v in out.items() if v}
+        out = {k: v for k, v in out.items() if not _scalar_is_zero(v)}
         if not out:
             out = {tuple(): 0}
 

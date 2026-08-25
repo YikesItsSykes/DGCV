@@ -4,6 +4,7 @@ from itertools import count
 
 from ..._aux._backends._polynomials import expr_union_primitives
 from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
     clear_denominators,
     get_free_symbols,
     subs,
@@ -113,6 +114,7 @@ class _symbol_prolongation_stages:
         surface_singularities,
         simplify_pivots,
         simplify_ideals,
+        solve_method,
     ):
         if with_characteristic_space_reductions is True:
             if height == -1:
@@ -154,7 +156,7 @@ class _symbol_prolongation_stages:
                     solution, sing = solve_dgcv(
                         eqns,
                         solVars,
-                        method="linsolve",
+                        method=solve_method,
                         return_divisors=True,
                         pass_to_symbolic_engine=False,
                         simplify_pivots=simplify_pivots,
@@ -170,9 +172,12 @@ class _symbol_prolongation_stages:
                     )
                 else:
                     solution = solve_dgcv(
-                        eqns, solVars, method="linsolve", simplify_result=False
+                        eqns, solVars, method=solve_method, simplify_result=False
                     )
                 if len(solution) == 0:
+                    from ..._aux._utilities._config import working_namespace
+
+                    working_namespace()["DEBUG"] = eqns, solVars
                     raise RuntimeError(
                         f"`Tanaka_symbol.prolongation` failed at a step where a symbolic solver (e.g., sympy.solve if using the default sympy) was being applied. The equation system was {eqns} w.r.t. {solVars}"
                     )
@@ -224,7 +229,7 @@ class _symbol_prolongation_stages:
         return new_level, expansions
 
     def _recoordinatize_DS_components(
-        self, DS_records, height, atomized_level, expansions
+        self, DS_records, height, atomized_level, expansions, solve_method
     ):
         for record in DS_records:
             if height + 1 > record.cap:
@@ -244,7 +249,7 @@ class _symbol_prolongation_stages:
             if len(sanEqns) == 0:
                 continue
             sanSol = solve_dgcv(
-                sanEqns, sanVars, method="linsolve", simplify_result=False
+                sanEqns, sanVars, method=solve_method, simplify_result=False
             )
             if len(sanSol) == 0:
                 component.spanners = []
@@ -263,7 +268,7 @@ class _symbol_prolongation_stages:
             coords = []
             for v in zeroing:
                 el = subs(terse, {**zeroing, v: 1})
-                if getattr(el, "is_zero", False) or el == 0:
+                if _scalar_is_zero(el):
                     continue
                 coords.append(el)
             component.coords = coords

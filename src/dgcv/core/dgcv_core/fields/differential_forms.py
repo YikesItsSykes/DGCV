@@ -58,7 +58,7 @@ class differential_form_class(tensor_field_class):
                 max_deg = 0
                 all_covariant = True
                 for k, c in coeff_dict.items():
-                    if not c:
+                    if _scalar_is_zero(c):
                         continue
                     d = len(k) // 3
                     if d > max_deg:
@@ -131,7 +131,7 @@ class differential_form_class(tensor_field_class):
 
         cd = {}
         for k, c in data_dict.items():
-            if not c:
+            if _scalar_is_zero(c):
                 continue
 
             if deg == 0:
@@ -441,12 +441,12 @@ class differential_form_class(tensor_field_class):
             shape_cd = {}
 
             for k2, v2 in other.coeff_dict.items():
-                if not v2:
+                if _scalar_is_zero(v2):
                     continue
 
                 a, b, c = k2
                 for k1, v1 in self.coeff_dict.items():
-                    if not v1:
+                    if _scalar_is_zero(v1):
                         continue
                     sign = 1
                     deg = len(k1) // 3

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
 from ..._backends._display import latex as _backend_latex
-from ..._backends._symbolic_router import _scalar_is_zero
+from ..._backends._symbolic_router import _scalar_is_minus_one, _scalar_is_one
 from ..._utilities._config import get_dgcv_settings_registry
 from ._string_processing import coeff_needs_parens_latex
 
@@ -43,24 +41,6 @@ def _scalar_mul(fmt: str = "plain") -> str:
 def _dual_marker(fmt: str = "plain") -> str:
     style = _print_style()
     return joinders[style]["dual"][fmt]
-
-
-def _scalar_is_one(x: Any) -> bool:
-    io = getattr(
-        x, "is_one", None
-    )  # present only for deprecated poly subpackage syntax
-    if isinstance(io, bool):
-        return io
-    return _scalar_is_zero(x - 1)
-
-
-def _scalar_is_minus_one(x: Any) -> bool:
-    im1 = getattr(
-        x, "is_minus_one", None
-    )  # present only for deprecated poly subpackage syntax
-    if isinstance(im1, bool):
-        return im1
-    return _scalar_is_zero(x + 1)
 
 
 def _coeff_latex(scalar, bypass=None) -> str:

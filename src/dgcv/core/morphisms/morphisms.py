@@ -1,4 +1,4 @@
-from ..._aux._backends._symbolic_router import simplify, subs
+from ..._aux._backends._symbolic_router import _scalar_is_zero, simplify, subs
 from ..._aux._backends._types_and_constants import symbol
 from ..._aux._vmf._safeguards import (
     get_dgcv_category,
@@ -107,14 +107,10 @@ class homomorphism(dgcv_class):
                     "`basis_image` parameter should be a list of elements in the codomain. Its length must match the dimension of the domain."
                 )
             if not (
-                getattr(newBI[-1], "is_zero", False)
-                or newBI[-1] == 0
+                _scalar_is_zero(newBI[-1])
                 or (
                     isinstance(newBI[-1], (list, tuple))
-                    and all(
-                        getattr(vec[-1], "is_zero", False) or vec[-1] == 0
-                        for vec in newBI[-1]
-                    )
+                    and all(_scalar_is_zero(vec[-1]) for vec in newBI[-1])
                 )
             ):
                 all_zero = False
@@ -190,7 +186,7 @@ class homomorphism(dgcv_class):
         if self._alg_hom is None:
 
             def check(x):
-                return getattr(simplify(x), "is_zero", False) or x == 0
+                return _scalar_is_zero(x) or _scalar_is_zero(simplify(x))
 
             self._alg_hom = all(check(eqn) for eqn in self._alg_hom_eqns)
         return self._alg_hom
@@ -216,7 +212,7 @@ class homomorphism(dgcv_class):
         if self._alg_derivation is None:
 
             def check(x):
-                return getattr(simplify(x), "is_zero", False) or x == 0
+                return _scalar_is_zero(x) or _scalar_is_zero(simplify(x))
 
             self._alg_derivation = all(check(eqn) for eqn in self._alg_der_eqns)
         return self._alg_derivation
@@ -291,11 +287,9 @@ class _fast_tensor_proxy:
         return new_list
 
     def contains(self, elem, *args):
-        if elem == 0:
+        if _scalar_is_zero(elem):
             return True
         if self.degree == 0:
-            if elem == 0 or getattr(elem, "is_zero", False):
-                return True
             return False
         elif self.degree == 1:
             return self.vector_spaces[0].contains(elem, strict_types=False)

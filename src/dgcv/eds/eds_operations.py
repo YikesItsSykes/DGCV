@@ -104,6 +104,7 @@ def transform_coframe(
         solution = solve_dgcv(
             eqns,
             cVars,
+            method="linsolve",
             pass_to_symbolic_engine=False,
             simplify_pivots=True,
             simplify_result=False,
@@ -111,17 +112,6 @@ def transform_coframe(
         if len(solution) > 1:
             raise ValueError("The given coframe transformation rule is not invertible")
         if len(solution) < 1:
-            from .._aux._utilities._config import get_globals
-
-            get_globals()["DEBUG"] = (
-                df_atom,
-                df,
-                new_extD,
-                general_elem,
-                cVars,
-                original_coframe,
-                extDer,
-            )
             raise ValueError(
                 "Unable to compute new coframe structure equations w.r.t. given transformation rule"
             )

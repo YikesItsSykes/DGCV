@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ....._aux._backends._symbolic_router import _scalar_is_zero
 from ....._aux._backends._types_and_constants import check_dgcv_scalar
 from ....._aux._utilities._config import get_dgcv_settings_registry
 from ....._aux._vmf._safeguards import check_dgcv_category, get_dgcv_category
@@ -69,7 +70,7 @@ class _tensor_field_contraction:
                 abort = False
 
                 for k2, v2 in other.coeff_dict.items():
-                    if not v2:
+                    if _scalar_is_zero(v2):
                         continue
 
                     lk2 = len(k2)
@@ -79,14 +80,14 @@ class _tensor_field_contraction:
 
                     if lk2 == 0:
                         for k1, v1 in self.coeff_dict.items():
-                            if not v1:
+                            if _scalar_is_zero(v1):
                                 continue
                             shape_cd[k1] = shape_cd.get(k1, 0) + v1 * v2
                         continue
 
                     a, b, c = k2
                     for k1, v1 in self.coeff_dict.items():
-                        if not v1:
+                        if _scalar_is_zero(v1):
                             continue
                         sign = 1
                         deg = len(k1) // 3
@@ -124,7 +125,7 @@ class _tensor_field_contraction:
                 abort = False
 
                 for k2, v2 in other.coeff_dict.items():
-                    if not v2:
+                    if _scalar_is_zero(v2):
                         continue
 
                     lk2 = len(k2)
@@ -134,14 +135,14 @@ class _tensor_field_contraction:
 
                     if lk2 == 0:
                         for k1, v1 in self.coeff_dict.items():
-                            if not v1:
+                            if _scalar_is_zero(v1):
                                 continue
                             gen_cd[k1] = gen_cd.get(k1, 0) + v1 * v2
                         continue
 
                     a, b, c = k2
                     for k1, v1 in self.coeff_dict.items():
-                        if not v1:
+                        if _scalar_is_zero(v1):
                             continue
                         deg = len(k1) // 3
                         idx, idx2, idx3 = 0, deg, 2 * deg
@@ -253,7 +254,7 @@ class _tensor_field_contraction:
         def _pick_by_idxs(terms, want_idxs):
             out = {}
             for k, v in terms.items():
-                if not v:
+                if _scalar_is_zero(v):
                     continue
                 idxs, _, _ = _split_tripled(k)
                 if idxs == want_idxs:
@@ -263,14 +264,14 @@ class _tensor_field_contraction:
         new_cd = {}
 
         for k1, v1 in self.coeff_dict.items():
-            if not v1:
+            if _scalar_is_zero(v1):
                 continue
 
             i1, val1, s1 = _split_tripled(k1)
             d1 = len(i1)
 
             for k2, v2 in other.coeff_dict.items():
-                if not v2:
+                if _scalar_is_zero(v2):
                     continue
 
                 i2, val2, s2 = _split_tripled(k2)

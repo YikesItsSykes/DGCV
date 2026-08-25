@@ -8,7 +8,7 @@ from random import getrandbits, randint, random
 from typing import Any, Optional
 
 from .._vmf._safeguards import create_key
-from ._symbolic_router import subs
+from ._symbolic_router import _scalar_is_zero, subs
 from ._types_and_constants import rational, symbol
 
 
@@ -29,7 +29,7 @@ def zeroish(
             if not zero_check(subs(expr, ev_point), 0, abs_tol=1e-9):
                 return False
         return True
-    return x == 0 or getattr(x, "is_zero", False)
+    return _scalar_is_zero(x)
 
 
 def rational_sample(
@@ -145,7 +145,7 @@ def _extract_basis_over_number_field(
     basis = []
     for obj in objs:
         eqns, _ = _obstr(obj)
-        if eqns and all(e == 0 or getattr(e, "is_zero", False) for e in eqns):
+        if eqns and all(_scalar_is_zero(e) for e in eqns):
             continue
 
         if not basis:

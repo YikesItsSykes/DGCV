@@ -38,6 +38,7 @@ from typing import Any, Dict, Literal, Optional, Sequence, Tuple
 
 from .._aux._backends import simplify_dgcv as simplify
 from .._aux._backends._calculus import diff
+from .._aux._backends._symbolic_router import _scalar_is_zero
 from .._aux._backends._types_and_constants import rational
 from .._aux._vmf._safeguards import get_dgcv_category, retrieve_passkey
 from .._aux._vmf.vmf import vmf_lookup
@@ -606,7 +607,7 @@ def metric_from_matrix(coordinates, matrix):
     for i in range(n):
         for j in range(i, n):
             v = entry(i, j)
-            if v != 0:
+            if not _scalar_is_zero(v):
                 sparse_data[(i, j)] = v
 
     return metricClass(assemble_tensor_field(coords, sparse_data, shape="symmetric"))

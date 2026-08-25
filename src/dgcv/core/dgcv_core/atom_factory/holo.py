@@ -4,20 +4,18 @@ from numbers import Integral, Number
 from typing import Literal
 
 from ...._aux._backends._symbolic_router import conjugate
-from ...._aux._backends._types_and_constants import imag_unit, rational
+from ...._aux._backends._types_and_constants import half, imag_unit
 from ...._aux._utilities._config import (
     get_dgcv_settings_registry,
     get_variable_registry,
-    update_globals,
-    update_globals_k_v,
+    update_working_namespace,
+    update_working_namespace_k_v,
 )
 from ...._aux._vmf._safeguards import retrieve_passkey, validate_label
 from ...._aux._vmf.vmf import clearVar
 from ...combinatorics.combinatorics import carProd
 from ..fields import differential_form_class, vector_field_class
 from .atoms import variableProcedure
-
-half = rational(1, 2)
 
 
 def complexVarProc(
@@ -242,16 +240,16 @@ def complexVarProc(
                 conj_updates[comp_var] = bar_comp_var
                 conj_updates[bar_comp_var] = comp_var
                 holToReal_updates[comp_var] = real_var + imag_unit() * imag_var
-                realToSym_updates[real_var] = half * (comp_var + bar_comp_var)
+                realToSym_updates[real_var] = half() * (comp_var + bar_comp_var)
                 realToSym_updates[imag_var] = (
-                    -imag_unit() * half * (comp_var - bar_comp_var)
+                    -imag_unit() * half() * (comp_var - bar_comp_var)
                 )
                 symToHol_updates[bar_comp_var] = conjugate(comp_var)
                 symToReal_updates[comp_var] = real_var + imag_unit() * imag_var
                 symToReal_updates[bar_comp_var] = real_var - imag_unit() * imag_var
-                realToHol_updates[real_var] = half * (comp_var + conjugate(comp_var))
+                realToHol_updates[real_var] = half() * (comp_var + conjugate(comp_var))
                 realToHol_updates[imag_var] = (
-                    imag_unit() * half * (conjugate(comp_var) - comp_var)
+                    imag_unit() * half() * (conjugate(comp_var) - comp_var)
                 )
                 real_part_updates[comp_var] = real_var
                 real_part_updates[bar_comp_var] = real_var
@@ -320,14 +318,14 @@ def complexVarProc(
             conj_updates[var_hol] = var_bar
             conj_updates[var_bar] = var_hol
             holToReal_updates[var_hol] = var_real + imag_unit() * var_im
-            realToSym_updates[var_real] = half * (var_hol + var_bar)
-            realToSym_updates[var_im] = -imag_unit() * half * (var_hol - var_bar)
+            realToSym_updates[var_real] = half() * (var_hol + var_bar)
+            realToSym_updates[var_im] = -imag_unit() * half() * (var_hol - var_bar)
             symToHol_updates[var_bar] = conjugate(var_hol)
             symToReal_updates[var_hol] = var_real + imag_unit() * var_im
             symToReal_updates[var_bar] = var_real - imag_unit() * var_im
-            realToHol_updates[var_real] = half * (var_hol + conjugate(var_hol))
+            realToHol_updates[var_real] = half() * (var_hol + conjugate(var_hol))
             realToHol_updates[var_im] = (
-                imag_unit() * half * (conjugate(var_hol) - var_hol)
+                imag_unit() * half() * (conjugate(var_hol) - var_hol)
             )
             real_part_updates[var_hol] = var_real
             real_part_updates[var_bar] = var_real
@@ -429,13 +427,13 @@ def complexVarProc(
                     # Differential objects using the real/imaginary parts.
                     inh_dict = {"_validated_format": "real"}
                     vf_instance_hol = vector_field_class(
-                        coeff_dict={(2, 1, sys): half, (3, 1, sys): -imag_unit() / 2},
+                        coeff_dict={(2, 1, sys): half(), (3, 1, sys): -imag_unit() / 2},
                         dgcvType="complex",
                         variable_spaces={sys: vs},
                         _inheritance=inh_dict,
                     )
                     vf_instance_aHol = vector_field_class(
-                        coeff_dict={(2, 1, sys): half, (3, 1, sys): imag_unit() / 2},
+                        coeff_dict={(2, 1, sys): half(), (3, 1, sys): imag_unit() / 2},
                         dgcvType="complex",
                         variable_spaces={sys: vs},
                         _inheritance=inh_dict,
@@ -518,7 +516,7 @@ def complexVarProc(
                         _inheritance=inh_dict,
                     )
                     df_instance_real = differential_form_class(
-                        coeff_dict={(0, 0, sys): half, (1, 0, sys): half},
+                        coeff_dict={(0, 0, sys): half(), (1, 0, sys): half()},
                         dgcvType="complex",
                         variable_spaces={sys: vs},
                         _inheritance=inh_dict,
@@ -608,7 +606,7 @@ def complexVarProc(
                 var_hol, var_bar, var_real, var_im, default_var_format
             )
 
-            update_globals(
+            update_working_namespace(
                 {
                     f"D_{labelLoc1}": vf_instance_hol,
                     f"D_{labelLocBAR}": vf_instance_aHol,
@@ -742,16 +740,16 @@ def complexVarProc(
                 conj_updates[comp_var] = bar_comp_var
                 conj_updates[bar_comp_var] = comp_var
                 holToReal_updates[comp_var] = real_var + imag_unit() * imag_var
-                realToSym_updates[real_var] = half * (comp_var + bar_comp_var)
+                realToSym_updates[real_var] = half() * (comp_var + bar_comp_var)
                 realToSym_updates[imag_var] = (
-                    -imag_unit() * half * (comp_var - bar_comp_var)
+                    -imag_unit() * half() * (comp_var - bar_comp_var)
                 )
                 symToHol_updates[bar_comp_var] = conjugate(comp_var)
                 symToReal_updates[comp_var] = real_var + imag_unit() * imag_var
                 symToReal_updates[bar_comp_var] = real_var - imag_unit() * imag_var
-                realToHol_updates[real_var] = half * (comp_var + conjugate(comp_var))
+                realToHol_updates[real_var] = half() * (comp_var + conjugate(comp_var))
                 realToHol_updates[imag_var] = (
-                    imag_unit() * half * (conjugate(comp_var) - comp_var)
+                    imag_unit() * half() * (conjugate(comp_var) - comp_var)
                 )
                 real_part_updates[comp_var] = real_var
                 real_part_updates[bar_comp_var] = real_var
@@ -801,8 +799,8 @@ def complexVarProc(
 
         realToSym_updates_batch = {}
         for comp, anti, real, imag in totalVarListLoc:
-            realToSym_updates_batch[real] = half * (comp + anti)
-            realToSym_updates_batch[imag] = -imag_unit() * half * (comp - anti)
+            realToSym_updates_batch[real] = half() * (comp + anti)
+            realToSym_updates_batch[imag] = -imag_unit() * half() * (comp - anti)
 
         symToHol_updates_batch = {
             anti: conjugate(comp) for comp, anti, _, _ in totalVarListLoc
@@ -815,10 +813,10 @@ def complexVarProc(
 
         realToHol_updates_batch = {}
         for comp, _, real, _ in totalVarListLoc:
-            realToHol_updates_batch[real] = half * (comp + conjugate(comp))
+            realToHol_updates_batch[real] = half() * (comp + conjugate(comp))
         for comp, _, _, imag in totalVarListLoc:
             realToHol_updates_batch[imag] = (
-                imag_unit() * half * (conjugate(comp) - comp)
+                imag_unit() * half() * (conjugate(comp) - comp)
             )
 
         real_part_updates_batch = {}
@@ -849,7 +847,7 @@ def complexVarProc(
                 inh_dict = {"_validated_format": "real"}
                 D_comp = vector_field_class(
                     coeff_dict={
-                        (i_real, 1, sys): half,
+                        (i_real, 1, sys): half(),
                         (i_im, 1, sys): -imag_unit() / 2,
                     },
                     dgcvType="complex",
@@ -858,7 +856,7 @@ def complexVarProc(
                 )
                 D_bar_comp = vector_field_class(
                     coeff_dict={
-                        (i_real, 1, sys): half,
+                        (i_real, 1, sys): half(),
                         (i_im, 1, sys): imag_unit() / 2,
                     },
                     dgcvType="complex",
@@ -959,7 +957,7 @@ def complexVarProc(
                     _inheritance=inh_dict,
                 )
                 d_real = differential_form_class(
-                    coeff_dict={(i_hol, 0, sys): half, (i_anti, 0, sys): half},
+                    coeff_dict={(i_hol, 0, sys): half(), (i_anti, 0, sys): half()},
                     dgcvType="complex",
                     variable_spaces={sys: vs},
                     _inheritance=inh_dict,
@@ -1041,14 +1039,14 @@ def complexVarProc(
                 )
 
             # Register the differential objects in VMF
-            update_globals_k_v(f"D_{comp_var}", D_comp)
-            update_globals_k_v(f"D_{bar_comp_var}", D_bar_comp)
-            update_globals_k_v(f"d_{comp_var}", d_comp)
-            update_globals_k_v(f"d_{bar_comp_var}", d_bar_comp)
-            update_globals_k_v(f"D_{real_var}", D_real)
-            update_globals_k_v(f"D_{imag_var}", D_im)
-            update_globals_k_v(f"d_{real_var}", d_real)
-            update_globals_k_v(f"d_{imag_var}", d_im)
+            update_working_namespace_k_v(f"D_{comp_var}", D_comp)
+            update_working_namespace_k_v(f"D_{bar_comp_var}", D_bar_comp)
+            update_working_namespace_k_v(f"d_{comp_var}", d_comp)
+            update_working_namespace_k_v(f"d_{bar_comp_var}", d_bar_comp)
+            update_working_namespace_k_v(f"D_{real_var}", D_real)
+            update_working_namespace_k_v(f"D_{imag_var}", D_im)
+            update_working_namespace_k_v(f"d_{real_var}", d_real)
+            update_working_namespace_k_v(f"d_{imag_var}", d_im)
 
             # update VMF
             def var_v_a(elem):  # for registering assumptions

@@ -78,6 +78,9 @@ def Baker_Campbell_Hausdorff(X, Y, truncation_degree=None, ad_op_syntax=None):
         Leading polynomial of specified degree in the [ad_X,ad_Y] series expansion
         representing log(exp(X)*exp(Y))
     """
+    # imported locally: this module is otherwise dependency-free, to stay import-cycle safe
+    from ..._aux._backends._symbolic_router import _scalar_is_zero
+
     if callable(ad_op_syntax):
 
         def ad(op, elem, power=1):
@@ -144,7 +147,7 @@ def Baker_Campbell_Hausdorff(X, Y, truncation_degree=None, ad_op_syntax=None):
                             new_monom = ad(
                                 X, ad(Y, term_cache[key], ell_tuple[0]), k_tuple[0]
                             )
-                            if getattr(new_monom, "is_zero", False) or new_monom == 0:
+                            if _scalar_is_zero(new_monom):
                                 term_cache[new_key] = 0
                                 continue
                             k_fact = _tfact(k_tuple)
@@ -155,7 +158,7 @@ def Baker_Campbell_Hausdorff(X, Y, truncation_degree=None, ad_op_syntax=None):
                             k_fact = _tfact(k_tuple)
                             denom = sum(k_tuple, 1) * k_fact * ell_fact * sl_denom
                             new_val = ad_tuples(k_tuple, ell_tuple)
-                            if getattr(new_val, "is_zero", False) or new_val == 0:
+                            if _scalar_is_zero(new_val):
                                 term_cache[new_key] = 0
                                 continue
                             term_cache[new_key] = new_val

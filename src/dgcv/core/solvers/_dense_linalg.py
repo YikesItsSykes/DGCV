@@ -1,6 +1,6 @@
-from ..._aux._backends._symbolic_router import simplify
+from ..._aux._backends._symbolic_router import _fast_simplify
 from ..._aux._backends._types_and_constants import one, zero
-from ._predicates import _is_zero
+from ._predicates import _is_zero, _is_zero_after_simplify
 
 
 def _rows_from_engine_matrix(A):
@@ -81,7 +81,7 @@ def _rref_solve_unique(A_rows, b_col, *, simplify_steps=False):
         inv_piv = one / piv
         aug[row] = [inv_piv * v for v in aug[row]]
         if simplify_steps:
-            aug[row] = [simplify(v) for v in aug[row]]
+            aug[row] = [_fast_simplify(v) for v in aug[row]]
 
         for r in range(m):
             if r == row:
@@ -91,13 +91,15 @@ def _rref_solve_unique(A_rows, b_col, *, simplify_steps=False):
                 continue
             aug[r] = [aug[r][c] - factor * aug[row][c] for c in range(n + 1)]
             if simplify_steps:
-                aug[r] = [simplify(v) for v in aug[r]]
+                aug[r] = [_fast_simplify(v) for v in aug[r]]
 
         pivots.append(col)
         row += 1
 
     for r in range(m):
-        if all(_is_zero(aug[r][c]) for c in range(n)) and not _is_zero(aug[r][n]):
+        if all(_is_zero(aug[r][c]) for c in range(n)) and not _is_zero_after_simplify(
+            aug[r][n]
+        ):
             raise ValueError("Inconsistent linear system")
 
     if len(pivots) != n:
@@ -107,5 +109,5 @@ def _rref_solve_unique(A_rows, b_col, *, simplify_steps=False):
     for r, col in enumerate(pivots):
         x[col] = aug[r][n]
         if simplify_steps:
-            x[col] = simplify(x[col])
+            x[col] = _fast_simplify(x[col])
     return x

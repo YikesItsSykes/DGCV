@@ -1,4 +1,4 @@
-from ..._aux._backends._symbolic_router import simplify
+from ..._aux._backends._symbolic_router import _scalar_is_zero, simplify
 from ..._aux._utilities._misc import linear_combination
 from ...core.arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ...core.solvers import solve_dgcv
@@ -42,7 +42,7 @@ def _external_library_algebra_processing(objs, mul, zero_obst, assume_skew=False
                 {
                     idx: sol.get(v, 0)
                     for idx, v in enumerate(variables)
-                    if sol.get(v, 0) != 0
+                    if not _scalar_is_zero(sol.get(v, 0))
                 },
                 shape=(dim, 1),
             )

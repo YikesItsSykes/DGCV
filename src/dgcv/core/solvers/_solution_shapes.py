@@ -2,7 +2,7 @@ from ..._aux._backends._symbolic_router import subs
 from ..._aux._backends._types_and_constants import is_atomic
 
 
-def _sage_solve_to_dicts(sols, vars_):
+def _sage_solve_to_dicts(sols, vars_, input_symbols=frozenset()):
     if sols is None:
         return []
 
@@ -49,7 +49,11 @@ def _sage_solve_to_dicts(sols, vars_):
 
             if L in vars_set:
                 d[L] = R
-                if is_atomic(R) and R not in vars_set:
+                if (
+                    is_atomic(R)
+                    and R not in vars_set
+                    and R not in input_symbols
+                ):
                     replacements[R] = L
         if replacements:
             d = {k: subs(v, replacements) for k, v in d.items()}

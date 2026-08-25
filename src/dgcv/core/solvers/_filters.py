@@ -8,10 +8,10 @@ def linear_filter(spanners, linear_constraint, light_simplify=True):
     try:
         dim = len(spanners)
         pref = create_key("var")
-        vars = [symbol(f"{pref}_{idx}") for idx in range(dim)]
+        variables = [symbol(f"{pref}_{idx}") for idx in range(dim)]
         combination = sum(
-            [var * elem for var, elem in zip(vars[1:], spanners[1:])],
-            vars[0] * spanners[0],
+            [var * elem for var, elem in zip(variables[1:], spanners[1:])],
+            variables[0] * spanners[0],
         )
         constraints = linear_constraint(combination)
         if not isinstance(constraints, (list, tuple)):
@@ -25,7 +25,7 @@ def linear_filter(spanners, linear_constraint, light_simplify=True):
                 eqns += constraint
             else:
                 eqns.append(constraint)
-        solution = solve_dgcv(eqns, vars)
+        solution = solve_dgcv(eqns, variables, method="linsolve", simplify_result=False)
         if len(solution) == 0:
             return []
         filtered = subs(combination, solution[0])
@@ -34,7 +34,7 @@ def linear_filter(spanners, linear_constraint, light_simplify=True):
             if callable(f):
                 filtered = f()
         freeVars = set()
-        available = set(vars)
+        available = set(variables)
         for expr in solution[0].values():
             survivors = {var for var in get_free_symbols(expr) if var in available}
             freeVars |= survivors

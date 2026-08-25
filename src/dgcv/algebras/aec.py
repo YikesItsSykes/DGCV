@@ -6,6 +6,7 @@ from .._aux._backends._display import latex
 from .._aux._backends._symbolic_router import (
     _scalar_is_zero,
     get_free_symbols,
+    is_zero_knowing_zero_is_expected,
     ratio,
     simplify,
     subs,
@@ -231,7 +232,7 @@ class algebra_element_class(dgcv_class):
     @property
     def is_zero(self):
         for j in self.coeff_dict.values():
-            if not _scalar_is_zero(simplify(j)):
+            if not is_zero_knowing_zero_is_expected(j):
                 return False
         return True
 

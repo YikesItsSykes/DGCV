@@ -81,7 +81,7 @@ class _tensor_field_formats:
 
         new_cd = {}
         for k, v in obj.coeff_dict.items():
-            if not v:
+            if _scalar_is_zero(v):
                 continue
             prof = obj._profile_key(k)
 

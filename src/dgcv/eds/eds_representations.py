@@ -23,14 +23,23 @@ SPDX-License-Identifier: Apache-2.0
 
 import numbers
 
-from .._aux._backends._engine import sympy_module_if_available
+from .._aux._backends._cls_coercion import register_legacy_sympy_class
+from .._aux._backends._display import latex as _routed_latex
+from .._aux._backends._engine import engine_kind, sympy_module_if_available
+from .._aux._backends._symbolic_router import conjugate as _routed_conjugate
+from .._aux._backends._symbolic_router import simplify as _routed_simplify
 from .._aux._backends._types_and_constants import expr_numeric_types
+from .._aux._vmf._safeguards import retrieve_passkey
+from ..core.base import dgcv_class
 from .eds import abstDFAtom, abstDFMonom, abstract_DF, abstract_ZF, zeroFormAtom
 
 sp = sympy_module_if_available()
 
 
-class DF_representation(sp.Basic):
+class DF_representation(dgcv_class):
+    _dgcv_class_check = retrieve_passkey()
+    _dgcv_category = "DF_representation"
+
     def __new__(cls, row_count=None, col_count=None, array_data=None):
         if all(arg is None for arg in [col_count, array_data]):
             if row_count is None:
@@ -117,7 +126,7 @@ class DF_representation(sp.Basic):
                 array_data[j][k] for j in range(row_count) for k in range(col_count)
             }
 
-        obj = sp.Basic.__new__(cls, array_data)
+        obj = object.__new__(cls)
         obj.row_count = row_count
         obj.col_count = col_count
         obj.array = array_data
@@ -219,32 +228,21 @@ class DF_representation(sp.Basic):
                 fs_set = fs_set | entry.free_symbols
         return fs_set
 
-    def _latex(self, printer=None):
+    def _latex(self, printer=None, raw=True, **kwargs):
         rows = []
         for row in self.array:
             rendered_row = []
             for entry in row:
                 if hasattr(entry, "_latex"):
-                    latex = sp.latex(entry)
+                    entry_latex = _routed_latex(entry)
                 else:
-                    latex = str(entry)
-                rendered_row.append(latex)
+                    entry_latex = str(entry)
+                rendered_row.append(entry_latex)
             rows.append(" & ".join(rendered_row))
         return r"\begin{pmatrix}" + " \\\\ ".join(rows) + r"\end{pmatrix}"
 
-    def _repr_latex_(self):
-        rows = []
-        for row in self.array:
-            rendered_row = []
-            for entry in row:
-                if hasattr(entry, "_latex"):
-                    latex = sp.latex(entry)
-                else:
-                    latex = str(entry)
-                rendered_row.append(latex)
-            rows.append(" & ".join(rendered_row))
-        latex_str = r"\begin{pmatrix}" + " \\\\ ".join(rows) + r"\end{pmatrix}"
-        return "$" + latex_str + "$"
+    def _repr_latex_(self, raw=False, **kwargs):
+        return self._latex() if raw else f"${self._latex()}$"
 
     def applyfunc(self, func):
         new_data = [
@@ -263,7 +261,7 @@ class DF_representation(sp.Basic):
             ):
                 return expr._eval_conjugate()
             else:
-                return sp.conjugate(expr)
+                return _routed_conjugate(expr)
 
         return self.applyfunc(_custom_conj)
 
@@ -277,9 +275,8 @@ class DF_representation(sp.Basic):
         expand=False,
         **kwargs,
     ):
-        return self.applyfunc(
-            lambda entry: sp.simplify(
-                entry,
+        opts = (
+            dict(
                 ratio=ratio,
                 measure=measure,
                 inverse=inverse,
@@ -288,7 +285,10 @@ class DF_representation(sp.Basic):
                 expand=expand,
                 **kwargs,
             )
+            if engine_kind() == "sympy"
+            else {}
         )
+        return self.applyfunc(lambda entry: _routed_simplify(entry, **opts))
 
     def _eval_canonicalize(self, depth=1000):
         def _canon(obj):
@@ -314,3 +314,6 @@ class DF_representation(sp.Basic):
                 return expr
 
         return self.applyfunc(_custom_subs)
+
+
+register_legacy_sympy_class(DF_representation)

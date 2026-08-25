@@ -23,6 +23,9 @@ class _frozen_array:
     def __delitem__(self, key):
         raise TypeError(f"{self.__class__.__name__} is immutable")
 
+    def __hash__(self):
+        return hash(tuple(self.shape))
+
     def __setattr__(self, name, value):
         if getattr(self, "_is_frozen", False):
             raise TypeError(f"{self.__class__.__name__} is immutable")

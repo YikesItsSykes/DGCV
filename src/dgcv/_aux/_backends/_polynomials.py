@@ -376,6 +376,15 @@ def is_polynomial(
 
 
 def _ordered_factors(expr: Any) -> List[Any]:
+    fl = getattr(expr, "factor_list", None)
+    if callable(fl):
+        try:
+            out = [base for base, mult in fl() if mult > 0]
+            if out:
+                return out
+        except Exception:
+            pass
+
     aof = getattr(expr, "as_ordered_factors", None)
     if callable(aof):
         try:
@@ -693,9 +702,37 @@ def expr_union_primitives(exprs, syms=None, *, process_rationals=False, **kwargs
     seen = set()
     out = []
     for f in processable + unprocessable:
-        k = str(f)
+        k = _factor_key(f)
         if k not in seen:
             seen.add(k)
             out.append(f)
 
     return out
+
+
+def _factor_key(f: Any) -> str:
+    try:
+        atoms = sorted(get_free_symbols(f), key=str)
+        if not atoms:
+            return str(f)
+        _gens, monoms, coeffs = poly_terms(f, atoms)
+        if not monoms or not coeffs:
+            return str(f)
+        terms = sorted(zip(monoms, coeffs), key=lambda item: item[0], reverse=True)
+        lead = terms[0][1]
+        if not lead:
+            return str(f)
+        normalized = []
+        for monom, coeff in terms:
+            try:
+                ratio = coeff / lead
+            except Exception:
+                return str(f)
+            normalized.append((tuple(monom), str(ratio)))
+        return repr((tuple(str(a) for a in atoms), tuple(normalized)))
+    except Exception:
+        pass
+    try:
+        return min(str(f), str(-f))
+    except Exception:
+        return str(f)

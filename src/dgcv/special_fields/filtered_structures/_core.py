@@ -3,7 +3,7 @@ from __future__ import annotations
 import numbers
 from collections.abc import Iterable
 
-from ..._aux._backends._symbolic_router import get_free_symbols
+from ..._aux._backends._symbolic_router import _scalar_is_zero, get_free_symbols
 from ..._aux._backends._types_and_constants import expr_numeric_types
 from ..._aux._utilities._config import dgcv_warning
 from ..._aux._vmf._safeguards import get_dgcv_category, retrieve_passkey
@@ -175,7 +175,7 @@ class _symbol_core:
                                     new_data[outer_key] = matrix_dgcv(
                                         {index_map[k]: v}, shape=inner_shape
                                     )
-                            elif v is not None and v != 0:
+                            elif v is not None and not _scalar_is_zero(v):
                                 raise TypeError(
                                     "The GLA data given to the `Tanaka_symbol` initializer appears to not be compatible with its grading."
                                 )

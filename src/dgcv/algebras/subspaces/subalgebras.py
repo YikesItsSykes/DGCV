@@ -438,7 +438,7 @@ class subalgebra_class(_algebra_methods, algebra_subspace_class):
                 "This algebra is not a Lie algebra. To compute the center for an associative algebra, set for_associative_alg=True."
             ) from None
 
-        el, temp_vars = linear_combination(self.basis)
+        el, temp_vars = linear_combination(self.basis, _disposable=True)
 
         if for_associative_alg:
             eqns = [

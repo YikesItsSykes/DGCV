@@ -24,8 +24,8 @@ from ..._aux._backends._symbolic_router import (
     simplify,
     subs,
 )
-from ..._aux._backends._types_and_constants import symbol
-from ..._aux._utilities._config import dgcv_warning
+from ..._aux._backends._types_and_constants import _disposable_symbols, symbol
+from ..._aux._utilities._config import dgcv_warning, get_dgcv_settings_registry
 from ..._aux._utilities._misc import zip_sum
 from ..._aux._vmf._safeguards import create_key, get_dgcv_category
 from ...core.arrays import _as_matrix_dgcv, matrix_dgcv
@@ -376,7 +376,7 @@ def decompose_semisimple_algebra(
     ]
 
     pref = create_key("_var")
-    variables = [symbol(f"{pref}{j}") for j in range(n * n)]
+    variables = _disposable_symbols(pref, n * n)
     vMat = matrix_dgcv(dict(enumerate(variables)), shape=(n, n))
 
     mats = []
@@ -454,12 +454,14 @@ def killingForm(alg, assume_Lie_algebra=False):
                 "killingForm expects argument to be a Lie algebra instance of the algebra"
             ) from None
         aRepLoc = adjointRepresentation(alg, assume_Lie_algebra=assume_Lie_algebra)
-        alg._killing_form = matrix_dgcv(
-            [
-                [(aRepLoc[j] * aRepLoc[k]).trace() for k in range(alg.dimension)]
-                for j in range(alg.dimension)
-            ]
-        )
+        dim = alg.dimension
+        entries = [[0] * dim for _ in range(dim)]
+        for j in range(dim):
+            for k in range(j, dim):
+                value = _trace_of_product(aRepLoc[j], aRepLoc[k])
+                entries[j][k] = value
+                entries[k][j] = value
+        alg._killing_form = matrix_dgcv(entries)
 
     return alg._killing_form
 
@@ -639,7 +641,7 @@ def _ordered_union(first, second):
 
 def _fresh_solve_variables(count):
     pref = "v" + uuid.uuid4().hex[:8]
-    return [symbol(f"{pref}{j}") for j in range(count)]
+    return _disposable_symbols(pref, count)
 
 
 def _solve_weight_kwargs(
@@ -807,7 +809,133 @@ def _basis_builder(
         )
 
 
+_rank_extraction_stats = {"fast_path": 0, "fallback": {}}
+
+
+def rank_extraction_stats():
+    return {
+        "fast_path": _rank_extraction_stats["fast_path"],
+        "fallback": dict(_rank_extraction_stats["fallback"]),
+    }
+
+
+def _decline(reason):
+    counts = _rank_extraction_stats["fallback"]
+    counts[reason] = counts.get(reason, 0) + 1
+    return None
+
+
+def _coefficient_matrix(prepared):
+    if not prepared:
+        return None
+    alg = getattr(prepared[0][1], "algebra", None)
+    dim = getattr(alg, "dimension", None)
+    if alg is None or not isinstance(dim, int):
+        return _decline("no_algebra_dimension")
+    entries = {}
+    for col, (_, elem) in enumerate(prepared):
+        cd = getattr(elem, "coeff_dict", None)
+        if not isinstance(cd, dict):
+            return _decline("no_coeff_dict")
+        if getattr(elem, "algebra", None) is not alg:
+            return _decline("mixed_algebras")
+        for row, value in cd.items():
+            if not isinstance(row, int):
+                return _decline("non_integer_key")
+            if row < 0 or row >= dim:
+                return _decline("key_out_of_range")
+            if not _scalar_is_zero(value):
+                entries[(row, col)] = value
+    return matrix_dgcv(entries, shape=(dim, len(prepared)))
+
+
+def _extract_basis_by_rank(
+    element_list,
+    ALBS=False,
+    print_solve_stats=False,
+    method="linsolve",
+    _solve_variables=None,
+    return_indices=False,
+    surface_singularities=False,
+    simplify_singularities=None,
+    force_heavy_solve=False,
+):
+    if not isinstance(element_list, (list, tuple)):
+        element_list = list(element_list)
+
+    prepared = []
+    sing = []
+    for idx, elem in enumerate(element_list):
+        if _scalar_is_zero(elem):
+            continue
+        if ALBS is True:
+            scaled = _elem_scale(elem, surface_singularities=surface_singularities)
+            if surface_singularities:
+                elem, new_sing = scaled
+                sing = _ordered_union(sing, new_sing)
+            else:
+                elem = scaled
+        prepared.append((idx, elem))
+
+    mat = _coefficient_matrix(prepared)
+    if mat is None:
+        return _extract_basis_incremental(
+            element_list,
+            ALBS=ALBS,
+            print_solve_stats=print_solve_stats,
+            method=method,
+            _solve_variables=_solve_variables,
+            return_indices=return_indices,
+            surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
+            force_heavy_solve=force_heavy_solve,
+        )
+
+    _rank_extraction_stats["fast_path"] += 1
+    if surface_singularities:
+        pivots, divisors = mat.pivot_columns(record_divisors=True)
+        sing = _ordered_union(sing, divisors)
+    else:
+        pivots = mat.pivot_columns()
+    basis = [prepared[p][1] for p in pivots]
+    idxs = [prepared[p][0] for p in pivots] if return_indices else None
+
+    if surface_singularities:
+        return (basis, idxs, sing) if return_indices else (basis, sing)
+    return (basis, idxs) if return_indices else basis
+
+
 def _extract_basis(
+    element_list,
+    ALBS=False,
+    print_solve_stats=False,
+    method="linsolve",
+    _solve_variables=None,
+    return_indices=False,
+    surface_singularities=False,
+    simplify_singularities=None,
+    force_heavy_solve=False,
+    use_rank=None,
+):
+    if use_rank is None:
+        use_rank = (
+            get_dgcv_settings_registry().get("use_rank_basis_extraction", True) is True
+        )
+    impl = _extract_basis_by_rank if use_rank else _extract_basis_incremental
+    return impl(
+        element_list,
+        ALBS=ALBS,
+        print_solve_stats=print_solve_stats,
+        method=method,
+        _solve_variables=_solve_variables,
+        return_indices=return_indices,
+        surface_singularities=surface_singularities,
+        simplify_singularities=simplify_singularities,
+        force_heavy_solve=force_heavy_solve,
+    )
+
+
+def _extract_basis_incremental(
     element_list,
     ALBS=False,
     print_solve_stats=False,

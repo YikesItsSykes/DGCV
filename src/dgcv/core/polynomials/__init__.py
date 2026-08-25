@@ -21,6 +21,8 @@ from .polynomials import (
     createMultigradedPolynomial,
     createPolynomial,
     createRational,
+    getWeightedTerms,
+    monomialWeight,
 )
 
 __all__ = [
@@ -28,4 +30,6 @@ __all__ = [
     "createPolynomial",
     "createRational",
     "createBigradPolynomial",
+    "getWeightedTerms",
+    "monomialWeight",
 ]

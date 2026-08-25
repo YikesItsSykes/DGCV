@@ -12,7 +12,7 @@ def _key_universe(tfs):
     for tf in tfs:
         if get_dgcv_category(tf) == "tensor_field":
             for k, v in tf.coeff_dict.items():
-                if v != 0:
+                if not _scalar_is_zero(v):
                     K.add(k)
     return tuple(sorted(K))
 
@@ -22,7 +22,7 @@ def _as_coeff_vector_form(tf, K, syslbl="__dgcv_par__"):
     varspacPlaceholder = None
     for j, k in enumerate(K):
         v = tf.coeff_dict.get(k, 0)
-        if v != 0:
+        if not _scalar_is_zero(v):
             cd[(j, 0, syslbl)] = v
     if not cd:
         cd = {tuple(): 0}

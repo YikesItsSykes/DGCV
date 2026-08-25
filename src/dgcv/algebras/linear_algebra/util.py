@@ -233,7 +233,7 @@ class linear_representation(dgcv_class):
         is_zero_map = getattr(hom, "_zero_map", False)
 
         def _equal(a, b):
-            return getattr(a - b, "is_zero", False) or a == b
+            return _scalar_is_zero(a - b)
 
         for c, e1 in enumerate(hom.domain.basis):
             lidx = c + 1 if skew else 0

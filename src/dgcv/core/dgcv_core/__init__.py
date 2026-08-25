@@ -25,7 +25,15 @@ from .combinations import (
     tensor_product,
     wedge,
 )
-from .coordinate_formats import conjugate_dgcv
+from .coordinate_formats import (
+    conj_with_hol_coor,
+    conj_with_real_coor,
+    conjugate_dgcv,
+    im_with_hol_coor,
+    im_with_real_coor,
+    re_with_hol_coor,
+    re_with_real_coor,
+)
 from .fields import (
     assemble_tensor_field,
     differential_form_class,
@@ -35,6 +43,7 @@ from .fields import (
 from .holomorphic_fields import (
     antiholVF_coeffs,
     complex_struct_op,
+    complexVFC,
     holVF_coeffs,
     realPartOfVF,
 )
@@ -44,14 +53,22 @@ __all__ = [
     "VF_bracket",
     "antiholVF_coeffs",
     "assemble_tensor_field",
+    "complexVFC",
     "complex_struct_op",
+    "conj_with_hol_coor",
+    "conj_with_real_coor",
     "conjugate_dgcv",
-    "createVariables",
+    "conjugate_dgcv",
     "createMatrixCoordinates",
+    "createVariables",
     "differential_form_class",
     "exteriorProduct",
     "holVF_coeffs",
+    "im_with_hol_coor",
+    "im_with_real_coor",
     "polynomial_dgcv",
+    "re_with_hol_coor",
+    "re_with_real_coor",
     "realPartOfVF",
     "sum_dgcv",
     "symmetric_product",

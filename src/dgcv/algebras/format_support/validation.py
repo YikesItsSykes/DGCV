@@ -135,10 +135,12 @@ def _validate_structure_data(
                     raise ValueError(
                         "If initializing an algebra from structure equations and supplying the `basis_order_for_supplied_str_eqns` parameter, this parameter should be a list of the atomic variables appearing in the supplied structure equations."
                     )
+                bo_names = {str(var) for var in basis_order_for_supplied_str_eqns}
                 for var in tuple_vars:
-                    if var not in basis_order_for_supplied_str_eqns:
+                    if str(var) not in bo_names:
                         if build_basis_order:
                             basis_order_for_supplied_str_eqns.append(var)
+                            bo_names.add(str(var))
                         else:
                             raise ValueError(
                                 "If initializing an algebra from structure equations and supplying the `basis_order_for_supplied_str_eqns` parameter, this parameter should be a list containing all atomic variables appearing in the supplied structure equations."
@@ -152,12 +154,13 @@ def _validate_structure_data(
                     null_return=freeze_matrix(matrix_dgcv.zeros(dim, 1)),
                 )
                 params = set()
+                ordered_BV_index = {str(v): i for i, v in enumerate(ordered_BV)}
                 for idx_pair, val in data.items():
                     if not _scalar_is_zero(val):
                         params |= get_free_symbols(val)
                         v1, v2 = idx_pair
-                        idx1 = ordered_BV.index(v1)
-                        idx2 = ordered_BV.index(v2)
+                        idx1 = ordered_BV_index[str(v1)]
+                        idx2 = ordered_BV_index[str(v2)]
 
                         if hasattr(val, "subs") and _scalar_is_zero(val.subs(zeroing)):
                             coeffs = matrix_dgcv.zeros(dim, 1)

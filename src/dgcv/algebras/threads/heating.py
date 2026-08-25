@@ -171,6 +171,19 @@ def _summary_warm_caches(
             "computing the maximal solvable ideal's lower central series",
             "compute the center" if full else progress_message,
         )
+        if (
+            getattr(rad, "dimension", None) == getattr(refAlg, "dimension", None)
+            and refAlg._is_nilpotent_cache is None
+        ):
+            terminated = getattr(rad, "_lower_central_series_terminated", None)
+            if terminated is True:
+                refAlg._is_nilpotent_cache = True
+                refAlg._educed_properties["special_type"] = "nilpotent"
+                refAlg._is_semisimple_cache = False
+                refAlg._is_simple_cache = False
+            elif terminated is False:
+                refAlg._is_nilpotent_cache = False
+                refAlg._is_abelian_cache = False
 
     if full:
         _timed_step(

@@ -29,7 +29,12 @@ from fractions import Fraction
 
 from .._utilities._config import get_variable_registry
 from ._engine import engine_kind, engine_module
-from ._types_and_constants import constant_scalar_types, one, zero
+from ._types_and_constants import (
+    constant_scalar_types,
+    fast_scalar_types,
+    one,
+    zero,
+)
 
 
 # -----------------------------------------------------------------------------
@@ -40,6 +45,8 @@ def _scalar_is_zero(x) -> bool:
         return False
 
     z = getattr(x, "is_literal_zero", None)
+    if z is None:
+        z = getattr(x, "is_trivial_zero", None)
     if z is None:
         z = getattr(x, "is_zero", None)
     if z is True:
@@ -61,6 +68,76 @@ def _scalar_is_zero(x) -> bool:
     try:
         eq = x == 0
         return eq if isinstance(eq, bool) else False
+    except Exception:
+        return False
+
+
+_gaussian_field = None
+
+
+def _exact_number_fields():
+    global _gaussian_field
+    sage = engine_module()
+    if _gaussian_field is None:
+        _gaussian_field = sage.QQ[sage.I]
+    return (sage.QQ, _gaussian_field)
+
+
+def exact_nonzero(x):
+    if isinstance(x, bool):
+        return None
+    if isinstance(x, numbers.Rational):
+        return x != 0
+
+    kind = engine_kind()
+    try:
+        if kind == "sage":
+            for field in _exact_number_fields():
+                try:
+                    return not field(x).is_zero()
+                except (TypeError, ValueError, ArithmeticError, NotImplementedError):
+                    continue
+            return None
+        if kind == "sympy":
+            if getattr(x, "is_Rational", False):
+                return x != 0
+            if getattr(x, "is_number", False):
+                real_part, imag_part = x.as_real_imag()
+                if getattr(real_part, "is_Rational", False) and getattr(
+                    imag_part, "is_Rational", False
+                ):
+                    return real_part != 0 or imag_part != 0
+            return None
+    except Exception:
+        return None
+    return None
+
+
+def is_zero_knowing_zero_is_expected(x) -> bool:
+    if _scalar_is_zero(x):
+        return True
+    try:
+        return _scalar_is_zero(simplify(x))
+    except Exception:
+        return False
+
+
+def _scalar_is_one(x) -> bool:
+    io = getattr(x, "is_one", None)
+    if isinstance(io, bool):
+        return io
+    try:
+        return _scalar_is_zero(x - 1)
+    except Exception:
+        return False
+
+
+def _scalar_is_minus_one(x) -> bool:
+    im1 = getattr(x, "is_minus_one", None)
+    if isinstance(im1, bool):
+        return im1
+    try:
+        return _scalar_is_zero(x + 1)
     except Exception:
         return False
 
@@ -149,10 +226,16 @@ def simplify(expr, method=None, **kwargs):
     if kind == "sage":
         try:
             if method is None or method == "simplify":
-                f = getattr(expr, "simplify_full", None)
+                n = getattr(expr, "normalize", None)
+                if callable(n):
+                    try:
+                        expr = n()
+                    except Exception:
+                        pass
+                f = getattr(expr, "simplify", None)
                 if callable(f):
                     return f(**kwargs)
-                f = getattr(expr, "simplify", None)
+                f = getattr(expr, "simplify_full", None)
                 if callable(f):
                     return f(**kwargs)
                 return expr
@@ -166,16 +249,67 @@ def simplify(expr, method=None, **kwargs):
     return expr
 
 
+def _fast_simplify(expr, method=None, **kwargs):
+    return simplify(expr, method=method, **kwargs)
+
+
+def _resolve_subs_keys(expr, subs_data):
+    items = getattr(subs_data, "items", None)
+    if items is None or not any(isinstance(k, str) for k in subs_data):
+        return subs_data
+
+    atoms = {str(a): a for a in get_free_symbols(expr)}
+    return {
+        atoms.get(k, k) if isinstance(k, str) else k: v for k, v in items()
+    }
+
+
 def subs(expr, subs_data, **kwargs):
     if not subs_data:
         return expr
     f = getattr(expr, "subs", None)
     if f is None:
         return expr
+    subs_data = _resolve_subs_keys(expr, subs_data)
     try:
         return f(subs_data, **kwargs)
     except Exception:
         return f(subs_data)
+
+
+def _conjugation_swaps(expr):
+    cd = get_variable_registry()["conversion_dictionaries"]["conjugation"]
+    swaps = {}
+    for a in get_free_symbols(expr):
+        image = cd.get(str(a))
+        if image is not None:
+            swaps[a] = image
+    return swaps
+
+
+def _symbolic_conjugate(expr):
+    swaps = _conjugation_swaps(expr)
+
+    if engine_kind() == "sage":
+        f = getattr(expr, "conjugate", None)
+        if not callable(f):
+            return expr
+        out = f()
+        undo = {}
+        for a, image in ((a, swaps.get(a, a)) for a in get_free_symbols(expr)):
+            g = getattr(a, "conjugate", None)
+            if not callable(g):
+                continue
+            ca = g()
+            if str(ca) == str(a):
+                continue
+            undo[ca] = image
+        return subs(out, undo)
+
+    from ._types_and_constants import imag_unit
+
+    imag = imag_unit()
+    return subs(expr, {**swaps, imag: -imag}, simultaneous=True)
 
 
 def conjugate(expr, symbolic=False):
@@ -183,14 +317,7 @@ def conjugate(expr, symbolic=False):
     if callable(f):
         return f(symbolic=symbolic)
     if symbolic is True:
-        from ._types_and_constants import imag_unit
-
-        imag = imag_unit()
-        cd = {
-            **get_variable_registry()["conversion_dictionaries"]["conjugation"],
-            imag: -imag,
-        }
-        return subs(expr, cd, simultaneous=True)
+        return _symbolic_conjugate(expr)
 
     kind = engine_kind()
 
@@ -265,7 +392,26 @@ def ratio(x, y=1):
 
     if kind == "sage":
         sage = eng
-        return sage(x) / sage(y)
+
+        if isinstance(x, (float, complex)) or isinstance(y, (float, complex)):
+            return x / y
+
+        QQ = sage.QQ
+
+        def _exact(value):
+            if isinstance(value, Fraction):
+                return QQ(value.numerator) / QQ(value.denominator)
+            if isinstance(value, numbers.Integral) and not isinstance(value, bool):
+                return QQ(int(value))
+            return value
+
+        exact_x, exact_y = _exact(x), _exact(y)
+        exact_types = fast_scalar_types()
+        if isinstance(exact_x, exact_types) and isinstance(exact_y, exact_types):
+            return exact_x / exact_y
+
+        SR = sage.SR
+        return SR(x) / SR(y)
     return x / y
 
 
@@ -287,15 +433,9 @@ def re(expr):
         if f is not None:
             return f()
         f = getattr(expr, "real", None)
-        if f is not None and not callable(f):
-            return f
-        f = getattr(expr, "real", None)
-        if callable(f):
-            return f()
-        try:
-            return expr.real_part()
-        except Exception:
-            return expr
+        if f is not None:
+            return f() if callable(f) else f
+        return expr
 
     z = getattr(expr, "real", None)
     if callable(z):
@@ -325,15 +465,9 @@ def im(expr):
         if f is not None:
             return f()
         f = getattr(expr, "imag", None)
-        if f is not None and not callable(f):
-            return f
-        f = getattr(expr, "imag", None)
-        if callable(f):
-            return f()
-        try:
-            return expr.imag_part()
-        except Exception:
-            return zero()
+        if f is not None:
+            return f() if callable(f) else f
+        return zero()
 
     z = getattr(expr, "imag", None)
     if callable(z):
@@ -343,6 +477,39 @@ def im(expr):
     if isinstance(expr, numbers.Number):
         return expr.imag
     return zero()
+
+
+def log(expr):
+    f = getattr(expr, "__dgcv_log__", None)
+    if callable(f):
+        return f()
+
+    kind = engine_kind()
+
+    if kind == "sympy":
+        return engine_module().log(expr)
+
+    if kind == "sage":
+        return engine_module().log(expr)
+
+    import math
+
+    return math.log(expr)
+
+
+def exp(expr):
+    f = getattr(expr, "__dgcv_exp__", None)
+    if callable(f):
+        return f()
+
+    kind = engine_kind()
+
+    if kind in ("sympy", "sage"):
+        return engine_module().exp(expr)
+
+    import math
+
+    return math.exp(expr)
 
 
 def as_numer_denom(expr):
@@ -365,15 +532,10 @@ def as_numer_denom(expr):
         f = getattr(expr, "numerator", None)
         g = getattr(expr, "denominator", None)
         if callable(f) and callable(g):
-            return f(), g()
-        f = getattr(expr, "numerator", None)
-        g = getattr(expr, "denominator", None)
-        if callable(f) and callable(g):
-            return f(), g()
-        try:
-            return expr.numerator(), expr.denominator()
-        except Exception:
-            return expr, one()
+            try:
+                return f(), g()
+            except Exception:
+                return expr, one()
 
     return expr, one()
 
@@ -398,7 +560,7 @@ def gcd_routed(*exprs):
         if len(exprs) == 0:
             return
         if len(exprs) == 1:
-            if exprs[0] == 0:
+            if _scalar_is_zero(exprs[0]):
                 return 1
             return exprs[0]
         return gcd_routed(engine_module().gcd(exprs[0], exprs[1]), *exprs[2:])
@@ -505,6 +667,9 @@ def factor(expr, **kwargs):
         except TypeError:
             return f(factor)
 
+    if isinstance(expr, constant_scalar_types()):
+        return expr
+
     if kind == "sympy":
         sp = engine_module()
         return sp.factor(expr, **kwargs)
@@ -515,7 +680,12 @@ def factor(expr, **kwargs):
             try:
                 return f(**kwargs)
             except TypeError:
-                return f()
+                try:
+                    return f()
+                except Exception:
+                    return expr
+            except Exception:
+                return expr
         return expr
 
     return expr

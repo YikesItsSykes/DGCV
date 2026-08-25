@@ -150,7 +150,7 @@ def satisfies_jacobi_identity(
     _progress_message: str | None = None,
     _on_timed_update=None,
 ):
-    if not target_alg._registered and verbose:
+    if verbose and not target_alg._registered:
         if target_alg.ambient._callLock == retrieve_passkey() and isinstance(
             target_alg.ambient._print_warning, str
         ):
@@ -292,7 +292,7 @@ def is_Lie_algebra(
     _progress_message: str | None = None,
     _on_timed_update=None,
 ):
-    if not target_alg._registered and verbose:
+    if verbose and not target_alg._registered:
         if target_alg.ambient._callLock == retrieve_passkey() and isinstance(
             target_alg.ambient._print_warning, str
         ):
@@ -387,7 +387,7 @@ def is_semisimple(
     _progress_message: str | None = None,
     _on_timed_update=None,
 ):
-    if not target_alg._registered and verbose:
+    if verbose and not target_alg._registered:
         if target_alg.ambient._callLock == retrieve_passkey() and isinstance(
             target_alg.ambient._print_warning, str
         ):
@@ -982,7 +982,7 @@ def derived_series(
         if (
             len(new_series) == 1
             and len(new_series[0]) == 1
-            and getattr(new_series[0][0], "is_zero", False)
+            and _scalar_is_zero(new_series[0][0])
         ):
             new_series.insert(0, ser[-2])
             build_step = 2
@@ -1043,7 +1043,9 @@ def radical(
         target_alg._radical_heavy = True
     elif target_alg._radical_cache is None:
         da = target_alg.compute_derived_algebra()
-        genElem, variables = linear_combination(target_alg.basis_in_ambient_alg)
+        genElem, variables = linear_combination(
+            target_alg.basis_in_ambient_alg, _disposable=True
+        )
         amb = target_alg.ambient
         if amb._killing_form is None:
             amb._killing_form = freeze_matrix(
@@ -1106,13 +1108,29 @@ def center(
 ):
     if surface_singularities is None:
         surface_singularities = True if target_alg._parameters else False
+
     if target_alg._center_cache is None:
-        if target_alg.dimension == 0:
+        dim_bound = target_alg.dimension
+        ldc = target_alg._Levi_deco_cache
+        if isinstance(ldc, dict):
+            _, MSI = target_alg._Levi_deco_cache["LD_components"]
+            if MSI.dimension == 0:
+                dim_bound = 0
+            else:
+                spanners = [elem.ambient_rep for elem in MSI.basis]
+        else:
+            spanners = target_alg.basis
+        if (
+            dim_bound == 0
+            or target_alg._is_semisimple_cache is True
+            or target_alg._is_simple_cache is True
+        ):
             target_alg._center_cache = target_alg.subalgebra([])
             if format_as_subalgebra:
                 return target_alg._center_cache
             return target_alg._center_cache.basis
-        gene, variables = linear_combination(target_alg.basis)
+
+        gene, variables = linear_combination(spanners, _disposable=True)
         eqns = [gene * elem for elem in target_alg.basis]
         if not target_alg.is_skew_symmetric():
             eqns += [elem * gene for elem in target_alg.basis]
@@ -1120,6 +1138,7 @@ def center(
             sol, sing = solve_dgcv(
                 eqns,
                 variables,
+                method="linsolve",
                 return_divisors=True,
                 pass_to_symbolic_engine=False,
                 simplify_pivots=simplify_singularities
@@ -1144,7 +1163,7 @@ def center(
                     v for v in sing if get_free_symbols(v)
                 ]
         else:
-            sol = solve_dgcv(eqns, variables, simplify_result=False)
+            sol = solve_dgcv(eqns, variables, method="linsolve", simplify_result=False)
             if not sol:
                 raise RuntimeError("failed to compute the center.") from None
             sol = sol[0]

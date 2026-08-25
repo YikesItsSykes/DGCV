@@ -1,6 +1,19 @@
 from ..._aux._backends._exact_arith import exact_reciprocal, ratio
-from ..._aux._backends._symbolic_router import _scalar_is_zero, simplify
-from ..._aux._backends._types_and_constants import fast_scalar_types, symbol
+from ..._aux._backends._symbolic_router import (
+    _fast_simplify,
+    _scalar_is_one,
+    _scalar_is_zero,
+    as_numer_denom,
+    exact_nonzero,
+    get_free_symbols,
+    subs,
+)
+from ..._aux._backends._types_and_constants import (
+    _disposable_symbols,
+    constant_scalar_types,
+    fast_scalar_types,
+    rational,
+)
 from ..._aux._vmf._safeguards import create_key
 from ._indexing import _spool
 
@@ -31,6 +44,63 @@ def _invert(*, record_divisors=False, allow_formal=True):
     return _inv, None
 
 
+def _expands_to_zero(value):
+    expand = getattr(value, "expand", None)
+    if not callable(expand):
+        return False
+    try:
+        return _scalar_is_zero(expand())
+    except Exception:
+        return False
+
+
+_PROBE_PRIMES = (3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67)
+
+
+def _probe_point(atoms, round_idx):
+    count = len(_PROBE_PRIMES)
+    point = {}
+    for pos, atom in enumerate(atoms):
+        numer = _PROBE_PRIMES[(pos + 7 * round_idx) % count]
+        denom = _PROBE_PRIMES[(pos + 3 * round_idx + 5) % count]
+        point[atom] = rational(numer, denom)
+    return point
+
+
+def _certainly_nonzero(value):
+    try:
+        atoms = sorted(get_free_symbols(value) or (), key=str)
+    except Exception:
+        return False
+    if not atoms:
+        return False
+    for round_idx in range(2):
+        try:
+            probe = subs(value, _probe_point(atoms, round_idx))
+        except Exception:
+            return False
+        verdict = exact_nonzero(probe)
+        if verdict is None:
+            return False
+        if verdict:
+            return True
+    return False
+
+
+def _pivot_is_zero(value):
+    if _scalar_is_zero(value):
+        return True
+    if _certainly_nonzero(value):
+        return False
+    if _expands_to_zero(value):
+        return True
+    try:
+        numerator, _denominator = as_numer_denom(value)
+    except Exception:
+        return False
+    return _expands_to_zero(numerator)
+
+
 def _eliminate(
     work_rows,
     *,
@@ -59,7 +129,7 @@ def _eliminate(
     for col_idx in range(col_count):
         pivot_row = None
         for scan_row in range(pivot_index, row_count):
-            if not _scalar_is_zero(work_rows[scan_row][col_idx]):
+            if not _pivot_is_zero(work_rows[scan_row][col_idx]):
                 pivot_row = scan_row
                 break
         if pivot_row is None:
@@ -73,33 +143,32 @@ def _eliminate(
 
         pivot_value = work_rows[pivot_index][col_idx]
         inv_pivot = _inv(pivot_value)
+        do_simplify = simplify_steps and not fast_only
 
-        for entry_idx in range(col_idx, total_cols):
-            work_rows[pivot_index][entry_idx] = (
-                work_rows[pivot_index][entry_idx] * inv_pivot
-            )
-        if simplify_steps and not fast_only:
+        if not _scalar_is_one(inv_pivot):
             for entry_idx in range(col_idx, total_cols):
-                work_rows[pivot_index][entry_idx] = simplify(
-                    work_rows[pivot_index][entry_idx]
-                )
+                entry = work_rows[pivot_index][entry_idx]
+                if _scalar_is_zero(entry):
+                    continue
+                entry = entry * inv_pivot
+                if do_simplify and not isinstance(entry, constant_scalar_types()):
+                    entry = _fast_simplify(entry)
+                work_rows[pivot_index][entry_idx] = entry
 
         for row_idx in range(row_count):
             if row_idx == pivot_index:
                 continue
             factor = work_rows[row_idx][col_idx]
-            if _scalar_is_zero(factor):
+            if _pivot_is_zero(factor):
                 continue
             for entry_idx in range(col_idx, total_cols):
-                work_rows[row_idx][entry_idx] = (
-                    work_rows[row_idx][entry_idx]
-                    - factor * work_rows[pivot_index][entry_idx]
-                )
-            if simplify_steps and not fast_only:
-                for entry_idx in range(col_idx, total_cols):
-                    work_rows[row_idx][entry_idx] = simplify(
-                        work_rows[row_idx][entry_idx]
-                    )
+                pivot_entry = work_rows[pivot_index][entry_idx]
+                if _scalar_is_zero(pivot_entry):
+                    continue
+                value = work_rows[row_idx][entry_idx] - factor * pivot_entry
+                if do_simplify and not isinstance(value, constant_scalar_types()):
+                    value = _fast_simplify(value)
+                work_rows[row_idx][entry_idx] = value
 
         pivcol_to_row[col_idx] = pivot_index
         pivot_cols.append(col_idx)
@@ -266,6 +335,74 @@ class _matrix_linalg:
             return rank_value, divisors
         return rank_value
 
+    def solve_right_batch(
+        self, rhs, *, allow_formal_inverse=True, simplify_steps=False
+    ):
+        n_unknowns = self.ncols
+        rhs_matrix = rhs if isinstance(rhs, matrix_dgcv) else matrix_dgcv(rhs)
+        if rhs_matrix.nrows != self.nrows:
+            raise ValueError("solve_right_batch requires matching row counts")
+        n_rhs = rhs_matrix.ncols
+        if self.nrows == 0 or n_unknowns == 0:
+            return (
+                [[0] * n_unknowns for _ in range(n_rhs)],
+                set(),
+                list(range(n_unknowns)),
+            )
+
+        work_rows = []
+        for row_idx in range(self.nrows):
+            row = [self[row_idx, col] for col in range(n_unknowns)]
+            row += [rhs_matrix[row_idx, col] for col in range(n_rhs)]
+            work_rows.append(row)
+
+        _, pivcol_to_row, _pivot_cols, _ = _eliminate(
+            work_rows,
+            rhs_cols=n_rhs,
+            record_divisors=False,
+            allow_formal_inverse=allow_formal_inverse,
+            simplify_steps=simplify_steps,
+            fast_only=False,
+            want_pivmap=True,
+        )
+
+        inconsistent = set()
+        for row in work_rows:
+            if any(not _pivot_is_zero(row[col]) for col in range(n_unknowns)):
+                continue
+            for idx in range(n_rhs):
+                if not _pivot_is_zero(row[n_unknowns + idx]):
+                    inconsistent.add(idx)
+
+        solutions = [[0] * n_unknowns for _ in range(n_rhs)]
+        for pivot_col, pivot_row in pivcol_to_row.items():
+            for idx in range(n_rhs):
+                solutions[idx][pivot_col] = work_rows[pivot_row][n_unknowns + idx]
+
+        free_cols = [col for col in range(n_unknowns) if col not in pivcol_to_row]
+        return solutions, inconsistent, free_cols
+
+    def pivot_columns(self, record_divisors=False, simplify_steps=False):
+        if self.nrows == 0 or self.ncols == 0:
+            return ([], []) if record_divisors else []
+
+        fast_types = fast_scalar_types()
+        fast_case = all(isinstance(entry, fast_types) for entry in self._data.values())
+
+        work_rows = self._dense_copy()
+        _, _pivcol_to_row, pivot_cols, divisors = _eliminate(
+            work_rows,
+            rhs_cols=0,
+            record_divisors=record_divisors,
+            allow_formal_inverse=True,
+            simplify_steps=simplify_steps,
+            fast_only=fast_case,
+            want_pivmap=True,
+        )
+        if record_divisors:
+            return pivot_cols, (divisors or [])
+        return pivot_cols
+
     def nullspace(self):
         row_count = self.nrows
         col_count = self.ncols
@@ -319,7 +456,6 @@ class _matrix_linalg:
         simplify_steps=False,
         stamp_divisors=False,
         allow_formal_inverse=True,
-        return_parametric=True,
         parametric_vars=None,
     ):
         if self.nrows == 0:
@@ -352,13 +488,8 @@ class _matrix_linalg:
             want_pivmap=True,
         )
 
-        for row_idx in range(row_count):
-            row_is_zero = True
-            for col_idx in range(col_count):
-                if not _scalar_is_zero(work_rows[row_idx][col_idx]):
-                    row_is_zero = False
-                    break
-            if row_is_zero and not _scalar_is_zero(work_rows[row_idx][col_count]):
+        for row_idx in range(_rank, row_count):
+            if not _pivot_is_zero(work_rows[row_idx][col_count]):
                 out = None
                 if return_divisors:
                     divisor_list = divisors or []
@@ -376,7 +507,7 @@ class _matrix_linalg:
 
         if parametric_vars is None:
             prefix = create_key("_x", True, 4)
-            params = [symbol(f"{prefix}_{idx}") for idx in range(col_count)]
+            params = _disposable_symbols(f"{prefix}_", col_count)
         else:
             params = list(parametric_vars)
             if len(params) != col_count:
@@ -393,7 +524,7 @@ class _matrix_linalg:
             for free_col in free_cols:
                 value = value - work_rows[pivot_row][free_col] * solution[free_col]
             if simplify_steps and not fast_case:
-                value = simplify(value)
+                value = _fast_simplify(value)
             solution[pivot_col] = value
 
         out = solution

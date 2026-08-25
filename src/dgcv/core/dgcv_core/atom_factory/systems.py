@@ -5,14 +5,14 @@ from ...._aux._backends._types_and_constants import symbol
 from ...._aux._utilities._config import (
     dgcv_warning,
     get_variable_registry,
-    update_globals,
-    update_globals_k_v,
+    update_working_namespace,
+    update_working_namespace_k_v,
 )
 from ...._aux._vmf._safeguards import retrieve_passkey, validate_label
 from ...._aux._vmf.vmf import clearVar
 from ...combinatorics.combinatorics import build_nd_array, carProd
 from ..fields import differential_form_class, vector_field_class
-from .atoms import indexing_places
+from .atoms import effective_assumptions, indexing_places, register_enforced_real
 
 
 def varWithVF(
@@ -111,27 +111,17 @@ def varWithVF(
                 _calledFromCVP == passkey or _calledFromFactory == passkey
             ):  # CVP doesn't manage sub-parant names
                 clearVar(*vars, report=False)
-                update_globals(dict(zip(var_names, vars)))
-                update_globals_k_v(labelLoc, var_values)
+                update_working_namespace(dict(zip(var_names, vars)))
+                update_working_namespace_k_v(labelLoc, var_values)
 
-            if enforce_real and enforced_real_dict is not None:
-                if (
-                    assumptions.get("real", False)
-                    or assumptions.get("nonnegative")
-                    or assumptions.get("positive", False)
-                ):
-                    for v in vars:
-                        enforced_real_dict[v.conjugate()] = v
-                elif targeted_assumptions:
-                    for v in vars:
-                        t_a = targeted_assumptions.get(str(v), None)
-                        if (
-                            t_a
-                            and t_a.get("real", False)
-                            or t_a.get("nonnegative")
-                            or t_a.get("positive", False)
-                        ):
-                            enforced_real_dict[v.conjugate()] = v
+            if enforce_real:
+                register_enforced_real(
+                    vars,
+                    var_names,
+                    assumptions,
+                    targeted_assumptions,
+                    enforced_real_dict,
+                )
 
             N = len(base_vars)
             vf_instances = [
@@ -153,14 +143,18 @@ def varWithVF(
             ]
 
             if _doNotUpdateVar != passkey:
-                update_globals(dict(zip([f"D_{vn}" for vn in var_names], vf_instances)))
-                update_globals(dict(zip([f"d_{vn}" for vn in var_names], df_instances)))
+                update_working_namespace(
+                    dict(zip([f"D_{vn}" for vn in var_names], vf_instances))
+                )
+                update_working_namespace(
+                    dict(zip([f"d_{vn}" for vn in var_names], df_instances))
+                )
 
             def var_v_a(elem):
-                if targeted_assumptions:
-                    t_a = targeted_assumptions.get(elem, None)
-                    return t_a if t_a else assumptions
-                return assumptions
+                return (
+                    effective_assumptions(elem, assumptions, targeted_assumptions)
+                    or None
+                )
 
             if not (_calledFromCVP == passkey or _calledFromFactory == passkey):
                 variable_registry["standard_variable_systems"][labelLoc] = {
@@ -213,24 +207,16 @@ def varWithVF(
             else:
                 sym = symbol(labelLoc)
             var_values = (sym,)
-            update_globals_k_v(labelLoc, sym)
+            update_working_namespace_k_v(labelLoc, sym)
 
-            if enforce_real and enforced_real_dict is not None:
-                if (
-                    assumptions.get("real", False)
-                    or assumptions.get("nonnegative")
-                    or assumptions.get("positive", False)
-                ):
-                    enforced_real_dict[sym.conjugate()] = sym
-                elif targeted_assumptions:
-                    t_a = targeted_assumptions.get(labelLoc, None)
-                    if (
-                        t_a
-                        and t_a.get("real", False)
-                        or t_a.get("nonnegative")
-                        or t_a.get("positive", False)
-                    ):
-                        enforced_real_dict[sym.conjugate()] = sym
+            if enforce_real:
+                register_enforced_real(
+                    (sym,),
+                    (labelLoc,),
+                    assumptions,
+                    targeted_assumptions,
+                    enforced_real_dict,
+                )
 
             vf_instance = vector_field_class(
                 coeff_dict={(0, 1, labelLoc): 1},
@@ -242,15 +228,14 @@ def varWithVF(
                 dgcvType="standard",
                 variable_spaces={labelLoc: (sym,)},
             )
-            update_globals_k_v(f"D_{labelLoc}", vf_instance)
-            update_globals_k_v(f"d_{labelLoc}", df_instance)
+            update_working_namespace_k_v(f"D_{labelLoc}", vf_instance)
+            update_working_namespace_k_v(f"d_{labelLoc}", df_instance)
 
             if not (_calledFromCVP == passkey or _calledFromFactory == passkey):
-                if targeted_assumptions:
-                    t_a = targeted_assumptions.get(labelLoc, None)
-                    v_a = t_a if t_a else assumptions
-                else:
-                    v_a = assumptions
+                v_a = (
+                    effective_assumptions(labelLoc, assumptions, targeted_assumptions)
+                    or None
+                )
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "single",
                     "family_values": var_values,
@@ -314,27 +299,17 @@ def varWithVF(
             else:
                 vars = tuple(symbol(name) for name in var_names)
             var_values = vars
-            update_globals(dict(zip(var_names, vars)))
-            update_globals_k_v(labelLoc, tuple(vars))
+            update_working_namespace(dict(zip(var_names, vars)))
+            update_working_namespace_k_v(labelLoc, tuple(vars))
 
-            if enforce_real and enforced_real_dict is not None:
-                if (
-                    assumptions.get("real", False)
-                    or assumptions.get("nonnegative")
-                    or assumptions.get("positive", False)
-                ):
-                    for v in vars:
-                        enforced_real_dict[v.conjugate()] = v
-                elif targeted_assumptions:
-                    for v in vars:
-                        t_a = targeted_assumptions.get(str(v), None)
-                        if (
-                            t_a
-                            and t_a.get("real", False)
-                            or t_a.get("nonnegative")
-                            or t_a.get("positive", False)
-                        ):
-                            enforced_real_dict[v.conjugate()] = v
+            if enforce_real:
+                register_enforced_real(
+                    vars,
+                    var_names,
+                    assumptions,
+                    targeted_assumptions,
+                    enforced_real_dict,
+                )
 
             N = len(var_values)
 
@@ -355,16 +330,20 @@ def varWithVF(
                 for j in range(N)
             ]
 
-            update_globals(dict(zip([f"D_{vn}" for vn in var_names], vf_instances)))
-            update_globals(dict(zip([f"d_{vn}" for vn in var_names], df_instances)))
+            update_working_namespace(
+                dict(zip([f"D_{vn}" for vn in var_names], vf_instances))
+            )
+            update_working_namespace(
+                dict(zip([f"d_{vn}" for vn in var_names], df_instances))
+            )
 
             if not (_calledFromCVP == passkey or _calledFromFactory == passkey):
 
                 def var_v_a(elem):
-                    if targeted_assumptions:
-                        t_a = targeted_assumptions.get(elem, None)
-                        return t_a if t_a else assumptions
-                    return assumptions
+                    return (
+                        effective_assumptions(elem, assumptions, targeted_assumptions)
+                        or None
+                    )
 
                 variable_registry["standard_variable_systems"][labelLoc] = {
                     "family_type": "tuple",

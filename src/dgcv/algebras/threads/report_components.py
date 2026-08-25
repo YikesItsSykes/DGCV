@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ..._aux._backends._symbolic_router import _scalar_is_zero
 from .heating import _ideal_iso_label
 
 
@@ -42,7 +43,7 @@ def _is_trivial_level(level) -> bool:
     if not level:
         return True
     if isinstance(level, (list, tuple)) and len(level) == 1:
-        return bool(getattr(level[0], "is_zero", False))
+        return _scalar_is_zero(level[0])
     return False
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
     clear_denominators,
     get_free_symbols,
     subs,
@@ -12,11 +13,12 @@ from ...core.solvers import solve_dgcv
 
 
 class _DS_component:
-    __slots__ = ("parts", "spanners")
+    __slots__ = ("parts", "spanners", "coords")
 
-    def __init__(self, spanners, parts=None):
+    def __init__(self, spanners, parts=None, coords=None):
         self.spanners = spanners
         self.parts = parts
+        self.coords = coords
 
     def truncated_spanners(self, max_weight):
         if self.parts is None:
@@ -98,7 +100,7 @@ def _DS_weight_list(elem, primary_grading):
 
 
 def _DS_is_zero(elem):
-    return getattr(elem, "is_zero", False) is True or elem == 0
+    return _scalar_is_zero(elem)
 
 
 def _DS_homogeneous_parts(elem, primary_grading):
@@ -162,13 +164,13 @@ def _DS_realign(spanners, primary_grading):
         blocks[w] = block
 
     def build(vector):
-        terms = [c * s for c, s in zip(vector, spanners) if c != 0]
+        terms = [c * s for c, s in zip(vector, spanners) if not _scalar_is_zero(c)]
         elem = terms[0]
         for term in terms[1:]:
             elem = elem + term
         pieces = dict()
         for c, part_map in zip(vector, parts):
-            if c == 0:
+            if _scalar_is_zero(c):
                 continue
             for w, piece in part_map.items():
                 pieces[w] = pieces[w] + c * piece if w in pieces else c * piece
@@ -185,7 +187,9 @@ def _DS_realign(spanners, primary_grading):
                 tuple(1 if m == n else 0 for m in range(len(avars)))
                 for n in range(len(avars))
             ]
-        resolved = solve_dgcv(eqns, avars, method="linsolve", simplify_result=False)
+        resolved = solve_dgcv(
+            eqns, avars, method="linear_parametric", simplify_result=False
+        )
         if len(resolved) == 0:
             return []
         resolved = resolved[0]

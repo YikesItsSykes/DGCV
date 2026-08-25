@@ -1,23 +1,12 @@
-from ..._aux._backends._symbolic_router import conjugate, subs
-from ..._aux._backends._types_and_constants import imag_unit
-from ..._aux._vmf._safeguards import check_dgcv_category, get_variable_registry
+from ..._aux._backends._symbolic_router import conjugate
 from ._indexing import _spool, _unspool
+from ._validation import _is_array_like
 
 
 class _matrix_structure:
     def transpose(self):
         def _entry_transpose(x):
-            if x is None:
-                return x
-
-            is_dgcv = check_dgcv_category(x) is not None
-
-            if is_dgcv:
-                t = getattr(x, "transpose", None)
-                if callable(t):
-                    return t()
-                elif t is not None:
-                    return t
+            if not _is_array_like(x):
                 return x
 
             t = getattr(x, "transpose", None)
@@ -50,10 +39,7 @@ class _matrix_structure:
 
     def conjugate(self, symbolic=False):
         if symbolic is True:
-            cd = dict(
-                get_variable_registry()["conversion_dictionaries"]["conjugation"]
-            ) | {imag_unit(): -imag_unit()}
-            return subs(self, cd, simultaneous=True)
+            return self.apply(lambda entry: conjugate(entry, symbolic=True))
         return self.apply(conjugate)
 
     def conjugate_transpose(self, symbolic=False):

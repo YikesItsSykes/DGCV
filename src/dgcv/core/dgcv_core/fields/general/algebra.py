@@ -231,7 +231,7 @@ class _tensor_field_algebra:
             return sign
 
         for ka, va in a.coeff_dict.items():
-            if va == 0:
+            if _scalar_is_zero(va):
                 continue
             if ka:
                 da = len(ka) // 3
@@ -242,7 +242,7 @@ class _tensor_field_algebra:
                 ia = va_bits = sa = tuple()
 
             for kb, vb in b.coeff_dict.items():
-                if vb == 0:
+                if _scalar_is_zero(vb):
                     continue
                 if kb:
                     db = len(kb) // 3

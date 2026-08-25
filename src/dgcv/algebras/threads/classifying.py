@@ -45,7 +45,7 @@ def approximate_rank(
         if surface_singularities:
             return target_alg._rank_approximation, []
         return target_alg._rank_approximation
-    power = (
+    power_bound = (
         1
         if (assume_semisimple or target_alg._is_semisimple_cache is True)
         else target_alg.dimension
@@ -60,19 +60,27 @@ def approximate_rank(
         elem += random.randint(1, bound) * matrix_dgcv(
             elem2, shape=target_alg.structureData.shape
         )
-    rank_result = fast_rank(
-        elem**power,
-        surface_singularities=surface_singularities,
-        simplify_singularities=simplify_singularities,
-    )
-    if surface_singularities:
-        rank, divisors = rank_result
-    else:
-        rank = rank_result
+    divisors = []
+    test_mat, test_rank = 1, target_alg.dimension
+    for _ in range(power_bound):
+        test_mat = test_mat * elem
+        rank_result = fast_rank(
+            test_mat,
+            surface_singularities=surface_singularities,
+            simplify_singularities=simplify_singularities,
+        )
+        if surface_singularities:
+            rank, new_divisors = rank_result
+            divisors += new_divisors
+        else:
+            rank = rank_result
+        if test_rank == rank:
+            break
+        test_rank = rank
     rank = target_alg.dimension - rank
     if not isinstance(rank, numbers.Integral):
         dgcv_warning(
-            "`approximate_rank` obtained a non-integral rank "
+            "`approximate_rank` failed"
             f"({rank}); the cached rank approximation was left unchanged."
         )
     elif (

@@ -1,4 +1,4 @@
-from ..._aux._backends._symbolic_router import conjugate, simplify
+from ..._aux._backends._symbolic_router import _scalar_is_zero, conjugate, simplify
 from ..._aux._backends._types_and_constants import imag_unit
 from ..._aux._vmf._safeguards import get_dgcv_category, query_dgcv_categories
 from ..conversions.conversions import realToHol
@@ -122,7 +122,7 @@ def complex_struct_op(vf):
     new_cd = {}
 
     for k, c in vf.coeff_dict.items():
-        if not c:
+        if _scalar_is_zero(c):
             continue
 
         if k == tuple():

@@ -26,7 +26,12 @@ from typing import Literal
 from dgcv import __version__
 
 from ...core.base import dgcv_class
-from .._backends._cls_coercion import attach_sympy_hook, detach_sympy_hook
+from .._backends._cls_coercion import (
+    attach_legacy_sympy_converters,
+    attach_sympy_hook,
+    detach_legacy_sympy_converters,
+    detach_sympy_hook,
+)
 from .._backends._engine import (
     invalidate_engine_cache,
     is_sage_available,
@@ -87,6 +92,7 @@ def set_dgcv_settings(
     default_engine: Literal["sage", "sympy", "dgcv_custom"] | None = None,
     verbose_label_printing: bool | None = None,
     pass_solve_requests_to_symbolic_engine: bool | None = None,
+    use_rank_basis_extraction: bool | None = None,
     DEBUG: bool | None = None,
     extra_support_for_math_in_tables: bool | None = None,
     preferred_variable_format: Literal["complex", "real"] | None = None,
@@ -277,10 +283,21 @@ def set_dgcv_settings(
 
         dgcvSR["version_specific_defaults"] = requested_vsd
 
+    effective_vsd = (
+        requested_vsd
+        if requested_vsd is not None
+        else dgcvSR.get("version_specific_defaults")
+    )
+
     if requested_vsd is not None and needs_sympy_hook(requested_vsd):
         attach_sympy_hook(dgcv_class)
     else:
         detach_sympy_hook(dgcv_class)
+
+    if effective_vsd is not None and needs_sympy_hook(effective_vsd):
+        attach_legacy_sympy_converters()
+    else:
+        detach_legacy_sympy_converters()
 
     if theme is not None:
         _apply_keyval("theme", theme)
@@ -377,6 +394,9 @@ def set_dgcv_settings(
             "pass_solve_requests_to_symbolic_engine",
             pass_solve_requests_to_symbolic_engine,
         )
+
+    if use_rank_basis_extraction is not None:
+        _apply_keyval("use_rank_basis_extraction", use_rank_basis_extraction)
 
     if DEBUG is not None:
         _apply_keyval("DEBUG", DEBUG)
@@ -477,6 +497,7 @@ def reset_dgcv_settings():
             "pass_solve_requests_to_symbolic_engine": True,
             "extra_support_for_math_in_tables": _vscodepatch,
             "use_numeric_methods": False,
+            "use_rank_basis_extraction": True,
             "default_numeric_engine": "numpy",
             "numeric_error_thresholds": {
                 "abs_tol": 1e-9,

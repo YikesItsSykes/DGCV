@@ -402,7 +402,7 @@ class subalgebra_element(dgcv_class):
     def weighted_decomposition(self, test_weights=None, flatten_weights=False):
         weighted_components = {}
         for idx, coeff in self.coeff_dict.items():
-            if coeff != 0:
+            if not _scalar_is_zero(coeff):
                 elem = self.algebra.basis[idx]
                 w = elem.check_element_weight(
                     test_weights=test_weights, flatten_weights=flatten_weights

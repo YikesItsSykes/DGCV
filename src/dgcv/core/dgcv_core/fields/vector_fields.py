@@ -466,7 +466,7 @@ class vector_field_class(tensor_field_class):
         if ignore_complex_handling or fmt.get("dgcv_type") == "standard":
             out = 0
             for k, c in self.coeff_dict.items():
-                if not c:
+                if _scalar_is_zero(c):
                     continue
                 d = len(k) // 3
                 if d != 1:
@@ -490,7 +490,7 @@ class vector_field_class(tensor_field_class):
         out = 0
 
         for k, c in self.coeff_dict.items():
-            if not c:
+            if _scalar_is_zero(c):
                 continue
 
             d = len(k) // 3
@@ -672,7 +672,7 @@ class differential_operator(dgcv_class):
             new_dict = dict(self._od)
             for k, v in other._od.items():
                 new_val = new_dict.get(k, 0) + v
-                if new_val != 0:
+                if not _scalar_is_zero(new_val):
                     new_dict[k] = new_val
             return differential_operator(new_dict, validated=True)
         return NotImplemented

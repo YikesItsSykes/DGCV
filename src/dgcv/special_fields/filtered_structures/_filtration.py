@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from ..._aux._backends._symbolic_router import get_free_symbols, simplify, subs
+from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
+    get_free_symbols,
+    simplify,
+    subs,
+)
 from ..._aux._backends._types_and_constants import rational
 from ..._aux._utilities._config import dgcv_warning
 from ..._aux._vmf._safeguards import query_dgcv_categories, retrieve_passkey
@@ -132,8 +137,8 @@ class filtration_class(dgcv_class):
                         self.growth_vector[l_idx],
                     )
                 part2, part3 = clist[ld:ld_inc], clist[ld_inc:]
-                if any(coef != 0 for coef in part3):
-                    if any(simplify(coef) != 0 for coef in part3):
+                if any(not _scalar_is_zero(coef) for coef in part3):
+                    if any(not _scalar_is_zero(simplify(coef)) for coef in part3):
                         raise ValueError(
                             f"The filtration is not compatible with Lie brackets, i.e., [F_i,F_j] is not in F_{{i+j}} for i={-find_level(c1)} and j={-find_level(c2)}. The problem occurs at index pair {(c1, c2)}."
                         )

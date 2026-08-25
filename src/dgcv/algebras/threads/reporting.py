@@ -5,16 +5,9 @@ import uuid
 from html import escape as _esc
 
 from ..._aux._backends._display import fast_printable
-from ..._aux._backends._polynomials import (
-    expr_union_primitives,
-)
-from ..._aux._backends._symbolic_router import (
-    get_free_symbols,
-)
-from ..._aux._utilities._config import (
-    get_dgcv_settings_registry,
-    latex_in_html,
-)
+from ..._aux._backends._polynomials import expr_union_primitives
+from ..._aux._backends._symbolic_router import _scalar_is_zero, get_free_symbols
+from ..._aux._utilities._config import get_dgcv_settings_registry, latex_in_html
 from ..._aux._utilities._styles import get_style
 from ..._aux._vmf.vmf import order_coordinates
 from ..._aux.printing._tables import build_matrix_table, panel_view
@@ -365,7 +358,7 @@ def _summary_render_rich(
             return True
         if isinstance(level, (list, tuple)) and len(level) == 1:
             z = level[0]
-            return bool(getattr(z, "is_zero", False))
+            return _scalar_is_zero(z)
         return False
 
     def _fmt_basis_list(elems):

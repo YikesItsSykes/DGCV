@@ -18,7 +18,11 @@ SPDX-License-Identifier: Apache-2.0
 
 import uuid
 
-from .._backends._types_and_constants import imag_unit, symbol
+from .._backends._types_and_constants import (
+    _disposable_symbol,
+    imag_unit,
+    symbol,
+)
 
 
 def zip_sum(*args, init=0):
@@ -42,6 +46,7 @@ def linear_combination(
     separate_real_and_imag_parts=False,
     coefficient_assumptions=None,
     initialIndex: int = 1,
+    _disposable: bool = False,
     **kwargs,
 ):
     if separate_real_and_imag_parts:
@@ -70,8 +75,14 @@ def linear_combination(
     else:
         pref = kwargs.pop("prefix", None) or "_dgcvvar_"
         vl = pref + uuid.uuid4().hex[:6]
-    v = [
-        symbol(f"{vl}{x}", assumptions=coefficient_assumptions)
-        for x in range(initialIndex, initialIndex + len(elements))
-    ]
+    if _disposable and coefficient_assumptions is None:
+        v = [
+            _disposable_symbol(f"{vl}{x}")
+            for x in range(initialIndex, initialIndex + len(elements))
+        ]
+    else:
+        v = [
+            symbol(f"{vl}{x}", assumptions=coefficient_assumptions)
+            for x in range(initialIndex, initialIndex + len(elements))
+        ]
     return zip_sum(v, elements), v

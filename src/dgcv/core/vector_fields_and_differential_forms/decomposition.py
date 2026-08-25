@@ -44,6 +44,7 @@ def decompose(
     *,
     assume_basis: bool = False,
     register_parameters: bool = False,
+    _no_disposable_solve_vars: bool = False,
 ):
     """
     Decomposes a vector field or differential form as a linear combination of a given `basis` list.
@@ -133,12 +134,25 @@ def decompose(
             eqns, _ = ob
             eqns = list(eqns or [])
             if variables_to_constrain:
-                sol = solve_dgcv(eqns, variables_to_constrain, simplify_result=False)
+                sol = solve_dgcv(
+                    eqns,
+                    variables_to_constrain,
+                    method="linsolve",
+                    simplify_result=False,
+                )
                 if len(sol) > 0:
                     return [], basis, sol
             return bool(eqns) and all(_scalar_is_zero(e) for e in eqns)
         return ([], basis)
-    gen_combo, variables = linear_combination(basis)
+    use_disposable_solve_vars = (
+        assume_basis
+        and not return_parameters
+        and not variables_to_constrain
+        and not _no_disposable_solve_vars
+    )
+    gen_combo, variables = linear_combination(
+        basis, _disposable=use_disposable_solve_vars
+    )
     if variables_to_constrain:
         variables = list(variables) + list(variables_to_constrain)
     system = obj - gen_combo
@@ -179,20 +193,37 @@ def decompose(
     if variables_to_constrain:
         for expr in vtc_solutions.values():
             free |= set(get_free_symbols(expr) or ())
+    varnames = {str(x) for x in variables}
     if len(free) > len(variables):
         if variables_to_constrain:
-            vtcset = set(variables_to_constrain)
-            compset = {x for x in free if x not in vtcset}
+            vtcnames = {str(x) for x in variables_to_constrain}
+            compnames = {str(x) for x in free if str(x) not in vtcnames}
         else:
-            compset = free
-        free = {x for x in variables if x in compset}
+            compnames = {str(x) for x in free}
+        free = {x for x in variables if str(x) in compnames}
     else:
         if variables_to_constrain:
-            vtcset = set(variables_to_constrain)
-            compset = {x for x in variables if x not in vtcset}
+            vtcnames = {str(x) for x in variables_to_constrain}
+            compset = {x for x in variables if str(x) not in vtcnames}
         else:
             compset = variables
-        free = {x for x in free if x in variables}
+        free = {x for x in free if str(x) in varnames}
+    if use_disposable_solve_vars and free:
+        return decompose(
+            obj,
+            basis,
+            return_parameters=return_parameters,
+            new_parameters_label=new_parameters_label,
+            only_check_decomposability=only_check_decomposability,
+            variables_to_constrain=variables_to_constrain,
+            assume_VTC_linear=assume_VTC_linear,
+            _pass_error_report=_pass_error_report,
+            _hand_off=_hand_off,
+            assume_basis=assume_basis,
+            register_parameters=register_parameters,
+            _no_disposable_solve_vars=True,
+        )
+
     if return_parameters and free:
         free = tuple(free)
         if register_parameters:
@@ -245,7 +276,9 @@ def _decompose_over_number_field(
     eqns = obj - general_combination
 
     if hasattr(eqns, "__dgcv_zero_obstr__"):
-        eqns = [eqn for eqn in eqns.__dgcv_zero_obstr__[0] if eqn != 0]
+        eqns = [
+            eqn for eqn in eqns.__dgcv_zero_obstr__[0] if not _scalar_is_zero(eqn)
+        ]
     exhaustion_tree = {0: {tuple(free_symbols): list(eqns)}}
     for order in range(order_bound):
         if order not in exhaustion_tree:
@@ -258,7 +291,7 @@ def _decompose_over_number_field(
                 new_branch = []
                 for var in v_tuple:
                     neqn = diff(eqn, var)
-                    if neqn != 0:
+                    if not _scalar_is_zero(neqn):
                         branch_root.append(var)
                         new_branch.append(neqn)
                 if len(branch_root) == 0:
@@ -299,7 +332,7 @@ def _extract_basis_over_number_field(
 ):
     basis = []
     for elem in spanners:
-        if getattr(elem, "is_zero", False) or elem == 0:
+        if _scalar_is_zero(elem):
             continue
         if len(basis) == 0:
             basis.append(elem)

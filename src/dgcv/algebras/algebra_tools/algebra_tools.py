@@ -35,10 +35,10 @@ limitations under the License.
 # -----------------------------------------------------------------------------
 from typing import Sequence
 
-from ..._aux._backends._symbolic_router import get_free_symbols, subs
+from ..._aux._backends._symbolic_router import _scalar_is_zero, get_free_symbols, subs
 from ..._aux._backends._types_and_constants import check_dgcv_scalar, symbol
 from ..._aux._utilities._config import dgcv_warning
-from ..._aux._utilities._misc import zip_sum
+from ..._aux._utilities._misc import linear_combination, zip_sum
 from ..._aux._vmf._safeguards import create_key, get_dgcv_category
 from ..._aux._vmf.vmf import first_available_label, vmf_lookup
 from ...core.arrays import array_dgcv, freeze_matrix, matrix_dgcv
@@ -324,10 +324,9 @@ def intersection(*args) -> list:
     for f2 in factors[1:]:
         w1 = wedge(*b1)
         b2 = _extract_basis(f2)
-        variables = [symbol(f"_dgcv_var{idx}") for idx in range(len(b2))]
-        genelem = sum(c * elem for c, elem in zip(variables, b2))
+        genelem, variables = linear_combination(b2, _disposable=True)
         w2 = wedge(w1, genelem)
-        sol = solve_dgcv(w2.coeffs, variables)
+        sol = solve_dgcv(w2.coeffs, variables, method="linsolve", simplify_result=False)
         if len(sol) == 0:
             return []
         solelem = subs(genelem, sol[0])
@@ -521,7 +520,7 @@ def vector_field_representation(
     eqns = [
         var - gen_element.coeff_dict.get(idx, 0) for idx, var in enumerate(coordinates)
     ]
-    sol = solve_dgcv(eqns, svars)[0]
+    sol = solve_dgcv(eqns, svars, method="linsolve", simplify_result=False)[0]
     vf_rep = []
     t = symbol("_t_dgcv")
     tvf = coordinate_vector_field(t)
@@ -576,7 +575,7 @@ def derivations(
         variables += new_variables
     hom = homomorphism(algebra, algebra, targets)
     eqns = hom._alg_der_eqns
-    sol = solve_dgcv(eqns, variables)[0]
+    sol = solve_dgcv(eqns, variables, method="linsolve", simplify_result=False)[0]
     fv = set()
     params = set()
     for expr in sol.values():
@@ -693,12 +692,19 @@ def quotient_by_ideal(
         for idx, x2 in enumerate(top_basis[start:]):
             idx2 = idx + start
             prod = x1 * x2
-            sol = solve_dgcv(prod - general_element, v1 + v2)
+            sol = solve_dgcv(
+                prod - general_element,
+                v1 + v2,
+                method="linsolve",
+                simplify_result=False,
+            )
             if len(sol) == 0:
                 raise RuntimeError("Error in `quotient_by_ideal` algorithm")
             s = sol[0]
             new_coeffs = {
-                nidx: s.get(v, 0) for nidx, v in enumerate(v1) if s.get(v, 0) != 0
+                nidx: s.get(v, 0)
+                for nidx, v in enumerate(v1)
+                if not _scalar_is_zero(s.get(v, 0))
             }
             sd_out[idx1, idx2] = matrix_dgcv(new_coeffs, shape=(dim, 1))
             if skew:

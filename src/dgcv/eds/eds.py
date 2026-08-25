@@ -28,17 +28,49 @@ from collections import Counter
 from functools import total_ordering
 from math import prod  # requires python >=3.8
 
-from .._aux._backends._engine import sympy_module_if_available
-from .._aux._backends._symbolic_router import get_free_symbols, ratio
-from .._aux._backends._types_and_constants import expr_numeric_types, expr_types
+from .._aux._backends._cls_coercion import register_legacy_sympy_class
+from .._aux._backends._display import latex as _routed_latex
+from .._aux._backends._engine import _get_sympy_module, sympy_module_if_available
+from .._aux._backends._symbolic_router import (
+    _scalar_is_one,
+    _scalar_is_zero,
+    get_free_symbols,
+    ratio,
+)
+from .._aux._backends._symbolic_router import (
+    as_numer_denom as _routed_as_numer_denom,
+)
+from .._aux._backends._symbolic_router import (
+    conjugate as _routed_conjugate,
+)
+from .._aux._backends._symbolic_router import (
+    log as _routed_log,
+)
+from .._aux._backends._symbolic_router import (
+    simplify as _routed_simplify,
+)
+from .._aux._backends._types_and_constants import (
+    HEAD_ADD,
+    HEAD_CONJUGATE,
+    HEAD_CONSTANT,
+    HEAD_EXP,
+    HEAD_NUMBER,
+    as_engine_scalar,
+    e_constant,
+    expr_head,
+    expr_numeric_types,
+    expr_types,
+    integer,
+    symbol,
+    zero,
+)
 from .._aux._deprecated.dgcv_formatter import process_basis_label
 from .._aux._utilities._config import (
     dgcv_warning,
-    get_dgcv_settings_registry,
-    get_globals,
     get_variable_registry,
-    update_globals,
-    update_globals_k_v,
+    update_working_namespace,
+    update_working_namespace_k_v,
+    working_namespace,
 )
 from .._aux._vmf._safeguards import (
     create_key,
@@ -47,6 +79,15 @@ from .._aux._vmf._safeguards import (
     validate_label,
 )
 from .._aux._vmf.vmf import clearVar
+from .._aux.printing.printing._eds import (
+    bar_label_latex,
+    conjugation_prefix,
+    ext_der_latex,
+    ext_der_repr,
+    ext_der_str,
+    ordinal_latex,
+)
+from ..core.base import dgcv_class
 from ..core.combinatorics.combinatorics import carProd, weightedPermSign
 
 sp = sympy_module_if_available()
@@ -86,7 +127,7 @@ class barSortedStr:
             self.str = None
 
     def __lt__(self, other):
-        pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+        pref = conjugation_prefix()
         prefL = len(pref)
         if self.str is None:
             return True
@@ -133,10 +174,13 @@ def _custom_conj(expr):
     ):
         return expr._eval_conjugate()
     else:
-        return sp.conjugate(expr)
+        return _routed_conjugate(expr)
 
 
-class zeroFormAtom(sp.Basic):
+class zeroFormAtom(dgcv_class):
+    _dgcv_class_check = retrieve_passkey()
+    _dgcv_category = "zeroFormAtom"
+
     def __new__(
         cls,
         label,
@@ -191,7 +235,7 @@ class zeroFormAtom(sp.Basic):
             )
 
         # Using SymPy's Basic constructor
-        obj = sp.Basic.__new__(cls, label, coframe_derivatives, coframe)
+        obj = object.__new__(cls)
         obj.label = label
         obj.coframe_derivatives = coframe_derivatives
         obj.coframe = coframe
@@ -271,19 +315,19 @@ class zeroFormAtom(sp.Basic):
         )
         return self_key < other_key
 
-    def sort_key(self, order=None):  # for the sympy sorting.py default_sort_key
+    def sort_key(self, order=None):
         return (
             3,
             self.label,
             len(self.coframe_derivatives),
             tuple(elem[1:] for elem in self.coframe_derivatives),
-        )  # 3 is to group with sp.Symbol
+        )
 
     def _eval_conjugate(self):
         """
         Define how `sympy.conjugate()` should behave for zeroFormAtom instances.
         """
-        pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+        pref = conjugation_prefix()
         prefL = len(pref)
         if "real" in self._markers:
             conjugated_label = self.label
@@ -539,11 +583,6 @@ class zeroFormAtom(sp.Basic):
         else:
             raise TypeError("`zeroFormAtom.subs()` received unsupported subs data.")
 
-    def _eval_subs(self, old, new):  ###!!!
-        if self == old:
-            return new
-        return self
-
     def expand(self, **kw):
         return self
 
@@ -589,7 +628,7 @@ class zeroFormAtom(sp.Basic):
 
         return self.label
 
-    def _latex(self, printer=None):
+    def _latex(self, printer=None, raw=True, **kwargs):
         """
         LaTeX representation for zeroFormAtom.
         """
@@ -600,7 +639,7 @@ class zeroFormAtom(sp.Basic):
 
         base_label = self.label
         conjugated = False
-        pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+        pref = conjugation_prefix()
         prefL = len(pref)
         if base_label.startswith(pref):
             base_label = base_label[prefL:]
@@ -711,24 +750,13 @@ class zeroFormAtom(sp.Basic):
 
         final_str = pre_final_str
 
-        def enum_print(count):
-            if count == 0:
-                return r"0^\text{th}"
-            if count == 1:
-                return r"1^\text{st}"
-            if count == 2:
-                return r"2^\text{nd}"
-            if count == 3:
-                return r"3^\text{rd}"
-            return str(count) + r"^\text{th}"
-
         count = 2
         for new_partials_str in partials_strs[1:]:
-            final_str = f"\\left.\\smash{{{final_str}}}\\vphantom{{{pre_final_str}}}\\right|_{{{new_partials_str}}}^{{\\boxed{{\\tiny{enum_print(count)}}}}}"
+            final_str = f"\\left.\\smash{{{final_str}}}\\vphantom{{{pre_final_str}}}\\right|_{{{new_partials_str}}}^{{\\boxed{{\\tiny{ordinal_latex(count)}}}}}"
             count += 1
         return final_str
 
-    def _repr_latex_(self, raw=False):
+    def _repr_latex_(self, raw=False, **kwargs):
         return self._latex() if raw else f"${self._latex()}$"
 
 
@@ -919,17 +947,20 @@ def _zeroFormFactory(
     }
 
     # update active namespace
-    update_globals_k_v(
+    update_working_namespace_k_v(
         label, family_values if family_type == "tuple" else family_values[0]
     )
-    update_globals(zip(family_names, family_values))
+    update_working_namespace(zip(family_names, family_values))
     if assumeReal is not True:
-        pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
-        update_globals_k_v(f"{pref}{label}", tuple(conjugates.values()))
-    update_globals(conjugates)
+        pref = conjugation_prefix()
+        update_working_namespace_k_v(f"{pref}{label}", tuple(conjugates.values()))
+    update_working_namespace(conjugates)
 
 
-class abstract_ZF(sp.Basic):
+class abstract_ZF(dgcv_class):
+    _dgcv_class_check = retrieve_passkey()
+    _dgcv_category = "abstract_ZF"
+
     """
     Symbolic expression class that represents abstract zero forms. Supports representations of combinations of many scalar-like class, such as `float`, `int`, `zeroFormAtom`, and many sympy expressions
     """
@@ -962,7 +993,6 @@ class abstract_ZF(sp.Basic):
         type_hierarchy = {
             int: 0,
             float: 0,
-            sp.Expr: 1,
             zeroFormAtom: 2,
             abstract_ZF: 3,
             tuple: 4,
@@ -982,16 +1012,11 @@ class abstract_ZF(sp.Basic):
 
         def is_zero_check(x):
             """Helper function to check if x is zero."""
-            return x == 0 or x == 0.0 or (hasattr(x, "is_zero") and x.is_zero)
+            return _scalar_is_zero(x)
 
         def is_one_check(x):
-            """Helper function to check if x is zero."""
-            return (
-                x == 1
-                or x == 1.0
-                or x == sp.sympify(1)
-                or (hasattr(x, "is_one") and x.is_one)
-            )
+            """Helper function to check if x is one."""
+            return _scalar_is_one(x)
 
         # If `base` is a tuple, process it
         if isinstance(base, tuple):
@@ -1091,7 +1116,7 @@ class abstract_ZF(sp.Basic):
                     numeric_terms = [j for j in numeric_terms if j is not None]
                     if numeric_terms:
                         if op == "add":
-                            combined_numeric = sp.sympify(sum(numeric_terms))
+                            combined_numeric = sum(numeric_terms, zero())
                             if combined_numeric != 0:
                                 other_terms.insert(0, combined_numeric)
                             elif (
@@ -1099,7 +1124,7 @@ class abstract_ZF(sp.Basic):
                             ) and len(other_terms) == 0:
                                 other_terms = [combined_numeric]
                         elif op == "mul":
-                            combined_numeric = sp.prod(numeric_terms)
+                            combined_numeric = prod(numeric_terms)
                             if combined_numeric == 0 or combined_numeric == 0.0:
                                 other_terms = [combined_numeric]
                             elif combined_numeric != 1 and combined_numeric != 1.0:
@@ -1150,7 +1175,7 @@ class abstract_ZF(sp.Basic):
                 base = tuple(
                     [j.base if isinstance(j, abstract_ZF) else j for j in base]
                 )
-            obj = super().__new__(cls, base)
+            obj = object.__new__(cls)
             obj.base = base
             return obj
 
@@ -1162,8 +1187,7 @@ class abstract_ZF(sp.Basic):
                 "Base must be zeroFormAtom, int, float, sympy.Expr, abstract_ZF, or an operation tuple."
             )
 
-        # Call sp.Basic constructor
-        obj = super().__new__(cls, base)
+        obj = object.__new__(cls)
         obj.base = base
         return obj
 
@@ -1595,16 +1619,16 @@ class abstract_ZF(sp.Basic):
 
     def numer(self):
         def numer_from_sympy(x):
-            if isinstance(x, sp.Basic):
-                return x.as_numer_denom()[0]
+            if isinstance(x, expr_types()):
+                return _routed_as_numer_denom(x)[0]
             return x
 
         return self._apply_with_sympify_loop(numer_from_sympy)
 
     def denom(self):
         def denom_from_sympy(x):
-            if isinstance(x, sp.Basic):
-                return x.as_numer_denom()[1]
+            if isinstance(x, expr_types()):
+                return _routed_as_numer_denom(x)[1]
             return 1
 
         return self._apply_with_sympify_loop(denom_from_sympy)
@@ -1675,7 +1699,7 @@ class abstract_ZF(sp.Basic):
 
         return str(self.base)
 
-    def _latex(self, printer=None):
+    def _latex(self, printer=None, raw=True, **kwargs):
         """
         Returns a LaTeX representation of the expression.
         """
@@ -1741,12 +1765,12 @@ class abstract_ZF(sp.Basic):
                 ):
                     op = "_handled"
                     if isinstance(arg, tuple):
-                        arg_latex = f"{{{abstract_ZF(arg)._latex(printer=printer)}}}"
+                        arg_latex = f"{{{_routed_latex(abstract_ZF(arg))}}}"
                     else:
                         arg_latex = (
-                            f"{{{arg._latex(printer=printer)}}}"
+                            f"{{{_routed_latex(arg)}}}"
                             if hasattr(arg, "_latex")
-                            else sp.latex(arg)
+                            else _routed_latex(arg)
                         )
                     if args[1].numerator == 1:
                         if args[1].denominator == 2:
@@ -1762,12 +1786,12 @@ class abstract_ZF(sp.Basic):
                             formatted_str = f"\\left(\\sqrt[{args[1].denominator}]{{{arg_latex}}}\\right)^{{{args[1].numerator}}}"
                 else:
                     if isinstance(arg, tuple):
-                        arg_latex = f"{{{abstract_ZF(arg)._latex(printer=printer)}}}"
+                        arg_latex = f"{{{_routed_latex(abstract_ZF(arg))}}}"
                     else:
                         arg_latex = (
-                            f"{{{arg._latex(printer=printer)}}}"
+                            f"{{{_routed_latex(arg)}}}"
                             if hasattr(arg, "_latex")
-                            else sp.latex(arg)
+                            else _routed_latex(arg)
                         )
                     if needs_parentheses(arg, op, count):
                         arg_latex = f"\\left({arg_latex}\\right)"
@@ -1791,13 +1815,13 @@ class abstract_ZF(sp.Basic):
                 .replace("+ {-", "-{")
             )
 
-        return sp.latex(self.base)
+        return _routed_latex(self.base)
 
-    def _repr_latex_(self, raw=False):
+    def _repr_latex_(self, raw=False, **kwargs):
         """
         Jupyter Notebook LaTeX representation for abstract_ZF.
         """
-        return sp.latex(self) if raw else f"${sp.latex(self)}$"
+        return self._latex() if raw else f"${self._latex()}$"
 
     def to_sympy(self, subs_rules={}):
         return _sympify_abst_ZF(self, subs_rules)[0][0]
@@ -1844,18 +1868,21 @@ class abstract_ZF(sp.Basic):
         return zf
 
 
-class abstDFAtom(sp.Basic):
+class abstDFAtom(dgcv_class):
+    _dgcv_class_check = retrieve_passkey()
+    _dgcv_category = "abstDFAtom"
+
     def __new__(
         cls, coeff, degree, label=None, ext_deriv_order=0, _markers=frozenset()
     ):
-        if hasattr(coeff, "is_zero") and coeff.is_zero:
+        if _scalar_is_zero(coeff):
             coeff = 0
-        elif hasattr(coeff, "is_one") and coeff.is_one:
+        elif _scalar_is_one(coeff):
             coeff = 1
         if isinstance(coeff, numbers.Integral):
-            coeff = sp.sympify(coeff)
+            coeff = integer(coeff)
 
-        obj = sp.Basic.__new__(cls, coeff, degree, label, ext_deriv_order, _markers)
+        obj = object.__new__(cls)
         obj.label = label
         obj.degree = degree
         obj.coeff = coeff
@@ -1893,7 +1920,7 @@ class abstDFAtom(sp.Basic):
 
     def _eval_conjugate(self):
         if self.label:
-            pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+            pref = conjugation_prefix()
             prefL = len(pref)
             if "real" in self._markers:
                 label = self.label
@@ -1924,20 +1951,11 @@ class abstDFAtom(sp.Basic):
     def __repr__(self):
         """String representation for abstDFAtom."""
 
-        def extDerFormat(string):
-            if (
-                isinstance(self.ext_deriv_order, numbers.Integral)
-                and self.ext_deriv_order > 0
-            ):
-                return f"extDer({string},order = {self.ext_deriv_order})"
-            else:
-                return string
-
         if isinstance(self.coeff, (zeroFormAtom, abstract_ZF)):
-            return extDerFormat(self.coeff.__repr__())
-        coeff_sympy = sp.sympify(self.coeff)
+            return ext_der_repr(self.coeff.__repr__(), self.ext_deriv_order)
+        coeff_sympy = as_engine_scalar(self.coeff)
         if (
-            len(coeff_sympy.free_symbols) == 0
+            not get_free_symbols(coeff_sympy)
             and self.ext_deriv_order is not None
             and self.ext_deriv_order > 0
         ):
@@ -1950,82 +1968,55 @@ class abstDFAtom(sp.Basic):
             # Wrap in parentheses if there are multiple terms
             coeff_str = (
                 f"({coeff_sympy})"
-                if len(coeff_sympy.as_ordered_terms()) > 1
+                if expr_head(coeff_sympy) == HEAD_ADD
                 else str(coeff_sympy)
             )
             return (
-                extDerFormat(f"{coeff_str}{self.label}")
+                ext_der_repr(f"{coeff_str}{self.label}", self.ext_deriv_order)
                 if self.label
-                else extDerFormat(coeff_str)
+                else ext_der_repr(coeff_str, self.ext_deriv_order)
             )
 
-    def _latex(self, printer=None):
+    def _latex(self, printer=None, raw=True, **kwargs):
         """LaTeX representation for abstDFAtom."""
 
-        def extDerFormat(string):
-            if self.ext_deriv_order == 1:
-                return f"D\\left({string}\\right)"
-            elif self.ext_deriv_order is not None and self.ext_deriv_order > 1:
-                return f"D^{self.ext_deriv_order}\\left({string}\\right)"
-            else:
-                return string
-
-        def bar_labeling(label):
-            pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
-            prefL = len(pref)
-            if label[0:prefL] == pref:
-                to_print = process_basis_label(label[prefL:])
-                if "_" in to_print:
-                    return f"\\overline{{{to_print}".replace("_", "}^", 1)
-                else:
-                    return f"\\overline{{{to_print}}}"
-            else:
-                return process_basis_label(label).replace("_", "^", 1)
-
         if isinstance(self.coeff, (zeroFormAtom, abstract_ZF)):
-            return extDerFormat(self.coeff._latex(printer=printer))
-        coeff_sympy = sp.sympify(self.coeff)
+            return ext_der_latex(_routed_latex(self.coeff), self.ext_deriv_order)
+        coeff_sympy = as_engine_scalar(self.coeff)
         if (
-            len(coeff_sympy.free_symbols) == 0
+            not get_free_symbols(coeff_sympy)
             and self.ext_deriv_order is not None
             and self.ext_deriv_order > 0
         ):
             return "0"
         if coeff_sympy == 1:
-            return bar_labeling(self.label) if self.label else "1"
+            return bar_label_latex(self.label) if self.label else "1"
         elif coeff_sympy == -1:
-            return f"-{bar_labeling(self.label)}" if self.label else "-1"
+            return f"-{bar_label_latex(self.label)}" if self.label else "-1"
         else:
             # Wrap in parentheses if there are multiple terms
             coeff_latex = (
-                f"\\left({sp.latex(coeff_sympy)}\\right)"
-                if len(coeff_sympy.as_ordered_terms()) > 1
-                else sp.latex(coeff_sympy)
+                f"\\left({_routed_latex(coeff_sympy)}\\right)"
+                if expr_head(coeff_sympy) == HEAD_ADD
+                else _routed_latex(coeff_sympy)
             )
             return (
-                extDerFormat(f"{coeff_latex}{bar_labeling(self.label)}")
+                ext_der_latex(
+                    f"{coeff_latex}{bar_label_latex(self.label)}", self.ext_deriv_order
+                )
                 if self.label
                 else coeff_latex
             )
 
-    def _repr_latex_(self):
-        return f"${sp.latex(self)}$"
+    def _repr_latex_(self, raw=False, **kwargs):
+        return self._latex() if raw else f"${self._latex()}$"
 
     def __str__(self):
-        def extDerFormat(string):
-            if (
-                isinstance(self.ext_deriv_order, numbers.Integral)
-                and self.ext_deriv_order != 0
-            ):
-                return f"{string}_extD_{self.ext_deriv_order}"
-            else:
-                return string
-
         if isinstance(self.coeff, (zeroFormAtom, abstract_ZF)):
-            return extDerFormat(self.coeff.__repr__())
-        coeff_sympy = sp.sympify(self.coeff)
+            return ext_der_str(self.coeff.__repr__(), self.ext_deriv_order)
+        coeff_sympy = as_engine_scalar(self.coeff)
         if (
-            len(coeff_sympy.free_symbols) == 0
+            not get_free_symbols(coeff_sympy)
             and self.ext_deriv_order is not None
             and self.ext_deriv_order > 0
         ):
@@ -2038,13 +2029,13 @@ class abstDFAtom(sp.Basic):
             # Wrap in parentheses if there are multiple terms
             coeff_str = (
                 f"({coeff_sympy})"
-                if len(coeff_sympy.as_ordered_terms()) > 1
+                if expr_head(coeff_sympy) == HEAD_ADD
                 else str(coeff_sympy)
             )
             return (
-                extDerFormat(f"{coeff_str}{self.label}")
+                ext_der_str(f"{coeff_str}{self.label}", self.ext_deriv_order)
                 if self.label
-                else extDerFormat(coeff_str)
+                else ext_der_str(coeff_str, self.ext_deriv_order)
             )
 
     def to_sympy(self):
@@ -2056,7 +2047,7 @@ class abstDFAtom(sp.Basic):
             if hasattr(self.coeff, "to_sympy"):
                 return self.coeff.to_sympy()
             else:
-                return sp.sympify(self.coeff)
+                return _get_sympy_module().sympify(self.coeff)
         else:
             dgcv_warning(
                 "`abstDFAtom.to_sympy()` was called for an instance with positive degree, so `None` was returned."
@@ -2092,7 +2083,10 @@ class abstDFAtom(sp.Basic):
         **kwargs,
     ):
         return abstDFAtom(
-            sp.simplify(self.coeff), self.degree, self.label, _markers=self._markers
+            _routed_simplify(self.coeff),
+            self.degree,
+            self.label,
+            _markers=self._markers,
         )
 
     def _eval_canonicalize(self, depth=1000):
@@ -2454,7 +2448,7 @@ def _DFFactory(
     - _doNotUpdateVar (None, optional): If set, prevents clearing/replacing existing instances.
     - remove_guardrails (None, optional): If set, bypasses safeguards for label validation.
     """
-    pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+    pref = conjugation_prefix()
     variable_registry = get_variable_registry()
     eds_atoms = variable_registry["eds"]["atoms"]
     passkey = retrieve_passkey()
@@ -2528,18 +2522,21 @@ def _DFFactory(
     # update namespaces
     label_value = family_values if family_type == "tuple" else family_values[0]
     out = {"original": label_value}
-    update_globals_k_v(label, label_value)
-    update_globals(zip(family_names, family_values))
+    update_working_namespace_k_v(label, label_value)
+    update_working_namespace(zip(family_names, family_values))
     if assumeReal is not True:
         cl_value = tuple(conjugates.values())
         out["conjugated"] = cl_value if family_type == "tuple" else cl_value[0]
-        update_globals_k_v(f"{pref}{label}", cl_value)
-    update_globals(conjugates)
+        update_working_namespace_k_v(f"{pref}{label}", cl_value)
+    update_working_namespace(conjugates)
     if return_obj:
         return out
 
 
-class abstDFMonom(sp.Basic):
+class abstDFMonom(dgcv_class):
+    _dgcv_class_check = retrieve_passkey()
+    _dgcv_category = "abstDFMonom"
+
     def __new__(cls, factors):
         if not isinstance(factors, (list, tuple)):
             raise TypeError("`abstDFMonom` expects `factors` to be a list or tuple")
@@ -2548,7 +2545,7 @@ class abstDFMonom(sp.Basic):
                 "`abstDFMonom` expects `factors` to be a list of `abstDFAtom`"
             )
 
-        return sp.Basic.__new__(cls, *factors)
+        return object.__new__(cls)
 
     def __init__(self, factors):
         class DegreeLabelSortable:
@@ -2713,7 +2710,7 @@ class abstDFMonom(sp.Basic):
         ]
         return abstDFMonom(new_factors)
 
-    def _latex(self, printer=None):
+    def _latex(self, printer=None, raw=True, **kwargs):
         """
         LaTeX representation
         """
@@ -2731,7 +2728,7 @@ class abstDFMonom(sp.Basic):
             elif coeff_inner.is_zero:
                 coeff_latex = "0"
             else:
-                coeff_latex = sp.latex(coeff0)
+                coeff_latex = _routed_latex(coeff0)
         elif isinstance(coeff_inner, abstract_ZF):
             if coeff_inner.is_one:
                 coeff_latex = ""
@@ -2740,7 +2737,7 @@ class abstDFMonom(sp.Basic):
             elif coeff_inner.is_zero:
                 coeff_latex = "0"
             else:
-                coeff_latex = sp.latex(coeff0)
+                coeff_latex = _routed_latex(coeff0)
                 if isinstance(coeff_inner.base, tuple) and coeff_inner.base[0] in {
                     "sub",
                     "add",
@@ -2754,13 +2751,13 @@ class abstDFMonom(sp.Basic):
             elif coeff_inner == 0 or coeff_inner == 0.0:
                 coeff_latex = "0"
             else:
-                coeff_latex = sp.latex(coeff0)
+                coeff_latex = _routed_latex(coeff0)
 
         # Join the remaining factors using '\wedge'
         if len(self.factors_sorted) > 1:
             # Generate LaTeX for all non-coefficient factors
             factors_latex = " \\wedge ".join(
-                factor._latex(printer=printer) for factor in self.factors_sorted[1:]
+                _routed_latex(factor) for factor in self.factors_sorted[1:]
             )
 
             # Combine coefficient and factors, but omit '\cdot' if coeff_latex is empty or "-"
@@ -2775,6 +2772,9 @@ class abstDFMonom(sp.Basic):
             elif coeff_latex == "-":
                 return "-1"
             return coeff_latex
+
+    def _repr_latex_(self, raw=False, **kwargs):
+        return self._latex() if raw else f"${self._latex()}$"
 
     def __repr__(self):
         """
@@ -2826,7 +2826,7 @@ class abstDFMonom(sp.Basic):
             other, expr_numeric_types()
         ):
             # Scalar multiplication (prepend as an atom with degree 0)
-            other_sympy = sp.sympify(other)
+            other_sympy = as_engine_scalar(other)
             return abstDFMonom([abstDFAtom(other_sympy, 0)] + self.factors_sorted)
         elif isinstance(other, (abstract_ZF, zeroFormAtom)):
             return abstDFMonom([abstDFAtom(other, 0)] + self.factors_sorted)
@@ -2837,7 +2837,7 @@ class abstDFMonom(sp.Basic):
     def __rmul__(self, other):
         """Handle right multiplication (symmetrically supports scalar * abstDFMonom)."""
         if isinstance(other, expr_numeric_types()):
-            other_sympy = sp.sympify(other)
+            other_sympy = as_engine_scalar(other)
             return abstDFMonom([abstDFAtom(other_sympy, 0)] + self.factors_sorted)
         elif isinstance(other, (abstract_ZF, zeroFormAtom)):
             return abstDFMonom([abstDFAtom(other, 0)] + self.factors_sorted)
@@ -2876,7 +2876,7 @@ class abstDFMonom(sp.Basic):
         elif isinstance(other, (abstract_ZF, zeroFormAtom)):
             return abstract_DF([self, abstDFAtom(other, 0)])
         elif isinstance(other, expr_numeric_types()):
-            other_sympy = sp.sympify(other)
+            other_sympy = as_engine_scalar(other)
             return abstract_DF([self, abstDFAtom(other_sympy, 0)])
         else:
             raise TypeError("Unsupported operand type for + with `abstDFMonom`")
@@ -2895,7 +2895,7 @@ class abstDFMonom(sp.Basic):
         elif isinstance(other, (abstract_ZF, zeroFormAtom)):
             return abstract_DF([self, abstDFAtom(-1 * other, 0)])
         elif isinstance(other, expr_numeric_types()):
-            other_sympy = -1 * sp.sympify(other)
+            other_sympy = -1 * as_engine_scalar(other)
             return abstract_DF([self, abstDFAtom(other_sympy, 0)])
         else:
             raise TypeError("Unsupported operand type for - with `abstDFMonom`")
@@ -2915,7 +2915,10 @@ class abstDFMonom(sp.Basic):
         return var_set
 
 
-class abstract_DF(sp.Basic):
+class abstract_DF(dgcv_class):
+    _dgcv_class_check = retrieve_passkey()
+    _dgcv_category = "abstract_DF"
+
     def __new__(cls, terms):
         # Validate terms input
         if not isinstance(terms, (list, tuple)):
@@ -2924,7 +2927,7 @@ class abstract_DF(sp.Basic):
             raise TypeError(
                 "`abstract_DF` expects `terms` to be a list of `abstDFMonom` or `abstDFAtom`"
             )
-        return super().__new__(cls, *terms)
+        return object.__new__(cls)
 
     def __init__(self, terms):
         """
@@ -3084,7 +3087,7 @@ class abstract_DF(sp.Basic):
         if isinstance(other, (abstract_ZF, zeroFormAtom)):
             other = abstDFAtom(other, 0)
         elif isinstance(other, expr_numeric_types()):
-            other = abstDFAtom(sp.sympify(other), 0)
+            other = abstDFAtom(as_engine_scalar(other), 0)
         if other is None:
             return self
         elif isinstance(other, abstract_DF):
@@ -3100,7 +3103,7 @@ class abstract_DF(sp.Basic):
         if isinstance(other, (abstract_ZF, zeroFormAtom)):
             other = abstDFAtom(other, 0)
         elif isinstance(other, expr_numeric_types()):
-            other = abstDFAtom(sp.sympify(other), 0)
+            other = abstDFAtom(as_engine_scalar(other), 0)
         if other is None:
             return self
         elif isinstance(other, abstract_DF):
@@ -3121,7 +3124,7 @@ class abstract_DF(sp.Basic):
         if isinstance(other, (abstract_ZF, zeroFormAtom)):
             other = abstDFAtom(other, 0)
         elif isinstance(other, expr_numeric_types()):
-            other = abstDFAtom(sp.sympify(other), 0)
+            other = abstDFAtom(as_engine_scalar(other), 0)
         if isinstance(other, expr_numeric_types()):
             # Scalar multiplication
             return abstract_DF([term * other for term in self.terms])
@@ -3141,7 +3144,7 @@ class abstract_DF(sp.Basic):
         if isinstance(other, (abstract_ZF, zeroFormAtom)):
             other = abstDFAtom(other, 0)
         elif isinstance(other, expr_numeric_types()):
-            other = abstDFAtom(sp.sympify(other), 0)
+            other = abstDFAtom(as_engine_scalar(other), 0)
         if isinstance(other, expr_numeric_types()):
             return self * other
         if isinstance(other, abstDFAtom):
@@ -3174,13 +3177,13 @@ class abstract_DF(sp.Basic):
                 result += f" + {term}"  # Add "+" before positive terms
         return result
 
-    def _latex(self, printer=None):
+    def _latex(self, printer=None, raw=True, **kwargs):
         """LaTeX representation for SymPy's LaTeX printer."""
         if len(self.terms) == 1:
-            return self.terms[0]._latex(printer=printer)
+            return _routed_latex(self.terms[0])
 
         # Build the LaTeX string for terms
-        terms_latex = [term._latex(printer=printer) for term in self.terms]
+        terms_latex = [_routed_latex(term) for term in self.terms]
 
         result = terms_latex[0] if len(terms_latex) > 0 else ""
         for term in terms_latex[1:]:
@@ -3192,8 +3195,8 @@ class abstract_DF(sp.Basic):
                 result += " + " + term  # Add "+" before positive terms
         return result
 
-    def _repr_latex_(self):
-        return f"${sp.latex(self)}$"
+    def _repr_latex_(self, raw=False, **kwargs):
+        return self._latex() if raw else f"${self._latex()}$"
 
     def __str__(self):
         return self.__repr__()
@@ -3207,7 +3210,10 @@ class abstract_DF(sp.Basic):
         return var_set
 
 
-class abst_coframe(sp.Basic):
+class abst_coframe(dgcv_class):
+    _dgcv_class_check = retrieve_passkey()
+    _dgcv_category = "abst_coframe"
+
     def __new__(cls, coframe_basis, structure_equations, min_conj_rules={}):
         """
         Create a new abst_coframe instance.
@@ -3266,7 +3272,7 @@ class abst_coframe(sp.Basic):
                 f"`conj_rules` should be an invertible dict containing `int` indices in the range 0 to {len(forms_tuple)}"
             )
         # Create the instance
-        obj = super().__new__(cls, forms_tuple)
+        obj = object.__new__(cls)
         obj.forms = forms_tuple
         obj.structure_equations = structure_equations  # dictionary (mutable)
         obj.min_conj_rules = min_conj_rules
@@ -3286,6 +3292,9 @@ class abst_coframe(sp.Basic):
         Initialization is fully handled in __new__.
         """
         pass
+
+    def __str__(self):
+        return self.__repr__()
 
     def _sage_(self):
         raise AttributeError
@@ -3357,15 +3366,14 @@ class abst_coframe(sp.Basic):
         """
         return f"abst_coframe({', '.join(map(str, self.forms))})"
 
-    def _latex(self, printer=None):
+    def _latex(self, printer=None, raw=True, **kwargs):
         """
         LaTeX representation of the coframe as a list of 1-forms.
         """
-        return (
-            r"\{"
-            + r", ".join(form._latex(printer=printer) for form in self.forms)
-            + r"\}"
-        )
+        return r"\{" + r", ".join(_routed_latex(form) for form in self.forms) + r"\}"
+
+    def _repr_latex_(self, raw=False, **kwargs):
+        return self._latex() if raw else f"${self._latex()}$"
 
     def update_structure_equations(
         self, replace_symbols={}, replace_eqns={}, simplify=True
@@ -3394,7 +3402,7 @@ class abst_coframe(sp.Basic):
                             value.subs(replace_symbols)
                         )._eval_simplify()
                     else:
-                        self.structure_equations[key] = sp.simplify(
+                        self.structure_equations[key] = _routed_simplify(
                             value.subs(replace_symbols)
                         )
                 else:
@@ -3409,7 +3417,7 @@ class abst_coframe(sp.Basic):
                 elif isinstance(value, abstDFAtom):
                     self.structure_equations[key] = key._eval_simplify(value)
                 else:
-                    self.structure_equations[key] = sp.simplify(value)
+                    self.structure_equations[key] = _routed_simplify(value)
 
 
 def createCoframe(
@@ -3501,7 +3509,7 @@ def createCoframe(
             complete_to_complex_cf[count] == "holomorphic"
             or complete_to_complex_cf[count] == "antiholomorphic"
         ):
-            pref = get_dgcv_settings_registry().get("conjugation_prefix", "_c_")
+            pref = conjugation_prefix()
             prefL = len(pref)
             if coframe_label[0:prefL] == pref:
                 paired_label = validate_label(
@@ -3540,7 +3548,7 @@ def createCoframe(
     # register the coframe in VMF
     coframe = abst_coframe(elem_list, coframe_dict, min_conj_rules)
     label = validate_label(label, remove_guardrails=remove_guardrails)
-    update_globals_k_v(label, coframe)
+    update_working_namespace_k_v(label, coframe)
 
     # populate missing terms in str_eqns
     coeff_labels = []
@@ -3574,7 +3582,7 @@ def createCoframe(
         )
         str_eqns = {
             (k if isinstance(k, tuple) else v[0]): (
-                v if isinstance(k, tuple) else v[1] * get_globals()[k]
+                v if isinstance(k, tuple) else v[1] * working_namespace()[k]
             )
             for k, v in str_eqns.items()
         }
@@ -3613,7 +3621,7 @@ def createCoframe(
         "dimension": len(coframe_labels),
         "children": coframe_labels,
         "cousins": coeff_labels,
-        "cousins_vals": get_globals()[str_eqns_labels],
+        "cousins_vals": working_namespace()[str_eqns_labels],
         "cousins_parent": str_eqns_labels,
     }
     vr["_labels"][label] = {
@@ -4016,7 +4024,7 @@ def _cofrDer_abstract_ZF(df, cf, cfIndex):
                 return abstract_ZF(
                     (
                         "mul",
-                        sp.ln(base),
+                        _routed_log(base),
                         ("pow", base, exponent),
                         _cofrDer_abstract_ZF(exponent, cf, cfIndex),
                     )
@@ -4097,13 +4105,16 @@ def simplify_with_PDEs(expr, PDEs: dict, tryLess=False, iterations=1):
         else:
             return new_expr
     else:
-        return sp.simplify(new_expr)
+        return _routed_simplify(new_expr)
 
 
 def _sympify_abst_ZF(zf: abstract_ZF, varDict):
     if isinstance(zf.base, abstract_ZF):
         return _sympify_abst_ZF(zf.base, varDict)
-    if isinstance(zf.base, (int, float, sp.Expr, sp.NumberSymbol)) or zf.base == sp.I:
+    if isinstance(zf.base, expr_numeric_types()) or expr_head(zf.base) in (
+        HEAD_NUMBER,
+        HEAD_CONSTANT,
+    ):
         return [zf.base], varDict
     if isinstance(zf.base, zeroFormAtom):
         return _equation_formatting(zf.base, varDict)
@@ -4213,15 +4224,15 @@ def _sympy_to_abstract_ZF(expr, subs_rules={}):
             )
 
     # Handle conjugation
-    if isinstance(expr, sp.conjugate):
+    if expr_head(expr) == HEAD_CONJUGATE:
         return (
             abstract_ZF(_sympy_to_abstract_ZF(expr.args[0], subs_rules))
             ._eval_conjugate()
             .base
         )
 
-    if isinstance(expr, sp.exp):
-        return ("pow", sp.E, _sympy_to_abstract_ZF(expr.args[0], subs_rules))
+    if expr_head(expr) == HEAD_EXP:
+        return ("pow", e_constant(), _sympy_to_abstract_ZF(expr.args[0], subs_rules))
 
     # Raise error for unsupported operations
     if isinstance(expr, sp.Function):
@@ -4232,7 +4243,7 @@ def _sympy_to_abstract_ZF(expr, subs_rules={}):
     if isinstance(expr, sp.Rational):
         return ("div", expr.p, expr.q)  # Handle rational numbers explicitly
 
-    if isinstance(expr, sp.NumberSymbol) or expr == sp.I:
+    if expr_head(expr) == HEAD_CONSTANT:
         return expr  # named mathematical constants
 
     raise ValueError(
@@ -4252,8 +4263,8 @@ def _loop_ZF_format_conversions(expr, withSimplify=False, reformatter=None):
             expr.coeff
         )  # gaurantess expr is scalar (i.e., float/int/abstract_ZF etc.)
     expr, varD = _sympify_abst_ZF(expr, {})
-    expr = sp.simplify(format(expr[0])) if withSimplify else format(expr[0])
-    varD = {sp.symbols(k): v[0] for k, v in varD.items()}
+    expr = _routed_simplify(format(expr[0])) if withSimplify else format(expr[0])
+    varD = {symbol(k): v[0] for k, v in varD.items()}
     return abstract_ZF(_sympy_to_abstract_ZF(expr, varD))
 
 
@@ -4279,15 +4290,17 @@ def _equation_formatting(eqn, variables_dict):
     if get_dgcv_category(eqn) == "expression":
         eqn = eqn.polyExpr
     if isinstance(eqn, expr_numeric_types()) and not isinstance(eqn, zeroFormAtom):
-        return [sp.sympify(eqn)], var_dict
+        return [as_engine_scalar(eqn)], var_dict
     if get_dgcv_category(eqn) in [
         "algebra_element",
         "subalgebra_element",
         "vector_space_element",
     ]:
-        return [sp.sympify(term) for term in eqn.coeffs] or [], var_dict
+        return [as_engine_scalar(term) for term in eqn.coeffs] or [], var_dict
     if get_dgcv_category(eqn) in ["tensorProduct", "fastTensorProduct"]:
-        return [sp.sympify(term) for term in eqn.coeff_dict.values()] or [], var_dict
+        return [
+            as_engine_scalar(term) for term in eqn.coeff_dict.values()
+        ] or [], var_dict
     if isinstance(eqn, zeroFormAtom):
         not_found_filter = True
         for k, v in variables_dict.items():
@@ -4304,10 +4317,10 @@ def _equation_formatting(eqn, variables_dict):
                 # nothing new to add to var_dict here.
             else:
                 identifier = _generate_str_id(
-                    candidate_str, variables_dict, get_globals()
+                    candidate_str, variables_dict, working_namespace()
                 )
                 eqn_formatted = [
-                    sp.symbols(identifier)
+                    symbol(identifier)
                 ]  # The single variable is the equation
                 var_dict[identifier] = (
                     eqn,
@@ -4498,3 +4511,14 @@ _add_sympify_loop_methods(
         "expand_power_base",
     ],
 )
+
+
+for _cls in (
+    zeroFormAtom,
+    abstract_ZF,
+    abstDFAtom,
+    abstDFMonom,
+    abstract_DF,
+    abst_coframe,
+):
+    register_legacy_sympy_class(_cls)

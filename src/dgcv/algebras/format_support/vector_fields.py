@@ -1,5 +1,5 @@
 from ..._aux._backends._calculus import diff
-from ..._aux._backends._symbolic_router import get_free_symbols
+from ..._aux._backends._symbolic_router import _scalar_is_zero, get_free_symbols
 from ..._aux._backends._types_and_constants import symbol
 from ..._aux._vmf._safeguards import create_key
 from ...core.arrays import array_dgcv, freeze_matrix, matrix_dgcv
@@ -70,7 +70,7 @@ def aDataFromVFWithAnsatz(
                 eqns = [
                     eqn
                     for eqn in (liebracket - (genelement)).coeff_dict.values()
-                    if eqn != 0
+                    if not _scalar_is_zero(eqn)
                 ]
                 prev_eqns = eqns
                 for _ in range(order_bound):
@@ -81,7 +81,7 @@ def aDataFromVFWithAnsatz(
                             neqn = diff(
                                 j, var
                             )  ###!!! may be good to prune free_symbols here
-                            if neqn != 0:
+                            if not _scalar_is_zero(neqn):
                                 prev_eqns.append(neqn)
                     if len(prev_eqns) == 0:
                         break
@@ -104,7 +104,7 @@ def aDataFromVFWithAnsatz(
                 weight = 0 if grading is None else grading[idx]
                 if weight == new_weight:
                     newcoeff = sol.get(variables[counter])
-                    if newcoeff != 0:
+                    if not _scalar_is_zero(newcoeff):
                         params |= get_free_symbols(newcoeff)
                         result[idx] = newcoeff
                     counter += 1

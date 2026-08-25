@@ -13,6 +13,16 @@ def _validate_int(i, name="i"):
         raise TypeError(f"{name} must be an integer, got {i!r}")
 
 
+def _is_array_like(x):
+    if getattr(x, "is_Matrix", False):
+        return True
+    if getattr(x, "ndim", None) not in (None, 0):
+        return True
+    if hasattr(x, "nrows") or hasattr(x, "ncols"):
+        return True
+    return bool(getattr(x, "shape", None))
+
+
 def _as_seq(x, name="data"):
     if x is None:
         return None

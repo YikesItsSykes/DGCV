@@ -35,7 +35,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Sequence, Tuple
 
-from .._aux._backends._symbolic_router import get_free_symbols, simplify
+from .._aux._backends._symbolic_router import (
+    _scalar_is_zero,
+    get_free_symbols,
+    simplify,
+)
 from .._aux._backends._types_and_constants import expr_numeric_types, rational
 from .._aux._vmf._safeguards import (
     get_dgcv_category,
@@ -395,9 +399,7 @@ class KahlerStructure(dgcv_class):
     @property
     def is_closed(self):
         if self._is_closed is None:
-            self._is_closed = bool(
-                getattr(exteriorDerivative(self.kahlerForm), "is_zero", False)
-            )
+            self._is_closed = _scalar_is_zero(exteriorDerivative(self.kahlerForm))
         return self._is_closed
 
     @property

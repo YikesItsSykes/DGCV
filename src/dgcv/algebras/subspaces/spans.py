@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from ..._aux._backends._polynomials import expr_union_primitives
-from ..._aux._backends._symbolic_router import _scalar_is_zero, get_free_symbols
+from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
+    get_free_symbols,
+    is_zero_knowing_zero_is_expected,
+)
 from ..._aux._utilities._config import dgcv_warning, get_dgcv_settings_registry
 from ..._aux._vmf._safeguards import get_dgcv_category, retrieve_passkey
 from ..._aux._vmf.vmf import order_coordinates
@@ -70,7 +74,7 @@ def subalgebra(
                             new_data[outer_key] = matrix_dgcv(
                                 {index_map[k]: v}, shape=inner_shape
                             )
-                    elif v is not None and not _scalar_is_zero(v):
+                    elif v is not None and not is_zero_knowing_zero_is_expected(v):
                         raise TypeError(
                             "The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra."
                         )
@@ -124,6 +128,9 @@ def subalgebra(
     else:
         ks = None
     if testStruct["closed_under_product"] is not True:
+        from ..._aux._utilities._config import working_namespace
+
+        working_namespace()["DEBUG"] = target_alg, basis
         raise TypeError(
             "The basis provided to the `algebra_class.subalgebra` method does not span a subalgebra. Suggestion: use `algebra_class.subspace` instead."
         ) from None

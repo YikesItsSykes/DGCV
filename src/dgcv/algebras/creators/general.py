@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import numbers
 
-from ..._aux._backends._types_and_constants import (
-    expr_numeric_types,
-)
+from ..._aux._backends._types_and_constants import expr_numeric_types
 from ..._aux._utilities._config import (
     dgcv_exception_note,
     dgcv_warning,
     dgcvDeprecationWarning,
     get_dgcv_settings_registry,
     get_variable_registry,
-    update_globals,
+    update_working_namespace,
 )
 from ..._aux._vmf._safeguards import (
     get_dgcv_category,
@@ -524,8 +522,8 @@ def createAlgebra(
         )
 
     if forgo_vmf_registry is False:
-        update_globals({label: algebra_obj})
-        update_globals(zip(basis_labels, algebra_obj.basis))
+        update_working_namespace({label: algebra_obj})
+        update_working_namespace(zip(basis_labels, algebra_obj.basis))
 
         variable_registry = get_variable_registry()
         paths = variable_registry.get("paths", None)

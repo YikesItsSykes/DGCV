@@ -38,7 +38,12 @@ import html
 import textwrap
 import uuid
 
-from .._aux._backends._symbolic_router import get_free_symbols, simplify, subs
+from .._aux._backends._symbolic_router import (
+    _scalar_is_zero,
+    get_free_symbols,
+    simplify,
+    subs,
+)
 from .._aux._utilities._config import (
     dgcv_warning,
     get_dgcv_settings_registry,
@@ -141,8 +146,7 @@ class case_tree:
                 try:
 
                     def ztest(x):
-                        sx = self._internal_simplify(x)
-                        return getattr(sx, "is_zero", False) or sx == 0
+                        return _scalar_is_zero(self._internal_simplify(x))
 
                     return all(ztest(x) for x in obj)
                 except Exception:

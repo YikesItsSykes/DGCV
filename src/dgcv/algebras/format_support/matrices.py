@@ -1,4 +1,8 @@
-from ..._aux._backends._symbolic_router import get_free_symbols, simplify
+from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
+    get_free_symbols,
+    simplify,
+)
 from ..._aux._utilities._misc import linear_combination
 from ...core.arrays import array_dgcv, freeze_matrix, matrix_dgcv
 from ...core.solvers import solve_dgcv
@@ -62,7 +66,7 @@ def algebraDataFromMatRep(mat_list, assume_basis=True):
             coeffs = matrix_dgcv.zeros(indexRangeCap, 1)
             for idx, var in enumerate(variables):
                 coeff = soll.get(var, var)
-                if coeff != 0:
+                if not _scalar_is_zero(coeff):
                     par |= get_free_symbols(coeff)
                     coeffs[idx] = coeff
             return coeffs

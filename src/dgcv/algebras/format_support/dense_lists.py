@@ -1,4 +1,4 @@
-from ..._aux._backends._symbolic_router import get_free_symbols
+from ..._aux._backends._symbolic_router import _scalar_is_zero, get_free_symbols
 from ...core.arrays import array_dgcv, freeze_matrix, matrix_dgcv
 
 
@@ -18,7 +18,7 @@ def aDataFromNestedLists(nested_lists):
                 raise TypeError()
             inner_dict = dict()
             for c, v in enumerate(middle):
-                if v != 0 and v is not None:
+                if v is not None and not _scalar_is_zero(v):
                     params |= get_free_symbols(v)
                     inner_dict[c] = v
             if inner_dict:

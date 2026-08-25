@@ -278,7 +278,7 @@ def annihilator(
 
     general_solution = _apply_sol(general, sol)
 
-    free_vars = [u for u in vars_list if sol.get(u, u) == u]
+    free_vars = [u for u in vars_list if str(sol.get(u, u)) == str(u)]
 
     if not free_vars:
         if polynomial_bases:

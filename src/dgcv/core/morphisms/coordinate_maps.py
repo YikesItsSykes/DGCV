@@ -25,7 +25,6 @@ from ..._aux._backends._symbolic_router import im, re, simplify, subs
 from ..._aux._utilities._config import get_variable_registry
 from ..._aux._vmf._safeguards import get_dgcv_category, query_dgcv_categories
 from ..._aux._vmf.vmf import vmf_lookup
-from ..._aux.printing.printing._dgcv_display import LaTeX
 from ...special_fields.complex_structures import KahlerStructure
 from ...special_fields.Riemannian_geometry import metricClass
 from ..base import dgcv_class
@@ -128,6 +127,8 @@ class coordinate_map(dgcv_class):
         return s if raw else f"$\\displaystyle {s}$"
 
     def _latex(self, printer=None, raw: bool = True, **kwargs):
+        from ..._aux.printing.printing._dgcv_display import LaTeX
+
         def _trunc_indices(n: int):
             if n <= 4:
                 return list(range(n)), None, []

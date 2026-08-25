@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from ..._aux._backends._symbolic_router import simplify
+from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
+    is_zero_knowing_zero_is_expected,
+)
 from ..._aux._utilities._config import dgcv_warning
 from ..._aux._utilities._misc import linear_combination
 from ..._aux._vmf._safeguards import retrieve_passkey
 from ...core.arrays import array_dgcv, freeze_matrix, matrix_dgcv
-from ...core.solvers import solve_dgcv
+from ...core.solvers import solve_knowing_solution_exists
 
 
 class _symbol_export:
@@ -101,28 +104,21 @@ class _symbol_export:
                 else len(ambient_basis)
             )
             if nLDim == 0:
-                if getattr(newElem, "is_zero", False) or newElem == 0:
+                if is_zero_knowing_zero_is_expected(newElem):
                     return [0] * dimen
                 else:
                     return "NoSol"
-            general_elem, tVars = linear_combination(ambient_basis)
+            general_elem, tVars = linear_combination(ambient_basis, _disposable=True)
             eqns = [newElem - general_elem]
-            sol = solve_dgcv(eqns, tVars, method="linsolve", simplify_result=False)
+            sol = solve_knowing_solution_exists(
+                eqns,
+                tVars,
+                try_hard=bool(try_hard),
+                method="linear_parametric" if self._parameters else "linear",
+                simplify_result=False,
+            )
             if len(sol) == 0:
-                if try_hard:
-                    dgcv_warning(
-                        "symbol --> algebra method failed to find structure eqns with fast default algorithm"
-                    )
-                    sol = solve_dgcv(
-                        [simplify(eqn) for eqn in eqns],
-                        tVars,
-                        method="linsolve",
-                        simplify_result=False,
-                    )
-                    if len(sol) == 0:
-                        return "NoSol"
-                else:
-                    return "NoSol"
+                return "NoSol"
             coeffVec = [sol[0].get(var, var) for var in tVars]
 
             #   newWeight should be in complimentWeights by construction
@@ -175,7 +171,7 @@ class _symbol_export:
                     new_key = (perm[i], perm[j])
                     inner_shp = (d, 1)
                     for k, value in enumerate(v):
-                        if value != 0:
+                        if not _scalar_is_zero(value):
                             if new_key in new_sd:
                                 new_sd[new_key][perm[k]] = value
                             else:

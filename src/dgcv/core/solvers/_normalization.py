@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from ..._aux._backends._engine import engine_kind
 from ..._aux._backends._symbolic_router import get_free_symbols
-from ..._aux._backends._types_and_constants import is_atomic
-from ...eds.eds import _equation_formatting
+from ..._aux._backends._types_and_constants import expr_numeric_types, is_atomic
+from ...eds.eds import _equation_formatting, zeroFormAtom
 from ...eds.eds_representations import DF_representation
 
 
@@ -43,7 +44,13 @@ def normalize_equations_and_vars(eqns, vars_to_solve):
 def _equations_preprocessing(eqns: tuple | list, vars: tuple | list):
     processed_eqns = []
     variables_dict = dict()
+    native_passthrough = engine_kind() == "sage"
     for eqn in eqns:
+        if native_passthrough and (
+            isinstance(eqn, expr_numeric_types()) and not isinstance(eqn, zeroFormAtom)
+        ):
+            processed_eqns.append(eqn)
+            continue
         eqn_formatted, new_var_dict = _equation_formatting(eqn, variables_dict)
         processed_eqns += eqn_formatted
         variables_dict = variables_dict | new_var_dict

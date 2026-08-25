@@ -4,7 +4,7 @@ import numbers
 from itertools import count
 from typing import TYPE_CHECKING
 
-from ..._aux._utilities._config import dgcv_warning
+from ..._aux._utilities._config import dgcv_warning, get_dgcv_settings_registry
 from ..._aux._vmf._safeguards import retrieve_passkey
 from ._ds import _DS_component, _DS_record
 from ._tensor_products import _fast_tensor_products
@@ -25,6 +25,7 @@ class _symbol_prolongation:
         surface_singularities: bool = None,
         simplify_singularities: bool = None,
         max_report_columns: int = 13,
+        solve_method: str = None,
     ) -> Tanaka_symbol:
         """
         Computes a number of prolongations above the highest level stored in the current Tanaka_symbol data (starting with the first nonnegative integer, so if highest level is -2, it starts with 0, e.g.), up to the number given in `iterations`. Will stop earlier if stabelization is detected.
@@ -52,10 +53,16 @@ class _symbol_prolongation:
         This is relevant when distinguished_subspaces include weighted components of higher weight than the given levels data. In this case those higher weighted components are interpreted as subspaces in a tensor algebra where the theoretical prolongation lives, and on which it also operates. The prolongation algorithm proceeds respecting these in the sense that it honors the axiom that distinguished subspaces are invariant under the action of computed prolongation levels. When absorb_distinguished_subspaces=True, then higher weighted levels are artificially added to computed prolongation levels of the same weight. Setting this to True is only natural in niche geometry motivated contexts, so leaving it as False is likely correct if unsure.
 
             surface_singularities:bool (optional, default=None)
-        If paramater space is empty then this is irrelevant for the prolongation algorithm, but affects the output signature. If True (and not overridden by report_progress_and_return_nothing), additionally returns a list of functions whose zeros are singularities in parameter space found during prolongation. i.e., prolongation will be correct for parameters outside of these singularities. If not set to anything (i.e., left as default None) then when relevant all singularities are still found and saved internally. If set to False then tracking of singularities will be skipped, which may improve the algorithm speed slightly.
+        If paramater space is empty then this is irrelevant for the prolongation algorithm, but affects the output signature. If True (and not overridden by report_progress_and_return_nothing), additionally returns a list of functions whose zeros are singularities in parameter space found during prolongation. i.e., prolongation will be correct for parameters outside of these singularities. If not set to anything (i.e., left as default None) then when relevant all singularities are still found and saved internally. If set to False then tracking of singularities will be skipped, which may improve the algorithm speed slightly. Note that skipping the tracking does not make the computation parameter-safe: the linear solver still pivots on parameter-dependent coefficients, so the result remains valid for generic parameters, just without a record of where it fails.
+
+            simplify_singularities:bool (optional, default=None)
+        Controls simplification of the pivots and singularity ideals produced while tracking singularities. Has no effect when singularity tracking is off (i.e. when surface_singularities=False or the parameter space is empty). Defaults to the `simplify_singularity_ideals_by_default` setting.
 
             max_report_columns: int (positive)
         This controls the maximum number of columns displayed in the output tables when report_progress is true.
+
+            solve_method: str (optional, default=None)
+        The `method` forwarded to every equation solve in the prolongation algorithm. Left as None, it resolves to "linear", except when the symbol carries parameters and singularity tracking is off, in which case it resolves to "linear_parametric" - that case solves systems whose coefficients are unreduced parameter-dependent expressions, which the parametric dispatch handles better. Set it to any method `solve_dgcv` accepts to override uniformly. While singularity tracking is on, a non-linear method is rejected with a warning and replaced by "linear", since divisor collection requires a linear method.
 
         returns:
         --------
@@ -100,6 +107,30 @@ class _symbol_prolongation:
             if return_symbol:
                 return self
             return
+        # solver gating is resolved once here rather than per prolongation level,
+        # so the inner loops only reference the results
+        has_parameters = len(self._parameters) > 0
+        track_singularities = has_parameters and surface_singularities is not False
+        if simplify_singularities is None:
+            simplify_pivots = track_singularities
+            simplify_ideals = get_dgcv_settings_registry().get(
+                "simplify_singularity_ideals_by_default", True
+            )
+        else:
+            simplify_pivots = simplify_singularities
+            simplify_ideals = simplify_singularities
+        if solve_method is None:
+            solve_method = (
+                "linear_parametric"
+                if has_parameters and not track_singularities
+                else "linear"
+            )
+        elif track_singularities and solve_method not in _solve_methods:
+            dgcv_warning(
+                "`prolong` requires a linear solve method while tracking parameter-space "
+                f"singularities, so `solve_method={solve_method!r}` was replaced by 'linear'."
+            )
+            solve_method = "linear"
         levels = self.levels
         height = self.height
         stable = False
@@ -152,8 +183,10 @@ class _symbol_prolongation:
                 with_characteristic_space_reductions=with_characteristic_space_reductions,
                 DS_records=subspace_data,
                 absorb_DS=absorb_distinguished_subspaces is True,
-                surface_singularities=surface_singularities,
-                simplify_pivots=simplify_singularities,
+                surface_singularities=track_singularities,
+                simplify_pivots=simplify_pivots,
+                simplify_ideals=simplify_ideals,
+                solve_method=solve_method,
                 alias_counter=get_alias_id,
             )
             if report_progress:
@@ -260,3 +293,6 @@ class _symbol_prolongation:
                 if surface_singularities is True:
                     return levels, self._singularities.get("prolongation", set())
                 return levels
+
+
+_solve_methods = ("linear", "linear_parametric", "linsolve")

@@ -38,6 +38,42 @@ _expr_numeric_types = None
 _fast_scalar_types = None
 
 
+def invalidate_types_and_constants_cache():
+    global \
+        _atomic_pred, \
+        _constant_scalar_types, \
+        _expr_types, \
+        _expr_numeric_types, \
+        _fast_scalar_types, \
+        _one_obj, \
+        _zero_obj, \
+        _I_obj, \
+        _half_obj, \
+        _sympy_conj_head, \
+        _sympy_re_head, \
+        _sympy_im_head, \
+        _e_obj, \
+        _head_table, \
+        _head_engine, \
+        _sage_constant_strs
+    _atomic_pred = None
+    _constant_scalar_types = None
+    _expr_types = None
+    _expr_numeric_types = None
+    _fast_scalar_types = None
+    _one_obj = None
+    _zero_obj = None
+    _I_obj = None
+    _half_obj = None
+    _e_obj = None
+    _sympy_conj_head = None
+    _sympy_re_head = None
+    _sympy_im_head = None
+    _head_table = None
+    _head_engine = None
+    _sage_constant_strs = None
+
+
 def fast_scalar_types():
     global _fast_scalar_types
     if _fast_scalar_types is not None:
@@ -184,6 +220,192 @@ def is_atomic(expr):
     return atomic_predicate()(expr)
 
 
+# expression-tree introspection
+_head_table = None
+_head_engine = None
+
+HEAD_ADD = "add"
+HEAD_MUL = "mul"
+HEAD_POW = "pow"
+HEAD_SYMBOL = "symbol"
+HEAD_NUMBER = "number"
+HEAD_CONJUGATE = "conjugate"
+HEAD_EXP = "exp"
+HEAD_LOG = "log"
+HEAD_FUNCTION = "function"
+HEAD_CONSTANT = "constant"
+
+_sage_constant_strs = None
+
+
+def _build_head_table():
+    global _sage_constant_strs
+    kind = engine_kind()
+    table = {}
+    _sage_constant_strs = None
+
+    if kind == "sage":
+        try:
+            sage = _get_sage_module()
+            _sage_constant_strs = {
+                str(c) for c in (sage.e, sage.pi, sage.I) if c is not None
+            }
+        except Exception:
+            _sage_constant_strs = None
+
+        try:
+            sage = _get_sage_module()
+            x = sage.SR.var("_dgcv_head_probe_x")
+            y = sage.SR.var("_dgcv_head_probe_y")
+            for expr, tag in (
+                (x + y, HEAD_ADD),
+                (x * y, HEAD_MUL),
+                (x**y, HEAD_POW),
+                (sage.exp(x), HEAD_EXP),
+                (sage.log(x), HEAD_LOG),
+                (sage.conjugate(x), HEAD_CONJUGATE),
+            ):
+                try:
+                    op = expr.operator()
+                except Exception:
+                    continue
+                if op is not None:
+                    table[op] = tag
+        except Exception:
+            pass
+
+    elif kind == "sympy":
+        try:
+            sp = _get_sympy_module()
+            probe = sp.Symbol("_dgcv_head_probe")
+            for expr, tag in (
+                (sp.conjugate(probe), HEAD_CONJUGATE),
+                (sp.exp(probe), HEAD_EXP),
+                (sp.log(probe), HEAD_LOG),
+            ):
+                try:
+                    table[expr.func] = tag
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    return table
+
+
+def _get_head_table():
+    global _head_table, _head_engine
+    kind = engine_kind()
+    if _head_table is None or _head_engine != kind:
+        _head_table = _build_head_table()
+        _head_engine = kind
+    return _head_table
+
+
+def expr_head(expr):
+    kind = engine_kind()
+    table = _get_head_table()
+
+    if kind == "sympy":
+        sp = _get_sympy_module()
+        if isinstance(expr, sp.Basic):
+            if isinstance(expr, sp.Number):
+                return HEAD_NUMBER
+            if isinstance(expr, sp.NumberSymbol) or expr is sp.I:
+                return HEAD_CONSTANT
+            if isinstance(expr, sp.Symbol):
+                return HEAD_SYMBOL
+            if isinstance(expr, sp.Add):
+                return HEAD_ADD
+            if isinstance(expr, sp.Mul):
+                return HEAD_MUL
+            if isinstance(expr, sp.Pow):
+                return HEAD_POW
+            tag = table.get(getattr(expr, "func", None))
+            if tag is not None:
+                return tag
+            if isinstance(expr, sp.Function):
+                return HEAD_FUNCTION
+            return None
+        if isinstance(expr, numbers.Number) and not isinstance(expr, bool):
+            return HEAD_NUMBER
+        return None
+
+    if kind == "sage":
+        try:
+            from sage.symbolic.expression import (  # type: ignore
+                Expression as SageExpression,  # type: ignore
+            )
+        except Exception:
+            SageExpression = None
+
+        if SageExpression is not None and isinstance(expr, SageExpression):
+            try:
+                if expr.is_symbol():
+                    return HEAD_SYMBOL
+            except Exception:
+                pass
+            if _sage_constant_strs:
+                try:
+                    if str(expr) in _sage_constant_strs:
+                        return HEAD_CONSTANT
+                except Exception:
+                    pass
+            try:
+                op = expr.operator()
+            except Exception:
+                op = None
+            if op is None:
+                try:
+                    if expr.is_numeric():
+                        return HEAD_NUMBER
+                except Exception:
+                    pass
+                return None
+            tag = table.get(op)
+            if tag is not None:
+                return tag
+            return HEAD_FUNCTION
+
+        if _sage_constant_strs and not isinstance(expr, numbers.Number):
+            try:
+                if str(expr) in _sage_constant_strs:
+                    return HEAD_CONSTANT
+            except Exception:
+                pass
+
+        if isinstance(expr, constant_scalar_types()) and not isinstance(expr, bool):
+            return HEAD_NUMBER
+        return None
+
+    if isinstance(expr, numbers.Number) and not isinstance(expr, bool):
+        return HEAD_NUMBER
+    return None
+
+
+def expr_operands(expr):
+    if expr_head(expr) == HEAD_CONSTANT:
+        return ()
+
+    kind = engine_kind()
+
+    if kind == "sage":
+        f = getattr(expr, "operands", None)
+        if callable(f):
+            try:
+                return tuple(f())
+            except Exception:
+                return ()
+
+    args = getattr(expr, "args", None)
+    if args is None:
+        return ()
+    try:
+        return tuple(args)
+    except Exception:
+        return ()
+
+
 dgcv_expr_types = {"expression", "polynomial"}
 q_dgcv_c = None
 
@@ -200,7 +422,9 @@ def check_dgcv_scalar(expr):
 # elements
 _one_obj = None
 _zero_obj = None
+_e_obj = None
 _I_obj = None
+_half_obj = None
 
 
 def symbol(name, assumptions=None):
@@ -242,6 +466,22 @@ def symbol(name, assumptions=None):
         return v(nm, domain="complex")
 
     return str(name)
+
+
+def _disposable_symbol(name):
+    kind = engine_kind()
+
+    if kind == "sympy":
+        return _get_sympy_module().Symbol(str(name))
+
+    if kind == "sage":
+        return _get_sage_module().var(str(name))
+
+    return str(name)
+
+
+def _disposable_symbols(prefix, count, start=0):
+    return [_disposable_symbol(f"{prefix}{idx}") for idx in range(start, start + count)]
 
 
 def one():
@@ -291,6 +531,35 @@ def imag_unit():
     return _I_obj
 
 
+def half():
+    global _half_obj
+    if _half_obj is not None:
+        return _half_obj
+    _half_obj = rational(1, 2)
+    return _half_obj
+
+
+def e_constant():
+    global _e_obj
+    if _e_obj is not None:
+        return _e_obj
+
+    kind = engine_kind()
+
+    if kind == "sage":
+        _e_obj = _get_sage_module().e
+        return _e_obj
+
+    if kind == "sympy":
+        _e_obj = _get_sympy_module().E
+        return _e_obj
+
+    import math
+
+    _e_obj = math.e
+    return _e_obj
+
+
 def integer(n):
     n = int(n)
     kind = engine_kind()
@@ -299,6 +568,20 @@ def integer(n):
     if kind == "sympy":
         return _get_sympy_module().Integer(n)
     return n
+
+
+def as_engine_scalar(x):
+    if isinstance(x, bool) or not isinstance(x, numbers.Number):
+        return x
+    if isinstance(x, numbers.Integral):
+        return integer(x)
+
+    kind = engine_kind()
+    if kind == "sympy":
+        return _get_sympy_module().sympify(x)
+    if kind == "sage":
+        return _get_sage_module().SR(x)
+    return x
 
 
 def rational(p, q=1):

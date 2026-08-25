@@ -276,3 +276,12 @@ class _tp_core:
                 fs |= get_free_symbols(c)
             self._free_symbols = fs
         return self._free_symbols
+
+    @property
+    def __dgcv_zero_obstr__(self):
+        cfs = []
+        cfvars = set()
+        for cf in self.coeff_dict.values():
+            cfs.append(cf)
+            cfvars |= get_free_symbols(cf)
+        return cfs, cfvars

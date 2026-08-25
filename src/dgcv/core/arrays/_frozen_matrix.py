@@ -1,8 +1,8 @@
 from types import MappingProxyType
 
 from ..._aux._backends._engine import engine_kind, engine_module
-from ..._aux._vmf._safeguards import check_dgcv_category
 from ._indexing import _spool, _unspool
+from ._validation import _is_array_like
 
 
 class _frozen_matrix:
@@ -85,6 +85,9 @@ class _frozen_matrix:
     def __setitem__(self, key, value):
         raise TypeError(f"{self.__class__.__name__} is immutable")
 
+    def __hash__(self):
+        return hash(tuple(self.shape))
+
     def copy(self):
         return self.__class__(
             dict(self._data),
@@ -136,17 +139,7 @@ class _frozen_matrix:
 
     def transpose(self):
         def _entry_transpose(x):
-            if x is None:
-                return x
-
-            is_dgcv = check_dgcv_category(x) is not None
-
-            if is_dgcv:
-                t = getattr(x, "transpose", None)
-                if callable(t):
-                    return t()
-                elif t is not None:
-                    return t
+            if not _is_array_like(x):
                 return x
 
             t = getattr(x, "transpose", None)

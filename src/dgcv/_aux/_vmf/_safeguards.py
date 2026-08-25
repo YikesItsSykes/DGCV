@@ -25,8 +25,8 @@ import string
 from .._utilities._config import (
     dgcv_warning,
     get_dgcv_settings_registry,
-    get_globals,
     get_variable_registry,
+    working_namespace,
 )
 from .vmf import clearVar, vmf_lookup
 
@@ -78,7 +78,7 @@ def create_key(prefix=None, avoid_caller_globals=False, key_length=8):
 
     caller_globals = {}
     if avoid_caller_globals:
-        caller_globals = get_globals()
+        caller_globals = working_namespace()
     while True:
         key = prefix + "".join(
             random.choices(string.ascii_letters + string.digits, k=key_length)
@@ -165,7 +165,7 @@ def validate_label_list(basis_labels):
     else:
         overwritePermissionGranted = False
 
-    namespace = get_globals()
+    namespace = working_namespace()
     variable_registry = get_variable_registry()
     for label in basis_labels:
         if label in namespace:
@@ -361,7 +361,7 @@ def unique_label(
     vr = get_variable_registry()
     taken = set()
 
-    taken.update(get_globals().keys())
+    taken.update(working_namespace().keys())
 
     labels_index = vr.get("_labels", {})
     taken.update(labels_index.keys())

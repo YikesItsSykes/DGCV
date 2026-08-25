@@ -7,6 +7,20 @@ from ..combinatorics.combinatorics import carProd
 from ._indexing import _spool, _unspool
 
 
+def _entry_equal(a, b):
+    if a is b:
+        return True
+    if not (isinstance(a, _array_core) or isinstance(b, _array_core)):
+        try:
+            return _scalar_is_zero(a - b)
+        except Exception:
+            pass
+    try:
+        return bool(a == b)
+    except Exception:
+        return False
+
+
 class _array_core:
     def __init__(
         self, array_data=None, *, shape=None, entry_rule=None, null_return=None
@@ -35,7 +49,7 @@ class _array_core:
                     array_dict = dict()
                     for idx in carProd(*[range(j) for j in shape]):
                         val = entry_rule(*idx)
-                        if val != 0:
+                        if not _scalar_is_zero(val):
                             array_dict[tuple(idx)] = val
                     array_data = array_dict
                 except Exception:
@@ -176,6 +190,21 @@ class _array_core:
     def __bool__(self):
         return bool(self._data)
 
+    def __eq__(self, other):
+        if other is self:
+            return True
+        if not isinstance(other, _array_core):
+            return NotImplemented
+        if tuple(self.shape) != tuple(other.shape):
+            return False
+        for k in set(self._data) | set(other._data):
+            if not _entry_equal(
+                self._data.get(k, self.null_return),
+                other._data.get(k, other.null_return),
+            ):
+                return False
+        return True
+
     def _infer_shape(self, data):
         shape = []
         cur = data
@@ -204,9 +233,8 @@ class _array_core:
             new_data = {}
 
             for new_i, flat_i in enumerate(rng):
-                val = self._data.get(flat_i, self.null_return)
-                if val != self.null_return:
-                    new_data[new_i] = val
+                if flat_i in self._data:
+                    new_data[new_i] = self._data[flat_i]
 
             return self.__class__(
                 new_data,
@@ -223,9 +251,8 @@ class _array_core:
                 new_data = {}
 
                 for new_i, flat_i in enumerate(rng):
-                    val = self._data.get(flat_i, self.null_return)
-                    if val != self.null_return:
-                        new_data[new_i] = val
+                    if flat_i in self._data:
+                        new_data[new_i] = self._data[flat_i]
 
                 return self.__class__(
                     new_data,

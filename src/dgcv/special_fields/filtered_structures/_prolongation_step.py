@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from ..._aux._backends._polynomials import expr_union_primitives
-from ..._aux._backends._symbolic_router import get_free_symbols, subs
-from ..._aux._utilities._config import dgcv_warning, get_dgcv_settings_registry
+from ..._aux._backends._symbolic_router import _scalar_is_zero, get_free_symbols, subs
+from ..._aux._utilities._config import dgcv_warning
 from ..._aux._utilities._misc import linear_combination
 from ..._aux._vmf._safeguards import get_dgcv_category
 from ...algebras import _extract_basis
@@ -16,26 +16,18 @@ class _symbol_prolongation_step:
         levels,
         height,
         alias_counter,
+        surface_singularities,
+        simplify_pivots,
+        simplify_ideals,
+        solve_method,
         with_characteristic_space_reductions=False,
         DS_records=None,
         absorb_DS=False,
-        surface_singularities=None,
-        simplify_pivots=None,
     ):  # height must match levels structure
+        # `surface_singularities`, `simplify_pivots`, `simplify_ideals` and
+        # `solve_method` arrive already resolved from `prolong`
         get_alias_id = alias_counter
 
-        if len(self._parameters) > 0:
-            if surface_singularities is not False:
-                surface_singularities = True
-        else:
-            surface_singularities = False
-        if simplify_pivots is None:
-            simplify_ideals = get_dgcv_settings_registry().get(
-                "simplify_singularity_ideals_by_default", True
-            )
-            simplify_pivots = surface_singularities
-        else:
-            simplify_ideals = simplify_pivots
         if DS_records is None:
             DS_records = []
         ADS = absorb_DS is True
@@ -71,7 +63,7 @@ class _symbol_prolongation_step:
             esVars = list(tVars)
 
             def _accumulate(expr):
-                if getattr(expr, "is_zero", False) or expr == 0:
+                if _scalar_is_zero(expr):
                     return
                 if get_dgcv_category(expr) in {
                     "fastTensorProduct",
@@ -132,7 +124,7 @@ class _symbol_prolongation_step:
                     solution, sing = solve_dgcv(
                         eqns,
                         esVars,
-                        method="linsolve",
+                        method=solve_method,
                         return_divisors=True,
                         pass_to_symbolic_engine=False,
                         simplify_pivots=simplify_pivots,
@@ -150,7 +142,7 @@ class _symbol_prolongation_step:
 
                 else:
                     solution = solve_dgcv(
-                        eqns, esVars, method="linsolve", simplify_result=False
+                        eqns, esVars, method=solve_method, simplify_result=False
                     )
 
             if len(solution) == 0:
@@ -201,6 +193,7 @@ class _symbol_prolongation_step:
                 surface_singularities,
                 simplify_pivots,
                 simplify_ideals,
+                solve_method,
             )
             atomized_level = []
             for el, expanded in zip(new_level, expansions):
@@ -218,7 +211,7 @@ class _symbol_prolongation_step:
             new_level = atomized_level
 
             self._recoordinatize_DS_components(
-                DS_records, height, atomized_level, expansions
+                DS_records, height, atomized_level, expansions, solve_method
             )
 
             new_levels = self._GLA_structure(

@@ -1,22 +1,15 @@
-from ..._aux._backends._symbolic_router import simplify
-from ..._aux._backends._types_and_constants import expr_numeric_types
+from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
+    is_zero_knowing_zero_is_expected,
+)
 
 
 def _is_zero(x):
-    if isinstance(x, expr_numeric_types()) and not isinstance(x, bool):
-        return x == 0
-    iz = getattr(x, "is_zero", None)
-    if iz is True:
-        return True
-    if callable(iz):
-        try:
-            return bool(iz())
-        except Exception:
-            pass
-    try:
-        return simplify(x) == 0
-    except Exception:
-        return x == 0
+    return _scalar_is_zero(x)
+
+
+def _is_zero_after_simplify(x):
+    return is_zero_knowing_zero_is_expected(x)
 
 
 def _as_zero_expr(eq):

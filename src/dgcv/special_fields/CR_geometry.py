@@ -58,6 +58,7 @@ from .._aux._backends._symbolic_router import (
     subs,
 )
 from .._aux._backends._types_and_constants import (
+    _disposable_symbols,
     expr_numeric_types,
     imag_unit,
     rational,
@@ -369,16 +370,29 @@ class CR_structure(dgcv_class):
             canonf = self.tangent_bundle.anticanonical_bundle
             Jt_basis = [complex_struct_op(vf) for vf in t_basis]
             vl = create_key("var")
-            variables = [symbol(f"{vl}{idx}") for idx in range(len(Jt_basis))]
+            variables = _disposable_symbols(vl, len(Jt_basis))
             gen_elem = sum(v * elem for v, elem in zip(variables, Jt_basis))
             obst = wedge(gen_elem, canonf)
             sol = solve_dgcv(
-                expand(obst), variables, method="linsolve", simplify_result=False
+                expand(obst),
+                variables,
+                method="linear_parametric",
+                simplify_result=False,
             )
             gen_sol = subs(gen_elem, sol[0])
+            varnames = {str(var) for var in variables}
             free_vars = set()
             for expr in sol[0].values():
-                free_vars |= {var for var in get_free_symbols(expr) if var in variables}
+                free_vars |= {
+                    var for var in get_free_symbols(expr) if str(var) in varnames
+                }
+            if not free_vars:
+                dgcv_warning(
+                    "The CR distribution was computed as trivial (rank 0) because the solved "
+                    "obstruction system retained no free parameters. If a positive-dimensional CR "
+                    "distribution was expected, the symbolic backend likely failed to produce a "
+                    "parametric solution for the obstruction system."
+                )
             zeroing = {var: 0 for var in free_vars}
             self._CR_distribution = distribution(
                 [subs(gen_sol, zeroing | {var: 1}) for var in free_vars],
@@ -635,7 +649,7 @@ class CR_structure(dgcv_class):
             antihol = self.antiholomorphic_CR_distribution
             levels = [self.holomorphic_CR_distribution.vf_basis]
             vl = create_key("var")
-            local_vars = [symbol(f"{vl}{idx}") for idx in range(len(levels[0]))]
+            local_vars = _disposable_symbols(vl, len(levels[0]))
 
             def descent(level_list, pair, variables):
                 if len(level_list[0]) == 0:
@@ -649,7 +663,7 @@ class CR_structure(dgcv_class):
                     for vf in pair.vf_basis
                 ]
                 solution = solve_dgcv(
-                    eqns, v_trunc, method="linsolve", simplify_result=False
+                    eqns, v_trunc, method="linear_parametric", simplify_result=False
                 )
                 gen_solution = subs(general_elem, solution[0])
                 free_vars, var_set = set(), set(v_trunc)
@@ -725,9 +739,9 @@ class CR_structure(dgcv_class):
 
     @property
     def nondegeneracy_order(self):
-        if len(self.Freeman_filtration[-1].vf_basis) > 0:
+        if len(self.Freeman_filtration.associated_graded_bases[0]) > 0:
             return "infinity"
-        return len(self.Freeman_filtration) - 1
+        return self.Freeman_filtration.depth - 1
 
     def compute_weighted_symmetries(
         self,
@@ -1038,7 +1052,7 @@ def findWeightedCRSymmetries(
         coef_eqns.extend([allToReal(c) for c in P.get_coeffs(formatting="unformatted")])
 
     solutions = solve_dgcv(
-        coef_eqns, unknowns_t, method="linsolve", simplify_result=False
+        coef_eqns, unknowns_t, method="linear_parametric", simplify_result=False
     )
 
     if not solutions:

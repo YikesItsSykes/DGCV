@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from ..._aux._backends._numeric_router import zeroish
 from ..._aux._backends._symbolic_router import (
+    _scalar_is_zero,
     conjugate,
     get_free_symbols,
     simplify,
@@ -135,7 +136,7 @@ class distribution(dgcv_class):
                     val = df(vf)
                     if check_compatibility_aggressively:
                         val = simplify(val)
-                    if val != 0 or not getattr(val, "is_zero", False):
+                    if not _scalar_is_zero(val):
                         raise TypeError(
                             "Unable to verify that the provided vector fields and differential forms annihilate each other. "
                             "Use assume_compatibility=True to bypass this check, or set check_compatibility_aggressively=True."
@@ -411,7 +412,7 @@ class distribution(dgcv_class):
                         if use_numeric:
                             if zeroish(new_obs):
                                 continue
-                        elif new_obs == 0 or getattr(new_obs, "is_zero", False):
+                        elif _scalar_is_zero(new_obs):
                             continue
                         obstr = new_obs
                         newTeir.append(nb)
@@ -453,7 +454,7 @@ class distribution(dgcv_class):
                         if use_numeric:
                             if zeroish(new_obs):
                                 continue
-                        elif new_obs == 0 or getattr(new_obs, "is_zero", False):
+                        elif _scalar_is_zero(new_obs):
                             continue
                         obstr = new_obs
                         newTeir.append(nb)
@@ -529,7 +530,9 @@ class distribution(dgcv_class):
 
         def _decomp(elem, ge=gen_elem, variables=vars):
             eqns = list((elem - ge).coeff_dict.values())
-            sol = solve_dgcv(eqns, variables, simplify_result=False)
+            sol = solve_dgcv(
+                eqns, variables, method="linear_parametric", simplify_result=False
+            )
             return sol
 
         level_dimensions = [len(level) for level in derFlag]
@@ -647,7 +650,12 @@ class distribution(dgcv_class):
                     linear_section_parameters=True,
                 )
                 sp_contraints += [k - v for k, v in deco.items()]
-            sol = solve_dgcv(sp_contraints, section_par, simplify_result=False)[0]
+            sol = solve_dgcv(
+                sp_contraints,
+                section_par,
+                method="linear_parametric",
+                simplify_result=False,
+            )[0]
             solution = subs(genVF, sol)
             free_vars = set()
             for val in sol.values():

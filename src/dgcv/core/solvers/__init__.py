@@ -11,7 +11,7 @@ Licensed under the Apache License, Version 2.0
 SPDX-License-Identifier: Apache-2.0
 """
 
-from ._driver import solve_dgcv
+from ._driver import solve_dgcv, solve_knowing_solution_exists
 from ._filters import linear_filter
 
-__all__ = ["solve_dgcv", "linear_filter"]
+__all__ = ["solve_dgcv", "solve_knowing_solution_exists", "linear_filter"]
