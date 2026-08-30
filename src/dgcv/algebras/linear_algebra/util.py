@@ -31,6 +31,21 @@ def _structure_array(data, dim):
     )
 
 
+def _is_canonical_structure_array(obj):
+    if getattr(obj, "_dgcv_category", None) != "array":
+        return False
+    shape = obj.shape
+    if len(shape) != 2 or shape[0] != shape[1]:
+        return False
+    if getattr(obj.null_return, "shape", None) != (shape[0], 1):
+        return False
+    data = obj._data
+    if not data:
+        return True
+    entry = next(iter(data.values()))
+    return getattr(entry, "shape", None) == (shape[0], 1) and hasattr(entry, "_data")
+
+
 def _flatten_structure_data(structure_data, _source="algebra_class"):
     sdd = dict()
     unspool = structure_data._unspool

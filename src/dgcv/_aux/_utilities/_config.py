@@ -41,7 +41,7 @@ from functools import lru_cache
 from importlib import resources
 from typing import List, Literal, Optional
 
-from dgcv import __version__
+from ... import __version__
 
 _working_namespace_ = None
 
@@ -211,10 +211,17 @@ def environment_inference():
         try:
             import os
 
-            from IPython import get_ipython  # type: ignore
+            try:
+                from .._backends._notebooks import in_kernel
 
-            ip = get_ipython()
-            in_jupyter = ip is not None and ip.__class__.__name__.startswith("ZMQ")
+                in_jupyter = in_kernel()
+            except Exception:
+                from IPython import get_ipython  # type: ignore
+
+                ip = get_ipython()
+                in_jupyter = (
+                    ip is not None and "ZMQInteractiveShell" in ip.__class__.__name__
+                )
 
             in_vscode = (
                 "VSCODE_PID" in os.environ
@@ -229,6 +236,25 @@ def environment_inference():
     return _vscodepatch
 
 
+_sage_kernel_default = None
+
+
+def on_sage_kernel_inference():
+    global _sage_kernel_default
+    if _sage_kernel_default is None:
+        try:
+            from .._backends._notebooks import on_sage_kernel
+
+            _sage_kernel_default = bool(on_sage_kernel())
+        except Exception:
+            _sage_kernel_default = False
+    return _sage_kernel_default
+
+
+def default_engine_inference():
+    return "sage" if on_sage_kernel_inference() else "sympy"
+
+
 dgcv_settings_registry = {
     "use_latex": True,
     "theme": "paper_graphite",
@@ -236,7 +262,7 @@ dgcv_settings_registry = {
     "version_specific_defaults": f"v{__version__}",
     "ask_before_overwriting_objects_in_vmf": True,
     "forgo_warnings": False,
-    "default_symbolic_engine": "sympy",
+    "default_symbolic_engine": default_engine_inference(),
     "verbose_label_printing": False,
     "print_style": "readable",
     "VLP": vlp,
@@ -318,7 +344,7 @@ def _try_wrap_html(s: str):
     return the string unchanged.
     """
     try:
-        from dgcv._aux._backends._notebooks import is_ipython_available
+        from .._backends._notebooks import is_ipython_available
     except Exception:
         is_ipython_available = None
 
@@ -384,6 +410,8 @@ def latex_in_html(
 </script>"""
         return _try_wrap_html(katex_inject_string + body)
 
+    if isinstance(html_string, str):
+        return _try_wrap_html(html_string)
     return html_string
 
 
@@ -402,6 +430,8 @@ def latex_in_html_offline(
     body = _latex_in_html_body(html_string)
 
     if not extra_support_for_math_in_tables:
+        if isinstance(html_string, str):
+            return _try_wrap_html(html_string)
         return html_string
 
     render_target = _latex_in_html_render_target(
@@ -559,15 +589,15 @@ def configure_convenient_labels(
         )
 
     if include_most or "symbolic expressions" in libraries:
-        from dgcv._aux._backends._types_and_constants import symbol
-
         from .._backends import (
             cancel_dgcv,
             expand_dgcv,
             factor_dgcv,
             ratio,
             simplify_dgcv,
+            sqrt_dgcv,
             subs_dgcv,
+            symbol,
         )
 
         new_functions = {
@@ -578,6 +608,7 @@ def configure_convenient_labels(
             "factor": factor_dgcv,
             "cancel": cancel_dgcv,
             "symbol": symbol,
+            "sqrt": sqrt_dgcv,
         }
         new_functions = {relabeling_map.get(k, k): v for k, v in new_functions.items()}
         working_namespace().update(new_functions)
@@ -585,7 +616,7 @@ def configure_convenient_labels(
             new_functions, key=str.lower
         )
     if include_all or "abbreviations" in libraries:
-        from dgcv.core.vector_fields_and_differential_forms import (
+        from ...core.vector_fields_and_differential_forms import (
             coordinate_differential_form,
             coordinate_vector_field,
         )

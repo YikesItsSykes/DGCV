@@ -24,6 +24,6 @@ SPDX-License-Identifier: Apache-2.0
 # -----------------------------------------------------------------------------
 # imports and broadcasting
 # -----------------------------------------------------------------------------
-from .branching_analysis import case_tree
+from .case_tree import case_tree
 
 __all__ = ["case_tree"]

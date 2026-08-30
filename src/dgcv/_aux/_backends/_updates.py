@@ -42,6 +42,9 @@ class version:
         return cls(int(parts[0]), int(parts[1]), int(parts[2]))
 
 
+_infer_engine = "__infer__"
+
+
 baseline_defaults: Dict[str, Any] = {
     "use_latex": False,
     "theme": "blue",
@@ -71,6 +74,7 @@ changes: Tuple[Tuple[str, Dict[str, Any]], ...] = (
         },
     ),
     ("0.4.20", {"theme": "paper_graphite"}),
+    ("0.4.36", {"default_symbolic_engine": _infer_engine}),
 )
 
 
@@ -94,6 +98,11 @@ def defaults_for_version(
     for v, patch in _parsed_changes:
         if v <= target:
             out.update(patch)
+
+    if out.get("default_symbolic_engine") == _infer_engine:
+        from .._utilities._config import default_engine_inference
+
+        out["default_symbolic_engine"] = default_engine_inference()
 
     out["VLP"] = vlp
     out["version_specific_defaults"] = f"v{target.major}.{target.minor}.{target.patch}"

@@ -48,9 +48,11 @@ from ._symbolic_router import (
 from ._symbolic_router import (
     simplify as simplify_dgcv,
 )
+from ._symbolic_router import sqrt as sqrt_dgcv
 from ._symbolic_router import (
     subs as subs_dgcv,
 )
+from ._types_and_constants import symbol
 
 __all__ = [
     # calculus
@@ -68,5 +70,7 @@ __all__ = [
     "re",
     "ratio",
     "simplify_dgcv",
+    "sqrt_dgcv",
     "subs_dgcv",
+    "symbol",
 ]

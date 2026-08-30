@@ -34,9 +34,9 @@ _singularity_sources = (
     ("derived_series", "derived series"),
     ("simple_ideals", "simple subalgebras"),
     ("center", "center"),
-    ("subalgebra_ranks", "subalgebra ranks"),
     ("structure", "structure coefficients"),
 )
+_likely_spurious_sources = (("subalgebra_ranks", "subalgebra ranks"),)
 
 
 def _is_trivial_level(level) -> bool:

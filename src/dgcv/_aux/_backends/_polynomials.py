@@ -38,9 +38,10 @@ from ._symbolic_router import (
     get_free_symbols,
 )
 from ._symbolic_router import factor as factor_routed
-from ._types_and_constants import symbol
+from ._types_and_constants import symbol, zero
 
 __all__ = [
+    "discriminant",
     "make_poly",
     "poly_gens",
     "poly_monoms",
@@ -217,6 +218,43 @@ def extract_polynomial_coeffs(
         )
         grouped.append(list(coeffs))
     return grouped  # type: ignore[return-value]
+
+
+def discriminant(expr, var):
+    kind = engine_kind()
+
+    if kind == "sympy":
+        sp = _get_sympy_module()
+        try:
+            return sp.discriminant(_unwrap_poly_expr(expr), var)
+        except Exception as e:
+            raise PolyBackendError(
+                f"dgcv: discriminant failed for var={var!r} and expr type {type(expr).__name__}"
+            ) from e
+
+    if kind == "sage":
+        sage = _get_sage_module()
+        SR = sage.SR
+        try:
+            f = SR(_unwrap_poly_expr(expr))
+            den = f.denominator()
+            if SR(den).has(var):
+                raise ValueError(f"{var!r} occurs in the denominator")
+            g = SR(f.numerator())
+            n = int(g.degree(var))
+            if n < 1:
+                return zero()
+            r = g.resultant(g.derivative(var), var)
+            dg = SR((-1) ** (n * (n - 1) // 2) * r / g.coefficient(var, n))
+            return cancel(SR(dg / SR(den) ** (2 * n - 2)))
+        except Exception as e:
+            raise PolyBackendError(
+                f"dgcv: discriminant failed for var={var!r} and expr type {type(expr).__name__}"
+            ) from e
+
+    raise PolyBackendError(
+        "dgcv: no supported symbolic engine is available for polynomials"
+    )
 
 
 def make_poly(

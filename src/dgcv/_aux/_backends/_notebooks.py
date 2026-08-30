@@ -5,8 +5,6 @@ from __future__ import annotations
 import importlib.util
 from typing import Any, Callable
 
-from .._utilities._config import get_dgcv_settings_registry
-
 _ipython_available = None
 _ipython_shell = None
 _ipython_shell_checked = False
@@ -53,19 +51,35 @@ def in_ipython() -> bool:
 
 def _format_displays_override() -> bool:
     try:
+        from .._utilities._config import get_dgcv_settings_registry
+
         dgcvSR = get_dgcv_settings_registry()
         return bool(dgcvSR.get("format_displays", False))
     except Exception:
         return False
 
 
-def in_notebook() -> bool:
+def in_kernel() -> bool:
     sh = _get_ipython_shell()
     if sh is None:
         return False
-
+    if getattr(sh, "kernel", None) is not None:
+        return True
     name = getattr(getattr(sh, "__class__", None), "__name__", "")
-    return name == "ZMQInteractiveShell"
+    return "ZMQInteractiveShell" in name
+
+
+def in_notebook() -> bool:
+    return in_kernel()
+
+
+def on_sage_kernel() -> bool:
+    if not in_kernel():
+        return False
+    cls = getattr(_get_ipython_shell(), "__class__", None)
+    name = (getattr(cls, "__name__", "") or "").lower()
+    module = getattr(cls, "__module__", "") or ""
+    return "sage" in name or module.split(".")[0] == "sage"
 
 
 def can_rich_display_latex() -> bool:

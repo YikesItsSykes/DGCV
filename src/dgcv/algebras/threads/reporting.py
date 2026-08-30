@@ -210,8 +210,6 @@ def _summary_render_plain(
         items_sing = []
         max_operands = 1000
         for key, source in _singularity_sources:
-            if key == "subalgebra_ranks":
-                continue
             terms = list(refAlg._singularities.get(key, []))
             if not terms:
                 continue
@@ -556,7 +554,10 @@ def _summary_render_rich(
 
     sections.append(("panel", _build_basis_panel))
 
-    if getattr(refAlg, "_center_cache", None):
+    if (
+        getattr(refAlg, "_center_cache", None)
+        and getattr(refAlg, "_is_semisimple_cache", None) is not True
+    ):
 
         def _center_panel(corner_kwargs):
             IT = []
@@ -872,18 +873,9 @@ def _summary_render_rich(
     if show_singularities is not False and getattr(refAlg, "_singularities", False):
 
         def singularities_panel(corner_kwargs):
-            type_dict = [
-                ("radical", "radical"),
-                ("LD", "Levi decomposition"),
-                ("derived_series", "derived series"),
-                ("simple_ideals", "simple subalgebras"),
-                ("center", "center"),
-                ("subalgebra_ranks", "subalgebra ranks"),
-                ("structure", "structure coefficients"),
-            ]
             items_sing = []
             max_operands = 1000
-            for key, label in type_dict:
+            for key, label in _singularity_sources:
                 if show_singularities is not True:
                     sings = refAlg._singularities.get(key, set())
                     printable = True

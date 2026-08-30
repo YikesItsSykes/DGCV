@@ -52,7 +52,6 @@ def _alg_init(
                 structure_data,
                 process_matrix_rep=process_matrix_rep,
                 assume_skew=assume_skew,
-                assume_Lie_alg=False,
                 basis_order_for_supplied_str_eqns=False,
             )
             if process_matrix_rep is True:

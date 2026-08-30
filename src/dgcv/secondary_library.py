@@ -15,6 +15,7 @@ SPDX-License-Identifier: Apache-2.0
 from ._aux._backends._symbolic_router import _scalar_is_zero as is_scalar_zero
 from ._aux._backends._symbolic_router import defloat
 from ._aux._utilities._misc import linear_combination, zip_sum
+from .branching_analysis import case_tree
 from .core.arrays import frozen_array_dgcv, frozen_matrix_dgcv
 from .core.vector_fields_and_differential_forms.decomposition import (
     _decompose_over_number_field as decompose_over_number_field,
@@ -30,6 +31,7 @@ from .core.vector_fields_and_differential_forms.independence import (
 )
 
 __all__ = [
+    "case_tree",
     "decompose_over_number_field",
     "defloat",
     "extract_basis_by_wedge_vectorized",

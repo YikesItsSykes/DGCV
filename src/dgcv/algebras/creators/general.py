@@ -28,6 +28,7 @@ from ..format_support import (
     _external_library_algebra_processing,
     _validate_structure_data,
 )
+from ..linear_algebra import _structure_array
 from ..specialized import simple_Lie_algebra
 
 
@@ -43,7 +44,6 @@ def createAlgebra(
     tensor_representation=None,
     verbose: bool = False,
     assume_skew: bool = False,
-    assume_Lie_alg: bool = False,
     basis_order_for_supplied_str_eqns=None,
     _simple=None,
     special_processing_rules: dict = None,
@@ -89,6 +89,8 @@ def createAlgebra(
         At third optional keyworb "assume_skew" is permitted, in which case the algebra structure
         is computed with skew-shape-aware sparsified formulas.
     """
+    if kwargs.get("assume_Lie_alg"):  # old keyword support
+        assume_skew = True
     if kwargs.get("return_created_obj"):  # old keyword support
         return_created_object = kwargs.get("return_created_obj")
     notes = {}
@@ -244,11 +246,8 @@ def createAlgebra(
             basis_labels = [str(x) for x in basis_order_for_supplied_str_eqns]
 
     if isinstance(obj, numbers.Integral) and obj >= 0:
-        obj = array_dgcv(
-            dict(),
-            shape=(obj, obj),
-            null_return=freeze_matrix(matrix_dgcv.zeros(obj, 1)),
-        )
+        structure_data = _structure_array(dict(), obj)
+        dimension = obj
         t_message = "True by construction: abelian data --> `createAlgebra`"
         _markers["_educed_properties"]["is_Lie_algebra"] = t_message
         _markers["_educed_properties"]["is_skew"] = t_message
@@ -256,7 +255,7 @@ def createAlgebra(
         _markers["_educed_properties"]["is_nilpotent"] = t_message
         _markers["_educed_properties"]["is_solvable"] = t_message
         _markers["_educed_properties"]["special_type"] = "abelian"
-    if get_dgcv_category(obj) in {"algebra", "subalgebra"}:
+    elif get_dgcv_category(obj) in {"algebra", "subalgebra"}:
         if verbose:
             print(f"Using existing algebra instance: {label}")
         _markers["_educed_properties"] = getattr(obj, "_educed_properties", dict())
@@ -285,7 +284,7 @@ def createAlgebra(
                 obj,
                 mul=mul,
                 zero_obst=zero_obst,
-                assume_skew=special_processing_rules.get("mul", False),
+                assume_skew=special_processing_rules.get("assume_skew", False),
             )
             dimension = len(obj)
         except Exception:
@@ -308,7 +307,6 @@ def createAlgebra(
                 [el._convert_to_tp() for el in obj],
                 process_matrix_rep=False,
                 assume_skew=assume_skew,
-                assume_Lie_alg=assume_Lie_alg,
                 basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,
                 process_tensor_rep=True,
             )
@@ -329,7 +327,6 @@ def createAlgebra(
                 obj,
                 process_matrix_rep=process_matrix_rep,
                 assume_skew=assume_skew,
-                assume_Lie_alg=assume_Lie_alg,
                 basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,
                 determinacy_order_ansatz=jet_determinacy_order_ansatz,
                 process_with_decompose=process_with_decompose,
@@ -567,7 +564,6 @@ def createFiniteAlg(
     preferred_representation=None,
     verbose=False,
     assume_skew=False,
-    assume_Lie_alg=False,
     basis_order_for_supplied_str_eqns=None,
     _simple=None,
     **kwargs,
@@ -580,6 +576,8 @@ def createFiniteAlg(
         new_kw="createAlgebra",
         sunset="2026",
     )
+    if kwargs.get("assume_Lie_alg", False):
+        assume_skew = True
     return createAlgebra(
         obj,
         label,
@@ -590,7 +588,6 @@ def createFiniteAlg(
         preferred_representation=preferred_representation,
         verbose=verbose,
         assume_skew=assume_skew,
-        assume_Lie_alg=assume_Lie_alg,
         basis_order_for_supplied_str_eqns=basis_order_for_supplied_str_eqns,
         _simple=_simple,
     )

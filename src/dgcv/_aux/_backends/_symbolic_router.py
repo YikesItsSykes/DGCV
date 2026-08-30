@@ -259,9 +259,7 @@ def _resolve_subs_keys(expr, subs_data):
         return subs_data
 
     atoms = {str(a): a for a in get_free_symbols(expr)}
-    return {
-        atoms.get(k, k) if isinstance(k, str) else k: v for k, v in items()
-    }
+    return {atoms.get(k, k) if isinstance(k, str) else k: v for k, v in items()}
 
 
 def subs(expr, subs_data, **kwargs):
@@ -636,9 +634,8 @@ def expand(expr, **kwargs):
             return f(expand)  ###!!! remove try/excepts here
 
     if kind == "sympy":
-        sp = engine_module()
         try:
-            return sp.expand(expr, **kwargs)
+            return engine_module().expand(expr, **kwargs)
         except Exception:
             return expr
 
@@ -710,12 +707,51 @@ def cancel(expr, **kwargs):
         return sp.cancel(expr, **kwargs)
 
     if kind == "sage":
-        f = getattr(expr, "cancel", None)
-        if callable(f):
+        for name in ("normalize", "cancel"):
+            f = getattr(expr, name, None)
+            if callable(f):
+                try:
+                    return f(**kwargs)
+                except TypeError:
+                    return f()
+
+    return expr
+
+
+def collect(expr, syms):
+    kind = engine_kind()
+
+    if isinstance(syms, (list, tuple, set, frozenset)):
+        syms = list(syms)
+    else:
+        syms = [syms]
+
+    f = getattr(expr, "__dgcv_apply__", None)
+    if f:
+        return f(lambda e: collect(e, syms))
+
+    if not syms:
+        return expr
+
+    if kind == "sympy":
+        sp = engine_module()
+        for s in syms:
             try:
-                return f(**kwargs)
-            except TypeError:
-                return f()
+                expr = sp.collect(expr, s)
+            except Exception:
+                return expr
+        return expr
+
+    if kind == "sage":
+        for s in syms:
+            g = getattr(expr, "collect", None)
+            if not callable(g):
+                return expr
+            try:
+                expr = g(s)
+            except Exception:
+                return expr
+        return expr
 
     return expr
 
@@ -784,3 +820,7 @@ def _sage_defloat(expr, *, heuristic=False, **kwargs):
             return op(*[_sage_defloat(a, heuristic=heuristic) for a in args])
         except Exception:
             return convert(expr)
+
+
+def sqrt(expr):
+    return engine_module().sqrt(expr)

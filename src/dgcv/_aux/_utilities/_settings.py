@@ -51,36 +51,6 @@ __all__ = ["set_dgcv_settings", "view_dgcv_settings", "reset_dgcv_settings"]
 # -----------------------------------------------------------------------------
 # utilities
 # -----------------------------------------------------------------------------
-_infer_vscode_jupyter_unspecified = object()
-
-
-def _infer_vscode_jupyter():
-    cache = getattr(_infer_vscode_jupyter, "_cache", _infer_vscode_jupyter_unspecified)
-    if cache is not _infer_vscode_jupyter_unspecified:
-        return cache
-    try:
-        import os
-
-        try:
-            from IPython import get_ipython  # type: ignore
-
-            ip = get_ipython()
-            in_jupyter = ip is not None and ip.__class__.__name__.startswith("ZMQ")
-        except Exception:
-            in_jupyter = False
-
-        in_vscode = (
-            "VSCODE_PID" in os.environ
-            or "VSCODE_IPC_HOOK" in os.environ
-            or os.environ.get("TERM_PROGRAM") == "vscode"
-        )
-        val = bool(in_jupyter and in_vscode)
-    except Exception:
-        val = False
-    _infer_vscode_jupyter._cache = val
-    return val
-
-
 def set_dgcv_settings(
     theme: str | None = None,
     format_displays: bool | None = None,
@@ -152,7 +122,9 @@ def set_dgcv_settings(
 
     def _resolve_vscode_patch_value(v):
         if v == "infer":
-            return _infer_vscode_jupyter()
+            from ._config import environment_inference
+
+            return environment_inference()
         if isinstance(v, bool):
             return v
         if v is None:
@@ -475,7 +447,7 @@ def reset_dgcv_settings():
     """
     Reset dgcv settings to their default values.
     """
-    from ._config import _vscodepatch
+    from ._config import _vscodepatch, default_engine_inference
 
     dgcvSR = get_dgcv_settings_registry()
 
@@ -488,7 +460,7 @@ def reset_dgcv_settings():
             "version_specific_defaults": f"v{__version__}",
             "ask_before_overwriting_objects_in_vmf": True,
             "forgo_warnings": False,
-            "default_symbolic_engine": "sympy",
+            "default_symbolic_engine": default_engine_inference(),
             "verbose_label_printing": False,
             "VLP": vlp,
             "conjugation_prefix": "BAR",
